@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, Download, FileText, Loader2, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Download, FileText, Layers, Loader2, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
 import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Page, PageHeader, Panel, PanelHeader, Stat, StatStrip, EmptyState, AccessDenied } from '../components/layout/Page';
@@ -154,7 +154,8 @@ function Arquivo({ administrar }: { administrar: boolean }) {
   const [buscaDigitada, setBuscaDigitada] = useState('');
   const [pagina, setPagina] = useState(1);
   const [relatorioId, setRelatorioId] = useState<number | null>(null);
-  useLiberarScrollTravado(relatorioId !== null);
+  const [documentoRelatorio, setDocumentoRelatorio] = useState<string | null>(null);
+  useLiberarScrollTravado(relatorioId !== null || documentoRelatorio !== null);
   const { baixar, baixandoId } = useBaixarPdfCredito();
 
   // Busca com atraso curto: não consulta o servidor a cada tecla.
@@ -173,8 +174,13 @@ function Arquivo({ administrar }: { administrar: boolean }) {
   const itens = q.data?.itens ?? [];
   const ativos = filtrosAtivos(filtros);
 
-  const acoes = (id: number) => (
+  const acoes = (id: number, documento: string, fontes: number) => (
     <div className="flex flex-wrap gap-2">
+      {fontes >= 2 && (
+        <Button size="lg" variant="outline" className="h-10" onClick={() => setDocumentoRelatorio(documento)} title="Todas as consultas deste documento num relatório só">
+          <Layers aria-hidden />Relatório do CNPJ
+        </Button>
+      )}
       <Button size="lg" variant="outline" className="h-10" onClick={() => setRelatorioId(id)}><FileText aria-hidden />Ver relatório</Button>
       <Button size="lg" variant="outline" className="h-10" onClick={() => void baixar(id)} disabled={baixandoId !== null}>
         {baixandoId === id ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}Baixar PDF
@@ -191,8 +197,11 @@ function Arquivo({ administrar }: { administrar: boolean }) {
   );
 
   const iconeCls = 'h-8 w-8 p-0';
-  const acoesCompactas = (id: number) => (
+  const acoesCompactas = (id: number, documento: string, fontes: number) => (
     <div className="flex items-center justify-end gap-1">
+      {fontes >= 2 && (
+        <Button variant="outline" className={iconeCls} title="Relatório do CNPJ (todas as fontes juntas)" aria-label="Relatório do CNPJ" onClick={() => setDocumentoRelatorio(documento)}><Layers aria-hidden /></Button>
+      )}
       <Button variant="outline" className={iconeCls} title="Ver relatório" aria-label="Ver relatório" onClick={() => setRelatorioId(id)}><FileText aria-hidden /></Button>
       <Button variant="outline" className={iconeCls} title="Baixar PDF" aria-label="Baixar PDF" onClick={() => void baixar(id)} disabled={baixandoId !== null}>
         {baixandoId === id ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}
@@ -282,9 +291,9 @@ function Arquivo({ administrar }: { administrar: boolean }) {
                   {ROTULO_VEREDITO[i.veredito]} · Score {i.score ?? 'n/i'} · {[i.municipio, i.uf].filter(Boolean).join('/') || 'sem cidade'}
                 </p>
                 <p className="text-xs text-slate-500">
-                  {i.produtoNome} · {dataHoraBR(i.consultadoEm)} · {i.consultadoPor ?? 'sem autor'} · {i.custoReais != null ? formatBRL(i.custoReais) : 'sem custo informado'} · {i.pedidosVinculados} pedido(s)
+                  {i.produtoNome}{i.fontes >= 2 ? ` (${i.fontes} fontes)` : ''} · {dataHoraBR(i.consultadoEm)} · {i.consultadoPor ?? 'sem autor'} · {i.custoReais != null ? formatBRL(i.custoReais) : 'sem custo informado'} · {i.pedidosVinculados} pedido(s)
                 </p>
-                {acoes(i.id)}
+                {acoes(i.id, i.documento, i.fontes)}
               </li>
             ))}
           </ul>
@@ -314,10 +323,13 @@ function Arquivo({ administrar }: { administrar: boolean }) {
                     <td className="max-w-[170px] truncate px-2 py-1.5 text-slate-700" title={[i.municipio, i.uf].filter(Boolean).join('/') || undefined}>{[i.municipio, i.uf].filter(Boolean).join('/') || '—'}</td>
                     <td className="px-2 py-1.5 text-right font-semibold">{i.score ?? '—'}</td>
                     <td className="whitespace-nowrap px-2 py-1.5 text-slate-700">{vereditoCurto[i.veredito]}</td>
-                    <td className="whitespace-nowrap px-2 py-1.5 text-slate-600">{i.produtoNome}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-slate-600">
+                      {i.produtoNome}
+                      {i.fontes >= 2 && <span className="ml-1.5 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700" title="Este documento tem consultas de mais de uma fonte nos últimos 30 dias">{i.fontes} fontes</span>}
+                    </td>
                     <td className="whitespace-nowrap px-2 py-1.5 text-slate-600" title={`Consultado por ${i.consultadoPor ?? 'sem autor'} · ${i.pedidosVinculados} pedido(s) vinculado(s)`}>{dataHoraBR(i.consultadoEm)}</td>
                     <td className="whitespace-nowrap px-2 py-1.5 text-right text-slate-600">{i.custoReais != null ? formatBRL(i.custoReais) : '—'}</td>
-                    <td className="py-1.5 pl-2 pr-3">{acoesCompactas(i.id)}</td>
+                    <td className="py-1.5 pl-2 pr-3">{acoesCompactas(i.id, i.documento, i.fontes)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -331,6 +343,7 @@ function Arquivo({ administrar }: { administrar: boolean }) {
         </>
       )}
       <RelatorioCreditoDialog reportId={relatorioId} open={relatorioId !== null} onOpenChange={(o) => { if (!o) setRelatorioId(null); }} />
+      <RelatorioCreditoDialog documento={documentoRelatorio} open={documentoRelatorio !== null} onOpenChange={(o) => { if (!o) setDocumentoRelatorio(null); }} />
     </Panel>
   );
 }

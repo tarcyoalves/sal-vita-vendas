@@ -11,7 +11,8 @@ import { formatBRL } from '../../lib/faturamento/calc';
 import { formatarDocumento, mascararDocumentoSocio } from '../../lib/credito/documento';
 import { dataBR, dataHoraBR, permissoesCredito } from '../../lib/credito/regras';
 import { naturezaJuridicaTexto } from '../../../../shared/creditoRotulos';
-import { analisarSinais, atenuacaoDoItem, ROTULO_VEREDITO, type GrupoAnotacao, type RelatorioCredito } from '../../../../shared/credito';
+import { analisarSinais, atenuacaoDoItem, ROTULO_VEREDITO, type RelatorioCredito, type Veredito } from '../../../../shared/credito';
+import { StatusBadge } from '../StatusBadge';
 import { CreditoSemaforo } from './CreditoSemaforo';
 import { PontosDeAtencao } from './PontosDeAtencao';
 import { SeloSimulacao } from './SeloSimulacao';
@@ -52,43 +53,70 @@ function Campos({ pares }: { pares: Array<[string, string]> }) {
 }
 
 export interface RelatorioCreditoDialogProps {
-  reportId: number | null;
+  /** Modo relatório: UM relatório (uma consulta de um produto). */
+  reportId?: number | null;
+  /** Modo documento: o RELATÓRIO CONSOLIDADO do CNPJ/CPF (todas as fontes válidas combinadas). Tem prioridade sobre `reportId`. */
+  documento?: string | null;
   open: boolean;
   onOpenChange: (o: boolean) => void;
 }
 
-/** Relatório completo (mesmas seções do PDF). Só admin/gerente: o servidor usa staffProcedure. */
-export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: RelatorioCreditoDialogProps) {
+/** Visão comum aos dois modos: o que a tela precisa além do `RelatorioCredito`. */
+interface Visao { id: number | null; veredito: Veredito; motivos: string[]; consultadoEm: string | Date; provedor: string; motivo: string | null }
+
+/** Relatório completo (mesmas seções do PDF), por consulta ou consolidado do documento. Só admin/gerente: o servidor usa staffProcedure. */
+export function RelatorioCreditoDialog({ reportId = null, documento = null, open, onOpenChange }: RelatorioCreditoDialogProps) {
   const { user } = useAuth();
   const perm = permissoesCredito(user?.role);
-  const q = trpc.credito.relatorio.useQuery({ id: reportId ?? 0 }, { enabled: open && reportId !== null && perm.verRelatorio, retry: false });
-  const { baixar, baixandoId } = useBaixarPdfCredito();
+  const modoDoc = !!documento;
+  const q = trpc.credito.relatorio.useQuery({ id: reportId ?? 0 }, { enabled: open && !modoDoc && reportId !== null && perm.verRelatorio, retry: false });
+  const qd = trpc.credito.relatorioDocumento.useQuery({ documento: documento ?? '' }, { enabled: open && modoDoc && perm.verRelatorio, retry: false });
+  const { baixar, baixandoId, baixarDocumento, baixandoDocumento, ocupado } = useBaixarPdfCredito();
   const utils = trpc.useUtils();
   const reprocessar = trpc.credito.reprocessar.useMutation();
   const [verEstrutura, setVerEstrutura] = useState(false);
-  const estrutura = trpc.credito.estruturaBruta.useQuery({ id: reportId ?? 0 }, { enabled: open && reportId !== null && perm.administrar && verEstrutura, retry: false });
-  const link = trpc.credito.linkOriginal.useQuery({ id: reportId ?? 0 }, { enabled: open && reportId !== null && perm.administrar, retry: false });
-  const d = q.data;
-  const r = d?.relatorio;
-  const sinais = useMemo(() => (r && d ? analisarSinais(r, new Date(d.consultadoEm)) : []), [r, d]);
+  const individual = open && !modoDoc && reportId !== null;
+  const estrutura = trpc.credito.estruturaBruta.useQuery({ id: reportId ?? 0 }, { enabled: individual && perm.administrar && verEstrutura, retry: false });
+  const link = trpc.credito.linkOriginal.useQuery({ id: reportId ?? 0 }, { enabled: individual && perm.administrar, retry: false });
+  const ativa = modoDoc ? qd : q;
+  const consolidado = modoDoc ? qd.data?.consolidado : undefined;
+  const d: Visao | undefined = modoDoc
+    ? (qd.data ? {
+      id: null, veredito: qd.data.veredito, motivos: qd.data.motivos, consultadoEm: qd.data.consolidado.consultadoEm,
+      provedor: qd.data.consolidado.simulado ? 'simulado' : 'consolidado', motivo: null,
+    } : undefined)
+    : (q.data ? {
+      id: q.data.id, veredito: q.data.veredito, motivos: q.data.motivos, consultadoEm: q.data.consultadoEm,
+      provedor: q.data.provedor, motivo: q.data.motivo,
+    } : undefined);
+  const r: RelatorioCredito | undefined = modoDoc ? qd.data?.consolidado.fundido : q.data?.relatorio;
+  const sinais = useMemo(
+    () => (modoDoc ? (qd.data?.sinais ?? []) : (r && q.data ? analisarSinais(r, new Date(q.data.consultadoEm)) : [])),
+    [modoDoc, qd.data, r, q.data],
+  );
   const simulado = d?.provedor === 'simulado';
+  const scoreAlto = (consolidado ? consolidado.scores.some((s) => (s.valor ?? 0) >= 600) : (r?.score.valor ?? 0) >= 600);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl w-[96vw] max-h-[92dvh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
-          <DialogTitle className="text-base">Relatório de análise de crédito</DialogTitle>
+          <DialogTitle className="text-base">{modoDoc ? `Relatório de crédito do ${r?.tipo ?? 'CNPJ'}` : 'Relatório de análise de crédito'}</DialogTitle>
           <DialogDescription>
-            {r ? `${r.tipo} ${formatarDocumento(r.documento)} · consulta em ${dataHoraBR(d?.consultadoEm)} · Fonte: ${r.fonte.provedor === 'boavista_apifull' ? 'API Full' : r.fonte.provedor === 'simulado' ? 'Simulado' : r.fonte.provedor} / ${r.fonte.produto}` : 'Carregando…'}
+            {r && d
+              ? consolidado
+                ? `${r.tipo} ${formatarDocumento(r.documento)} · Fontes: ${consolidado.fontes.map((f) => `${f.produtoNome} (${dataHoraBR(f.consultadoEm)})`).join(' + ')}`
+                : `${r.tipo} ${formatarDocumento(r.documento)} · consulta em ${dataHoraBR(d.consultadoEm)} · Fonte: ${r.fonte.provedor === 'boavista_apifull' ? 'API Full' : r.fonte.provedor === 'simulado' ? 'Simulado' : r.fonte.provedor} / ${r.fonte.produto}`
+              : 'Carregando…'}
           </DialogDescription>
         </DialogHeader>
 
         {!perm.verRelatorio ? (
           <p className="text-sm text-slate-600">Seu usuário não tem acesso ao relatório completo.</p>
-        ) : q.isLoading ? (
+        ) : ativa.isLoading ? (
           <div className="flex justify-center py-10"><Loader2 className="animate-spin text-brand-600" aria-label="Carregando" /></div>
-        ) : q.error || !d || !r ? (
-          <QueryError message={q.error?.message ?? 'Não foi possível carregar o relatório'} onRetry={() => void q.refetch()} retrying={q.isFetching} />
+        ) : ativa.error || !d || !r ? (
+          <QueryError message={ativa.error?.message ?? 'Não foi possível carregar o relatório'} onRetry={() => void ativa.refetch()} retrying={ativa.isFetching} />
         ) : (
           <div className="min-w-0 space-y-5">
             {simulado && <SeloSimulacao />}
@@ -103,27 +131,74 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
                 {(d.motivos.length ? d.motivos : ['Nenhum fator de restrição encontrado nas regras da Sal Vita.']).map((m) => <li key={m} className="break-words">{m}</li>)}
               </ul>
               <PontosDeAtencao sinais={sinais} />
+              {consolidado && (
+                <ul className="flex flex-wrap gap-1.5" aria-label="Fontes consultadas">
+                  {consolidado.fontes.map((f) => (
+                    <li key={f.produto}>
+                      <StatusBadge tone="neutral">
+                        {f.produtoNome} · {dataHoraBR(f.consultadoEm)}{f.custoReais != null && f.custoReais > 0 ? ` · ${brl(f.custoReais)}` : ''}
+                      </StatusBadge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {consolidado && !consolidado.valido && <p className="text-xs font-medium text-amber-800">Vencido: nenhuma das consultas tem menos de 30 dias.</p>}
             </div>
 
-            <Secao titulo="Score">
-              <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
-                <div>
-                  <p className="text-xs text-slate-500">Score (0 a 1000)</p>
-                  <p className="text-3xl font-bold tabular-nums text-brand-700">{r.score.valor ?? 'Não informado'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Probabilidade de inadimplência</p>
-                  <p className="text-lg font-semibold tabular-nums text-slate-900">{pct(r.score.probabilidadeInadimplencia)}</p>
-                </div>
-                {r.score.faixa && <div><p className="text-xs text-slate-500">Faixa</p><p className="text-sm text-slate-900">{r.score.faixa}</p></div>}
+            {consolidado && consolidado.divergencias.length > 0 && (
+              <div role="note" className="space-y-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <p className="text-xs font-semibold uppercase tracking-wide">Divergências entre as fontes</p>
+                <ul className="list-disc space-y-0.5 pl-5">
+                  {consolidado.divergencias.map((x) => <li key={x} className="break-words">{x}</li>)}
+                </ul>
               </div>
-              <p className="text-xs text-slate-500">Score e probabilidade informados pela fonte; não são calculados pela Sal Vita.</p>
-              {d?.veredito === 'REPROVADO_A_PRAZO' && (r.score.valor ?? 0) >= 600 && (
+            )}
+
+            <Secao titulo={consolidado ? 'Score por fonte' : 'Score'}>
+              {consolidado ? (
+                <ul className="grid gap-2 sm:grid-cols-2">
+                  {consolidado.scores.map((s) => (
+                    <li key={s.produto} className="min-w-0 space-y-1 rounded-lg border border-slate-200 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{s.produtoNome}</p>
+                      {s.calculado ? (
+                        <>
+                          <p className="text-3xl font-bold tabular-nums text-brand-700">{s.valor}</p>
+                          <p className="text-xs text-slate-600">
+                            Probabilidade de inadimplência <strong className="tabular-nums">{pct(s.probabilidadeInadimplencia)}</strong>
+                            {s.faixa ? ` · Faixa ${s.faixa}` : ''}
+                          </p>
+                          {s.texto && <p className="line-clamp-2 text-xs text-slate-500" title={s.texto}>{s.texto}</p>}
+                        </>
+                      ) : (
+                        <p className="text-sm font-medium text-amber-800">Score não calculado pela fonte. Usamos o que ela trouxe.</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
+                  <div>
+                    <p className="text-xs text-slate-500">Score (0 a 1000)</p>
+                    <p className="text-3xl font-bold tabular-nums text-brand-700">{r.score.valor ?? 'Não informado'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Probabilidade de inadimplência</p>
+                    <p className="text-lg font-semibold tabular-nums text-slate-900">{pct(r.score.probabilidadeInadimplencia)}</p>
+                  </div>
+                  {r.score.faixa && <div><p className="text-xs text-slate-500">Faixa</p><p className="text-sm text-slate-900">{r.score.faixa}</p></div>}
+                </div>
+              )}
+              <p className="text-xs text-slate-500">
+                {consolidado
+                  ? 'Cada score vem da própria fonte (modelos diferentes) e não é calculado pela Sal Vita nem combinado num número único.'
+                  : 'Score e probabilidade informados pela fonte; não são calculados pela Sal Vita.'}
+              </p>
+              {d?.veredito === 'REPROVADO_A_PRAZO' && scoreAlto && (
                 <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
                   Atenção: o score da fonte é alto, mas o relatório registra restrições. Para decidir, prevalecem as restrições, não o score.
                 </p>
               )}
-              {r.score.textoInterpretacao && <p className="line-clamp-2 text-xs text-slate-500" title={r.score.textoInterpretacao}>{r.score.textoInterpretacao}</p>}
+              {!consolidado && r.score.textoInterpretacao && <p className="line-clamp-2 text-xs text-slate-500" title={r.score.textoInterpretacao}>{r.score.textoInterpretacao}</p>}
             </Secao>
 
             {(() => {
@@ -160,6 +235,9 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
                     return (
                       <div key={k} className="space-y-1">
                         <p className="text-sm font-semibold text-slate-800">{nome.replace(/ \(.*\)$/, '')}</p>
+                        {consolidado?.divergenciaPorGrupo[k] && (
+                          <p className="text-xs font-medium text-amber-800">Divergência entre fontes — {consolidado.divergenciaPorGrupo[k]}</p>
+                        )}
                         {g.itens.length < g.quantidade && (
                           <p className="text-xs font-medium text-amber-800">A fonte listou {g.itens.length} de {g.quantidade} ocorrências.</p>
                         )}
@@ -173,6 +251,7 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
                                   <span className="min-w-0 break-words text-slate-800">
                                     {it.descricao}
                                     {it.credor && <span className="block text-xs text-slate-500">Credor: {it.credor}</span>}
+                                    {it.fonte && <span className="block text-xs text-slate-500">Fonte: {it.fonte}</span>}
                                     {it.local && <span className="block text-xs text-slate-500">{it.local}</span>}
                                     {it.extras && Object.entries(it.extras).length > 0 && (
                                       <span className="mt-0.5 block text-xs text-slate-500">
@@ -264,7 +343,7 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
           </div>
         )}
 
-        {perm.administrar && d && (
+        {perm.administrar && d && d.id !== null && (
           <details className="rounded-md border border-slate-200 p-3 text-xs text-slate-600" onToggle={(e) => setVerEstrutura((e.currentTarget as HTMLDetailsElement).open)}>
             <summary className="cursor-pointer font-medium text-slate-700">Diagnóstico da resposta do provedor (só admin)</summary>
             {estrutura.isLoading ? <p className="mt-2">Carregando…</p> : estrutura.data && !estrutura.data.guardado ? (
@@ -277,8 +356,8 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
 
         <DialogFooter className="gap-2">
           <Button variant="outline" size="lg" onClick={() => onOpenChange(false)}>Fechar</Button>
-          {perm.administrar && d && (
-            <Button variant="outline" size="lg" disabled={reprocessar.isPending} onClick={() => reprocessar.mutate({ id: d.id }, {
+          {perm.administrar && d && d.id !== null && (
+            <Button variant="outline" size="lg" disabled={reprocessar.isPending} onClick={() => reprocessar.mutate({ id: d.id as number }, {
               onSuccess: () => { toast.success('Relatório refeito a partir da resposta já paga (sem custo).'); void utils.credito.invalidate(); },
               onError: (e) => toast.error(e.message),
             })}>
@@ -286,13 +365,19 @@ export function RelatorioCreditoDialog({ reportId, open, onOpenChange }: Relator
               Reprocessar (sem custo)
             </Button>
           )}
-          {perm.baixarPdf && d && (
-            <Button size="lg" onClick={() => void baixar(d.id)} disabled={baixandoId !== null}>
+          {perm.baixarPdf && d && modoDoc && r && (
+            <Button size="lg" onClick={() => void baixarDocumento(r.documento)} disabled={ocupado}>
+              {baixandoDocumento === r.documento ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}
+              Baixar PDF do CNPJ
+            </Button>
+          )}
+          {perm.baixarPdf && d && d.id !== null && (
+            <Button size="lg" onClick={() => void baixar(d.id as number)} disabled={ocupado}>
               {baixandoId === d.id ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}
               Baixar PDF (completo)
             </Button>
           )}
-          {perm.administrar && link.data?.url && (
+          {perm.administrar && !modoDoc && link.data?.url && (
             <a href={link.data.url} target="_blank" rel="noopener noreferrer"
               className="inline-flex h-11 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-800 hover:bg-slate-50">
               PDF original do provedor

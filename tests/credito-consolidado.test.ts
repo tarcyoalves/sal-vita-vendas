@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { consolidarRelatorios, escolherParaConsolidar, relatorioValido } from '../shared/credito';
 import { gerarPdfCreditoConsolidado } from '../server/lib/credito/pdf';
 import { selecionarParaConsolidado } from '../server/lib/credito/produtos';
+import { deveAbrirConsolidado, linhasDoResultado, produtosComFalha, produtosComRelatorio } from '../client/src/lib/credito/resultado';
 import { boaVistaSintetico, itemBoaVista, itemSerasa, serasaSemScore, serasaSintetico } from './fixtures/credito/consolidado';
 
 const AGORA = new Date('2026-10-16T19:00:00.000Z');
@@ -201,6 +202,35 @@ describe('selecionarParaConsolidado (servidor, função pura)', () => {
   it('sem linhas (ou só simulados com provedor real): vazio', () => {
     expect(selecionarParaConsolidado([], { provedorReal: true }).linhas).toEqual([]);
     expect(selecionarParaConsolidado([L(1, 'boavista', '2026-10-16T18:02:00Z', 'simulado')], { provedorReal: true, agora: AGORA }).linhas).toEqual([]);
+  });
+});
+
+describe('resultado por produto na tela (consulta com 2+ produtos)', () => {
+  const ok = { produto: 'boavista', ok: true, reaproveitado: false, cobrado: true, custoReais: 2.75 };
+  const reap = { produto: 'serasa_premium', ok: true, reaproveitado: true, cobrado: false, custoReais: 0 };
+  const falha = { produto: 'serasa_premium', ok: false, reaproveitado: false, cobrado: false, custoReais: 0, erro: 'Provedor indisponível.' };
+
+  it('sucesso, reaproveitado e erro (com mensagem e "Não foi cobrado")', () => {
+    const l = linhasDoResultado([ok, falha]);
+    expect(l[0]).toMatchObject({ tom: 'ok', titulo: 'Consulta simples: consultado com sucesso' });
+    expect(l[0].detalhe).toContain('R$');
+    expect(l[1]).toMatchObject({ tom: 'erro', titulo: 'Serasa Premium: NÃO foi possível puxar' });
+    expect(l[1].detalhe).toContain('Provedor indisponível.');
+    expect(l[1].detalhe).toContain('Não foi cobrado.');
+    expect(linhasDoResultado([reap])[0]).toMatchObject({ tom: 'reaproveitado' });
+  });
+
+  it('falha COBRADA é destacada', () => {
+    const l = linhasDoResultado([{ ...falha, cobrado: true, custoReais: 6.72 }]);
+    expect(l[0].detalhe).toContain('FOI cobrada');
+  });
+
+  it('abre o consolidado só com 2+ relatórios e nenhuma falha', () => {
+    expect(deveAbrirConsolidado([ok, reap])).toBe(true);
+    expect(deveAbrirConsolidado([ok])).toBe(false);
+    expect(deveAbrirConsolidado([ok, falha])).toBe(false);
+    expect(produtosComRelatorio([ok, falha])).toBe(1);
+    expect(produtosComFalha([ok, falha])).toBe(1);
   });
 });
 
