@@ -195,3 +195,11 @@ describe('helpers do PDF', () => {
     expect(limparTexto('a→b')).toBe('a?b');
   });
 });
+
+import { frasePelaFonte } from '../server/lib/credito/pdf';
+describe('frasePelaFonte', () => {
+  it('separa número colado na palavra e normaliza maiúsculas da fonte', () => {
+    expect(frasePelaFonte('DE CADA 100 EMPRESAS, E PROVAVEL QUE 13APRESENTEM DEBITOS NOS PROXIMOS 12 MESES.'))
+      .toBe('De cada 100 empresas, é provável que 13 apresentem débitos nos próximos 12 meses.');
+  });
+});

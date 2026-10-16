@@ -310,7 +310,8 @@ class Pagina {
 const ACENTO_FRASE: Record<string, string> = { provavel: 'provável', debitos: 'débitos', proximos: 'próximos', ate: 'até', nao: 'não', e: 'é' };
 /** Texto todo em MAIÚSCULAS (como a fonte manda) vira frase normal: minúsculas, 1ª letra maiúscula, acentos comuns. */
 export function frasePelaFonte(t: string | null | undefined): string {
-  const s = (t ?? '').trim();
+  // A fonte às vezes cola o número na palavra seguinte ("QUE 13APRESENTEM"): separa dígito e letra.
+  const s = (t ?? '').replace(/(\d)([A-Za-zÀ-ú])/g, '$1 $2').trim();
   const letras = s.replace(/[^A-Za-zÀ-ú]/g, '');
   if (letras.length < 8 || letras !== letras.toUpperCase()) return s;
   const palavras = s.toLowerCase().split(/(\s+)/).map((w) => ACENTO_FRASE[w] ?? w);
