@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, FileText, Loader2, ShieldCheck } from 'lucide-react';
+import { Download, FileText, Layers, Loader2, ShieldCheck } from 'lucide-react';
 import { Button } from '../ui/button';
 import { StatusBadge } from '../StatusBadge';
 import { QueryError } from '../QueryError';
@@ -39,6 +39,7 @@ export function CreditoCard({ documento, pedidoId, taskId, razaoSocial, compacto
   const valido = validarDocumentoLocal(doc).ok;
   const [consultarAberto, setConsultarAberto] = useState(false);
   const [relatorioId, setRelatorioId] = useState<number | null>(null);
+  const [consolidadoAberto, setConsolidadoAberto] = useState(false);
   const { baixar, baixandoId } = useBaixarPdfCredito();
 
   const q = trpc.credito.ultimo.useQuery({ documento: doc }, { enabled: valido && perm.verCard, retry: false, staleTime: 30_000 });
@@ -125,6 +126,11 @@ export function CreditoCard({ documento, pedidoId, taskId, razaoSocial, compacto
 
           {(perm.verRelatorio || perm.consultar) && (
             <div className="flex flex-wrap gap-2">
+              {perm.verRelatorio && c.produtos.length >= 2 && (
+                <Button size="lg" variant="outline" className="h-10" onClick={() => setConsolidadoAberto(true)} title="Todas as consultas deste documento num relatório só">
+                  <Layers aria-hidden />Relatório do CNPJ
+                </Button>
+              )}
               {perm.verRelatorio && (
                 <Button size="lg" variant="outline" className="h-10" onClick={() => setRelatorioId(c.id)}>
                   <FileText aria-hidden />Ver relatório
@@ -150,6 +156,7 @@ export function CreditoCard({ documento, pedidoId, taskId, razaoSocial, compacto
         pedidoId={pedidoId}
       />
       <RelatorioCreditoDialog reportId={relatorioId} open={relatorioId !== null} onOpenChange={(o) => { if (!o) setRelatorioId(null); }} />
+      <RelatorioCreditoDialog documento={doc} open={consolidadoAberto} onOpenChange={setConsolidadoAberto} />
     </div>
   );
 }

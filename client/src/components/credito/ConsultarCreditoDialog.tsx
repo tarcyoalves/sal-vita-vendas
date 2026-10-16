@@ -14,7 +14,11 @@ import {
   alternarProduto, estadoDaConsulta, limiteDeSelecaoAtingido, planoDaSelecao, selecaoInicial, textoReaproveita,
 } from '../../lib/credito/selecao';
 import { CATALOGO_CREDITO, MAX_PRODUTOS_POR_CONSULTA, PRECOS_MEDIDOS_EM, TEXTO_RECOMENDACAO, nomeDoProduto } from '../../../../shared/creditoCatalogo';
+import { deveAbrirConsolidado, produtosComFalha, produtosComRelatorio, type ResultadoDoProduto } from '../../lib/credito/resultado';
+import { useLiberarScrollTravado } from '../../lib/credito/scrollTravado';
 import { ProdutoConsultaCard } from './ProdutoConsultaCard';
+import { ResultadoConsulta } from './ResultadoConsulta';
+import { RelatorioCreditoDialog } from './RelatorioCreditoDialog';
 
 export interface ConsultarCreditoDialogProps {
   open: boolean;
@@ -23,7 +27,10 @@ export interface ConsultarCreditoDialogProps {
   razaoSocial?: string | null;
   taskId?: number;
   pedidoId?: string;
-  /** Recebe o id do relatório (novo ou reaproveitado) depois de concluir. */
+  /**
+   * Consulta de UM produto que deu certo: recebe o id do relatório (novo ou reaproveitado). Com 2+ produtos o próprio
+   * diálogo abre o RELATÓRIO CONSOLIDADO do documento (todas as fontes juntas) e `onConcluido` não é chamado.
+   */
   onConcluido?: (reportId: number) => void;
 }
 
@@ -36,10 +43,13 @@ export function ConsultarCreditoDialog({ open, onOpenChange, documento, razaoSoc
   const [motivo, setMotivo] = useState('');
   const [forcarNova, setForcarNova] = useState(false);
   const [selecionados, setSelecionados] = useState<string[]>(selecaoInicial);
+  const [resultados, setResultados] = useState<ResultadoDoProduto[] | null>(null);
+  const [consolidadoAberto, setConsolidadoAberto] = useState(false);
   const enviando = useRef(false);
+  useLiberarScrollTravado(open || consolidadoAberto);
 
   useEffect(() => {
-    if (open) { setMotivo(''); setForcarNova(false); setSelecionados(selecaoInicial()); enviando.current = false; }
+    if (open) { setMotivo(''); setForcarNova(false); setSelecionados(selecaoInicial()); setResultados(null); enviando.current = false; }
   }, [open, doc]);
 
   const habilitado = open && perm.consultar;
@@ -54,15 +64,19 @@ export function ConsultarCreditoDialog({ open, onOpenChange, documento, razaoSoc
       const falhas = r.resultados.filter((x) => !x.ok);
       if (falhas.length === 0) {
         toast.success(r.custoCobradoReais > 0 ? `Consulta realizada (${formatBRL(r.custoCobradoReais)})` : 'Relatório reaproveitado (sem custo)');
+        onOpenChange(false);
+        // 2+ produtos: UM relatório do CNPJ com as fontes combinadas (não o de um produto só).
+        if (deveAbrirConsolidado(r.resultados)) window.setTimeout(() => setConsolidadoAberto(true), 350);
+        else if (r.id != null) onConcluido?.(r.id);
       } else {
-        // Resultado parcial: diz o que deu certo, o que falhou e o que JÁ foi cobrado.
+        // Resultado parcial: o diálogo FICA aberto mostrando, por produto, o que deu certo, o que falhou (em vermelho,
+        // com a mensagem) e o que JÁ foi cobrado. O aviso também sai como toast longo.
+        setResultados(r.resultados);
         toast.error(
           `Consulta parcial. ${falhas.map((x) => `${nomeDoProduto(x.produto)}: ${x.erro ?? 'falhou'}${x.cobrado ? ' (COBRADO)' : ''}`).join(' | ')}. Total cobrado: ${formatBRL(r.custoCobradoReais)}.`,
           { duration: 15000 },
         );
       }
-      onOpenChange(false);
-      if (r.id != null) onConcluido?.(r.id);
     },
     onError: (e) => toast.error(e.message),
     onSettled: () => { enviando.current = false; },
@@ -91,8 +105,42 @@ export function ConsultarCreditoDialog({ open, onOpenChange, documento, razaoSoc
   };
 
   const reaproveitados = plano.linhas.filter((l) => l.reaproveitado);
+  const consolidado = <RelatorioCreditoDialog documento={doc} open={consolidadoAberto} onOpenChange={setConsolidadoAberto} />;
+
+  // Consulta parcial: mostra o resultado de CADA produto (nada de erro engolido) e deixa abrir o relatório do CNPJ.
+  if (resultados) {
+    const cobrado = resultados.reduce((s, x) => s + (x.cobrado ? x.custoReais : 0), 0);
+    return (
+      <>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent className="sm:max-w-2xl">
+            <div className="grid min-w-0 gap-4">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-brand-700" aria-hidden />Resultado da consulta</DialogTitle>
+                <DialogDescription className="break-words">
+                  {razaoSocial ? `${razaoSocial} · ` : ''}{formatarDocumento(doc)} · {produtosComRelatorio(resultados)} de {resultados.length} consulta(s) com relatório; {produtosComFalha(resultados)} falhou(aram)
+                </DialogDescription>
+              </DialogHeader>
+              <ResultadoConsulta resultados={resultados} />
+              <p className="text-sm font-semibold text-slate-900">Total cobrado: {formatBRL(cobrado)}</p>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="outline" size="lg" className="h-10 max-sm:flex-1" onClick={() => onOpenChange(false)}>Fechar</Button>
+                {produtosComRelatorio(resultados) > 0 && (
+                  <Button type="button" size="lg" className="h-10 max-sm:flex-1" onClick={() => { onOpenChange(false); window.setTimeout(() => setConsolidadoAberto(true), 350); }}>
+                    Ver relatório do CNPJ
+                  </Button>
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+        {consolidado}
+      </>
+    );
+  }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(o) => { if (!consultar.isPending) onOpenChange(o); }}>
       <DialogContent className="sm:max-w-2xl">
         <form className="grid min-w-0 gap-4" onSubmit={(e) => { e.preventDefault(); confirmar(); }}>
@@ -174,6 +222,10 @@ export function ConsultarCreditoDialog({ open, onOpenChange, documento, razaoSoc
               <p key={l.chave} className="break-words text-xs text-green-700">{l.nome}: {textoReaproveita(l.ultimaEm)}</p>
             ))}
             {estado.bloqueios.map((m) => <p key={m} role="alert" className="break-words rounded-md bg-red-50 px-3 py-2 text-xs text-red-800">{m}</p>)}
+            {/* Erro do servidor (ex.: todas as consultas falharam, sem cobrança): fica na tela, além do toast. */}
+            {consultar.error && !consultar.isPending && (
+              <p role="alert" className="break-words rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-800">{consultar.error.message}</p>
+            )}
             <div className="flex flex-wrap justify-end gap-2">
               <Button type="button" variant="outline" size="lg" className="h-10 max-sm:flex-1" onClick={() => onOpenChange(false)} disabled={consultar.isPending}>Cancelar</Button>
               <Button type="submit" size="lg" className="h-10 max-sm:flex-1" disabled={!estado.podeConsultar}>
@@ -185,5 +237,7 @@ export function ConsultarCreditoDialog({ open, onOpenChange, documento, razaoSoc
         </form>
       </DialogContent>
     </Dialog>
+    {consolidado}
+    </>
   );
 }

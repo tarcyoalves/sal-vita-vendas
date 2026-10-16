@@ -44,6 +44,23 @@ export function maisRecentePorProduto<T extends LinhaRelatorio>(linhas: readonly
   return out;
 }
 
+/**
+ * Quais linhas entram no RELATÓRIO CONSOLIDADO do documento (`linhas` da mais recente para a mais antiga):
+ * sem simulados quando o provedor ligado é o real; o mais recente de cada produto; só os válidos (<30 dias) — se
+ * nenhum for válido, o mais recente de cada produto com `valido:false` (a tela mostra "vencido"). Ordem do catálogo.
+ */
+export function selecionarParaConsolidado<T extends LinhaRelatorio>(
+  linhas: readonly T[], opts: { provedorReal: boolean; agora?: Date },
+): { linhas: T[]; valido: boolean } {
+  const base = opts.provedorReal ? linhas.filter((l) => l.provedor !== 'simulado') : linhas;
+  const porProduto = [...maisRecentePorProduto(base).entries()];
+  const validas = porProduto.filter(([, l]) => relatorioValido(l.consultadoEm, opts.agora));
+  const escolhidas = validas.length ? validas : porProduto;
+  const ordem = CATALOGO_CREDITO.map((i) => i.chave);
+  escolhidas.sort(([a], [b]) => (ordem.indexOf(a) === -1 ? 999 : ordem.indexOf(a)) - (ordem.indexOf(b) === -1 ? 999 : ordem.indexOf(b)));
+  return { linhas: escolhidas.map(([, l]) => l), valido: validas.length > 0 };
+}
+
 export interface ChipProduto {
   produto: string; nome: string; consultadoEm: Date | string; valido: boolean; veredito: Veredito; custoReais: number | null;
 }

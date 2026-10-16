@@ -8,7 +8,8 @@ import { db } from '../db';
 import { creditQueries, creditReports, creditSettings, fatOrders, sellers, tasks, users } from '../db/schema';
 import { userTaskFilter } from './tasks';
 import {
-  SEMAFORO, analisarSinais, calcularVeredito, piorVeredito, relatorioValido, type GrupoAnotacao, type RelatorioCredito, type Veredito,
+  SEMAFORO, analisarSinais, calcularVeredito, consolidarRelatorios, piorVeredito, relatorioValido,
+  type GrupoAnotacao, type RelatorioCredito, type Veredito,
 } from '../../shared/credito';
 import {
   CATALOGO_CREDITO, PRECOS_MEDIDOS_EM, calcularCustos, chaveDoProdutoGravado, nomeDoProduto, verificarLimitesCusto,
@@ -18,8 +19,8 @@ import { SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../shared/searchText';
 import { validarDocumento } from '../lib/credito/documento';
 import { LIMITE_MENSAL_PADRAO, limiteMensalValido, tetoPorConsultaValido } from '../lib/credito/politica';
 import {
-  chipsDosProdutos, comoVeredito, escolherEfetivo, maisRecentePorProduto, planoDeCache, resumirResultados, validarProdutos,
-  type ResultadoProduto,
+  chipsDosProdutos, comoVeredito, escolherEfetivo, maisRecentePorProduto, planoDeCache, resumirResultados, selecionarParaConsolidado,
+  validarProdutos, type ResultadoProduto,
 } from '../lib/credito/produtos';
 import { montarFiltrosListagem, POR_PAGINA_MAX } from '../lib/credito/listagem';
 import { documentosVisiveis, montarSemaforos, normalizarDocumentosSemaforo, SEMAFOROS_MAX_DOCUMENTOS } from '../lib/credito/semaforos';
@@ -31,7 +32,7 @@ import { getProvedorCredito } from '../lib/credito/provedores';
 import { ErroProvedorCredito } from '../lib/credito/provedores/tipos';
 import { mapeadorDoProduto } from '../lib/credito/provedores/mapeadores';
 import { consultarSaldoApiFull } from '../lib/credito/provedores/boavistaApifull';
-import { gerarPdfCredito } from '../lib/credito/pdf';
+import { gerarPdfCredito, gerarPdfCreditoConsolidado } from '../lib/credito/pdf';
 
 const ehStaff = (role: string) => role === 'admin' || role === 'manager';
 const qtd = (g: GrupoAnotacao) => (g.consultado ? g.quantidade : null);
@@ -111,6 +112,20 @@ function erroDocumento(documento: string, tipo?: 'CNPJ' | 'CPF') {
 
 function semSimuladosSeReal<T extends { provedor: string }>(linhas: T[]): T[] {
   return getProvedorCredito().nome === 'simulado' ? linhas : linhas.filter((l) => l.provedor !== 'simulado');
+}
+
+/** Relatório consolidado do documento: o mais recente VÁLIDO de cada produto (sem simulados com o provedor real) fundido num só. */
+async function consolidadoDoDocumento(documento: string) {
+  const linhas = await relatoriosDoDocumento(documento, { limite: 60 });
+  const sel = selecionarParaConsolidado(linhas, { provedorReal: getProvedorCredito().nome !== 'simulado' });
+  if (sel.linhas.length === 0) return null;
+  const consolidado = consolidarRelatorios(sel.linhas.map((l) => ({
+    relatorio: { ...l.relatorio, fonte: { ...l.relatorio.fonte, provedor: l.provedor, custoReais: l.custoReais ?? l.relatorio.fonte.custoReais } },
+    produto: chaveDoProdutoGravado(l.produto, l.provedor),
+    produtoNome: nomeDoProduto(l.produto, l.provedor),
+    consultadoEm: l.consultadoEm.toISOString(),
+  })));
+  return { consolidado, linhas: sel.linhas };
 }
 
 export const creditoRouter = router({
@@ -194,6 +209,24 @@ export const creditoRouter = router({
         id: row.id, relatorio: row.relatorio, veredito, motivos: row.motivos, semaforo: SEMAFORO[veredito],
         consultadoEm: row.consultadoEm, provedor: row.provedor, produto: row.produto, custoReais: row.custoReais,
         consultadoPorUserId: row.consultadoPorUserId, motivo: row.motivo, taskId: row.taskId,
+      };
+    }),
+
+  /**
+   * RELATÓRIO CONSOLIDADO do documento (staff): scores por fonte lado a lado, anotações unidas com a fonte de cada item,
+   * divergências e o veredito (pior entre as fontes). Atendente não vê. NOT_FOUND se o documento não tem relatório.
+   */
+  relatorioDocumento: staffProcedure
+    .input(z.object({ documento: documentoInput }))
+    .query(async ({ input }) => {
+      const documento = input.documento.replace(/\D/g, '');
+      const c = await consolidadoDoDocumento(documento);
+      if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Este documento ainda não tem relatório de crédito' });
+      const { consolidado } = c;
+      return {
+        documento, consolidado, ids: c.linhas.map((l) => l.id),
+        veredito: consolidado.veredito, motivos: consolidado.motivos, semaforo: SEMAFORO[consolidado.veredito],
+        sinais: ordenarSinais(consolidado.sinais),
       };
     }),
 
@@ -405,6 +438,7 @@ export const creditoRouter = router({
       }
       const oks = resultados.filter((r) => r.ok);
       return {
+        documento,
         resultados,
         custoCobradoReais: resumo.custoCobradoReais,
         parcial: resumo.parcial,
@@ -449,10 +483,15 @@ export const creditoRouter = router({
       if (f.de) conds.push(sql`r.consultado_em >= ${f.de.toISOString()}::timestamptz`);
       if (f.ate) conds.push(sql`r.consultado_em <= ${f.ate.toISOString()}::timestamptz`);
       const where = sql.join(conds, sql` AND `);
+      // "N fontes": produtos distintos já consultados para o mesmo documento nos últimos 30 dias (legado = boavista).
+      const chavesCatalogo = sql.join(CATALOGO_CREDITO.map((i) => sql`${i.chave}::text`), sql`, `);
+      const semSimulado = getProvedorCredito().nome !== 'simulado' ? sql` AND x.provedor <> 'simulado'` : sql``;
       const [itens, total] = await Promise.all([
         db.execute(sql`
           SELECT r.id, r.documento, r.razao_social, r.municipio, r.uf, r.score, r.veredito, r.consultado_em, r.custo_reais, r.produto, r.provedor,
                  u.name AS consultado_por,
+                 (SELECT count(DISTINCT CASE WHEN x.produto IN (${chavesCatalogo}) THEN x.produto ELSE 'boavista' END)::int
+                  FROM credit_reports x WHERE x.documento = r.documento AND x.consultado_em > now() - interval '30 days'${semSimulado}) AS fontes,
                  (SELECT count(*)::int FROM credit_report_links l WHERE l.report_id = r.id) AS pedidos_vinculados
           FROM credit_reports r LEFT JOIN users u ON u.id = r.consultado_por_user_id
           WHERE ${where}
@@ -463,14 +502,14 @@ export const creditoRouter = router({
       type Linha = {
         id: number; documento: string; razao_social: string | null; municipio: string | null; uf: string | null;
         score: number | null; veredito: string; consultado_em: Date | string; custo_reais: number | null;
-        consultado_por: string | null; pedidos_vinculados: number; produto: string | null; provedor: string;
+        consultado_por: string | null; pedidos_vinculados: number; produto: string | null; provedor: string; fontes: number | null;
       };
       return {
         total: Number((total.rows[0] as { n?: number } | undefined)?.n ?? 0),
         itens: (itens.rows as unknown as Linha[]).map((l) => ({
           id: l.id, documento: l.documento, razaoSocial: l.razao_social, municipio: l.municipio, uf: l.uf, score: l.score,
           veredito: comoVeredito(l.veredito), consultadoEm: new Date(l.consultado_em), consultadoPor: l.consultado_por,
-          custoReais: l.custo_reais, pedidosVinculados: l.pedidos_vinculados,
+          custoReais: l.custo_reais, pedidosVinculados: l.pedidos_vinculados, fontes: l.fontes ?? 1,
           produto: chaveDoProdutoGravado(l.produto, l.provedor), produtoNome: nomeDoProduto(l.produto, l.provedor),
         })),
       };
@@ -607,6 +646,35 @@ export const creditoRouter = router({
         return { nomeArquivo: `analise-credito-${row.documento}-${dia}.pdf`, base64: buf.toString('base64') };
       } catch (e) {
         console.error('[credito] pdf falhou:', e instanceof Error ? e.message : 'erro');
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Não foi possível gerar o PDF.' });
+      }
+    }),
+
+  /** PDF CONSOLIDADO do documento (staff): as mesmas fontes de `relatorioDocumento`, num arquivo só. */
+  pdfDocumento: staffProcedure
+    .input(z.object({ documento: documentoInput }))
+    .query(async ({ input }) => {
+      const documento = input.documento.replace(/\D/g, '');
+      const c = await consolidadoDoDocumento(documento);
+      if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Este documento ainda não tem relatório de crédito' });
+      const ids = c.linhas.map((l) => l.id);
+      try {
+        const [brutos, autores] = await Promise.all([
+          db.select({ id: creditReports.id, bruto: creditReports.payloadBruto }).from(creditReports).where(inArray(creditReports.id, ids)),
+          db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, c.linhas.map((l) => l.consultadoPorUserId))),
+        ]);
+        const nomes = [...new Set(autores.map((a) => a.name).filter(Boolean))].join(', ') || null;
+        const buf = await gerarPdfCreditoConsolidado(
+          c.consolidado, { consultadoPor: nomes },
+          c.linhas.flatMap((l) => {
+            const b = brutos.find((x) => x.id === l.id)?.bruto;
+            return b == null ? [] : [{ produto: chaveDoProdutoGravado(l.produto, l.provedor), bruto: b }];
+          }),
+        );
+        const dia = c.consolidado.consultadoEm.slice(0, 10).replace(/-/g, '');
+        return { nomeArquivo: `analise-credito-${documento}-${dia}.pdf`, base64: buf.toString('base64') };
+      } catch (e) {
+        console.error('[credito] pdf consolidado falhou:', e instanceof Error ? e.message : 'erro');
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Não foi possível gerar o PDF.' });
       }
     }),

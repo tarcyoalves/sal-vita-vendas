@@ -12,7 +12,7 @@
 import { frasePelaFonte } from '../../../shared/creditoRotulos';
 export { frasePelaFonte };
 import type PDFDocumentCtor from 'pdfkit';
-import type { RelatorioCredito, Veredito } from '../../../shared/credito';
+import type { ChaveGrupoAnotacao, RelatorioConsolidado, RelatorioCredito, Veredito } from '../../../shared/credito';
 import { ROTULO_VEREDITO, SEMAFORO, analisarSinais, atenuacaoDoItem, type NivelSinal } from '../../../shared/credito';
 import { ROTULO_NIVEL_SINAL, ordenarSinais } from '../../../shared/creditoSinais';
 import { naturezaJuridicaTexto } from '../../../shared/creditoRotulos';
@@ -94,6 +94,14 @@ function dataBR(v: string | null | undefined): string {
     return `${m[3]}/${m[2]}/${m[1]}`;
   }
   return limparTexto(v);
+}
+
+/** "16/10 15:02" (dia/mês e hora, fuso de São Paulo). */
+function dataHoraCurta(v: string): string {
+  const d = new Date(v);
+  if (!Number.isFinite(d.getTime())) return limparTexto(v);
+  const p = partesData(d);
+  return `${p.dia}/${p.mes} ${p.hora}:${p.min}`;
 }
 
 function dataHoraBR(v: string): string {
@@ -325,7 +333,7 @@ const ok = (v: string | null | undefined): v is string => !!v && v.trim() !== ''
 
 // ---------- seções ----------
 /** 1 (topo da 1ª página, uma vez só) e 2 (veredito, motivos, score com régua). */
-function secaoResumo(p: Pagina, r: RelatorioCredito, meta: { veredito: Veredito; motivos: string[] }) {
+function secaoResumo(p: Pagina, r: RelatorioCredito, meta: { veredito: Veredito; motivos: string[] }, consol?: RelatorioConsolidado) {
   const { doc } = p;
   const sem = SEMAFORO[meta.veredito];
   const cor = COR_SEMAFORO[sem];
@@ -337,7 +345,9 @@ function secaoResumo(p: Pagina, r: RelatorioCredito, meta: { veredito: Veredito;
   const documento = `${r.tipo} ${formatarDocumento(r.documento, r.tipo)}`;
   doc.font('Helvetica-Bold').fontSize(16).fillColor(TEXTO).text(nome || documento, MX, p.y, { width: LARG });
   p.y = doc.y + 2;
-  const linha = [nome ? documento : '', `Consulta em ${dataHoraBR(r.consultadoEm)}`, `Fonte: ${fonteDosDados(r)}`].filter(Boolean).join('   |   ');
+  const linha = (consol
+    ? [nome ? documento : '', `Fontes: ${consol.fontes.map((f) => `${limparTexto(f.produtoNome)} (${dataHoraCurta(f.consultadoEm)})`).join(' + ')}`]
+    : [nome ? documento : '', `Consulta em ${dataHoraBR(r.consultadoEm)}`, `Fonte: ${fonteDosDados(r)}`]).filter(Boolean).join('   |   ');
   doc.font('Helvetica').fontSize(9).fillColor(CINZA).text(linha, MX, p.y, { width: LARG });
   p.y = doc.y + 8;
 
@@ -373,6 +383,7 @@ function secaoResumo(p: Pagina, r: RelatorioCredito, meta: { veredito: Veredito;
     ym += doc.heightOfString(t, { width: larguraTexto }) + 2;
   }
   p.y = y0 + alturaPainel + 10;
+  if (consol) return; // consolidado: o score é impresso por fonte (secaoScorePorFonte), nunca como um número só
 
   // score + régua 0-1000
   p.garantir(100);
@@ -420,6 +431,27 @@ function secaoResumo(p: Pagina, r: RelatorioCredito, meta: { veredito: Veredito;
   if (leitura) p.paragrafo(leitura, { cor: CINZA, tam: 8 });
 }
 
+/** Consolidado: UMA linha por fonte (nunca um score único); fonte sem score aparece como "não calculado". */
+function secaoScorePorFonte(p: Pagina, c: RelatorioConsolidado, veredito: Veredito) {
+  p.titulo('Score por fonte');
+  p.tabela(
+    [{ titulo: 'Fonte', largura: 90 }, { titulo: 'Score', largura: 55, alinhar: 'right' }, { titulo: 'Faixa', largura: 55 }, { titulo: 'Prob. inadimpl.', largura: 62, alinhar: 'right' }, { titulo: 'Leitura da fonte', largura: 253 }],
+    c.scores.map((s) => [
+      { texto: s.produtoNome, negrito: true },
+      s.calculado ? { texto: String(s.valor), negrito: true, cor: AZUL } : { texto: 'não calculado', cor: CINZA },
+      { texto: s.calculado ? txt(s.faixa) : '' },
+      { texto: s.calculado ? pct(s.probabilidadeInadimplencia) : '' },
+      { texto: s.calculado ? resumirTexto(frasePelaFonte(s.texto), 110) : 'Score não calculado pela fonte; usamos o que ela trouxe.' },
+    ]),
+  );
+  p.paragrafo('Cada score vem da própria fonte (modelos diferentes) e não é calculado pela Sal Vita nem combinado num número único.', { cor: CINZA, tam: 8 });
+  const altoComRestricao = veredito === 'REPROVADO_A_PRAZO' && c.scores.some((s) => (s.valor ?? 0) >= 600);
+  if (altoComRestricao) {
+    p.paragrafo('Atenção: o score de alguma fonte é alto, mas o relatório registra restrições. Para decidir, prevalecem as restrições, não o score.', { cor: '#B45309', tam: 8.5 });
+  }
+  if (c.divergenciaScore) p.paragrafo(`Divergência entre fontes — ${c.divergenciaScore}`, { cor: '#B45309', tam: 8.5, negrito: true });
+}
+
 const COR_NIVEL: Record<NivelSinal, string> = { ALERTA: COR_SEMAFORO.VERMELHO, ATENCAO: '#B45309', POSITIVO: COR_SEMAFORO.VERDE };
 
 function secaoPontosDeAtencao(p: Pagina, r: RelatorioCredito, agora: Date, avisos: string[]) {
@@ -461,7 +493,7 @@ function descricaoLimpa(d: string, remover: RegExp | null): string {
 }
 const norm = (t: string) => limparTexto(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-function secaoAnotacoes(p: Pagina, r: RelatorioCredito, agora: Date, anexo: Anexo | null) {
+function secaoAnotacoes(p: Pagina, r: RelatorioCredito, agora: Date, anexo: Anexo | null, consol?: RelatorioConsolidado) {
   p.titulo('Anotações negativas');
   const comOcorrencia = GRUPOS.filter(([k]) => r.anotacoes[k].consultado && (r.anotacoes[k].quantidade > 0 || r.anotacoes[k].itens.length > 0));
   const zerados: string[] = [];
@@ -496,6 +528,8 @@ function secaoAnotacoes(p: Pagina, r: RelatorioCredito, agora: Date, anexo: Anex
     const g = r.anotacoes[k];
     p.y += 3;
     p.subtitulo(nome.replace(/ \(.*\)$/, ''));
+    const diverge = consol?.divergenciaPorGrupo[k as ChaveGrupoAnotacao];
+    if (diverge) p.paragrafo(`Divergência entre fontes — ${diverge}`, { cor: '#B45309', tam: 8.5, negrito: true });
     if (g.itens.length < g.quantidade) {
       p.paragrafo(`A fonte listou ${g.itens.length} de ${g.quantidade} ocorrências${g.itens.length === 0 ? ' (sem detalhamento)' : ''}.`, { cor: '#B45309', tam: 8.5, negrito: true });
     }
@@ -507,6 +541,7 @@ function secaoAnotacoes(p: Pagina, r: RelatorioCredito, agora: Date, anexo: Anex
       credor: limparTexto(it.credor).trim(),
       local: limparTexto(it.local).trim(),
       obs: atenuacaoDoItem(it, agora) ?? '',
+      fonte: limparTexto(it.fonte).trim(),
       valor: it.valor !== null ? brl(it.valor) : '',
       extras: Object.entries(it.extras ?? {}).filter(([ch]) => !/^moeda$/i.test(ch)),
     }));
@@ -540,6 +575,7 @@ function secaoAnotacoes(p: Pagina, r: RelatorioCredito, agora: Date, anexo: Anex
     if (tem((l) => l.credor)) colunas.push({ titulo: 'Credor', largura: 110, cel: (l) => ({ texto: l.credor }) });
     if (tem((l) => l.local)) colunas.push({ titulo: 'Origem / local', largura: 125, cel: (l) => ({ texto: l.local }) });
     if (tem((l) => l.obs)) colunas.push({ titulo: 'Estudar com calma', largura: 70, cel: (l) => ({ texto: l.obs, cor: l.obs ? '#B45309' : CINZA }) });
+    if (tem((l) => l.fonte)) colunas.push({ titulo: 'Fonte', largura: 78, cel: (l) => ({ texto: l.fonte }) });
     if (tem((l) => l.valor)) colunas.push({ titulo: 'Valor', largura: 70, alinhar: 'right', cel: (l) => ({ texto: l.valor }) });
     if (!colunas.length) continue;
     p.tabela(
@@ -564,9 +600,9 @@ function idadeDe(de: string | null, ate: Date): string {
   return `${anos} ${anos === 1 ? 'ano' : 'anos'}`;
 }
 
-function secaoEmpresa(p: Pagina, r: RelatorioCredito, bruto: unknown, agora: Date) {
+function secaoEmpresa(p: Pagina, r: RelatorioCredito, bruto: unknown, agora: Date, extrasPronto?: ReturnType<typeof empresaExtrasDe>) {
   const c = r.cadastro;
-  const extras = empresaExtrasDe(bruto);
+  const extras = extrasPronto ?? empresaExtrasDe(bruto);
   const campos: Array<{ k: string; v: string; largo?: boolean }> = [];
   const add = (k: string, v: string | null | undefined, largo = false) => { const t = limparTexto(v).trim(); if (t && t !== '—') campos.push({ k, v: t, largo }); };
 
@@ -764,11 +800,11 @@ function cabecalhoRodape(doc: Doc, r: RelatorioCredito, i: number, total: number
   doc.page.margins = margens;
 }
 
-export async function gerarPdfCredito(
+/** Cria o PDF, deixa `corpo` desenhar, aplica rodapé/faixa em todas as páginas e devolve o buffer. */
+async function renderizar(
   relatorio: RelatorioCredito,
-  meta: { veredito: Veredito; motivos: string[]; consultadoPor: string | null },
-  /** Resposta crua do provedor (credit_reports.payload_bruto). Sem ela (ex.: simulado) não há anexo. */
-  bruto?: unknown,
+  titulo: { subject: string },
+  corpo: (p: Pagina, agora: Date) => void,
 ): Promise<Buffer> {
   const doc = new PDFDocument({
     size: 'A4',
@@ -779,7 +815,7 @@ export async function gerarPdfCredito(
     info: {
       Title: 'Relatório de Análise de Crédito — Sal Vita',
       Author: 'Sal Vita',
-      Subject: `Análise de crédito ${formatarDocumento(relatorio.documento, relatorio.tipo)}`,
+      Subject: titulo.subject,
       Keywords: 'confidencial',
     },
   });
@@ -794,7 +830,29 @@ export async function gerarPdfCredito(
   try {
     const p = new Pagina(doc);
     const dataConsulta = new Date(relatorio.consultadoEm);
-    const agora = Number.isFinite(dataConsulta.getTime()) ? dataConsulta : new Date();
+    corpo(p, Number.isFinite(dataConsulta.getTime()) ? dataConsulta : new Date());
+
+    const { start, count } = doc.bufferedPageRange();
+    for (let i = 0; i < count; i++) {
+      doc.switchToPage(start + i);
+      cabecalhoRodape(doc, relatorio, i, count);
+    }
+    doc.end();
+  } catch (e) {
+    doc.end();
+    await pronto.catch(() => undefined);
+    throw e;
+  }
+  return pronto;
+}
+
+export async function gerarPdfCredito(
+  relatorio: RelatorioCredito,
+  meta: { veredito: Veredito; motivos: string[]; consultadoPor: string | null },
+  /** Resposta crua do provedor (credit_reports.payload_bruto). Sem ela (ex.: simulado) não há anexo. */
+  bruto?: unknown,
+): Promise<Buffer> {
+  return renderizar(relatorio, { subject: `Análise de crédito ${formatarDocumento(relatorio.documento, relatorio.tipo)}` }, (p, agora) => {
     // o anexo é complementar: nunca derruba o PDF principal
     let anexo: Anexo | null = null;
     try { anexo = montarAnexo(bruto, { pessoaFisica: relatorio.tipo === 'CPF' }); } catch (e) {
@@ -814,17 +872,51 @@ export async function gerarPdfCredito(
         console.error('[credito] anexo do pdf falhou:', e instanceof Error ? e.message : 'erro');
       }
     }
+  });
+}
 
-    const { start, count } = doc.bufferedPageRange();
-    for (let i = 0; i < count; i++) {
-      doc.switchToPage(start + i);
-      cabecalhoRodape(doc, relatorio, i, count);
+const totalMensal = (m: { linhas: string[][] }): number =>
+  m.linhas.reduce((s, l) => s + l.slice(1).reduce((a, c) => a + (Number(c) || 0), 0), 0);
+
+/**
+ * PDF CONSOLIDADO do documento: UM relatório com as fontes combinadas (`consolidarRelatorios`). Reaproveita as seções do PDF
+ * individual sobre o relatório fundido; acrescenta "Score por fonte", a coluna "Fonte" nos itens e as linhas de divergência.
+ * `brutos` = respostas cruas das fontes (só para a matriz de comportamento, consultas por mês e porte/funcionários); o anexo
+ * "Outras informações da fonte" existe só no PDF individual, para não repetir dados entre fontes.
+ */
+export async function gerarPdfCreditoConsolidado(
+  c: RelatorioConsolidado,
+  meta: { consultadoPor: string | null },
+  brutos: Array<{ produto: string; bruto: unknown }> = [],
+): Promise<Buffer> {
+  const r = c.fundido;
+  return renderizar(r, { subject: `Análise de crédito ${formatarDocumento(r.documento, r.tipo)} (consolidado)` }, (p, agora) => {
+    const pf = r.tipo === 'CPF';
+    const seguro = <T,>(f: () => T | null): T | null => { try { return f(); } catch { return null; } };
+    // consultas por mês: da fonte que as trouxer (várias: a de maior total)
+    let brutoConsultas: unknown = null;
+    let melhor = -1;
+    for (const b of brutos) {
+      const m = seguro(() => consultasPorMes(b.bruto));
+      if (m && totalMensal(m) > melhor) { melhor = totalMensal(m); brutoConsultas = b.bruto; }
     }
-    doc.end();
-  } catch (e) {
-    doc.end();
-    await pronto.catch(() => undefined);
-    throw e;
-  }
-  return pronto;
+    const brutoComport = brutos.find((b) => seguro(() => comportamentoDe(b.bruto, pf)))?.bruto ?? null;
+    const todosExtras = brutos.map((b) => seguro(() => empresaExtrasDe(b.bruto)));
+    const extras = {
+      funcionarios: todosExtras.map((e) => e?.funcionarios ?? null).find(Boolean) ?? null,
+      porte: todosExtras.map((e) => e?.porte ?? null).find(Boolean) ?? null,
+      filiais: todosExtras.map((e) => e?.filiais ?? null).find(Boolean) ?? null,
+    };
+    const ctr = { omitidos: 0 };
+    const resumo = { veredito: c.veredito, motivos: c.motivos };
+    secaoResumo(p, r, resumo, c);
+    secaoScorePorFonte(p, c, c.veredito);
+    secaoPontosDeAtencao(p, r, agora, []);
+    secaoAnotacoes(p, r, agora, null, c);
+    secaoEmpresa(p, r, null, agora, extras);
+    secaoSocios(p, r);
+    secaoConsultas(p, r, brutoConsultas);
+    secaoComportamento(p, r, brutoComport, (parte) => desenharParte(p, parte, ctr));
+    secaoFinal(p, meta.consultadoPor);
+  });
 }
