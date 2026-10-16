@@ -239357,8 +239357,8 @@ function isNewContact(prevNotes, newNotes) {
 function matchAssignee(nome, sellerNames, staffNames) {
   const alvo = nome.trim().toLowerCase();
   if (!alvo) return null;
-  const norm = (s4) => s4.trim().toLowerCase();
-  return sellerNames.find((n5) => norm(n5) === alvo) ?? staffNames.find((n5) => norm(n5) === alvo) ?? null;
+  const norm2 = (s4) => s4.trim().toLowerCase();
+  return sellerNames.find((n5) => norm2(n5) === alvo) ?? staffNames.find((n5) => norm2(n5) === alvo) ?? null;
 }
 function ehDuplicada(row, jaExistem) {
   return !!(row.cnpj && jaExistem.cnpjs.has(row.cnpj) || row.phone && jaExistem.phones.has(row.phone));
@@ -242498,8 +242498,8 @@ var recoveryRouter = router({
       const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "abandoned"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
       msg = tpl ? renderTemplate3(tpl.body, { nome: cart.customerName, cupom: coupon ?? "", link, produto: "Sal Marinho Integral 1kg" }) : recoveryMsg(cart.customerName, coupon);
     }
-    const { ok, usedPhone } = await sendViaWhatsApp(cart.customerPhone, msg);
-    if (ok) {
+    const { ok: ok2, usedPhone } = await sendViaWhatsApp(cart.customerPhone, msg);
+    if (ok2) {
       await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.id));
       if (cart.customerEmail) {
         const emailHtml = abandonedCartHtml(cart.customerName, link, coupon);
@@ -242509,7 +242509,7 @@ var recoveryRouter = router({
       }
     }
     return {
-      ok,
+      ok: ok2,
       phone: usedPhone,
       preview: msg,
       waLink: waLink(cart.customerPhone, msg),
@@ -242551,8 +242551,8 @@ var recoveryRouter = router({
       const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "unpaid"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
       msg = tpl ? renderTemplate3(tpl.body, vars) : unpaidMsg(order.customerName, order.id, order.product, order.totalPrice ?? "0", orderLink);
     }
-    const { ok, usedPhone } = await sendViaWhatsApp(order.customerPhone, msg);
-    if (ok && pixCode) {
+    const { ok: ok2, usedPhone } = await sendViaWhatsApp(order.customerPhone, msg);
+    if (ok2 && pixCode) {
       await new Promise((r5) => setTimeout(r5, 1e3));
       await waSendRaw(usedPhone, pixCode);
     }
@@ -242569,7 +242569,7 @@ var recoveryRouter = router({
       sendEmail(order.customerEmail, emailSubject, emailHtml).catch(() => {
       });
     }
-    return { ok, phone: usedPhone, hasPix: !!pixCode, preview: msg, waLink: waLink(order.customerPhone, msg) };
+    return { ok: ok2, phone: usedPhone, hasPix: !!pixCode, preview: msg, waLink: waLink(order.customerPhone, msg) };
   }),
   // Admin: get payment info (PIX code / boleto) for unpaid order
   getPaymentInfo: protectedProcedure.input(external_exports.object({ orderId: external_exports.number() })).query(async ({ ctx, input }) => {
@@ -242651,13 +242651,13 @@ var recoveryRouter = router({
         for (const rest of pending.slice(i4)) await restore(rest);
         break;
       }
-      let ok = false;
+      let ok2 = false;
       try {
-        ({ ok } = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName)));
+        ({ ok: ok2 } = await sendViaWhatsApp(cart.customerPhone, recoveryMsg(cart.customerName)));
       } catch (e4) {
         console.error(`[recovery] envio ao carrinho ${cart.id} falhou:`, safeErr(e4));
       }
-      if (ok) sent++;
+      if (ok2) sent++;
       else await restore(cart);
       await new Promise((r5) => setTimeout(r5, 1500));
     }
@@ -242982,12 +242982,12 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
     const data2 = await res.json();
     const parsed = JSON.parse(data2.choices?.[0]?.message?.content ?? "{}");
     if (!parsed.mensagem) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "IA n\xE3o gerou mensagem" });
-    const { ok, usedPhone: aiPhone } = await sendViaWhatsApp(cart.customerPhone, parsed.mensagem);
-    if (ok) {
+    const { ok: ok2, usedPhone: aiPhone } = await sendViaWhatsApp(cart.customerPhone, parsed.mensagem);
+    if (ok2) {
       await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.cartId));
       await ordersDb.update(automationRuns).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), aiBody: parsed.mensagem, updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.cartId, input.cartId), eq(automationRuns.status, "scheduled")));
     }
-    return { ok, phone: aiPhone, preview: parsed.mensagem };
+    return { ok: ok2, phone: aiPhone, preview: parsed.mensagem };
   }),
   // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts
   // Called by cron (/api/cron/abandoned-cart) or manually from admin UI
@@ -243019,8 +243019,8 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
           produto: "Sal Marinho Integral 1kg"
         }) : recoveryMsg(cart.customerName, activeCoupon?.code);
       }
-      const { ok } = await sendViaWhatsApp(run2.customerPhone, msg);
-      if (ok) {
+      const { ok: ok2 } = await sendViaWhatsApp(run2.customerPhone, msg);
+      if (ok2) {
         await ordersDb.update(automationRuns).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(automationRuns.id, run2.id));
         await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, run2.cartId));
         sent++;
@@ -246162,8 +246162,8 @@ async function processSequenceEnrollments2(limit = 100, deadlineMs) {
   for (const r5 of dueRes.rows) {
     if (deadlineMs && Date.now() > deadlineMs) break;
     if (await sequenceSendsToday() >= cap) break;
-    const ok = await processSingleEnrollment(Number(r5.id));
-    if (ok) sent++;
+    const ok2 = await processSingleEnrollment(Number(r5.id));
+    if (ok2) sent++;
   }
   return { processed: dueRes.rows.length, sent };
 }
@@ -335148,28 +335148,28 @@ function validarRevisaoContatos(contatos, ator, cnpjCadastro, tarefa) {
   const tarefaVale = !!tarefa && normalizarCnpj(tarefa.cnpj ?? "") === cnpjCadastro && cnpjValido(cnpjCadastro);
   for (const [c4, { valor: valor2, origem }] of entradas) {
     if (origem === "FISCAL_SMBI") return recusa2(400, "ORIGEM_PROIBIDA", "origem FISCAL_SMBI \xE9 s\xF3 do worker");
-    let norm;
+    let norm2;
     if (c4 === "comissaoClientePct") {
       if (typeof valor2 !== "number") return recusa2(400, "VALOR_INVALIDO", "pr\xEAmio deve ser n\xFAmero");
-      norm = valor2;
+      norm2 = valor2;
     } else {
       const s4 = String(valor2).trim();
       if (c4 === "telefone" || c4 === "celular") {
-        norm = fone(s4);
-        if (!/^\d{10,11}$/.test(norm)) return recusa2(400, "VALOR_INVALIDO", `${c4}: informe DDD + n\xFAmero`);
-      } else if (c4 === "email" || c4 === "emailFinanceiro") norm = s4.toLowerCase();
+        norm2 = fone(s4);
+        if (!/^\d{10,11}$/.test(norm2)) return recusa2(400, "VALOR_INVALIDO", `${c4}: informe DDD + n\xFAmero`);
+      } else if (c4 === "email" || c4 === "emailFinanceiro") norm2 = s4.toLowerCase();
       else if (c4 === "representanteDoc") {
-        norm = soDigitos(s4);
-        if (!(cpfValido(norm) || cnpjValido(norm))) return recusa2(400, "VALOR_INVALIDO", "representanteDoc: CPF/CNPJ inv\xE1lido");
-      } else norm = s4;
+        norm2 = soDigitos(s4);
+        if (!(cpfValido(norm2) || cnpjValido(norm2))) return recusa2(400, "VALOR_INVALIDO", "representanteDoc: CPF/CNPJ inv\xE1lido");
+      } else norm2 = s4;
     }
     if (origem === "TARCYO_CONFIRMADO") {
       if (ator.role !== "admin") return recusa2(403, "SO_ADMIN", "s\xF3 o administrador pode registrar confirma\xE7\xE3o do Tarcyo");
     } else {
-      const casa = tarefaVale && tarefa && ((c4 === "telefone" || c4 === "celular") && !!tarefa.phone && fone(tarefa.phone) === norm || c4 === "email" && tarefa.emailConfirmed && !!tarefa.email && tarefa.email.trim().toLowerCase() === norm);
+      const casa = tarefaVale && tarefa && ((c4 === "telefone" || c4 === "celular") && !!tarefa.phone && fone(tarefa.phone) === norm2 || c4 === "email" && tarefa.emailConfirmed && !!tarefa.email && tarefa.email.trim().toLowerCase() === norm2);
       if (!casa) return recusa2(409, "CONTATO_AMBIGUO", `${c4}: sem v\xEDnculo determin\xEDstico (tarefa do pedido com o mesmo CNPJ e mesmo valor); use confirma\xE7\xE3o do administrador`);
     }
-    out[c4] = { valor: norm, origem };
+    out[c4] = { valor: norm2, origem };
   }
   return { ok: true, contatos: out };
 }
@@ -335489,7 +335489,7 @@ function analisarSinais(r5, agora = /* @__PURE__ */ new Date()) {
   for (const [nome, g3] of [["Protestos", r5.anotacoes.protestos], ["Pend\xEAncias financeiras", r5.anotacoes.pendenciasFinanceiras]]) {
     if (!temAlgo(g3)) continue;
     const at = g3.itens.map((i4) => atenuacaoDoItem(i4, agora)).filter((x2) => !!x2);
-    if (at.length) out.push({ codigo: "RESTRICAO_ATENUADA", nivel: "ATENCAO", titulo: `${nome}: estudar com calma`, detalhe: `${at.length} de ${g3.quantidade} ocorr\xEAncia(s) s\xE3o ${[...new Set(at)].join(", ")} \u2014 pode ser problema antigo com o cliente operando normalmente.` });
+    if (at.length) out.push({ codigo: "RESTRICAO_ATENUADA", nivel: "ATENCAO", titulo: `${nome}: estudar com calma`, detalhe: `${at.length} de ${g3.quantidade} ocorr\xEAncia(s) s\xE3o ${[...new Set(at.map((x2) => x2.replace(/ \(.*\)$/, "")))].join(", ")} \u2014 pode ser problema antigo com o cliente operando normalmente.` });
   }
   return out;
 }
@@ -338731,12 +338731,24 @@ var ACENTOS = {
   cheques: "cheques",
   telefone: "telefone",
   residencial: "residencial",
+  primario: "prim\xE1rio",
+  secundario: "secund\xE1rio",
+  inscricao: "inscri\xE7\xE3o",
+  estadual: "estadual",
+  matriz: "matriz",
+  socio: "s\xF3cio",
+  socios: "s\xF3cios",
+  societario: "societ\xE1rio",
+  funcionarios: "funcion\xE1rios",
+  media: "m\xE9dia",
+  fatura: "fatura",
   comerciais: "comerciais",
   fornecedor: "fornecedor",
   fornecedores: "fornecedores",
   regiao: "regi\xE3o",
   atuacao: "atua\xE7\xE3o"
 };
+var SIGLAS = /* @__PURE__ */ new Set(["cnpj", "cpf", "uf", "cep", "cnae", "nire", "ie"]);
 var semPrefixo = (k3) => {
   const i4 = k3.lastIndexOf(":");
   return i4 >= 0 ? k3.slice(i4 + 1) : k3;
@@ -338745,7 +338757,7 @@ function humanizarChave(chave) {
   const base = semPrefixo(chave).trim();
   const palavras = base.replace(/[_\s]+/g, " ").trim().toLowerCase().split(" ").filter(Boolean);
   if (!palavras.length) return chave;
-  const f4 = palavras.map((p4) => ACENTOS[p4] ?? p4).join(" ");
+  const f4 = palavras.map((p4) => SIGLAS.has(p4) ? p4.toUpperCase() : ACENTOS[p4] ?? p4).join(" ");
   return f4.charAt(0).toUpperCase() + f4.slice(1);
 }
 function rotuloBloco(chave) {
@@ -338784,6 +338796,23 @@ function valorSeguro(chave, valor2, pessoaFisica = false) {
   if (pessoaFisica && CHAVE_FONE.test(k3)) return mascararTelefone(v4);
   if (pessoaFisica && CHAVE_EMAIL.test(k3)) return mascararEmail(v4);
   return mascararCpfsEmTexto(v4);
+}
+var NATUREZAS = {
+  "2062": "Sociedade Empres\xE1ria Limitada",
+  "2135": "Empres\xE1rio Individual",
+  "2305": "EIRELI",
+  "2240": "Sociedade Simples Limitada",
+  "2054": "Sociedade An\xF4nima Fechada",
+  "2046": "Sociedade An\xF4nima Aberta"
+};
+function naturezaJuridicaTexto(v4) {
+  const t5 = (v4 ?? "").replace(/\s+/g, " ").trim();
+  if (!t5) return "";
+  const m4 = /^(\d{3})-?(\d)\s*(?:-\s*)?(.*)$/.exec(t5);
+  if (!m4) return t5;
+  const resto = m4[3].trim();
+  if (resto) return resto;
+  return NATUREZAS[m4[1] + m4[2]] ?? `${m4[1]}-${m4[2]}`;
 }
 
 // server/lib/credito/provedores/mapeadores.ts
@@ -338873,7 +338902,7 @@ var primeiro = (o4, chaves) => {
 function extrasDe(o4, usados) {
   const extras = {};
   for (const [k3, v4] of Object.entries(o4)) {
-    if (usados.has(k3)) continue;
+    if (usados.has(k3) || k3.toUpperCase() === "MOEDA") continue;
     const bruto = typeof v4 === "string" || typeof v4 === "number" ? String(v4) : Array.isArray(v4) ? v4.filter((x2) => typeof x2 === "string" || typeof x2 === "number").join(", ") : "";
     const seguro = valorSeguro(k3, bruto);
     if (!seguro) continue;
@@ -339054,13 +339083,13 @@ function mapeadorDefineRisco(json4) {
   if (!raiz) return mapeadorDefensivo(json4);
   const sc = obj(obj(raiz["scor:score"])?.["scor:score_pj"]) ?? obj(raiz["scor:score"]);
   const valor2 = numeroPtBr(sc?.["scor:score"]);
-  const ok = valor2 !== null && valor2 >= 0 && valor2 <= 1e3;
+  const ok2 = valor2 !== null && valor2 >= 0 && valor2 <= 1e3;
   return {
     ...mapeadorDefensivo(null),
     score: {
-      valor: ok ? valor2 : null,
-      probabilidadeInadimplencia: ok ? numeroPtBr(acharChave(raiz, ["probabilidade"])) : null,
-      faixa: ok ? txt(acharChave(raiz, ["classificacao", "classe"])) : null,
+      valor: ok2 ? valor2 : null,
+      probabilidadeInadimplencia: ok2 ? numeroPtBr(acharChave(raiz, ["probabilidade"])) : null,
+      faixa: ok2 ? txt(acharChave(raiz, ["classificacao", "classe"])) : null,
       textoInterpretacao: txt(acharChave(raiz, ["decisao", "recomendacao"]))
     },
     complementos: {
@@ -339423,6 +339452,7 @@ function tabelaDe(linhasBrutas, ctx) {
   let usadas = [];
   for (let j = 0; j < chaves.length; j++) {
     if (!celulas.some((l4) => l4[j] !== "")) continue;
+    if (semAcento2(semPrefixo(chaves[j])) === "moeda") continue;
     const dup = usadas.findIndex((u4) => mesmoConteudo(u4, j));
     if (dup < 0) usadas.push(j);
     else if (maisDescritiva(j, usadas[dup])) usadas = usadas.map((u4, i4) => i4 === dup ? j : u4);
@@ -339481,19 +339511,6 @@ function emPartes(valor2, caminho, ctx, saida, prof = 0, chave = "") {
     saida.push(...parcial);
   }
 }
-function entreguesDe(header) {
-  const nomes = [];
-  const andar = (v4, k3, prof) => {
-    if (prof > 5) return;
-    if (ehObj(v4)) {
-      for (const [kk, x2] of Object.entries(v4)) andar(x2, kk, prof + 1);
-      return;
-    }
-    if (ehEscalar(v4) && String(v4).trim() === "1" && k3) nomes.push(rotuloBloco(k3));
-  };
-  andar(header.DADOS_RETORNADOS, "", 0);
-  return [...new Set(nomes)];
-}
 var ehChaveStatus = (k3) => semPrefixo(k3).toUpperCase() === "STATUS_RETORNO";
 function separarStatus(valor2) {
   if (!ehObj(valor2)) return { resto: valor2 };
@@ -339536,34 +339553,167 @@ function comoIndicador(resto) {
   }
   return serie ? { pont: pont || "-", serie } : null;
 }
-function blocoSeguro(titulo, fazer, status) {
-  const base = status ? { titulo, status } : { titulo };
+function blocoSeguro(titulo, fazer) {
   try {
-    return { ...base, partes: fazer() };
+    return { titulo, partes: fazer() };
   } catch {
-    return { ...base, partes: [{ t: "aviso", texto: "bloco n\xE3o renderizado" }] };
+    return { titulo, partes: [{ t: "aviso", texto: "bloco n\xE3o renderizado" }] };
   }
 }
+var BLOCOS_COBERTOS = /* @__PURE__ */ new Set([
+  "SCORES",
+  "SCORE",
+  "HIST_CONSULTAS",
+  "PASSAGENS_COMERCIAIS",
+  "CONSULTAS",
+  "QUADRO_SOCIETARIO",
+  "FATURAMENTO_PRESUMIDO",
+  "VEICULOS_POR_DOCUMENTO",
+  "VEICULAR",
+  "EVENTOS_PESSOA_JURIDICA",
+  "PERIODO_RELACIONAMENTO_FORNECEDORES",
+  "CREDITO_OBTIDO",
+  "COMPROMISSOS",
+  "PAGAMENTO_PONTUAL",
+  "PAGAMENTO_ATRASADO",
+  "COMPROMETIMENTO_FUTURO"
+]);
+var NOMES_RESTRICAO = {
+  PROTESTOS: "Protestos",
+  PROTESTO_SINTETICO: "Protestos",
+  PROTESTO_ANALITICO: "Protestos",
+  PEND_FINANCEIRAS: "Pend\xEAncias financeiras",
+  RESTRICOES_FINANCEIRAS: "Restri\xE7\xF5es financeiras",
+  ACOES_CIVEIS: "A\xE7\xF5es c\xEDveis",
+  CONTUMACIA: "Contum\xE1cia",
+  INFORMACOES_ALERTAS_RESTRICOES: "Alertas"
+};
+var ehCheque = (b3) => b3.startsWith("CH_SEM_FUNDOS");
+var ehDescartado = (b3) => b3 === "HEADER" || b3 === "EMAILS" || b3 === "EMAIL" || b3.startsWith("TELEFONE");
+var EMPRESA_CONHECIDOS = /* @__PURE__ */ new Set([
+  "RAZAO_SOCIAL",
+  "NOME_FANTASIA",
+  "CNPJ",
+  "CPF",
+  "SITUACAO",
+  "DATA_SITUACAO",
+  "DATA_FUNDACAO",
+  "NATUREZA_JURIDICA",
+  "CNAE_PRIMARIO",
+  "RAMO_ATIVIDADE_PRIMARIO",
+  "INSCRICAO_ESTADUAL",
+  "CAPITAL_SOCIAL",
+  "ENDERECO",
+  "OPCAO_TRIBUTARIA",
+  "FAIXA_FUNCIONARIOS",
+  "NUMERO_FUNCIONARIOS",
+  "QUANTIDADE_FUNCIONARIOS",
+  "PORTE",
+  "PORTE_EMPRESA",
+  "PORTE_DA_EMPRESA",
+  "NUMERO_FILIAIS",
+  "QUANTIDADE_FILIAIS",
+  "QTD_FILIAIS",
+  "TELEFONE",
+  "EMAIL",
+  "DDD"
+]);
+var ZERO2 = /^0+(?:[.,]0+)?%?$/;
+function semConteudo(v4, prof = 0) {
+  if (v4 === null || v4 === void 0) return true;
+  if (ehEscalar(v4)) {
+    const t5 = String(v4).trim();
+    return t5 === "" || ZERO2.test(t5);
+  }
+  if (prof > 8) return false;
+  if (Array.isArray(v4)) return v4.every((x2) => semConteudo(x2, prof + 1));
+  if (ehObj(v4)) return Object.values(v4).every((x2) => semConteudo(x2, prof + 1));
+  return true;
+}
+function quantidadeDe(v4) {
+  if (!ehObj(v4)) return null;
+  for (const [k3, x2] of Object.entries(v4)) {
+    if (/^QUANTIDADE_OCORRENCIAS?$/.test(semPrefixo(k3).toUpperCase()) && ehEscalar(x2)) {
+      const n5 = Number(String(x2).trim().replace(",", "."));
+      return Number.isFinite(n5) ? n5 : null;
+    }
+  }
+  return null;
+}
+var capitalizar = (t5) => t5.trim().toLowerCase().replace(/^./, (c4) => c4.toUpperCase());
+function omitirChaves(v4, chaves) {
+  if (!ehObj(v4)) return v4;
+  const out = {};
+  for (const [k3, x2] of Object.entries(v4)) if (!chaves.has(semPrefixo(k3).toUpperCase())) out[k3] = x2;
+  return out;
+}
+function alertasDe(resto) {
+  if (!ehObj(resto) || !Array.isArray(resto.OCORRENCIAS)) return [];
+  const out = [];
+  for (const o4 of resto.OCORRENCIAS) {
+    if (!ehObj(o4)) continue;
+    const campos = Object.entries(o4).map(([k3, v4]) => [semPrefixo(k3).toUpperCase(), ehEscalar(v4) ? valorSeguro(k3, String(v4)) ?? "" : ""]).filter(([, v4]) => v4);
+    if (!campos.length) continue;
+    const obs = campos.find(([k3]) => k3.startsWith("OBS"))?.[1] ?? "";
+    if (/:\s*0+$/.test(obs)) continue;
+    out.push(capitalizar(campos.map(([, v4]) => v4).join(" \u2014 ")));
+  }
+  return out;
+}
 function montarAnexo(bruto, opts2) {
-  if (!ehObj(bruto)) return null;
-  const dados = ehObj(bruto.dados) ? bruto.dados : null;
-  const aux = ehObj(bruto.aux) ? bruto.aux : null;
-  const link = aux && typeof aux.data === "string" && /^https?:\/\/\S+$/i.test(aux.data.trim()) ? aux.data.trim() : null;
-  if (!dados && !link) return null;
+  if (!ehObj(bruto) || !ehObj(bruto.dados)) return null;
+  const dados = bruto.dados;
   const ctx = { pf: opts2.pessoaFisica };
-  const anexo = { entregues: [], parametros: [], blocos: [], linkOriginal: link };
-  if (!dados) return anexo;
+  const anexo = { blocos: [], avisos: [], semOcorrencias: [], alertas: [] };
+  const zerados = [];
+  const comConteudo = /* @__PURE__ */ new Set();
+  const marcar = (nome, zero) => {
+    if (zero) {
+      if (!zerados.includes(nome)) zerados.push(nome);
+    } else comConteudo.add(nome);
+  };
   const indicadores = [];
   const ind = { bloco: null };
   const adicionar = (chave, valor2) => {
+    const b3 = semPrefixo(chave).trim().toUpperCase();
+    if (ehDescartado(b3)) return;
     const titulo = rotuloBloco(chave);
-    const cb = { pf: ctx.pf, bloco: semPrefixo(chave).toUpperCase() };
+    const cb = { pf: ctx.pf, bloco: b3 };
     let sep = { resto: valor2 };
     try {
       sep = separarStatus(valor2);
     } catch {
     }
+    if (sep.status?.destaque) anexo.avisos.push(`${titulo}: ${sep.status.texto}`);
+    const nomeRestricao = ehCheque(b3) ? titulo : NOMES_RESTRICAO[b3];
     try {
+      if (b3 === "INFORMACOES_DA_EMPRESA") {
+        const resto = omitirChaves(sep.resto, EMPRESA_CONHECIDOS);
+        if (semConteudo(resto)) return;
+        const bl2 = blocoSeguro("Informa\xE7\xF5es da empresa (outros campos)", () => {
+          const p4 = [];
+          emPartes(resto, [], cb, p4, 0, chave);
+          return p4;
+        });
+        if (bl2.partes.length) anexo.blocos.push(bl2);
+        return;
+      }
+      if (b3 === "INFORMACOES_ALERTAS_RESTRICOES") {
+        const a5 = alertasDe(sep.resto);
+        if (a5.length) anexo.alertas.push(...a5);
+        else marcar("Alertas", true);
+        return;
+      }
+      if (nomeRestricao && b3 !== "CONTUMACIA") {
+        marcar(nomeRestricao, quantidadeDe(sep.resto) === 0 || semConteudo(sep.resto));
+        return;
+      }
+      if (BLOCOS_COBERTOS.has(b3)) return;
+      const q = quantidadeDe(sep.resto);
+      if (q === 0 || semConteudo(sep.resto)) {
+        if (q === 0 || b3 === "CONTUMACIA") marcar(nomeRestricao ?? titulo, true);
+        return;
+      }
       const info = comoIndicador(sep.resto);
       if (info) {
         indicadores.push({ rotulo: titulo, ...info });
@@ -339571,39 +339721,20 @@ function montarAnexo(bruto, opts2) {
           ind.bloco = { titulo: "Indicadores de comportamento (12 meses)", partes: [] };
           anexo.blocos.push(ind.bloco);
         }
-        const b3 = ind.bloco;
-        if (sep.status && (!b3.status || sep.status.destaque && !b3.status.destaque)) b3.status = sep.status;
         return;
       }
+      const bl = blocoSeguro(titulo, () => {
+        const p4 = [];
+        emPartes(sep.resto, [], cb, p4, 0, chave);
+        return p4;
+      });
+      if (bl.partes.length) anexo.blocos.push(bl);
     } catch {
+      anexo.blocos.push({ titulo, partes: [{ t: "aviso", texto: "bloco n\xE3o renderizado" }] });
     }
-    anexo.blocos.push(blocoSeguro(titulo, () => {
-      const partes = [];
-      emPartes(sep.resto, [], cb, partes, 0, chave);
-      return partes;
-    }, sep.status));
   };
   for (const [chave, valor2] of Object.entries(dados)) {
-    if (chave === "HEADER" && ehObj(valor2)) {
-      try {
-        anexo.entregues = entreguesDe(valor2);
-        if (ehObj(valor2.PARAMETROS)) {
-          for (const [k3, v4] of Object.entries(valor2.PARAMETROS)) {
-            const t5 = textoCelula(k3, v4, ctx);
-            if (t5) anexo.parametros.push([rotuloCampo(k3, ctx, [t5]), t5]);
-          }
-        }
-        const resto = {};
-        for (const [k3, v4] of Object.entries(valor2)) if (!["DADOS_RETORNADOS", "CONTROLE", "PARAMETROS"].includes(k3.toUpperCase())) resto[k3] = v4;
-        const partes = [];
-        emPartes(resto, [], ctx, partes);
-        if (partes.length) anexo.blocos.push({ titulo: "Cabe\xE7alho da resposta", partes });
-      } catch {
-        anexo.blocos.push({ titulo: "Cabe\xE7alho da resposta", partes: [{ t: "aviso", texto: "bloco n\xE3o renderizado" }] });
-      }
-      continue;
-    }
-    if (ehObj(valor2) && chave.toUpperCase() === "CREDCADASTRAL") {
+    if (ehObj(valor2) && (chave.toUpperCase() === "CREDCADASTRAL" || /^define_risco/i.test(chave))) {
       for (const [k3, v4] of Object.entries(valor2)) adicionar(k3, v4);
       continue;
     }
@@ -339617,7 +339748,125 @@ function montarAnexo(bruto, opts2) {
       alvo.partes = [{ t: "aviso", texto: "bloco n\xE3o renderizado" }];
     }
   }
+  anexo.semOcorrencias = zerados.filter((n5) => !comConteudo.has(n5));
   return anexo;
+}
+var credDe2 = (bruto) => {
+  if (!ehObj(bruto) || !ehObj(bruto.dados)) return null;
+  return ehObj(bruto.dados.CREDCADASTRAL) ? bruto.dados.CREDCADASTRAL : null;
+};
+var achar = (o4, chaves) => {
+  if (!o4) return null;
+  for (const [k3, v4] of Object.entries(o4)) {
+    if (chaves.includes(semPrefixo(k3).toUpperCase()) && ehEscalar(v4) && String(v4).trim()) return String(v4).trim();
+  }
+  return null;
+};
+function empresaExtrasDe(bruto) {
+  const emp = ehObj(credDe2(bruto)?.INFORMACOES_DA_EMPRESA) ? credDe2(bruto)?.INFORMACOES_DA_EMPRESA : null;
+  return {
+    funcionarios: achar(emp, ["FAIXA_FUNCIONARIOS", "NUMERO_FUNCIONARIOS", "QUANTIDADE_FUNCIONARIOS"]),
+    porte: achar(emp, ["PORTE", "PORTE_EMPRESA", "PORTE_DA_EMPRESA"]),
+    filiais: achar(emp, ["NUMERO_FILIAIS", "QUANTIDADE_FILIAIS", "QTD_FILIAIS"])
+  };
+}
+function rotuloPeriodoCheio(s4) {
+  const p4 = periodo(s4);
+  return p4 ? `${abrev(p4.ord % 12)}/${Math.floor(p4.ord / 12)}` : s4.trim();
+}
+function linhasDe(resto, base, ctx) {
+  if (!ehObj(resto)) return [];
+  const ind = comoIndicador(resto);
+  if (ind) return [{ rotulo: base || "Indicador", serie: ind.serie }];
+  const out = [];
+  const objs = Array.isArray(resto.OCORRENCIAS) ? resto.OCORRENCIAS.filter(ehObj) : [];
+  for (const o4 of objs) {
+    const rot = [];
+    const series = [];
+    for (const [k3, v4] of Object.entries(o4)) {
+      if (ehEscalar(v4)) {
+        if (!ehChavePontuacao(k3)) {
+          const t5 = textoEscalar(k3, v4, ctx);
+          if (t5) rot.push(t5);
+        }
+      } else if (!vazio(v4)) {
+        const s4 = serieDe(v4);
+        if (s4) series.push([k3, s4]);
+      }
+    }
+    for (const [k3, s4] of series) out.push({ rotulo: [...rot, ...series.length > 1 ? [humanizarChave(k3)] : []].join(" \u2014 ") || base, serie: s4 });
+  }
+  if (!out.length) {
+    for (const [k3, v4] of Object.entries(resto)) {
+      if (Array.isArray(v4) && !vazio(v4)) {
+        const s4 = serieDe(v4);
+        if (s4) out.push({ rotulo: base || humanizarChave(k3), serie: s4 });
+      }
+    }
+  }
+  return out;
+}
+var linhaVazia = (l4) => [...l4.serie.pontos.values()].every((v4) => v4 === "-" || v4 === "");
+function ultimos12(linhas) {
+  const ords = /* @__PURE__ */ new Set();
+  for (const l4 of linhas) for (const o4 of l4.serie.rotulos.keys()) ords.add(o4);
+  const manter = new Set([...ords].sort((a5, b3) => a5 - b3).slice(-MAX_MESES_POR_MATRIZ));
+  const filtra = (m4) => new Map([...m4].filter(([o4]) => manter.has(o4)));
+  return linhas.map((l4) => ({ rotulo: l4.rotulo, serie: { pontos: filtra(l4.serie.pontos), rotulos: filtra(l4.serie.rotulos) } }));
+}
+function comportamentoDe(bruto, pessoaFisica = false) {
+  const cred = credDe2(bruto);
+  if (!cred) return null;
+  const ctx = { pf: pessoaFisica };
+  const resto = (chave) => {
+    const v4 = cred[chave];
+    if (v4 === void 0) return void 0;
+    return separarStatus(v4).resto;
+  };
+  const eventos = [];
+  const ev = resto("EVENTOS_PESSOA_JURIDICA");
+  if (ehObj(ev) && Array.isArray(ev.OCORRENCIAS)) {
+    for (const o4 of ev.OCORRENCIAS) {
+      if (!ehObj(o4)) continue;
+      const nome = achar(o4, ["INDICADOR", "EVENTO", "DESCRICAO"]);
+      const per = achar(o4, ["PERIODO", "MES_ANO", "DATA"]);
+      const val = achar(o4, ["VALOR"]) ?? achar(o4, ["PONTUACAO"]);
+      const texto2 = [per ? rotuloPeriodoCheio(per) : "", val ? moedaBR(val) : ""].filter(Boolean).join(" \u2014 ");
+      if (nome && texto2) eventos.push([humanizarChave(nome.replace(/\s+/g, "_")), texto2]);
+    }
+  }
+  const historico = [];
+  for (const [chave, rotulo] of [["PAGAMENTO_PONTUAL", "Pagamento pontual"], ["PAGAMENTO_ATRASADO", ""], ["COMPROMISSOS", "Compromissos"], ["CREDITO_OBTIDO", "Cr\xE9dito obtido"]]) {
+    for (const l4 of linhasDe(resto(chave), rotulo, ctx)) {
+      let r5 = l4.rotulo.replace(/^./, (c4) => c4.toUpperCase());
+      if (chave === "PAGAMENTO_ATRASADO" && !/m[eé]dia/i.test(r5) && !/^atraso/i.test(r5)) r5 = "Atraso " + r5.replace(/^./, (c4) => c4.toLowerCase());
+      historico.push({ rotulo: r5, serie: l4.serie });
+    }
+  }
+  const futuro = linhasDe(resto("COMPROMETIMENTO_FUTURO"), "Comprometimento futuro", ctx);
+  const matriz = [];
+  const hist = ultimos12(historico).filter((l4) => !linhaVazia(l4));
+  if (hist.length) matriz.push(...matrizDe(["Indicador"], [118], hist.map((l4) => ({ fixos: [l4.rotulo], serie: l4.serie }))));
+  const fut = futuro.filter((l4) => !linhaVazia(l4));
+  if (fut.length) {
+    matriz.push({ t: "sub", texto: "Comprometimento futuro" });
+    matriz.push(...matrizDe(["Indicador"], [118], fut.map((l4) => ({ fixos: [l4.rotulo], serie: l4.serie }))));
+  }
+  let relacionamento = null;
+  const rel = resto("PERIODO_RELACIONAMENTO_FORNECEDORES");
+  if (ehObj(rel) && Array.isArray(rel.OCORRENCIAS)) {
+    const faixas = [];
+    for (const o4 of rel.OCORRENCIAS) {
+      if (!ehObj(o4)) continue;
+      const per = achar(o4, ["PERIODO", "FAIXA", "DESCRICAO"]);
+      const val = achar(o4, ["VALOR"]);
+      if (!per || !val || ZERO2.test(val)) continue;
+      faixas.push(`${capitalizar(per)}: ${moedaBR(val)}`);
+    }
+    if (faixas.length) relacionamento = faixas.join("   |   ");
+  }
+  if (!eventos.length && !matriz.length && !relacionamento) return null;
+  return { eventos, matriz, relacionamento };
 }
 function registrosDaParte(p4) {
   switch (p4.t) {
@@ -339657,8 +339906,8 @@ var FUNDO_SEMAFORO = { VERDE: "#E6F4EA", AMARELO: "#FFF6DB", VERMELHO: "#FDE8E8"
 var W = 595.28;
 var H = 841.89;
 var MX = 40;
-var TOPO = 72;
-var BASE = 56;
+var TOPO = 40;
+var BASE = 50;
 var LARG = W - MX * 2;
 var LIMITE_Y = H - BASE;
 var MAX_PAGINAS_PDF = 80;
@@ -339747,18 +339996,18 @@ var Pagina = class {
     if (this.y + h3 > LIMITE_Y) this.nova();
   }
   titulo(t5, maiusculas = true) {
-    this.garantir(110);
+    this.garantir(90);
     const { doc } = this;
-    this.y += 8;
-    doc.font("Helvetica-Bold").fontSize(11).fillColor(AZUL).text(maiusculas ? limparTexto(t5).toUpperCase() : limparTexto(t5), MX, this.y, { width: LARG, lineBreak: false });
-    this.y += 16;
+    this.y += 6;
+    doc.font("Helvetica-Bold").fontSize(10.5).fillColor(AZUL).text(maiusculas ? limparTexto(t5).toUpperCase() : limparTexto(t5), MX, this.y, { width: LARG, lineBreak: false });
+    this.y += 14;
     doc.moveTo(MX, this.y).lineTo(MX + LARG, this.y).lineWidth(1.2).strokeColor(AZUL).stroke();
-    this.y += 8;
+    this.y += 6;
   }
   subtitulo(t5) {
-    this.garantir(50);
-    this.doc.font("Helvetica-Bold").fontSize(9.5).fillColor(TEXTO).text(limparTexto(t5), MX, this.y, { width: LARG, lineBreak: false });
-    this.y += 15;
+    this.garantir(46);
+    this.doc.font("Helvetica-Bold").fontSize(9).fillColor(TEXTO).text(limparTexto(t5), MX, this.y, { width: LARG, lineBreak: false });
+    this.y += 13;
   }
   paragrafo(t5, opts2 = {}) {
     const { doc } = this;
@@ -339768,26 +340017,67 @@ var Pagina = class {
     const h3 = doc.heightOfString(s4, { width: LARG });
     this.garantir(h3 + 4);
     doc.fillColor(opts2.cor ?? TEXTO).text(s4, MX, this.y, { width: LARG });
-    this.y += h3 + 6;
+    this.y += h3 + 4;
   }
   /** Título de bloco do anexo (mantém a capitalização portuguesa, ao contrário de `titulo`). */
-  bloco(t5, status) {
-    this.garantir(80);
+  bloco(t5) {
+    this.garantir(70);
     const { doc } = this;
-    this.y += 6;
-    const titulo = limparTexto(t5);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor(AZUL).text(titulo, MX, this.y, { width: LARG, lineBreak: false });
-    if (status) {
-      const x2 = MX + doc.widthOfString(titulo) + 6;
-      doc.font(status.destaque ? "Helvetica-Bold" : "Helvetica").fontSize(8).fillColor(status.destaque ? COR_SEMAFORO.VERMELHO : CINZA).text("\u2014 " + limparTexto(status.texto), x2, this.y + 2, { width: Math.max(60, MX + LARG - x2), lineBreak: false });
-    }
-    this.y += 14;
+    this.y += 4;
+    doc.font("Helvetica-Bold").fontSize(9.5).fillColor(AZUL).text(limparTexto(t5), MX, this.y, { width: LARG, lineBreak: false });
+    this.y += 13;
     doc.moveTo(MX, this.y).lineTo(MX + LARG, this.y).lineWidth(0.6).strokeColor(AZUL).stroke();
-    this.y += 6;
+    this.y += 5;
   }
   /** O PDF já tem o máximo de páginas? (só o anexo consulta isto) */
   estourou() {
     return this.doc.bufferedPageRange().count >= MAX_PAGINAS_PDF;
+  }
+  /** Pares rótulo/valor em DUAS colunas (campo `largo` ocupa a linha inteira). Campo sem valor nem chega aqui. */
+  pares(titulo, campos) {
+    const { doc } = this;
+    const ROT = 88;
+    const GAP = 14;
+    const col = (LARG - GAP) / 2;
+    const medir = (c4, larg) => {
+      doc.font("Helvetica-Bold").fontSize(7.5);
+      const k3 = quebrarLongas(doc, limparTexto(c4.k), ROT - 6);
+      const hk = doc.heightOfString(k3, { width: ROT - 6 });
+      doc.font("Helvetica").fontSize(8.5);
+      const v4 = quebrarLongas(doc, limparTexto(c4.v), larg - ROT);
+      return { k: k3, v: v4, h: Math.max(hk, doc.heightOfString(v4, { width: larg - ROT })) + 3 };
+    };
+    const linhas = [];
+    let aberta = null;
+    for (const c4 of campos) {
+      if (c4.largo) {
+        aberta = null;
+        linhas.push({ cs: [c4], largo: true });
+        continue;
+      }
+      if (!aberta) {
+        aberta = { cs: [], largo: false };
+        linhas.push(aberta);
+      }
+      aberta.cs.push(c4);
+      if (aberta.cs.length === 2) aberta = null;
+    }
+    const medidas = linhas.map((l4) => {
+      const ms3 = l4.cs.map((c4) => medir(c4, l4.largo ? LARG : col));
+      return { ms: ms3, h: Math.max(...ms3.map((m4) => m4.h)), larg: l4.largo ? LARG : col };
+    });
+    this.garantir(40 + medidas.reduce((a5, m4) => a5 + m4.h, 0));
+    this.titulo(titulo);
+    medidas.forEach(({ ms: ms3, h: h3, larg }) => {
+      this.garantir(h3 + 2);
+      ms3.forEach((m4, j) => {
+        const x2 = MX + j * (col + GAP);
+        doc.font("Helvetica-Bold").fontSize(7.5).fillColor(CINZA).text(m4.k, x2 + 2, this.y + 1, { width: ROT - 6 });
+        doc.font("Helvetica").fontSize(8.5).fillColor(TEXTO).text(m4.v, x2 + ROT, this.y, { width: larg - ROT });
+      });
+      this.y += h3;
+    });
+    this.y += 6;
   }
   /**
    * Desenha a tabela. `detalhes[i]` é uma linha de texto menor sob a linha i (campos extras da fonte).
@@ -339795,9 +340085,9 @@ var Pagina = class {
    */
   tabela(colunas, linhas, opts2 = {}) {
     const { doc } = this;
-    const PAD = opts2.compacta ? 2 : 4;
-    const tam = opts2.compacta ? 8 : 8.5;
-    const tamCab = opts2.compacta ? 7 : 8;
+    const PAD = opts2.compacta ? 2 : 3;
+    const tam = opts2.compacta ? 8 : 8;
+    const tamCab = opts2.compacta ? 7 : 7.5;
     const total = colunas.reduce((a5, c4) => a5 + c4.largura, 0);
     const escala = LARG / total;
     const cols = colunas.map((c4) => ({ ...c4, largura: c4.largura * escala }));
@@ -339805,13 +340095,13 @@ var Pagina = class {
       doc.font("Helvetica-Bold").fontSize(tamCab);
       const titulos = cols.map((c4) => quebrarLongas(doc, limparTexto(c4.titulo), c4.largura - PAD * 2));
       const hTexto = Math.max(...titulos.map((t5, j) => doc.heightOfString(t5, { width: cols[j].largura - PAD * 2 })));
-      const h3 = Math.max(18, hTexto + 9);
+      const h3 = Math.max(15, hTexto + 7);
       this.garantir(h3 + 22);
       doc.rect(MX, this.y, LARG, h3).fill(AZUL);
       let x2 = MX;
       doc.font("Helvetica-Bold").fontSize(tamCab).fillColor("#FFFFFF");
       cols.forEach((c4, j) => {
-        doc.text(titulos[j], x2 + PAD, this.y + 5, { width: c4.largura - PAD * 2, align: c4.alinhar ?? "left" });
+        doc.text(titulos[j], x2 + PAD, this.y + 4, { width: c4.largura - PAD * 2, align: c4.alinhar ?? "left" });
         x2 += c4.largura;
       });
       this.y += h3;
@@ -339830,12 +340120,13 @@ var Pagina = class {
       let det = opts2.detalhes?.[i4] ? limparTexto(opts2.detalhes[i4]) : "";
       let alturaDet = 0;
       if (det) {
-        doc.font("Helvetica").fontSize(7.5);
+        doc.font("Helvetica").fontSize(7);
         det = quebrarLongas(doc, det.length > 900 ? det.slice(0, 897) + "..." : det, LARG - PAD * 2 - 8);
-        alturaDet = doc.heightOfString(det, { width: LARG - PAD * 2 - 8 }) + 3;
+        alturaDet = doc.heightOfString(det, { width: LARG - PAD * 2 - 8 }) + 2;
       }
       const alturaLinha = Math.max(...prep.map((p4) => p4.h)) + PAD * 2 + alturaDet;
-      if (this.y + alturaLinha > LIMITE_Y) {
+      const reserva = opts2.limitar && this.estourou() ? 34 : 0;
+      if (this.y + alturaLinha > LIMITE_Y - reserva) {
         if (opts2.limitar && this.estourou()) return linhas.length - i4;
         this.nova();
         if (!opts2.semCabecalho) cabecalho();
@@ -339847,65 +340138,81 @@ var Pagina = class {
         x2 += p4.c.largura;
       }
       if (det) {
-        doc.font("Helvetica").fontSize(7.5).fillColor(CINZA).text(det, MX + PAD + 8, this.y + alturaLinha - alturaDet - PAD + 3, { width: LARG - PAD * 2 - 8 });
+        doc.font("Helvetica").fontSize(7).fillColor(CINZA).text(det, MX + PAD + 8, this.y + alturaLinha - alturaDet - PAD + 2, { width: LARG - PAD * 2 - 8 });
       }
       doc.moveTo(MX, this.y + alturaLinha).lineTo(MX + LARG, this.y + alturaLinha).lineWidth(0.5).strokeColor(LINHA).stroke();
       this.y += alturaLinha;
     }
-    this.y += 10;
+    this.y += 8;
     return 0;
   }
 };
+function resumirTexto(t5, max2 = 130) {
+  const s4 = limparTexto(t5).replace(/\s+/g, " ").trim();
+  if (s4.length <= max2) return s4;
+  const corte = s4.slice(0, max2);
+  const frase = Math.max(corte.lastIndexOf(". "), corte.lastIndexOf("; "));
+  if (frase > 20) return corte.slice(0, frase + 1);
+  const palavra = corte.lastIndexOf(" ");
+  return corte.slice(0, palavra > max2 * 0.5 ? palavra : max2).replace(/[\s,;:.-]+$/, "") + "...";
+}
+var ok = (v4) => !!v4 && v4.trim() !== "" && v4.trim() !== "\u2014";
 function secaoResumo(p4, r5, meta) {
   const { doc } = p4;
   const sem2 = SEMAFORO[meta.veredito];
   const cor = COR_SEMAFORO[sem2];
-  doc.font("Helvetica-Bold").fontSize(15).fillColor(TEXTO).text(txt2(r5.cadastro.razaoSocial ?? r5.cadastro.nomeFantasia), MX, p4.y, { width: LARG });
+  doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("Relat\xF3rio de An\xE1lise de Cr\xE9dito \u2014 Sal Vita", MX, p4.y, { width: LARG, lineBreak: false });
+  p4.y += 12;
+  const nome = limparTexto(r5.cadastro.razaoSocial ?? r5.cadastro.nomeFantasia).trim();
+  const documento = `${r5.tipo} ${formatarDocumento(r5.documento, r5.tipo)}`;
+  doc.font("Helvetica-Bold").fontSize(16).fillColor(TEXTO).text(nome || documento, MX, p4.y, { width: LARG });
   p4.y = doc.y + 2;
-  doc.font("Helvetica").fontSize(10).fillColor(CINZA).text(`${r5.tipo}: ${formatarDocumento(r5.documento, r5.tipo)}   |   Consulta em ${dataHoraBR(r5.consultadoEm)}`, MX, p4.y, { width: LARG });
-  p4.y = doc.y + 10;
+  const linha = [nome ? documento : "", `Consulta em ${dataHoraBR(r5.consultadoEm)}`, `Fonte: ${fonteDosDados(r5)}`].filter(Boolean).join("   |   ");
+  doc.font("Helvetica").fontSize(9).fillColor(CINZA).text(linha, MX, p4.y, { width: LARG });
+  p4.y = doc.y + 8;
   const motivos = meta.motivos.length ? meta.motivos : ["Nenhum fator de restri\xE7\xE3o encontrado nas regras da Sal Vita."];
   doc.font("Helvetica").fontSize(9);
   const larguraTexto = LARG - 100;
   const alturaMotivos = motivos.reduce((a5, m4) => a5 + doc.heightOfString("\u2022  " + limparTexto(m4), { width: larguraTexto }) + 2, 0);
-  const alturaPainel = Math.max(86, 44 + alturaMotivos + 12);
+  const alturaPainel = Math.max(78, 42 + alturaMotivos + 8);
   p4.garantir(alturaPainel + 10);
   const y0 = p4.y;
   doc.roundedRect(MX, y0, LARG, alturaPainel, 6).fill(FUNDO_SEMAFORO[sem2]);
   doc.roundedRect(MX, y0, 5, alturaPainel, 2).fill(cor);
   const cx2 = MX + 38;
   const luzes = [["VERMELHO", 0], ["AMARELO", 1], ["VERDE", 2]];
-  const alturaCaixa = 66;
+  const alturaCaixa = 62;
   const topoCaixa = y0 + (alturaPainel - alturaCaixa) / 2;
-  doc.roundedRect(cx2 - 14, topoCaixa, 28, alturaCaixa, 8).fill("#374151");
-  for (const [nome, i4] of luzes) {
-    doc.circle(cx2, topoCaixa + 12 + i4 * 21, 8).fill(nome === sem2 ? COR_SEMAFORO[nome] : "#6B7280");
+  doc.roundedRect(cx2 - 13, topoCaixa, 26, alturaCaixa, 8).fill("#374151");
+  for (const [nomeLuz, i4] of luzes) {
+    doc.circle(cx2, topoCaixa + 11 + i4 * 20, 7.5).fill(nomeLuz === sem2 ? COR_SEMAFORO[nomeLuz] : "#6B7280");
   }
   const tx = MX + 76;
-  doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("VEREDITO DE CR\xC9DITO", tx, y0 + 12, { width: larguraTexto, lineBreak: false });
-  doc.font("Helvetica-Bold").fontSize(20).fillColor(cor).text(limparTexto(ROTULO_VEREDITO[meta.veredito]), tx, y0 + 23, { width: larguraTexto, lineBreak: false });
-  let ym = y0 + 52;
+  doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("VEREDITO DE CR\xC9DITO", tx, y0 + 10, { width: larguraTexto, lineBreak: false });
+  doc.font("Helvetica-Bold").fontSize(19).fillColor(cor).text(limparTexto(ROTULO_VEREDITO[meta.veredito]), tx, y0 + 21, { width: larguraTexto, lineBreak: false });
+  let ym = y0 + 47;
   doc.font("Helvetica").fontSize(9).fillColor(TEXTO);
   for (const m4 of motivos) {
     const t5 = "\u2022  " + limparTexto(m4);
     doc.text(t5, tx, ym, { width: larguraTexto });
     ym += doc.heightOfString(t5, { width: larguraTexto }) + 2;
   }
-  p4.y = y0 + alturaPainel + 14;
-  p4.garantir(120);
+  p4.y = y0 + alturaPainel + 10;
+  p4.garantir(100);
   const sy2 = p4.y;
   const v4 = r5.score.valor;
-  doc.roundedRect(MX, sy2, 150, 84, 6).fill(AZUL_CLARO);
-  doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("SCORE (0 A 1000)", MX + 10, sy2 + 9, { width: 130, lineBreak: false });
-  doc.font("Helvetica-Bold").fontSize(v4 === null ? 14 : 38).fillColor(AZUL).text(v4 === null ? "N\xE3o informado" : String(v4), MX + 10, sy2 + (v4 === null ? 30 : 22), { width: 130, lineBreak: false });
+  doc.roundedRect(MX, sy2, 150, 76, 6).fill(AZUL_CLARO);
+  doc.font("Helvetica").fontSize(8).fillColor(CINZA).text("SCORE (0 A 1000)", MX + 10, sy2 + 8, { width: 130, lineBreak: false });
+  doc.font("Helvetica-Bold").fontSize(v4 === null ? 14 : 34).fillColor(AZUL).text(v4 === null ? "N\xE3o informado" : String(v4), MX + 10, sy2 + (v4 === null ? 28 : 20), { width: 130, lineBreak: false });
   if (r5.score.faixa) {
-    doc.font("Helvetica").fontSize(8.5).fillColor(TEXTO).text(`Faixa: ${txt2(r5.score.faixa)}`, MX + 10, sy2 + 66, { width: 130, lineBreak: false });
+    doc.font("Helvetica").fontSize(8.5).fillColor(TEXTO).text(`Faixa: ${txt2(r5.score.faixa)}`, MX + 10, sy2 + 60, { width: 130, lineBreak: false });
   }
   const rx = MX + 170;
   const rw = LARG - 170;
-  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(TEXTO).text("Probabilidade de inadimpl\xEAncia", rx, sy2 + 4, { width: rw, lineBreak: false });
-  doc.font("Helvetica-Bold").fontSize(14).fillColor(AZUL).text(pct(r5.score.probabilidadeInadimplencia), rx, sy2 + 17, { width: rw, lineBreak: false });
-  const by = sy2 + 52;
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(TEXTO).text("Probabilidade de inadimpl\xEAncia", rx, sy2 + 2, { width: rw, lineBreak: false });
+  const prob = r5.score.probabilidadeInadimplencia;
+  doc.font("Helvetica-Bold").fontSize(prob === null ? 10 : 14).fillColor(AZUL).text(prob === null ? "N\xE3o informada" : pct(prob), rx, sy2 + (prob === null ? 17 : 14), { width: rw, lineBreak: false });
+  const by = sy2 + 46;
   const bh = 12;
   const x2 = (n5) => rx + n5 / 1e3 * rw;
   doc.rect(x2(0), by, x2(400) - x2(0), bh).fill(COR_SEMAFORO.VERMELHO);
@@ -339924,297 +340231,316 @@ function secaoResumo(p4, r5, meta) {
     doc.moveTo(mx, by - 2).lineTo(mx, by + bh + 2).lineWidth(2).strokeColor("#111827").stroke();
     doc.polygon([mx - 5, by - 7], [mx + 5, by - 7], [mx, by - 1]).fill("#111827");
   }
-  p4.y = sy2 + 96;
-  if (r5.score.textoInterpretacao) {
-    p4.paragrafo("Interpreta\xE7\xE3o da fonte: " + r5.score.textoInterpretacao, { cor: CINZA, tam: 8.5 });
-  }
-}
-var GRUPOS = [
-  ["protestos", "Protestos"],
-  ["pendenciasFinanceiras", "Pend\xEAncias financeiras (PEFIN/REFIN)"],
-  ["chequesSemFundo", "Cheques sem fundo"],
-  ["acoesJudiciais", "A\xE7\xF5es judiciais"],
-  ["falenciaRecuperacao", "Fal\xEAncia / Recupera\xE7\xE3o judicial"]
-];
-function situacao(g3) {
-  if (!g3.consultado) return { texto: "N\xE3o informado pela fonte", cor: CINZA };
-  if (g3.quantidade > 0) return { texto: "Consta", cor: COR_SEMAFORO.VERMELHO, negrito: true };
-  return { texto: "Nada consta", cor: COR_SEMAFORO.VERDE, negrito: true };
-}
-function secaoAnotacoes(p4, r5, agora) {
-  p4.titulo("Anota\xE7\xF5es negativas");
-  p4.tabela(
-    [
-      { titulo: "Item", largura: 200 },
-      { titulo: "Quantidade", largura: 70, alinhar: "right" },
-      { titulo: "Valor total", largura: 100, alinhar: "right" },
-      { titulo: "Situa\xE7\xE3o", largura: 145 }
-    ],
-    GRUPOS.map(([k3, nome]) => {
-      const g3 = r5.anotacoes[k3];
-      return [
-        { texto: nome, negrito: true },
-        { texto: g3.consultado ? String(g3.quantidade) : "\u2014" },
-        { texto: g3.consultado && g3.quantidade > 0 ? brl3(g3.valorTotal) : "\u2014" },
-        situacao(g3)
-      ];
-    })
-  );
-  const comItens = GRUPOS.filter(([k3]) => r5.anotacoes[k3].consultado && (r5.anotacoes[k3].itens.length > 0 || r5.anotacoes[k3].quantidade > 0));
-  if (comItens.length) {
-    p4.titulo("Detalhamento das anota\xE7\xF5es");
-    for (const [k3, nome] of comItens) {
-      const g3 = r5.anotacoes[k3];
-      p4.subtitulo(`${nome} - ${g3.quantidade} ocorr\xEAncia(s)${g3.valorTotal !== null ? ", total " + brl3(g3.valorTotal) : ""}`);
-      if (g3.itens.length < g3.quantidade) {
-        p4.paragrafo(`A fonte listou ${g3.itens.length} de ${g3.quantidade} ocorr\xEAncias.`, { cor: "#B45309", tam: 8.5, negrito: true });
-      }
-      if (!g3.itens.length) continue;
-      const comCredor = g3.itens.some((it) => !!it.credor);
-      const obs = g3.itens.map((it) => atenuacaoDoItem(it, agora));
-      const comObs = obs.some((o4) => !!o4);
-      const colunas = [{ titulo: "Data", largura: 58 }, { titulo: "Descri\xE7\xE3o", largura: comCredor || comObs ? 150 : 223 }];
-      if (comCredor) colunas.push({ titulo: "Credor", largura: 100 });
-      colunas.push({ titulo: "Local", largura: comCredor || comObs ? 100 : 130 });
-      if (comObs) colunas.push({ titulo: "Observa\xE7\xE3o", largura: 80 });
-      colunas.push({ titulo: "Valor", largura: 80, alinhar: "right" });
-      p4.tabela(
-        colunas,
-        g3.itens.map((it, i4) => {
-          const linha = [{ texto: dataBR(it.data) }, { texto: txt2(it.descricao) }];
-          if (comCredor) linha.push({ texto: txt2(it.credor) });
-          linha.push({ texto: txt2(it.local) });
-          if (comObs) linha.push({ texto: obs[i4] ? `Estudar com calma: ${obs[i4]}` : "\u2014", cor: obs[i4] ? COR_SEMAFORO.AMARELO : CINZA });
-          linha.push({ texto: brl3(it.valor) });
-          return linha;
-        }),
-        {
-          detalhes: g3.itens.map((it) => it.extras && Object.keys(it.extras).length ? Object.entries(it.extras).map(([ch, v4]) => `${ch}: ${v4}`).join("   |   ") : void 0)
-        }
-      );
-    }
-  }
+  p4.y = sy2 + 84;
+  const leitura = resumirTexto(r5.score.textoInterpretacao);
+  if (leitura) p4.paragrafo(leitura, { cor: CINZA, tam: 8 });
 }
 var COR_NIVEL = { ALERTA: COR_SEMAFORO.VERMELHO, ATENCAO: "#B45309", POSITIVO: COR_SEMAFORO.VERDE };
-function secaoPontosDeAtencao(p4, r5, agora) {
+function secaoPontosDeAtencao(p4, r5, agora, avisos) {
   const sinais = ordenarSinais(analisarSinais(r5, agora));
   p4.titulo("Pontos de aten\xE7\xE3o");
-  if (!sinais.length) {
-    p4.paragrafo("Nenhum ponto de aten\xE7\xE3o identificado pelas regras da Sal Vita.", { cor: CINZA });
-    return;
-  }
-  p4.tabela(
-    [{ titulo: "N\xEDvel", largura: 60 }, { titulo: "Ponto", largura: 190 }, { titulo: "Detalhe", largura: 265 }],
-    sinais.map((s4) => [
-      { texto: ROTULO_NIVEL_SINAL[s4.nivel].toUpperCase(), cor: COR_NIVEL[s4.nivel], negrito: true },
-      { texto: s4.titulo, negrito: true },
-      { texto: s4.detalhe }
-    ])
-  );
-}
-function secaoMovimentacao(p4, r5) {
-  const c4 = r5.comportamento;
-  if (!c4) return;
-  p4.titulo("Movimenta\xE7\xE3o comercial");
-  p4.tabela(
-    [{ titulo: "Campo", largura: 200 }, { titulo: "Informa\xE7\xE3o", largura: 315 }],
-    [
-      ["\xDAltima compra no mercado", dataBR(c4.ultimaCompraEm)],
-      ["Relacionamento comercial mais antigo", dataBR(c4.relacionamentoMaisAntigoEm)],
-      ["Fornecedores que informaram", c4.fontesConsultadas === null ? "\u2014" : String(c4.fontesConsultadas)],
-      ["Pagamentos em dia", pct(c4.pagamentoPontualPct)]
-    ].map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }])
-  );
-}
-function secaoComplementos(p4, r5) {
-  const c4 = r5.complementos;
-  if (!c4) return;
-  p4.titulo("Complementos da fonte");
-  const veic = c4.veiculos?.length ? c4.veiculos.map((v4) => [v4.marcaModelo, v4.placa].filter(Boolean).join(" ")).join("; ") : "\u2014";
-  p4.tabela(
-    [{ titulo: "Campo", largura: 200 }, { titulo: "Informa\xE7\xE3o", largura: 315 }],
-    [
-      ["Faturamento presumido (faixa)", txt2(c4.faturamentoPresumidoFaixa)],
-      ["Consultas nos \xFAltimos 12 meses", c4.consultas12Meses == null ? "\u2014" : String(c4.consultas12Meses)],
-      ["Ve\xEDculos da empresa", veic]
-    ].map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }])
-  );
-}
-function secaoCadastro(p4, r5) {
-  const c4 = r5.cadastro;
-  p4.titulo("Dados cadastrais");
-  const pares = [
-    ["Raz\xE3o social", txt2(c4.razaoSocial)],
-    ["Nome fantasia", txt2(c4.nomeFantasia)],
-    [r5.tipo, formatarDocumento(r5.documento, r5.tipo)],
-    ["Situa\xE7\xE3o cadastral", txt2(c4.situacao)],
-    ["Situa\xE7\xE3o em", dataBR(c4.situacaoEm)],
-    ["Funda\xE7\xE3o", dataBR(c4.fundacao)],
-    ["Natureza jur\xEDdica", txt2(c4.naturezaJuridica)],
-    ["Capital social", c4.capitalSocial === null ? "\u2014" : brl3(c4.capitalSocial)],
-    ["CNAE principal", txt2(c4.cnaePrincipal)],
-    ["Atividade", txt2(c4.atividade)],
-    ["Op\xE7\xE3o tribut\xE1ria", txt2(c4.opcaoTributaria)],
-    ["Inscri\xE7\xE3o estadual", txt2(c4.inscricaoEstadual)],
-    ["Endere\xE7o", txt2(c4.endereco)],
-    ["Munic\xEDpio", txt2(c4.municipio)],
-    ["UF", txt2(c4.uf)],
-    ["Telefone", txt2(c4.telefone)],
-    ["N\xFAmero de filiais", c4.numeroFiliais === null ? "\u2014" : String(c4.numeroFiliais)]
-  ];
-  p4.tabela(
-    [{ titulo: "Campo", largura: 150 }, { titulo: "Informa\xE7\xE3o", largura: 365 }],
-    pares.map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }])
-  );
-}
-function secaoSocios(p4, r5) {
-  p4.titulo("Quadro societ\xE1rio e administradores");
-  if (!r5.socios.length) {
-    p4.paragrafo("Nenhum s\xF3cio ou administrador informado pela fonte.", { cor: CINZA });
-    return;
-  }
-  p4.tabela(
-    [
-      { titulo: "Nome", largura: 170 },
-      { titulo: "CPF/CNPJ", largura: 95 },
-      { titulo: "Cargo", largura: 105 },
-      { titulo: "Entrada", largura: 65 },
-      { titulo: "Particip.", largura: 55, alinhar: "right" }
-    ],
-    r5.socios.map((s4) => [
-      { texto: txt2(s4.nome) },
-      { texto: mascararDocumento(s4.documento) },
-      { texto: txt2(s4.cargo) },
-      { texto: dataBR(s4.entrada) },
-      { texto: pct(s4.participacao) }
-    ])
-  );
-}
-function secaoConsultas(p4, r5, bruto) {
-  p4.titulo("Consultas recentes ao documento");
-  if (!r5.consultasRecentes.length) p4.paragrafo("Nenhuma consulta recente informada pela fonte.", { cor: CINZA });
+  if (!sinais.length) p4.paragrafo("Nenhum ponto de aten\xE7\xE3o identificado pelas regras da Sal Vita.", { cor: CINZA });
   else {
-    const total = r5.complementos?.consultas12Meses;
-    if (typeof total === "number" && total > r5.consultasRecentes.length) {
-      p4.paragrafo(`A fonte listou ${r5.consultasRecentes.length} de ${total} consultas.`, { cor: "#B45309", tam: 8.5, negrito: true });
-    }
     p4.tabela(
-      [
-        { titulo: "Data", largura: 80 },
-        { titulo: "Consultante", largura: 345 },
-        { titulo: "Quantidade", largura: 90, alinhar: "right" }
-      ],
-      r5.consultasRecentes.map((c4) => [{ texto: dataBR(c4.data) }, { texto: txt2(c4.consultante) }, { texto: String(c4.quantidade) }])
+      [{ titulo: "N\xEDvel", largura: 56 }, { titulo: "Ponto", largura: 190 }, { titulo: "Detalhe", largura: 269 }],
+      sinais.map((s4) => [
+        { texto: ROTULO_NIVEL_SINAL[s4.nivel].toUpperCase(), cor: COR_NIVEL[s4.nivel], negrito: true },
+        { texto: s4.titulo, negrito: true },
+        { texto: s4.detalhe }
+      ])
     );
   }
+  for (const a5 of avisos) p4.paragrafo(`Aten\xE7\xE3o: consulta da fonte sem sucesso em ${a5}`, { cor: COR_SEMAFORO.VERMELHO, tam: 8.5, negrito: true });
+}
+var GRUPOS = [
+  // [chave, nome, remoção do substantivo na descrição, blocos do bruto que representam o grupo]
+  ["protestos", "Protestos", /^Protesto(?:\s+d[eao]s?)?\s*(?:—|-|:)?\s*/i, /^Protestos/],
+  ["pendenciasFinanceiras", "Pend\xEAncias financeiras (PEFIN/REFIN)", null, /^(?:Pend[êe]ncias|Restri[çc][õo]es)/],
+  ["chequesSemFundo", "Cheques sem fundo", /^Cheque sem fundo\s*(?:—|-|:)?\s*/i, /^Cheques/],
+  ["acoesJudiciais", "A\xE7\xF5es judiciais", /^A[çc][ãa]o c[íi]vel\s*(?:—|-|:)?\s*/i, /^A[çc][õo]es/],
+  ["falenciaRecuperacao", "Fal\xEAncia / Recupera\xE7\xE3o judicial", null, null]
+];
+var maiuscula1 = (t5) => t5.replace(/^./, (c4) => c4.toUpperCase());
+function descricaoLimpa(d3, remover) {
+  let s4 = limparTexto(d3).trim();
+  if (remover) s4 = s4.replace(remover, "").trim();
+  s4 = s4.replace(/^\((.*)\)$/, "$1").trim();
+  return s4 ? maiuscula1(s4) : "";
+}
+var norm = (t5) => limparTexto(t5).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+function secaoAnotacoes(p4, r5, agora, anexo) {
+  p4.titulo("Anota\xE7\xF5es negativas");
+  const comOcorrencia = GRUPOS.filter(([k3]) => r5.anotacoes[k3].consultado && (r5.anotacoes[k3].quantidade > 0 || r5.anotacoes[k3].itens.length > 0));
+  const zerados = [];
+  const bruto = anexo?.semOcorrencias ?? [];
+  for (const [k3, nome, , rep] of GRUPOS) {
+    const g3 = r5.anotacoes[k3];
+    if (!g3.consultado || g3.quantidade > 0 || g3.itens.length > 0) continue;
+    const dele = rep ? bruto.filter((n5) => rep.test(n5)) : [];
+    if (dele.length) zerados.push(...dele);
+    else zerados.push(nome.replace(/ \(.*\)$/, ""));
+  }
+  for (const n5 of bruto) {
+    const g3 = GRUPOS.find(([, , , rep]) => rep?.test(n5));
+    if (!g3 || comOcorrencia.includes(g3)) zerados.push(n5);
+  }
+  const naoInformados = GRUPOS.filter(([k3]) => !r5.anotacoes[k3].consultado).map(([, nome]) => nome.replace(/ \(.*\)$/, ""));
+  if (comOcorrencia.length) {
+    p4.tabela(
+      [{ titulo: "Item", largura: 270 }, { titulo: "Quantidade", largura: 90, alinhar: "right" }, { titulo: "Valor total", largura: 155, alinhar: "right" }],
+      comOcorrencia.map(([k3, nome]) => {
+        const g3 = r5.anotacoes[k3];
+        return [{ texto: nome, negrito: true, cor: COR_SEMAFORO.VERMELHO }, { texto: String(Math.max(g3.quantidade, g3.itens.length)) }, { texto: g3.valorTotal !== null ? brl3(g3.valorTotal) : "\u2014" }];
+      })
+    );
+  }
+  if (zerados.length) p4.paragrafo("Sem ocorr\xEAncias em: " + [...new Set(zerados)].join(", ") + ".", { cor: COR_SEMAFORO.VERDE, tam: 8.5, negrito: true });
+  if (naoInformados.length) p4.paragrafo("N\xE3o informado pela fonte: " + naoInformados.join(", ") + ".", { cor: CINZA, tam: 8.5 });
+  for (const a5 of anexo?.alertas ?? []) p4.paragrafo("Alerta da fonte: " + a5, { cor: "#B45309", tam: 8.5, negrito: true });
+  for (const [k3, nome, remover] of comOcorrencia) {
+    const g3 = r5.anotacoes[k3];
+    p4.y += 3;
+    p4.subtitulo(nome.replace(/ \(.*\)$/, ""));
+    if (g3.itens.length < g3.quantidade) {
+      p4.paragrafo(`A fonte listou ${g3.itens.length} de ${g3.quantidade} ocorr\xEAncias${g3.itens.length === 0 ? " (sem detalhamento)" : ""}.`, { cor: "#B45309", tam: 8.5, negrito: true });
+    }
+    if (!g3.itens.length) continue;
+    const linhas = g3.itens.map((it) => ({
+      data: it.data ? dataBR(it.data) : "",
+      desc: descricaoLimpa(it.descricao, remover),
+      credor: limparTexto(it.credor).trim(),
+      local: limparTexto(it.local).trim(),
+      obs: atenuacaoDoItem(it, agora) ?? "",
+      valor: it.valor !== null ? brl3(it.valor) : "",
+      extras: Object.entries(it.extras ?? {}).filter(([ch]) => !/^moeda$/i.test(ch))
+    }));
+    linhas.forEach((l4, i4) => {
+      const visto = new Set([l4.data, l4.desc, l4.credor, l4.local, l4.valor, descricaoLimpa(g3.itens[i4].descricao, null)].filter(Boolean).map(norm));
+      const valorNum = g3.itens[i4].valor;
+      l4.extras = l4.extras.filter(([, v4]) => {
+        const n5 = norm(v4);
+        if (!n5 || visto.has(n5)) return false;
+        const num = Number(String(v4).replace(/\./g, "").replace(",", "."));
+        if (valorNum !== null && Number.isFinite(num) && Math.abs(num - valorNum) < 5e-3) return false;
+        visto.add(n5);
+        return true;
+      });
+    });
+    const comuns = [];
+    if (linhas.length > 1) {
+      for (const [ch, v4] of linhas[0].extras) {
+        if (linhas.every((l4) => l4.extras.some(([c22, v22]) => c22 === ch && v22 === v4))) comuns.push([ch, v4]);
+      }
+      for (const l4 of linhas) l4.extras = l4.extras.filter(([ch, v4]) => !comuns.some(([c22, v22]) => c22 === ch && v22 === v4));
+    }
+    if (comuns.length) p4.paragrafo("Em todas as ocorr\xEAncias \u2014 " + comuns.map(([ch, v4]) => `${ch}: ${v4}`).join("   |   "), { cor: CINZA, tam: 7.5 });
+    const tem = (f4) => linhas.some((l4) => f4(l4) !== "");
+    const colunas = [];
+    if (tem((l4) => l4.data)) colunas.push({ titulo: "Data", largura: 54, cel: (l4) => ({ texto: l4.data }) });
+    if (tem((l4) => l4.desc)) colunas.push({ titulo: "Descri\xE7\xE3o", largura: 140, cel: (l4) => ({ texto: l4.desc }) });
+    if (tem((l4) => l4.credor)) colunas.push({ titulo: "Credor", largura: 110, cel: (l4) => ({ texto: l4.credor }) });
+    if (tem((l4) => l4.local)) colunas.push({ titulo: "Origem / local", largura: 125, cel: (l4) => ({ texto: l4.local }) });
+    if (tem((l4) => l4.obs)) colunas.push({ titulo: "Estudar com calma", largura: 70, cel: (l4) => ({ texto: l4.obs, cor: l4.obs ? "#B45309" : CINZA }) });
+    if (tem((l4) => l4.valor)) colunas.push({ titulo: "Valor", largura: 70, alinhar: "right", cel: (l4) => ({ texto: l4.valor }) });
+    if (!colunas.length) continue;
+    p4.tabela(
+      colunas.map(({ titulo, largura, alinhar }) => ({ titulo, largura, alinhar })),
+      linhas.map((l4) => colunas.map((c4) => c4.cel(l4))),
+      { detalhes: linhas.map((l4) => l4.extras.length ? l4.extras.map(([ch, v4]) => `${ch}: ${v4}`).join("   |   ") : void 0) }
+    );
+  }
+}
+function idadeDe(de, ate) {
+  if (!de) return "";
+  const d3 = new Date(de);
+  if (!Number.isFinite(d3.getTime())) return "";
+  const meses = Math.floor((ate.getTime() - d3.getTime()) / (30.44 * 864e5));
+  if (meses < 0) return "";
+  if (meses < 12) return `${meses} ${meses === 1 ? "m\xEAs" : "meses"}`;
+  const anos = Math.floor(meses / 12);
+  return `${anos} ${anos === 1 ? "ano" : "anos"}`;
+}
+function secaoEmpresa(p4, r5, bruto, agora) {
+  const c4 = r5.cadastro;
+  const extras = empresaExtrasDe(bruto);
+  const campos = [];
+  const add2 = (k3, v4, largo = false) => {
+    const t5 = limparTexto(v4).trim();
+    if (t5 && t5 !== "\u2014") campos.push({ k: k3, v: t5, largo });
+  };
+  const razao = limparTexto(c4.razaoSocial).trim();
+  if (c4.nomeFantasia && norm(c4.nomeFantasia) !== norm(razao)) add2("Nome fantasia", c4.nomeFantasia);
+  const desde = c4.situacaoEm && c4.situacaoEm !== c4.fundacao ? ` (desde ${dataBR(c4.situacaoEm)})` : "";
+  add2("Situa\xE7\xE3o", c4.situacao ? txt2(c4.situacao) + desde : "");
+  const idade = idadeDe(c4.fundacao, agora);
+  add2("Funda\xE7\xE3o", c4.fundacao ? dataBR(c4.fundacao) + (idade ? ` (${idade})` : "") : "");
+  add2("Natureza jur\xEDdica", naturezaJuridicaTexto(c4.naturezaJuridica));
+  add2("Capital social", c4.capitalSocial === null ? "" : brl3(c4.capitalSocial));
+  add2("Inscri\xE7\xE3o estadual (IE)", c4.inscricaoEstadual);
+  add2("Op\xE7\xE3o tribut\xE1ria", c4.opcaoTributaria);
+  add2("Porte / funcion\xE1rios", [extras.porte, extras.funcionarios ? `${extras.funcionarios} funcion\xE1rios` : ""].filter(Boolean).join(" \u2014 "));
+  add2("Faturamento presumido", r5.complementos?.faturamentoPresumidoFaixa);
+  add2("N\xBA de filiais", c4.numeroFiliais !== null ? String(c4.numeroFiliais) : extras.filiais);
+  const cnae = limparTexto(c4.cnaePrincipal).trim();
+  const atividade = limparTexto(c4.atividade).trim();
+  const atividadeRepetida = cnae && atividade && (norm(cnae).includes(norm(atividade)) || norm(atividade).includes(norm(cnae)));
+  add2("CNAE e atividade", [cnae, atividadeRepetida ? "" : atividade].filter(Boolean).join(" \u2014 "), true);
+  const municipio = [c4.municipio, c4.uf].filter(Boolean).join("/");
+  const end2 = limparTexto(c4.endereco).trim();
+  add2("Endere\xE7o", [end2, municipio && !norm(end2).includes(norm(c4.municipio ?? "#")) ? municipio : ""].filter(Boolean).join(" \u2014 ") || municipio, true);
+  const veic = /* @__PURE__ */ new Map();
+  for (const v4 of r5.complementos?.veiculos ?? []) {
+    const m4 = limparTexto(v4.marcaModelo).trim();
+    if (m4) veic.set(m4, (veic.get(m4) ?? 0) + 1);
+  }
+  if (veic.size) {
+    const lista2 = [...veic].map(([m4, n5]) => n5 > 1 ? `${m4} (${n5})` : m4);
+    add2("Ve\xEDculos da empresa", lista2.slice(0, 5).join("; ") + (lista2.length > 5 ? `; +${lista2.length - 5}` : ""), true);
+  }
+  if (!campos.length) return;
+  p4.pares("Dados da empresa", campos);
+}
+function secaoSocios(p4, r5) {
+  if (!r5.socios.length) return;
+  p4.titulo("S\xF3cios e administradores");
+  const tem = (f4) => r5.socios.some(f4);
+  const colunas = [
+    { titulo: "Nome", largura: 175, cel: (s4) => ({ texto: txt2(s4.nome) }) },
+    { titulo: "CPF/CNPJ", largura: 95, cel: (s4) => ({ texto: s4.documento ? mascararDocumento(s4.documento) : "" }) }
+  ];
+  if (tem((s4) => !!s4.cargo)) colunas.push({ titulo: "Cargo", largura: 110, cel: (s4) => ({ texto: s4.cargo ?? "" }) });
+  if (tem((s4) => !!s4.entrada)) colunas.push({ titulo: "Entrada", largura: 62, cel: (s4) => ({ texto: s4.entrada ? dataBR(s4.entrada) : "" }) });
+  if (tem((s4) => s4.participacao !== null)) colunas.push({ titulo: "Particip.", largura: 55, alinhar: "right", cel: (s4) => ({ texto: s4.participacao !== null ? pct(s4.participacao) : "" }) });
+  p4.tabela(colunas.map(({ titulo, largura, alinhar }) => ({ titulo, largura, alinhar })), r5.socios.map((s4) => colunas.map((c4) => c4.cel(s4))));
+}
+function secaoConsultas(p4, r5, bruto) {
   const mensal = consultasPorMes(bruto);
+  const total = r5.complementos?.consultas12Meses;
+  if (!r5.consultasRecentes.length && !mensal && (total === null || total === void 0)) return;
+  p4.titulo("Consultas ao documento");
+  if (typeof total === "number") {
+    const listadas = r5.consultasRecentes.length;
+    p4.paragrafo(`Total em 12 meses: ${total}` + (listadas > 0 && listadas < total ? ` (a fonte listou ${listadas} de ${total})` : ""), { negrito: true, tam: 8.5 });
+  }
+  if (r5.consultasRecentes.length) {
+    const comQtd = r5.consultasRecentes.some((c4) => c4.quantidade > 1);
+    const colunas = [{ titulo: "Data", largura: 70 }, { titulo: "Consultante", largura: comQtd ? 360 : 445 }];
+    if (comQtd) colunas.push({ titulo: "Quantidade", largura: 85, alinhar: "right" });
+    p4.tabela(colunas, r5.consultasRecentes.map((c4) => [{ texto: dataBR(c4.data) }, { texto: txt2(c4.consultante) }, ...comQtd ? [{ texto: String(c4.quantidade) }] : []]));
+  }
   if (mensal) {
     p4.subtitulo("Consultas por m\xEAs");
     p4.tabela(
       mensal.colunas.map((titulo, i4) => ({ titulo, largura: i4 === 0 ? 44 : 38, alinhar: i4 === 0 ? "left" : "right" })),
-      mensal.linhas.map((l4) => l4.map((texto2, i4) => ({ texto: texto2, negrito: i4 === 0 })))
+      mensal.linhas.map((l4) => l4.map((texto2, i4) => ({ texto: texto2, negrito: i4 === 0 }))),
+      { compacta: true }
     );
   }
 }
-function secaoAnexo(p4, anexo) {
-  p4.nova();
-  p4.titulo("Anexo \u2014 Dados completos da resposta do provedor", false);
-  p4.paragrafo(
-    "Reprodu\xE7\xE3o autom\xE1tica de tudo o que o provedor devolveu nesta consulta, bloco a bloco. Campos vazios s\xE3o omitidos, CPF aparece mascarado e telefone/e-mail de pessoa f\xEDsica, parcialmente. As se\xE7\xF5es anteriores resumem apenas parte destes dados.",
-    { cor: CINZA, tam: 8.5 }
-  );
-  if (anexo.entregues.length) p4.paragrafo("Blocos entregues pela fonte: " + anexo.entregues.join(", "), { tam: 8.5 });
-  if (anexo.parametros.length) {
-    p4.subtitulo("Par\xE2metros da consulta");
-    p4.tabela([{ titulo: "Campo", largura: 150 }, { titulo: "Valor", largura: 365 }], anexo.parametros.map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }]));
+var PRIORIDADE_EVENTO = (k3) => /ltima compra/i.test(k3) ? 0 : /maior fatura/i.test(k3) ? 1 : /maior cr[ée]dito/i.test(k3) ? 2 : 3;
+function secaoComportamento(p4, r5, bruto, desenhar) {
+  const c4 = r5.comportamento;
+  const comp = comportamentoDe(bruto, r5.tipo === "CPF");
+  const eventos = [...comp?.eventos ?? []].sort((a5, b3) => PRIORIDADE_EVENTO(a5[0]) - PRIORIDADE_EVENTO(b3[0]));
+  const pares = [];
+  if (!eventos.some(([k3]) => PRIORIDADE_EVENTO(k3) === 0) && c4?.ultimaCompraEm) pares.push(["\xDAltima compra", dataBR(c4.ultimaCompraEm)]);
+  pares.push(...eventos.filter(([k3]) => PRIORIDADE_EVENTO(k3) < 3));
+  if (c4?.pagamentoPontualPct != null) pares.push(["Pagamentos em dia", pct(c4.pagamentoPontualPct)]);
+  if (c4?.relacionamentoMaisAntigoEm) pares.push(["Relacionamento mais antigo", dataBR(c4.relacionamentoMaisAntigoEm)]);
+  if (c4?.fontesConsultadas != null) pares.push(["Fornecedores que informaram", String(c4.fontesConsultadas)]);
+  pares.push(...eventos.filter(([k3]) => PRIORIDADE_EVENTO(k3) === 3));
+  const validos = pares.filter(([, v4]) => ok(v4));
+  if (!validos.length && !comp?.matriz.length && !comp?.relacionamento) return;
+  p4.titulo("Comportamento comercial");
+  if (validos.length) p4.paragrafo(validos.map(([k3, v4]) => `${k3}: ${v4}`).join("   |   "), { tam: 8.5 });
+  if (comp?.matriz.length) {
+    p4.subtitulo("\xDAltimos 12 meses");
+    for (const parte of comp.matriz) desenhar(parte);
   }
-  let omitidos = 0;
+  if (comp?.relacionamento) p4.paragrafo("Tempo de relacionamento com fornecedores \u2014 " + comp.relacionamento, { tam: 8.5 });
+}
+function secaoFinal(p4, consultadoPor) {
+  p4.paragrafo(
+    `Consultado por ${limparTexto(consultadoPor) || "usu\xE1rio n\xE3o identificado"}. Documento confidencial de uso interno da Sal Vita, para an\xE1lise de concess\xE3o de cr\xE9dito; reflete a situa\xE7\xE3o na data e hora da consulta e n\xE3o constitui garantia de pagamento. A decis\xE3o \xE9 da Sal Vita. Proibida a divulga\xE7\xE3o a terceiros (LGPD - Lei 13.709/2018).`,
+    { cor: CINZA, tam: 7.5 }
+  );
+}
+function desenharParte(p4, parte, ctr) {
+  switch (parte.t) {
+    case "sub":
+      p4.subtitulo(parte.texto);
+      break;
+    case "aviso":
+      p4.paragrafo(parte.texto, { cor: COR_SEMAFORO.VERMELHO, tam: 8.5 });
+      break;
+    case "campos":
+      ctr.omitidos += p4.tabela(
+        [{ titulo: "Campo", largura: 150 }, { titulo: "Valor", largura: 365 }],
+        parte.pares.map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }]),
+        { limitar: true }
+      );
+      break;
+    case "tabela": {
+      if (parte.continuacao) p4.paragrafo("(continua\xE7\xE3o: demais colunas dos mesmos registros)", { cor: CINZA, tam: 7.5 });
+      const falt = p4.tabela(
+        parte.colunas.map((titulo, i4) => ({ titulo, largura: parte.pesos[i4] })),
+        parte.linhas.map((l4) => l4.map((texto2, i4) => ({ texto: texto2, negrito: i4 === 0 && parte.colunas.length > 2 }))),
+        { limitar: true, compacta: parte.compacta }
+      );
+      if (!parte.continuacao) ctr.omitidos += falt;
+      break;
+    }
+    case "ficha":
+      for (let i4 = 0; i4 < parte.registros.length; i4++) {
+        if (p4.estourou()) {
+          ctr.omitidos += parte.registros.length - i4;
+          break;
+        }
+        p4.garantir(60);
+        if (parte.registros.length > 1) p4.paragrafo(`Registro ${i4 + 1} de ${parte.registros.length}`, { cor: CINZA, tam: 8, negrito: true });
+        p4.tabela(
+          [{ titulo: "Campo", largura: 150 }, { titulo: "Valor", largura: 365 }],
+          parte.registros[i4].map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }]),
+          { semCabecalho: true }
+        );
+      }
+      break;
+    case "lista":
+      for (let i4 = 0; i4 < parte.itens.length; i4++) {
+        if (p4.estourou()) {
+          ctr.omitidos += parte.itens.length - i4;
+          break;
+        }
+        p4.paragrafo("\u2022  " + parte.itens[i4], { tam: 8.5 });
+      }
+      break;
+  }
+}
+function secaoAnexo(p4, anexo) {
+  p4.titulo("Outras informa\xE7\xF5es da fonte", false);
+  p4.paragrafo("Dados da resposta da fonte que n\xE3o aparecem nas se\xE7\xF5es anteriores. Campos vazios omitidos; CPF mascarado.", { cor: CINZA, tam: 8 });
+  const ctr = { omitidos: 0 };
   for (const bloco of anexo.blocos) {
     if (p4.estourou()) {
-      omitidos += bloco.partes.reduce((a5, parte) => a5 + registrosDaParte(parte), 0);
+      ctr.omitidos += bloco.partes.reduce((a5, parte) => a5 + registrosDaParte(parte), 0);
       continue;
     }
     try {
-      p4.bloco(bloco.titulo, bloco.status);
-      if (!bloco.partes.length) {
-        p4.paragrafo("Bloco sem informa\xE7\xF5es preenchidas.", { cor: CINZA, tam: 8.5 });
-        continue;
-      }
+      p4.bloco(bloco.titulo);
       for (const parte of bloco.partes) {
         if (p4.estourou()) {
-          omitidos += registrosDaParte(parte);
+          ctr.omitidos += registrosDaParte(parte);
           continue;
         }
-        switch (parte.t) {
-          case "sub":
-            p4.subtitulo(parte.texto);
-            break;
-          case "aviso":
-            p4.paragrafo(parte.texto, { cor: COR_SEMAFORO.VERMELHO, tam: 8.5 });
-            break;
-          case "campos":
-            omitidos += p4.tabela(
-              [{ titulo: "Campo", largura: 150 }, { titulo: "Valor", largura: 365 }],
-              parte.pares.map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }]),
-              { limitar: true }
-            );
-            break;
-          case "tabela": {
-            if (parte.continuacao) p4.paragrafo("(continua\xE7\xE3o: demais colunas dos mesmos registros)", { cor: CINZA, tam: 7.5 });
-            const falt = p4.tabela(
-              parte.colunas.map((titulo, i4) => ({ titulo, largura: parte.pesos[i4] })),
-              parte.linhas.map((l4) => l4.map((texto2, i4) => ({ texto: texto2, negrito: i4 === 0 && parte.colunas.length > 2 }))),
-              { limitar: true, compacta: parte.compacta }
-            );
-            if (!parte.continuacao) omitidos += falt;
-            break;
-          }
-          case "ficha":
-            for (let i4 = 0; i4 < parte.registros.length; i4++) {
-              if (p4.estourou()) {
-                omitidos += parte.registros.length - i4;
-                break;
-              }
-              p4.garantir(60);
-              if (parte.registros.length > 1) p4.paragrafo(`Registro ${i4 + 1} de ${parte.registros.length}`, { cor: CINZA, tam: 8, negrito: true });
-              p4.tabela(
-                [{ titulo: "Campo", largura: 150 }, { titulo: "Valor", largura: 365 }],
-                parte.registros[i4].map(([k3, v4]) => [{ texto: k3, negrito: true, cor: CINZA }, { texto: v4 }]),
-                { semCabecalho: true }
-              );
-            }
-            break;
-          case "lista":
-            for (let i4 = 0; i4 < parte.itens.length; i4++) {
-              if (p4.estourou()) {
-                omitidos += parte.itens.length - i4;
-                break;
-              }
-              p4.paragrafo("\u2022  " + parte.itens[i4], { tam: 8.5 });
-            }
-            break;
-        }
+        desenharParte(p4, parte, ctr);
       }
     } catch {
       p4.paragrafo("Bloco n\xE3o renderizado.", { cor: COR_SEMAFORO.VERMELHO, tam: 8.5 });
     }
   }
-  if (omitidos > 0) {
-    p4.paragrafo(`Anexo truncado: ${omitidos} registros omitidos (limite de ${MAX_PAGINAS_PDF} p\xE1ginas no PDF).`, { cor: COR_SEMAFORO.VERMELHO, negrito: true, tam: 9 });
+  if (ctr.omitidos > 0) {
+    p4.paragrafo(`Anexo truncado: ${ctr.omitidos} registros omitidos (limite de ${MAX_PAGINAS_PDF} p\xE1ginas no PDF).`, { cor: COR_SEMAFORO.VERMELHO, negrito: true, tam: 9 });
   }
-  if (anexo.linkOriginal) p4.paragrafo("PDF original do provedor: " + anexo.linkOriginal, { tam: 8.5 });
-}
-function secaoFinal(p4, consultadoPor) {
-  const { doc } = p4;
-  const texto2 = "Documento confidencial, de uso interno da Sal Vita, destinado exclusivamente \xE0 an\xE1lise de concess\xE3o de cr\xE9dito. As informa\xE7\xF5es t\xEAm origem na fonte indicada neste relat\xF3rio e refletem a situa\xE7\xE3o na data e hora da consulta; n\xE3o constituem garantia de pagamento. A decis\xE3o de conceder ou negar cr\xE9dito \xE9 da Sal Vita, que pode considerar tamb\xE9m outros elementos. Proibida a divulga\xE7\xE3o ou o repasse a terceiros (LGPD - Lei 13.709/2018).";
-  doc.font("Helvetica").fontSize(8.5);
-  const h3 = doc.heightOfString(texto2, { width: LARG - 20 }) + 46;
-  p4.garantir(h3 + 10);
-  const y0 = p4.y + 6;
-  doc.roundedRect(MX, y0, LARG, h3, 5).fill(AZUL_CLARO);
-  doc.font("Helvetica").fontSize(8.5).fillColor(TEXTO).text(texto2, MX + 10, y0 + 10, { width: LARG - 20 });
-  doc.font("Helvetica-Bold").fontSize(9).fillColor(AZUL).text(`Consultado por ${limparTexto(consultadoPor) || "usu\xE1rio n\xE3o identificado"}`, MX + 10, y0 + h3 - 22, { width: LARG - 20, lineBreak: false });
-  p4.y = y0 + h3 + 6;
 }
 function fonteDosDados(r5) {
   const provedor = r5.fonte.provedor === "boavista_apifull" ? "API Full" : r5.fonte.provedor === "simulado" ? "Simulado" : r5.fonte.provedor;
@@ -340223,20 +340549,14 @@ function fonteDosDados(r5) {
 function cabecalhoRodape(doc, r5, i4, total) {
   const margens = doc.page.margins;
   doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
-  doc.rect(0, 0, W, 44).fill(AZUL);
-  doc.font("Helvetica-Bold").fontSize(13).fillColor("#FFFFFF").text("Relat\xF3rio de An\xE1lise de Cr\xE9dito \u2014 Sal Vita", MX, 12, { width: 360, lineBreak: false });
-  doc.font("Helvetica").fontSize(8).fillColor("#DCE6F7").text(`Fonte dos dados: ${fonteDosDados(r5)}`, MX, 29, { width: 360, lineBreak: false });
-  doc.font("Helvetica").fontSize(8).fillColor("#FFFFFF").text(`Consulta: ${dataHoraBR(r5.consultadoEm)}`, W - MX - 170, 14, { width: 170, align: "right", lineBreak: false });
-  doc.text(`${r5.tipo} ${formatarDocumento(r5.documento, r5.tipo)}`, W - MX - 170, 28, { width: 170, align: "right", lineBreak: false });
   if (r5.fonte.provedor === "simulado") {
-    doc.rect(0, 44, W, 22).fill(COR_SEMAFORO.VERMELHO);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor("#FFFFFF").text(FAIXA_SIMULACAO, MX, 51, { width: LARG, align: "center", lineBreak: false });
+    doc.rect(0, 0, W, 24).fill(COR_SEMAFORO.VERMELHO);
+    doc.font("Helvetica-Bold").fontSize(10).fillColor("#FFFFFF").text(FAIXA_SIMULACAO, MX, 7, { width: LARG, align: "center", lineBreak: false });
   }
-  const fy = H - 38;
+  const fy = H - 36;
   doc.moveTo(MX, fy).lineTo(W - MX, fy).lineWidth(0.5).strokeColor(LINHA).stroke();
   doc.font("Helvetica").fontSize(7.5).fillColor(CINZA).text("Confidencial \u2014 uso interno da Sal Vita para decis\xE3o de cr\xE9dito", MX, fy + 6, { width: 380, lineBreak: false });
   doc.text(`P\xE1gina ${i4 + 1} de ${total}`, W - MX - 100, fy + 6, { width: 100, align: "right", lineBreak: false });
-  doc.text(`Consulta em ${dataHoraBR(r5.consultadoEm)}`, MX, fy + 17, { width: 380, lineBreak: false });
   doc.page.margins = margens;
 }
 async function gerarPdfCredito(relatorio, meta, bruto) {
@@ -340263,20 +340583,27 @@ async function gerarPdfCredito(relatorio, meta, bruto) {
     const p4 = new Pagina(doc);
     const dataConsulta = new Date(relatorio.consultadoEm);
     const agora = Number.isFinite(dataConsulta.getTime()) ? dataConsulta : /* @__PURE__ */ new Date();
-    secaoResumo(p4, relatorio, meta);
-    secaoPontosDeAtencao(p4, relatorio, agora);
-    secaoAnotacoes(p4, relatorio, agora);
-    secaoCadastro(p4, relatorio);
-    secaoMovimentacao(p4, relatorio);
-    secaoComplementos(p4, relatorio);
-    secaoSocios(p4, relatorio);
-    secaoConsultas(p4, relatorio, bruto);
-    secaoFinal(p4, meta.consultadoPor);
+    let anexo = null;
     try {
-      const anexo = montarAnexo(bruto, { pessoaFisica: relatorio.tipo === "CPF" });
-      if (anexo) secaoAnexo(p4, anexo);
+      anexo = montarAnexo(bruto, { pessoaFisica: relatorio.tipo === "CPF" });
     } catch (e4) {
       console.error("[credito] anexo do pdf falhou:", e4 instanceof Error ? e4.message : "erro");
+    }
+    const ctr = { omitidos: 0 };
+    secaoResumo(p4, relatorio, meta);
+    secaoPontosDeAtencao(p4, relatorio, agora, anexo?.avisos ?? []);
+    secaoAnotacoes(p4, relatorio, agora, anexo);
+    secaoEmpresa(p4, relatorio, bruto, agora);
+    secaoSocios(p4, relatorio);
+    secaoConsultas(p4, relatorio, bruto);
+    secaoComportamento(p4, relatorio, bruto, (parte) => desenharParte(p4, parte, ctr));
+    secaoFinal(p4, meta.consultadoPor);
+    if (anexo?.blocos.length) {
+      try {
+        secaoAnexo(p4, anexo);
+      } catch (e4) {
+        console.error("[credito] anexo do pdf falhou:", e4 instanceof Error ? e4.message : "erro");
+      }
     }
     const { start: start2, count: count2 } = doc.bufferedPageRange();
     for (let i4 = 0; i4 < count2; i4++) {
@@ -343294,8 +343621,8 @@ function registerSmbiCadastroRoutes(app2, limiter) {
         return;
       }
       const gateLigado = sql`exists (select 1 from smbi_robot_state where id = 1 and cadastro_ativo = true)`;
-      const ok = await gravar(row, d3.patch, [...comReserva(reserva(req), agora), eq(smbiClientRegistrations.empresaCnpj, body.data.empresaCnpj), gt(smbiClientRegistrations.aprovacaoExpiraEm, agora), eq(smbiClientRegistrations.snapshotHash, body.data.snapshotHash), eq(smbiClientRegistrations.pedidoHash, hashPedidoAtual), gateLigado]);
-      if (!ok) {
+      const ok2 = await gravar(row, d3.patch, [...comReserva(reserva(req), agora), eq(smbiClientRegistrations.empresaCnpj, body.data.empresaCnpj), gt(smbiClientRegistrations.aprovacaoExpiraEm, agora), eq(smbiClientRegistrations.snapshotHash, body.data.snapshotHash), eq(smbiClientRegistrations.pedidoHash, hashPedidoAtual), gateLigado]);
+      if (!ok2) {
         const fresh = await carregar(row.id);
         const d22 = fresh ? decidirIniciar2(fresh, body.data, reserva(req), hashPedidoAtual, ativo, /* @__PURE__ */ new Date()) : null;
         if (d22?.ok && d22.idempotente) {
@@ -343804,8 +344131,8 @@ app.post("/api/mp-webhook", webhookLimiter, import_express3.default.raw({ type: 
           const dataId = typeof qId === "string" ? qId : body?.data?.id != null ? String(body.data.id) : "";
           const manifest = mpSignatureManifest(dataId, xReqId, ts3);
           const expected = import_crypto18.default.createHmac("sha256", webhookSecret).update(manifest).digest("hex");
-          const ok = expected.length === v1.length && import_crypto18.default.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
-          if (ok) console.log("[mp-webhook] HMAC signature valid");
+          const ok2 = expected.length === v1.length && import_crypto18.default.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+          if (ok2) console.log("[mp-webhook] HMAC signature valid");
           else console.warn("[mp-webhook] HMAC signature mismatch \u2014 continuing (payment is verified via MP API)");
         }
       } else {
@@ -344469,9 +344796,9 @@ async function processUnpaidFollowups() {
       }
       const vars = { nome: o4.customerName, pedido: String(o4.id), valor: brl(o4.totalPrice), link, pix };
       const msg = tpl ? renderTemplate2(tpl.body, vars) : o4.paymentStatus === "failed" ? `Ol\xE1 *${o4.customerName}*! \u{1F615} Houve um problema no pagamento do pedido *#${o4.id}*. Tente novamente: ${link}` : `Ol\xE1 *${o4.customerName}*! \u{1F4B8} Seu pedido *#${o4.id}* (R$ ${brl(o4.totalPrice)}) ainda est\xE1 aguardando pagamento. Finalize: ${link}`;
-      const ok = await sendWhatsApp(o4.customerPhone, msg);
-      if (ok) sent++;
-      if (ok && pix) {
+      const ok2 = await sendWhatsApp(o4.customerPhone, msg);
+      if (ok2) sent++;
+      if (ok2 && pix) {
         await new Promise((r5) => setTimeout(r5, 1e3));
         await sendWhatsApp(o4.customerPhone, pix);
       }
@@ -344594,8 +344921,8 @@ J\xE1 faz um tempinho desde o seu pedido *#${o4.id}* do *Sal Marinho Integral Sa
 ${cupomTexto}\u{1F449} Fa\xE7a seu novo pedido: ${link}
 
 _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
-      const ok = await sendWhatsApp(o4.customerPhone, msg);
-      if (ok) sent++;
+      const ok2 = await sendWhatsApp(o4.customerPhone, msg);
+      if (ok2) sent++;
       await new Promise((r5) => setTimeout(r5, 1e3));
     }
   } catch (e4) {
@@ -344713,8 +345040,8 @@ Qualquer d\xFAvida \xE9 s\xF3 chamar! \u{1F60A}
 _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
       }
       try {
-        const ok = await sendWhatsApp(run2.customerPhone, msg);
-        if (ok) {
+        const ok2 = await sendWhatsApp(run2.customerPhone, msg);
+        if (ok2) {
           await withDbRetry("mark-run-sent", () => ordersDb.update(runs).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id)));
           await ordersDb.update(carts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(carts.id, run2.cartId));
           sent++;
