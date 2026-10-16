@@ -11,6 +11,8 @@ const BASE = 'https://api.apifull.com.br';
 const token = process.env.APIFULL_API_TOKEN;
 const args = process.argv.slice(2);
 const confirmar = args.includes('--confirmar');
+// --max-gasto=N (R$): para ANTES de cada endpoint se o gasto acumulado já chegou a N (o preço de cada um só se sabe depois).
+const maxGasto = Number((args.find((a) => a.startsWith('--max-gasto=')) ?? '').split('=')[1] ?? '') || null;
 const [cnpjBruto, ...resto] = args.filter((a) => !a.startsWith('--'));
 const cnpj = (cnpjBruto ?? '').replace(/\D/g, '');
 const endpoints = resto;
@@ -54,6 +56,10 @@ const pasta = `sonda-saida/${cnpj}`; mkdirSync(pasta, { recursive: true });
 const quadro = [];
 let anterior = s0.valor;
 for (const ep of endpoints) {
+  if (maxGasto !== null && s0.valor !== null && anterior !== null && s0.valor - anterior >= maxGasto) {
+    quadro.push({ endpoint: ep, http: null, status: 'PULADO (limite --max-gasto)', custoReais: 0, campos: 0, chaves: '', dados: '', erro: null });
+    continue;
+  }
   let http = null, status = null, corpo = null, erro = null;
   try {
     const r = await fetch(`${BASE}/api/${ep}`, { method: 'POST', headers: H, body: JSON.stringify({ link: ep, document: cnpj, cnpj }), signal: AbortSignal.timeout(60000) });
