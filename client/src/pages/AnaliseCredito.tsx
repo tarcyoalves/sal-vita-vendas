@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, Download, FileText, Loader2, Search, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Download, FileText, Loader2, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
 import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Page, PageHeader, Panel, PanelHeader, Stat, StatStrip, EmptyState, AccessDenied } from '../components/layout/Page';
@@ -141,7 +141,15 @@ function ConsultaAvulsa({ podeConsultar }: { podeConsultar: boolean }) {
   );
 }
 
-function Arquivo() {
+function Arquivo({ administrar }: { administrar: boolean }) {
+  const utils = trpc.useUtils();
+  const reprocessar = trpc.credito.reprocessar.useMutation({
+    onSuccess: (r) => {
+      toast.success(`Relatório #${r.id} reprocessado sem custo: ${ROTULO_VEREDITO[r.veredito]}`);
+      void utils.credito.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const [filtros, setFiltros] = useState<FiltrosArquivo>(FILTROS_VAZIOS);
   const [buscaDigitada, setBuscaDigitada] = useState('');
   const [pagina, setPagina] = useState(1);
@@ -171,6 +179,14 @@ function Arquivo() {
       <Button size="lg" variant="outline" className="h-10" onClick={() => void baixar(id)} disabled={baixandoId !== null}>
         {baixandoId === id ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}Baixar PDF
       </Button>
+      {administrar && (
+        <Button
+          size="lg" variant="outline" className="h-10" title="Refaz a análise com a resposta já paga, sem nova cobrança"
+          onClick={() => reprocessar.mutate({ id })} disabled={reprocessar.isPending}
+        >
+          {reprocessar.isPending && reprocessar.variables?.id === id ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />}Reprocessar
+        </Button>
+      )}
     </div>
   );
 
@@ -368,7 +384,7 @@ export default function AnaliseCredito() {
       {perm.administrar && <ControlesAdmin />}
       <ConsultaAvulsa podeConsultar={perm.consultar} />
       <CatalogoComparativo />
-      <Arquivo />
+      <Arquivo administrar={perm.administrar} />
     </Page>
   );
 }
