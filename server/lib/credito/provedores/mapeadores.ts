@@ -97,7 +97,7 @@ const primeiro = (o: Obj, chaves: string[]): { chave: string; valor: string } | 
 function extrasDe(o: Obj, usados: Set<string>): Record<string, string> | undefined {
   const extras: Record<string, string> = {};
   for (const [k, v] of Object.entries(o)) {
-    if (usados.has(k)) continue;
+    if (usados.has(k) || k.toUpperCase() === 'MOEDA') continue; // a moeda já está no valor formatado (R$)
     const bruto = typeof v === 'string' || typeof v === 'number' ? String(v)
       : Array.isArray(v) ? v.filter((x) => typeof x === 'string' || typeof x === 'number').join(', ') : '';
     const seguro = valorSeguro(k, bruto);

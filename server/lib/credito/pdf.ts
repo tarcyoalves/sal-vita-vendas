@@ -30,7 +30,8 @@ const FUNDO_SEMAFORO = { VERDE: '#E6F4EA', AMARELO: '#FFF6DB', VERMELHO: '#FDE8E
 const W = 595.28;
 const H = 841.89;
 const MX = 40;
-const TOPO = 72; // abaixo do cabeçalho
+const TOPO = 40; // sem cabeçalho azul (o título e os dados do documento estão no corpo da 1ª página)
+const TOPO_SIMULADO = 40;
 const BASE = 56; // reserva do rodapé
 const LARG = W - MX * 2;
 const LIMITE_Y = H - BASE;
@@ -640,20 +641,11 @@ function cabecalhoRodape(doc: Doc, r: RelatorioCredito, i: number, total: number
   const margens = doc.page.margins;
   doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
 
-  doc.rect(0, 0, W, 44).fill(AZUL);
-  doc.font('Helvetica-Bold').fontSize(13).fillColor('#FFFFFF')
-    .text('Relatório de Análise de Crédito — Sal Vita', MX, 12, { width: 360, lineBreak: false });
-  doc.font('Helvetica').fontSize(8).fillColor('#DCE6F7')
-    .text(`Fonte dos dados: ${fonteDosDados(r)}`, MX, 29, { width: 360, lineBreak: false });
-  doc.font('Helvetica').fontSize(8).fillColor('#FFFFFF')
-    .text(`Consulta: ${dataHoraBR(r.consultadoEm)}`, W - MX - 170, 14, { width: 170, align: 'right', lineBreak: false });
-  doc.text(`${r.tipo} ${formatarDocumento(r.documento, r.tipo)}`, W - MX - 170, 28, { width: 170, align: 'right', lineBreak: false });
-
   if (r.fonte.provedor === 'simulado') {
-    // Faixa em TODAS as páginas, logo abaixo do cabeçalho azul (a área útil começa em TOPO=72).
-    doc.rect(0, 44, W, 22).fill(COR_SEMAFORO.VERMELHO);
+    // Faixa em TODAS as páginas, no topo (a área útil começa em TOPO=40).
+    doc.rect(0, 0, W, 24).fill(COR_SEMAFORO.VERMELHO);
     doc.font('Helvetica-Bold').fontSize(10).fillColor('#FFFFFF')
-      .text(FAIXA_SIMULACAO, MX, 51, { width: LARG, align: 'center', lineBreak: false });
+      .text(FAIXA_SIMULACAO, MX, 7, { width: LARG, align: 'center', lineBreak: false });
   }
 
   const fy = H - 38;
@@ -661,7 +653,7 @@ function cabecalhoRodape(doc: Doc, r: RelatorioCredito, i: number, total: number
   doc.font('Helvetica').fontSize(7.5).fillColor(CINZA)
     .text('Confidencial — uso interno da Sal Vita para decisão de crédito', MX, fy + 6, { width: 380, lineBreak: false });
   doc.text(`Página ${i + 1} de ${total}`, W - MX - 100, fy + 6, { width: 100, align: 'right', lineBreak: false });
-  doc.text(`Consulta em ${dataHoraBR(r.consultadoEm)}`, MX, fy + 17, { width: 380, lineBreak: false });
+  doc.text(`Fonte dos dados: ${fonteDosDados(r)}`, MX, fy + 17, { width: 380, lineBreak: false });
 
   doc.page.margins = margens;
 }

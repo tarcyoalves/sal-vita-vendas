@@ -57,8 +57,11 @@ const ACENTOS: Record<string, string> = {
   emissao: 'emissão', vencimento: 'vencimento', judicial: 'judicial', distribuicao: 'distribuição', natureza: 'natureza',
   fisica: 'física', economico: 'econômico', economica: 'econômica', prazo: 'prazo', saldo: 'saldo', agencia: 'agência',
   banco: 'banco', alinea: 'alínea', cheque: 'cheque', cheques: 'cheques', telefone: 'telefone', residencial: 'residencial',
+  primario: 'primário', secundario: 'secundário', inscricao: 'inscrição', estadual: 'estadual', matriz: 'matriz',
   comerciais: 'comerciais', fornecedor: 'fornecedor', fornecedores: 'fornecedores', regiao: 'região', atuacao: 'atuação',
 };
+
+const SIGLAS = new Set(['cnpj', 'cpf', 'uf', 'cep', 'cnae', 'nire', 'ie']);
 
 /** Tira o prefixo "xxx:" do Define Risco ('scor:score_pj' -> 'score_pj'). */
 export const semPrefixo = (k: string): string => {
@@ -71,7 +74,7 @@ export function humanizarChave(chave: string): string {
   const base = semPrefixo(chave).trim();
   const palavras = base.replace(/[_\s]+/g, ' ').trim().toLowerCase().split(' ').filter(Boolean);
   if (!palavras.length) return chave;
-  const f = palavras.map((p) => ACENTOS[p] ?? p).join(' ');
+  const f = palavras.map((p) => SIGLAS.has(p) ? p.toUpperCase() : (ACENTOS[p] ?? p)).join(' ');
   return f.charAt(0).toUpperCase() + f.slice(1);
 }
 

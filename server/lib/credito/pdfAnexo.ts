@@ -254,6 +254,7 @@ function tabelaDe(linhasBrutas: Obj[], ctx: Ctx): Parte[] {
   let usadas: number[] = [];
   for (let j = 0; j < chaves.length; j++) {
     if (!celulas.some((l) => l[j] !== '')) continue;
+    if (semAcento(semPrefixo(chaves[j])) === 'moeda') continue; // já embutida no valor (R$)
     const dup = usadas.findIndex((u) => mesmoConteudo(u, j));
     if (dup < 0) usadas.push(j);
     else if (maisDescritiva(j, usadas[dup])) usadas = usadas.map((u, i) => (i === dup ? j : u));
