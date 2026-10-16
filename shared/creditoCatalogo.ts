@@ -111,6 +111,23 @@ export const itemDoCatalogo = (chave: string): ItemCatalogoCredito | undefined =
 /** Só item com custo medido pode ser consultado/selecionado. */
 export const itemSelecionavel = (i: Pick<ItemCatalogoCredito, 'custoReais'>): boolean => i.custoReais !== null;
 
+/** As duas fontes da "Consulta completa" (preset de um clique e relatório consolidado), na ordem de exibição. */
+export const CONSULTA_COMPLETA = ['boavista', 'serasa_premium'] as const;
+
+/** Soma dos custos medidos da consulta completa; null se algum ainda não foi medido. */
+export function custoConsultaCompleta(itens: readonly ItemCatalogoCredito[] = CATALOGO_CREDITO): number | null {
+  let total = 0;
+  for (const chave of CONSULTA_COMPLETA) {
+    const custo = itens.find((i) => i.chave === chave)?.custoReais;
+    if (custo === null || custo === undefined) return null;
+    total += custo;
+  }
+  return arredondar(total);
+}
+
+/** Das fontes da consulta completa, as que NÃO estão entre os produtos já consultados (chaves). */
+export const fontesFaltantes = (consultados: readonly string[]): string[] => CONSULTA_COMPLETA.filter((c) => !consultados.includes(c));
+
 /** Valor gravado em credit_reports.produto: a chave do catálogo; linhas antigas guardavam o nome do provedor. */
 export function chaveDoProdutoGravado(produto: string | null | undefined, provedor: string | null | undefined): string {
   if (produto && itemDoCatalogo(produto)) return produto;

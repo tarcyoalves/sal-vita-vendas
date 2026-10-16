@@ -6,7 +6,7 @@
 // vazio = "". Bloco ausente = a fonte não devolveu => consultado:false ("Não informado pela fonte"); "Nada consta" só
 // quando o bloco veio e a quantidade é 0. Contatos (telefone/e-mail) NÃO são mapeados: dado pessoal.
 // O bruto completo continua em credit_reports.payload_bruto.
-import type { GrupoAnotacao, RelatorioCredito } from '../../../../shared/credito';
+import type { GrupoAnotacao, RelatorioCredito, ScoreExtra } from '../../../../shared/credito';
 import { PRODUTO_PADRAO } from '../../../../shared/creditoCatalogo';
 import { humanizarChave, valorSeguro } from '../../../../shared/creditoRotulos';
 
@@ -146,15 +146,51 @@ const itemGenerico = (rotulo: string): ItemDe => (o) => {
   };
 };
 
+/**
+ * Ação cível (Serasa): REQUERIDO, ACAO, FORO/UF, VARA, PROCESSO, DISTRIBUICAO (data), VALOR. As chaves foram descritas a
+ * partir do PDF do provedor (o JSON dessa lista ainda não foi visto): leitura defensiva com alternativas; o que sobrar vai
+ * para `extras` (ex.: Requerido).
+ */
+const itemAcao: ItemDe = (o) => {
+  const dt = ['DISTRIBUICAO', 'DATA_DISTRIBUICAO', 'DATA'].map((k) => ({ k, v: dataPtBr(o[k]) })).find((x) => x.v);
+  const usados = new Set(['VALOR']);
+  if (dt) usados.add(dt.k);
+  const acao = primeiro(o, ['ACAO', 'TIPO_ACAO', 'NATUREZA', 'ASSUNTO']);
+  if (acao) usados.add(acao.chave);
+  const foro = primeiro(o, ['FORO', 'COMARCA', 'CIDADE', 'MUNICIPIO']);
+  const uf = primeiro(o, ['UF', 'ESTADO']);
+  const vara = primeiro(o, ['VARA', 'JUIZO']);
+  for (const x of [foro, uf, vara]) if (x) usados.add(x.chave);
+  const foroUf = foro && uf ? `${foro.valor}/${uf.valor}` : (foro?.valor ?? uf?.valor ?? null);
+  const proc = primeiro(o, ['PROCESSO', 'NUMERO_PROCESSO', 'NUM_PROCESSO']);
+  if (proc) usados.add(proc.chave);
+  return {
+    data: dt?.v ?? null, descricao: acao?.valor ?? 'Ação cível', valor: numeroPtBr(o.VALOR),
+    local: [foroUf, vara?.valor].filter((x): x is string => !!x).join(' — ') || null,
+    processo: proc?.valor ?? null, credor: null, extras: extrasDe(o, usados),
+  };
+};
+
+const CHAVES_QTD = ['QUANTIDADE_OCORRENCIA', 'QUANTIDADE_OCORRENCIAS', 'TOTAL_ACOES', 'TOTAL_DE_ACOES', 'QUANTIDADE_ACOES'];
+const CHAVES_VALOR_TOTAL = ['VALOR_TOTAL', 'TOTAL_VALOR', 'VALOR_TOTAL_ACOES'];
+/** Primeiro número encontrado nas chaves, no bloco ou no seu resumo (RESUMO/TOTAIS), quando existir. */
+function numeroDe(b: Obj, chaves: string[]): number | null {
+  for (const alvo of [b, obj(b.RESUMO), obj(b.TOTAIS)]) {
+    if (!alvo) continue;
+    for (const k of chaves) { const n = numeroPtBr(alvo[k]); if (n !== null) return n; }
+  }
+  return null;
+}
+
 /** Bloco ausente => consultado:false. Presente com quantidade (mesmo "0") ou itens => consultado:true. */
 function grupoDe(bloco: unknown, item: ItemDe): GrupoAnotacao {
   const b = obj(bloco);
   if (!b) return grupoNaoConsultado();
   const itens = lista(b.OCORRENCIAS).map(item);
-  const qtd = numeroPtBr(b.QUANTIDADE_OCORRENCIA) ?? numeroPtBr(b.QUANTIDADE_OCORRENCIAS);
+  const qtd = numeroDe(b, CHAVES_QTD);
   if (qtd === null && itens.length === 0) return grupoNaoConsultado();
   const quantidade = qtd ?? itens.length;
-  return { consultado: true, quantidade, valorTotal: numeroPtBr(b.VALOR_TOTAL) ?? somaValores(itens) ?? (quantidade === 0 ? 0 : null), itens };
+  return { consultado: true, quantidade, valorTotal: numeroDe(b, CHAVES_VALOR_TOTAL) ?? somaValores(itens) ?? (quantidade === 0 ? 0 : null), itens };
 }
 
 function juntarGrupos(a: GrupoAnotacao, b: GrupoAnotacao): GrupoAnotacao {
@@ -179,17 +215,135 @@ function cadastroDe(emp: Obj | null): ConteudoMapeado['cadastro'] {
   };
 }
 
-/** Escolhe a entrada de score. `exigirProbabilidade`: só vale a que tem probabilidade numérica ("NAO CALCULADO" não vale). */
+const faixaDe = (e: Obj): string | null =>
+  txt(e.CLASSIF_ABC) ?? txt(e.FAIXA_SCORE) ?? txt(e.FAIXA) ?? txt(e.DESCR_FAIXA) ?? txt(e.CLASSIF_NRO);
+
+/**
+ * Lê TODAS as entradas de score da fonte. O principal (o que as regras e o card individual usam) é a primeira entrada
+ * calculada; as demais ficam em `outros`, na ordem da fonte, SEM somar nem fazer média. Entrada "NAO CALCULADO" vira
+ * score null. `exigirProbabilidade` (Serasa): só vale a entrada com probabilidade numérica.
+ * Com mais de uma entrada, cada uma ganha rótulo: "Score 1", "Score 2" (ou o LAYOUT/TIPO_SCORE/DESCR_SCORE da fonte,
+ * quando todos vierem preenchidos e diferentes entre si).
+ */
 function scoreDe(scores: unknown, exigirProbabilidade: boolean): ConteudoMapeado['score'] {
   const entradas = lista(obj(scores)?.OCORRENCIAS);
-  const valida = (o: Obj) => { const n = numeroPtBr(o.SCORE); return n !== null && n >= 0 && n <= 1000; };
-  const e = entradas.find((o) => valida(o) && numeroPtBr(o.PROBABILIDADE_INADIMPLENCIA) !== null)
-    ?? (exigirProbabilidade ? undefined : entradas.find(valida));
-  if (!e) return { valor: null, probabilidadeInadimplencia: null, faixa: null, textoInterpretacao: null };
-  return {
-    valor: numeroPtBr(e.SCORE), probabilidadeInadimplencia: numeroPtBr(e.PROBABILIDADE_INADIMPLENCIA),
-    faixa: txt(e.CLASSIF_ABC) ?? txt(e.CLASSIF_NRO), textoInterpretacao: txt(e.TEXTO),
+  const lido = entradas.map((o, i) => {
+    const n = numeroPtBr(o.SCORE);
+    const prob = numeroPtBr(o.PROBABILIDADE_INADIMPLENCIA);
+    const faixaValida = n !== null && n >= 0 && n <= 1000;
+    const calculado = faixaValida && (!exigirProbabilidade || prob !== null);
+    return { o, i, calculado, n: calculado ? n : null, prob: calculado ? prob : null };
+  });
+  const descr = entradas.map((o) => txt(o.DESCR_SCORE) ?? txt(o.TIPO_SCORE) ?? txt(o.LAYOUT));
+  const usarDescr = entradas.length > 1 && descr.every((d) => d !== null) && new Set(descr.map((d) => semAcento(d as string))).size === descr.length;
+  const rotulo = (i: number) => (usarDescr ? (descr[i] as string) : `Score ${i + 1}`);
+  const principal = lido.find((x) => x.calculado && x.prob !== null) ?? (exigirProbabilidade ? undefined : lido.find((x) => x.calculado));
+  if (!principal) return { valor: null, probabilidadeInadimplencia: null, faixa: null, textoInterpretacao: null };
+  const base = {
+    valor: principal.n, probabilidadeInadimplencia: principal.prob, faixa: faixaDe(principal.o), textoInterpretacao: txt(principal.o.TEXTO),
   };
+  if (lido.length < 2) return base;
+  const outros: ScoreExtra[] = lido.filter((x) => x !== principal).map((x) => ({
+    valor: x.n, probabilidadeInadimplencia: x.prob, faixa: x.calculado ? faixaDe(x.o) : null,
+    texto: txt(x.o.TEXTO), rotulo: rotulo(x.i),
+  }));
+  return { ...base, rotulo: rotulo(principal.i), outros };
+}
+
+// ── Dados que só algumas fontes trazem (Serasa Premium / Boa Vista) ───────────────────────────────────────
+type Complementos = NonNullable<RelatorioCredito['complementos']>;
+
+const semAcento = (t: string): string => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+
+/** "CONSULTAS 30 DIAS" etc. + "QUANTIDADE TOTAL: N" (contagens OFICIAIS) e "ULTIMAS CONSULTAS" (mês/ano + quantidade + segmento). */
+function consultasDoAlertas(c: Obj): Pick<Complementos, 'consultasJanelas' | 'consultasPorSegmento'> {
+  const out: Pick<Complementos, 'consultasJanelas' | 'consultasPorSegmento'> = {};
+  const janelas = { ate30: null as number | null, de31a60: null as number | null, de61a90: null as number | null, mais90: null as number | null };
+  let achouJanela = false;
+  const segmentos: NonNullable<Complementos['consultasPorSegmento']> = [];
+  for (const o of lista(obj(c.INFORMACOES_ALERTAS_RESTRICOES)?.OCORRENCIAS)) {
+    const titulo = semAcento(txt(o.TITULO) ?? '');
+    const bruto = o.OBSERVACOES;
+    const obs = Array.isArray(bruto) ? bruto.filter((x) => typeof x === 'string').join(' ') : (txt(bruto) ?? '');
+    if (/ULTIMAS?\s+CONSULTAS/.test(titulo)) {
+      // "DATA:/10/2025/QUANTIDADE:2/SEGMENTO:ATIVIDADES DE CONSULTORIA EM G" (a fonte pode omitir o dia e truncar o segmento)
+      for (const m of obs.matchAll(/DATA:\s*(?:(?:\d{1,2})?\/)?(\d{1,2})\/(\d{4})\s*\/\s*QUANTIDADE:\s*(\d+)\s*\/\s*SEGMENTO:\s*(.+?)\s*(?=DATA:|$)/gi)) {
+        const mes = Number(m[1]);
+        segmentos.push({ mes: mes >= 1 && mes <= 12 ? `${m[2]}-${String(mes).padStart(2, '0')}` : null, quantidade: Number(m[3]), segmento: m[4].trim().replace(/[\s;|,]+$/, '') });
+      }
+      continue;
+    }
+    if (!/CONSULTAS?/.test(titulo)) continue;
+    const q = obs.match(/QUANTIDADE\s+TOTAL\s*:\s*(\d+)/i);
+    const n = q ? Number(q[1]) : null;
+    if (n === null) continue;
+    if (/31\s*A\s*60/.test(titulo)) { janelas.de31a60 = n; achouJanela = true; }
+    else if (/61\s*A\s*90/.test(titulo)) { janelas.de61a90 = n; achouJanela = true; }
+    else if (/90\s*\+|MAIS\s+DE\s+90|ACIMA\s+DE\s+90/.test(titulo)) { janelas.mais90 = n; achouJanela = true; }
+    else if (/\b30\s+DIAS/.test(titulo)) { janelas.ate30 = n; achouJanela = true; }
+  }
+  if (achouJanela) out.consultasJanelas = janelas;
+  if (segmentos.length) out.consultasPorSegmento = segmentos;
+  return out;
+}
+
+const MESES_NOMES = ['JANEIRO', 'FEVEREIRO', 'MARCO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+/** HIST_CONSULTAS.QUANTIDADES: [{ANO, JANEIRO, FEVEREIRO...}] -> um item por ano, 12 meses (null = sem dado). */
+function consultasPorMesDe(hist: Obj | null): Complementos['consultasPorMes'] {
+  const out: NonNullable<Complementos['consultasPorMes']> = [];
+  for (const o of lista(hist?.QUANTIDADES)) {
+    const ano = numeroPtBr(o.ANO);
+    if (ano === null) continue;
+    const meses: Array<number | null> = new Array<number | null>(12).fill(null);
+    for (const [k, v] of Object.entries(o)) {
+      const nome = semAcento(k).trim();
+      const i = MESES_NOMES.indexOf(nome) >= 0 ? MESES_NOMES.indexOf(nome) : MESES.indexOf(nome);
+      if (i >= 0) meses[i] = numeroPtBr(v);
+    }
+    if (meses.some((m) => m !== null)) out.push({ ano, meses });
+  }
+  return out.length ? out.sort((a, b) => b.ano - a.ano) : undefined;
+}
+
+const textoDe = (o: Obj, chaves: string[]): string | null => primeiro(o, chaves)?.valor ?? null;
+
+/** Faixa de funcionários, CNAEs secundários, tempo de atuação, matriz/filial e representante (nomes de chave defensivos). */
+function empresaComplementos(emp: Obj | null): Partial<Complementos> {
+  if (!emp) return {};
+  const out: Partial<Complementos> = {};
+  const func = txt(emp.FAIXA_FUNCIONARIOS);
+  if (func) out.funcionariosFaixa = func;
+  const chaveCnae = Object.keys(emp).find((k) => /^CNAES?_?SECUND/.test(semAcento(k)));
+  if (chaveCnae) {
+    const v = emp[chaveCnae];
+    const itens = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[;|]/) : [];
+    const cnaes = itens.map((x) => {
+      if (ehObjeto(x)) return [textoDe(x, ['CNAE', 'CODIGO']), textoDe(x, ['DESCRICAO', 'ATIVIDADE'])].filter(Boolean).join('-');
+      return typeof x === 'string' || typeof x === 'number' ? String(x).trim() : '';
+    }).filter(Boolean);
+    const unicos = [...new Set(cnaes)];
+    if (unicos.length) out.cnaesSecundarios = unicos;
+  }
+  const atuacao = Object.keys(emp).find((k) => /^TEMPO.*ATUA/.test(semAcento(k)));
+  if (atuacao && txt(emp[atuacao])) out.tempoAtuacao = txt(emp[atuacao]);
+  const chaveMF = Object.keys(emp).find((k) => /^(MATRIZ|FILIAL|TIPO_ESTABELECIMENTO)/.test(semAcento(k)) && txt(emp[k]));
+  if (chaveMF) {
+    const v = (txt(emp[chaveMF]) ?? '').toUpperCase();
+    if (/^MATRIZ/.test(semAcento(chaveMF)) && !/MATRIZ|FILIAL/.test(v)) out.matrizFilial = /^(S|SIM|1|TRUE)$/.test(v) ? 'Matriz' : /^(N|NAO|0|FALSE)$/.test(v) ? 'Filial' : v;
+    else out.matrizFilial = txt(emp[chaveMF]);
+  }
+  const rep = emp.REPRESENTANTE;
+  if (ehObjeto(rep)) {
+    const nome = textoDe(rep, ['NOME', 'NOME_REPRESENTANTE', 'RAZAO_SOCIAL']);
+    const doc = textoDe(rep, ['CPF', 'CPF_CNPJ', 'DOCUMENTO']);
+    if (nome || doc) out.representante = { nome, documento: doc };
+  } else if (txt(rep)) {
+    out.representante = { nome: txt(rep), documento: textoDe(emp, ['REPRESENTANTE_CPF', 'CPF_REPRESENTANTE']) };
+  } else {
+    const nome = textoDe(emp, ['REPRESENTANTE_NOME', 'NOME_REPRESENTANTE']);
+    if (nome) out.representante = { nome, documento: textoDe(emp, ['REPRESENTANTE_CPF', 'CPF_REPRESENTANTE']) };
+  }
+  return out;
 }
 
 const credDe = (json: unknown): Obj | null => obj(obj(obj(json)?.dados)?.CREDCADASTRAL);
@@ -213,7 +367,15 @@ export function mapeadorBoaVista(json: unknown): ConteudoMapeado {
     comportamento: eventos || pontual
       ? { ultimaCompraEm: compra ? periodoMes(compra.PERIODO) : null, relacionamentoMaisAntigoEm: null, fontesConsultadas: null, pagamentoPontualPct: numeroPtBr(pontual?.PONTUACAO) }
       : undefined,
-    complementos: hist ? { consultas12Meses: numeroPtBr(hist.QUANTIDADE_OCORRENCIAS) } : undefined,
+    complementos: (() => {
+      const porMes = consultasPorMesDe(hist);
+      const comp: Complementos = {
+        ...(hist ? { consultas12Meses: numeroPtBr(hist.QUANTIDADE_OCORRENCIAS) } : {}),
+        ...(porMes ? { consultasPorMes: porMes } : {}),
+        ...empresaComplementos(obj(c.INFORMACOES_DA_EMPRESA)),
+      };
+      return Object.keys(comp).length ? comp : undefined;
+    })(),
     anotacoes: {
       protestos: grupoDe(c.PROTESTOS, itemGenerico('Protesto')),
       pendenciasFinanceiras: grupoDe(c.PEND_FINANCEIRAS, itemPendencia),
@@ -243,12 +405,15 @@ export function mapeadorSerasaPremium(json: unknown): ConteudoMapeado {
       participacao: numeroPtBr(s.PERCENTUAL_PARTICIPACAO), cargo: txt(s.CARGO),
     })),
     consultasRecentes: passagens,
-    complementos: { faturamentoPresumidoFaixa: txt(obj(c.FATURAMENTO_PRESUMIDO)?.FAIXA), veiculos },
+    complementos: {
+      faturamentoPresumidoFaixa: txt(obj(c.FATURAMENTO_PRESUMIDO)?.FAIXA), veiculos,
+      ...consultasDoAlertas(c), ...empresaComplementos(obj(c.INFORMACOES_DA_EMPRESA)),
+    },
     anotacoes: {
       protestos: grupoDe(protestos, itemGenerico('Protesto')),
       pendenciasFinanceiras: grupoDe(c.RESTRICOES_FINANCEIRAS, itemPendencia),
       chequesSemFundo: grupoDe(c.CH_SEM_FUNDOS_BACEN, itemGenerico('Cheque sem fundo (BACEN)')),
-      acoesJudiciais: grupoDe(c.ACOES_CIVEIS, itemGenerico('Ação cível')),
+      acoesJudiciais: grupoDe(c.ACOES_CIVEIS, itemAcao),
       falenciaRecuperacao: grupoNaoConsultado(),
     },
   };

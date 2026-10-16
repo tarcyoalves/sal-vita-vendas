@@ -1,0 +1,198 @@
+{
+  "status": "sucesso",
+  "API Full": "serasa-premium",
+  "dados": {
+    "HEADER": {
+      "DADOS_RETORNADOS": {
+        "CREDCADASTRAL": "1",
+        "VEICULAR": "0"
+      },
+      "PARAMETROS": {
+        "DOCUMENTO": "12345678000195"
+      }
+    },
+    "CREDCADASTRAL": {
+      "INFORMACOES_DA_EMPRESA": {
+        "RAZAO_SOCIAL": "DISTRIBUIDORA ALFA BETA EXEMPLO LTDA",
+        "NOME_FANTASIA": "ALFA BETA ATACADO",
+        "SITUACAO": "ATIVA",
+        "DATA_SITUACAO": "12/03/2003",
+        "DATA_FUNDACAO": "12/03/2003",
+        "NATUREZA_JURIDICA": "2062-SOCIEDADE EMPRESARIA LIMITADA",
+        "CAPITAL_SOCIAL": "850000",
+        "FAIXA_FUNCIONARIOS": "20 A 49",
+        "CNAE_PRIMARIO": "4637-1/99 - COMERCIO ATACADISTA ESPECIALIZADO DE OUTROS PRODUTOS ALIMENTICIOS",
+        "CNAE_SECUNDARIOS": [
+          "4639701-COMERCIO ATACADISTA DE PRODUTOS ALIMENTICIOS EM GERAL",
+          "5229099-OUTRAS ATIVIDADES AUXILIARES DOS TRANSPORTES TERRESTRES"
+        ],
+        "TEMPO_ATUACAO": "21 A 30 ANOS",
+        "MATRIZ_FILIAL": "MATRIZ",
+        "REPRESENTANTE": {
+          "NOME": "REPRESENTANTE FICTICIO DA SILVA",
+          "CPF": "11144477735"
+        },
+        "ENDERECO": {
+          "ENDERECO": "AVENIDA DAS PALMEIRAS, 1200",
+          "BAIRRO": "CENTRO",
+          "CIDADE": "CIDADE EXEMPLO",
+          "UF": "RN",
+          "CEP": "59600000"
+        }
+      },
+      "SCORES": {
+        "OCORRENCIAS": [
+          {
+            "SCORE": "688",
+            "LAYOUT": "SCORE 6 MESES",
+            "TIPO_SCORE": "SCORE 6 MESES",
+            "CLASSIF_ABC": "",
+            "FAIXA_SCORE": "601 A 700",
+            "PROBABILIDADE_INADIMPLENCIA": "21,30%",
+            "TEXTO": "A PROBABILIDADE DE INADIMPLENCIA NOS PROXIMOS 6 MESES E DE 21,30% PARA A FAIXA DE SCORE 601 A 700"
+          },
+          {
+            "SCORE": "281",
+            "LAYOUT": "SCORE 6 MESES",
+            "TIPO_SCORE": "SCORE 6 MESES",
+            "CLASSIF_ABC": "",
+            "FAIXA_SCORE": "201 A 300",
+            "PROBABILIDADE_INADIMPLENCIA": "96,80%",
+            "TEXTO": "A PROBABILIDADE DE INADIMPLENCIA NOS PROXIMOS 6 MESES E DE 96,80% PARA A FAIXA DE SCORE 201 A 300"
+          }
+        ]
+      },
+      "RESTRICOES_FINANCEIRAS": {
+        "QUANTIDADE_OCORRENCIA": "2",
+        "VALOR_TOTAL": "7300,00",
+        "OCORRENCIAS": [
+          {
+            "DATA_VENCIMENTO": "10/02/2026",
+            "DATA_INCLUSAO": "20/03/2026",
+            "CREDOR": "CREDOR FICTICIO UM S.A.",
+            "VALOR": "4100,00",
+            "CONTRATO": "CT-1001",
+            "ORIGEM": "PEFIN",
+            "MODALIDADE": "DUPLICATA"
+          },
+          {
+            "DATA_VENCIMENTO": "15/04/2026",
+            "DATA_INCLUSAO": "30/05/2026",
+            "CREDOR": "CREDOR FICTICIO DOIS LTDA",
+            "VALOR": "3200,00",
+            "CONTRATO": "CT-2002",
+            "ORIGEM": "REFIN",
+            "MODALIDADE": "CONTRATO"
+          }
+        ]
+      },
+      "PROTESTOS": {
+        "QUANTIDADE_OCORRENCIA": "2",
+        "VALOR_TOTAL": "5400,50",
+        "OCORRENCIAS": [
+          {
+            "DATA_PROTESTO": "05/03/2026",
+            "VALOR": "1200,00",
+            "CARTORIO": "CARTORIO CENTRAL",
+            "CIDADE": "CIDADE EXEMPLO",
+            "UF": "RN",
+            "ESPECIE": "DUPLICATA MERCANTIL",
+            "CREDOR": "CREDOR FICTICIO UM S.A."
+          },
+          {
+            "DATA_PROTESTO": "20/08/2026",
+            "VALOR": "4200,50",
+            "CARTORIO": "2O TABELIONATO",
+            "CIDADE": "OUTRA CIDADE",
+            "UF": "PB",
+            "ESPECIE": "NOTA PROMISSORIA",
+            "CREDOR": "CREDOR FICTICIO TRES ME"
+          }
+        ]
+      },
+      "CH_SEM_FUNDOS_BACEN": {
+        "QUANTIDADE_OCORRENCIA": "0",
+        "OCORRENCIAS": []
+      },
+      "ACOES_CIVEIS": {
+        "QUANTIDADE_OCORRENCIA": "1",
+        "VALOR_TOTAL": "42350,90",
+        "OCORRENCIAS": [
+          {
+            "REQUERIDO": "DISTRIBUIDORA ALFA BETA EXEMPLO LTDA",
+            "ACAO": "EXECUCAO DE TITULO EXTRAJUDICIAL",
+            "FORO": "FORTALEZA",
+            "UF": "CE",
+            "VARA": "3A VARA CIVEL",
+            "PROCESSO": "0000000-00.2026.8.06.0001",
+            "DISTRIBUICAO": "14/05/2026",
+            "VALOR": "42350,90"
+          }
+        ]
+      },
+      "QUADRO_SOCIETARIO": {
+        "OCORRENCIAS": [
+          {
+            "NOME": "SOCIA FICTICIA PRIMEIRA",
+            "CPF_CNPJ": "11144477735",
+            "DATA_ENTRADA_SOCIEDADE": "",
+            "PERCENTUAL_PARTICIPACAO": "70,00",
+            "CARGO": "SOCIO-ADMINISTRADOR",
+            "TIPO_DOCUMENTO": "CPF"
+          },
+          {
+            "NOME": "SOCIO FICTICIO SEGUNDO",
+            "CPF_CNPJ": "***.222.333-**",
+            "DATA_ENTRADA_SOCIEDADE": "",
+            "PERCENTUAL_PARTICIPACAO": "30,00",
+            "CARGO": "SOCIO",
+            "TIPO_DOCUMENTO": "CPF"
+          }
+        ]
+      },
+      "FATURAMENTO_PRESUMIDO": {
+        "FAIXA": "ATE 180 MIL"
+      },
+      "INFORMACOES_ALERTAS_RESTRICOES": {
+        "OCORRENCIAS": [
+          {
+            "TITULO": "CONSULTAS 30 DIAS",
+            "OBSERVACOES": "QUANTIDADE TOTAL: 7"
+          },
+          {
+            "TITULO": "CONSULTAS 31 A 60 DIAS",
+            "OBSERVACOES": "QUANTIDADE TOTAL: 2"
+          },
+          {
+            "TITULO": "CONSULTAS 61 A 90 DIAS",
+            "OBSERVACOES": "QUANTIDADE TOTAL: 3"
+          },
+          {
+            "TITULO": "CONSULTAS 90+ DIAS",
+            "OBSERVACOES": "QUANTIDADE TOTAL: 11"
+          },
+          {
+            "TITULO": "ULTIMAS CONSULTAS",
+            "OBSERVACOES": "DATA:/10/2026/QUANTIDADE:4/SEGMENTO:COMERCIO ATACADISTA DE ALIMENTOS"
+          },
+          {
+            "TITULO": "ULTIMAS CONSULTAS",
+            "OBSERVACOES": "DATA:/09/2026/QUANTIDADE:3/SEGMENTO:INTERMEDIACAO FINANCEIRA EM G"
+          },
+          {
+            "TITULO": "ULTIMAS CONSULTAS",
+            "OBSERVACOES": "DATA:/08/2026/QUANTIDADE:1/SEGMENTO:TRANSPORTE RODOVIARIO DE CARGA"
+          }
+        ]
+      },
+      "TELEFONE_1": "8400000000",
+      "EMAILS": [
+        "contato@exemplo.invalid"
+      ]
+    }
+  },
+  "aux": {
+    "type": "link",
+    "data": "https://exemplo.invalid/serasa.pdf"
+  }
+}

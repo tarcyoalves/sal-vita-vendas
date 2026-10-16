@@ -81,6 +81,10 @@ describe('mapeador Serasa Premium (fixture sintética)', () => {
   const m = mapeadorSerasaPremium(fx('apifull-serasa-premium'));
   it('ignora o score "NÃO CALCULADO" e usa a entrada com probabilidade', () => {
     expect(m.score).toMatchObject({ valor: 612, probabilidadeInadimplencia: 12.5, faixa: 'C' });
+    // a entrada ignorada não some: fica em `outros` como "não calculado" (valor null), com o rótulo da posição na fonte
+    // (nesta fixture os dois TIPO_SCORE são diferentes e preenchidos: "PJ" e "PJ PREMIUM" viram os rótulos)
+    expect(m.score.rotulo).toBe('PJ PREMIUM');
+    expect(m.score.outros).toEqual([{ valor: null, probabilidadeInadimplencia: null, faixa: null, texto: 'SCORE NAO CALCULADO', rotulo: 'PJ' }]);
   });
   it('sem nenhuma entrada com probabilidade: score null', () => {
     const j = fx('apifull-serasa-premium') as { dados: { CREDCADASTRAL: { SCORES: { OCORRENCIAS: unknown[] } } } };
@@ -90,7 +94,10 @@ describe('mapeador Serasa Premium (fixture sintética)', () => {
   it('sócios com entrada null, veículos, faturamento, ações e passagens', () => {
     expect(m.socios).toHaveLength(2);
     expect(m.socios[0]).toMatchObject({ nome: 'SOCIO FICTICIO UM', cargo: 'SOCIO-ADMINISTRADOR', participacao: 60, entrada: null });
-    expect(m.complementos).toEqual({ faturamentoPresumidoFaixa: '180.001 A 360 MIL', veiculos: [{ marcaModelo: 'VW/DELIVERY 11.180', placa: 'AAA0A00' }] });
+    expect(m.complementos).toEqual({
+      faturamentoPresumidoFaixa: '180.001 A 360 MIL', veiculos: [{ marcaModelo: 'VW/DELIVERY 11.180', placa: 'AAA0A00' }],
+      consultasJanelas: { ate30: 0, de31a60: null, de61a90: null, mais90: null }, funcionariosFaixa: '10 A 19',
+    });
     expect(m.anotacoes.acoesJudiciais).toMatchObject({ consultado: true, quantidade: 2, valorTotal: 18500 });
     expect(m.consultasRecentes).toEqual([{ data: '2026-10-12', consultante: 'FORNECEDOR FICTICIO A LTDA', quantidade: 1 }]);
     expect(m.comportamento).toBeUndefined();
@@ -121,5 +128,77 @@ describe('reprocessar relatório antigo a partir do bruto', () => {
     const c = mapBV(bruto);
     expect(c.score.valor).not.toBeNull();
     expect(c.cadastro.fundacao).not.toBeNull();
+  });
+});
+
+// ── Serasa Premium completo (fixture SINTÉTICA com a estrutura descrita: dois scores, janelas de consulta, ação cível) ──
+describe('mapeador Serasa Premium: scores, consultas por janela, ações e dados da empresa', () => {
+  const m = mapeadorSerasaPremium(fx('apifull-serasa-completo'));
+  it('traz OS DOIS scores, cada um com probabilidade, faixa e texto da fonte; nada é somado nem misturado', () => {
+    expect(m.score).toMatchObject({ valor: 688, probabilidadeInadimplencia: 21.3, faixa: '601 A 700', rotulo: 'Score 1' });
+    expect(m.score.outros).toHaveLength(1);
+    expect(m.score.outros?.[0]).toMatchObject({ valor: 281, probabilidadeInadimplencia: 96.8, faixa: '201 A 300', rotulo: 'Score 2' });
+    expect(m.score.outros?.[0].texto).toContain('96,80%');
+  });
+  it('o veredito usa o PIOR score (281 < 400) e diz qual', () => {
+    const v = calcularVeredito({ ...m }, AGORA);
+    expect(v.veredito).toBe('REPROVADO_A_PRAZO');
+    expect(v.motivos[0]).toBe('Score 281 (Score 2) abaixo de 400');
+  });
+  it('rótulos pelo descritor da fonte quando vêm preenchidos e diferentes', () => {
+    const j = fx('apifull-serasa-completo') as { dados: { CREDCADASTRAL: { SCORES: { OCORRENCIAS: Array<Record<string, string>> } } } };
+    j.dados.CREDCADASTRAL.SCORES.OCORRENCIAS[0].TIPO_SCORE = 'PJ';
+    j.dados.CREDCADASTRAL.SCORES.OCORRENCIAS[1].TIPO_SCORE = 'PJ PREMIUM';
+    const x = mapeadorSerasaPremium(j);
+    expect([x.score.rotulo, x.score.outros?.[0].rotulo]).toEqual(['PJ', 'PJ PREMIUM']);
+  });
+  it('contagens OFICIAIS de consultas por janela e últimas consultas por mês + segmento (sem consultante)', () => {
+    expect(m.complementos?.consultasJanelas).toEqual({ ate30: 7, de31a60: 2, de61a90: 3, mais90: 11 });
+    expect(m.complementos?.consultasPorSegmento).toEqual([
+      { mes: '2026-10', quantidade: 4, segmento: 'COMERCIO ATACADISTA DE ALIMENTOS' },
+      { mes: '2026-09', quantidade: 3, segmento: 'INTERMEDIACAO FINANCEIRA EM G' },
+      { mes: '2026-08', quantidade: 1, segmento: 'TRANSPORTE RODOVIARIO DE CARGA' },
+    ]);
+  });
+  it('várias consultas numa observação só (mês/ano sem dia, separadas por espaço ou ponto e vírgula)', () => {
+    const j = fx('apifull-serasa-completo') as { dados: { CREDCADASTRAL: { INFORMACOES_ALERTAS_RESTRICOES: { OCORRENCIAS: Array<Record<string, string>> } } } };
+    j.dados.CREDCADASTRAL.INFORMACOES_ALERTAS_RESTRICOES.OCORRENCIAS = [
+      { TITULO: 'ULTIMAS CONSULTAS', OBSERVACOES: 'DATA:/10/2025/QUANTIDADE:2/SEGMENTO:ATIVIDADES DE CONSULTORIA EM G; DATA:/09/2025/QUANTIDADE:1/SEGMENTO:BANCOS' },
+    ];
+    expect(mapeadorSerasaPremium(j).complementos?.consultasPorSegmento).toEqual([
+      { mes: '2025-10', quantidade: 2, segmento: 'ATIVIDADES DE CONSULTORIA EM G' },
+      { mes: '2025-09', quantidade: 1, segmento: 'BANCOS' },
+    ]);
+  });
+  it('ação cível com todos os campos úteis', () => {
+    const g = m.anotacoes.acoesJudiciais;
+    expect(g).toMatchObject({ consultado: true, quantidade: 1, valorTotal: 42350.9 });
+    expect(g.itens[0]).toMatchObject({
+      data: '2026-05-14', descricao: 'EXECUCAO DE TITULO EXTRAJUDICIAL', local: 'FORTALEZA/CE — 3A VARA CIVEL',
+      processo: '0000000-00.2026.8.06.0001', valor: 42350.9,
+    });
+    expect(g.itens[0].extras).toMatchObject({ Requerido: 'DISTRIBUIDORA ALFA BETA EXEMPLO LTDA' });
+  });
+  it('capital, funcionários, CNAEs secundários, atuação, matriz/filial, representante e faturamento', () => {
+    expect(m.cadastro.capitalSocial).toBe(850000);
+    expect(m.complementos).toMatchObject({
+      faturamentoPresumidoFaixa: 'ATE 180 MIL', funcionariosFaixa: '20 A 49', tempoAtuacao: '21 A 30 ANOS', matrizFilial: 'MATRIZ',
+      representante: { nome: 'REPRESENTANTE FICTICIO DA SILVA', documento: '11144477735' },
+    });
+    expect(m.complementos?.cnaesSecundarios).toHaveLength(2);
+    expect(m.socios.map((s) => s.documento)).toEqual(['11144477735', '***.222.333-**']);
+  });
+  it('não mapeia contatos', () => {
+    expect(JSON.stringify(m)).not.toMatch(/8400000000|contato@exemplo/);
+  });
+});
+
+describe('mapeador Boa Vista completo: matriz mensal de consultas', () => {
+  const m = mapeadorBoaVista(fx('apifull-boavista-completo'));
+  it('score único (sem rótulo), total de 12 meses e matriz Jan..Dez por ano', () => {
+    expect(m.score).toEqual({ valor: 640, probabilidadeInadimplencia: 13, faixa: 'B', textoInterpretacao: 'Probabilidade moderada de inadimplencia' });
+    expect(m.complementos?.consultas12Meses).toBe(17);
+    expect(m.complementos?.consultasPorMes?.[0]).toEqual({ ano: 2026, meses: [1, 0, 2, 1, 1, 2, 1, 2, 2, 3, null, null] });
+    expect(m.anotacoes.pendenciasFinanceiras).toMatchObject({ consultado: true, quantidade: 0 });
   });
 });

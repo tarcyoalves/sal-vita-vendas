@@ -18,7 +18,19 @@ export interface GrupoAnotacao {
     fonte?: string;
     /** Demais campos não vazios da ocorrência na fonte (rótulo legível -> valor), para o detalhe sob o item. */
     extras?: Record<string, string>;
+    /** Nº do processo (ações judiciais). Aditivo. */
+    processo?: string | null;
   }>;
+}
+
+/** Um score adicional que a MESMA fonte trouxe (ex.: o Serasa Premium devolve dois). Nunca é somado nem misturado. */
+export interface ScoreExtra {
+  valor: number | null; // null = a fonte disse "não calculado"
+  probabilidadeInadimplencia: number | null;
+  faixa: string | null;
+  texto: string | null;
+  /** "Score 1", "Score 2" ou o descritor da fonte quando ele difere entre as entradas. */
+  rotulo: string;
 }
 
 export interface RelatorioCredito {
@@ -31,6 +43,9 @@ export interface RelatorioCredito {
     probabilidadeInadimplencia: number | null; // %
     faixa: string | null;
     textoInterpretacao: string | null;
+    /** Só quando a fonte traz mais de um score: rótulo deste (o principal) e os demais. Aditivo. */
+    rotulo?: string | null;
+    outros?: ScoreExtra[];
   };
   cadastro: {
     razaoSocial: string | null; nomeFantasia: string | null; situacao: string | null; situacaoEm: string | null;
@@ -53,6 +68,18 @@ export interface RelatorioCredito {
     faturamentoPresumidoFaixa?: string | null;
     veiculos?: Array<{ marcaModelo: string; placa?: string | null }>;
     consultas12Meses?: number | null;
+    /** Contagens OFICIAIS da fonte por janela (Serasa: "CONSULTAS 30 DIAS" etc.). null = a fonte não informou aquela janela. */
+    consultasJanelas?: { ate30: number | null; de31a60: number | null; de61a90: number | null; mais90: number | null };
+    /** Últimas consultas por mês, com segmento do consultante (sem o nome dele). `mes` = 'AAAA-MM'. */
+    consultasPorSegmento?: Array<{ mes: string | null; quantidade: number | null; segmento: string }>;
+    /** Matriz mensal da fonte (Boa Vista): um item por ano, 12 meses Jan..Dez; null = sem dado. */
+    consultasPorMes?: Array<{ ano: number; meses: Array<number | null> }>;
+    funcionariosFaixa?: string | null;
+    cnaesSecundarios?: string[];
+    tempoAtuacao?: string | null;
+    matrizFilial?: string | null;
+    /** Nome pode aparecer; o documento é impresso SEMPRE mascarado. */
+    representante?: { nome: string | null; documento: string | null } | null;
   };
   anotacoes: {
     protestos: GrupoAnotacao;
@@ -107,12 +134,61 @@ function grupoTodoAtenuado(g: GrupoAnotacao, agora: Date): boolean {
   return g.itens.length > 0 && g.itens.length >= g.quantidade && g.itens.every((i) => atenuacaoDoItem(i, agora) !== null);
 }
 
+/** Uma entrada de score (a principal ou uma de `outros`), no mesmo formato. */
+export interface ScoreEntrada { valor: number | null; probabilidadeInadimplencia: number | null; faixa: string | null; texto: string | null; rotulo: string | null }
+/** Todos os scores que UMA fonte trouxe, na ordem: o principal primeiro, depois `outros`. Nunca fundidos. */
+export function entradasDeScore(s: RelatorioCredito['score']): ScoreEntrada[] {
+  return [
+    { valor: s.valor, probabilidadeInadimplencia: s.probabilidadeInadimplencia, faixa: s.faixa, texto: s.textoInterpretacao, rotulo: s.rotulo ?? null },
+    ...(s.outros ?? []).map((o) => ({ valor: o.valor, probabilidadeInadimplencia: o.probabilidadeInadimplencia, faixa: o.faixa, texto: o.texto, rotulo: o.rotulo })),
+  ];
+}
+
 export type NivelSinal = 'ALERTA' | 'ATENCAO' | 'POSITIVO';
 export interface SinalCredito { codigo: string; nivel: NivelSinal; titulo: string; detalhe: string }
 
-type DadosSinais = Partial<Pick<RelatorioCredito, 'cadastro' | 'socios' | 'consultasRecentes' | 'comportamento'>> & Pick<RelatorioCredito, 'anotacoes'>;
+type DadosSinais = Partial<Pick<RelatorioCredito, 'cadastro' | 'socios' | 'consultasRecentes' | 'comportamento' | 'complementos'>> & Pick<RelatorioCredito, 'anotacoes'>;
 
-export function analisarSinais(r: DadosSinais, agora: Date = new Date()): SinalCredito[] {
+const MES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+/** Ano e mês (0..11) de uma data no fuso de São Paulo. */
+function anoMesSP(d: Date): { ano: number; mes: number } {
+  const p = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: 'numeric' }).formatToParts(d);
+  return { ano: Number(p.find((x) => x.type === 'year')?.value), mes: Number(p.find((x) => x.type === 'month')?.value) - 1 };
+}
+
+/** Quantas consultas ao documento nos últimos 30 dias, e DE ONDE vem o número (para mostrar a origem). */
+export interface ContagemConsultas30 {
+  n: number; origem: 'janela' | 'mes' | 'lista'; texto: string;
+  /** Rótulo curto da janela contada ("30 dias", "out/2026 (mês corrente)", "30 dias (lista parcial)"). */
+  janela: string;
+}
+
+/**
+ * PRIMEIRO a contagem oficial da fonte (janela "30 dias" do Serasa; ou a linha do mês corrente da matriz do Boa Vista) e
+ * só em último caso a lista parcial (a fonte lista poucas consultas: contar só a lista SUBESTIMA). null = nada a contar.
+ */
+export function contagemConsultas30(
+  r: Pick<DadosSinais, 'consultasRecentes' | 'complementos'>, agora: Date, fonte: string | null,
+): ContagemConsultas30 | null {
+  const quem = fonte ?? 'a fonte';
+  const janela = r.complementos?.consultasJanelas?.ate30;
+  if (typeof janela === 'number') return { n: janela, origem: 'janela', janela: '30 dias', texto: `segundo ${quem}: ${janela} em 30 dias` };
+  const { ano, mes } = anoMesSP(agora);
+  const linha = r.complementos?.consultasPorMes?.find((l) => l.ano === ano);
+  const doMes = linha?.meses[mes];
+  if (typeof doMes === 'number') return { n: doMes, origem: 'mes', janela: `${MES_ABREV[mes]}/${ano} (mês corrente)`, texto: `segundo ${quem}: ${doMes} em ${MES_ABREV[mes]}/${ano} (mês corrente)` };
+  if (r.consultasRecentes?.length) {
+    const n = r.consultasRecentes.filter((c) => { const m = mesesEntre(c.data, agora); return m !== null && m >= 0 && m * 30.44 <= LIMITES_SINAIS.consultasJanelaDias; })
+      .reduce((sum, c) => sum + (c.quantidade || 1), 0);
+    return { n, origem: 'lista', janela: '30 dias (lista parcial)', texto: `lista parcial${fonte ? ` de ${fonte}` : ' da fonte'}: ${n} em 30 dias (pode haver mais)` };
+  }
+  return null;
+}
+
+const maiuscula1 = (t: string) => t.replace(/^./, (c) => c.toUpperCase());
+
+/** `contagens`: no consolidado, uma por fonte (com o nome dela); sem isso usa os dados do próprio relatório. */
+export function analisarSinais(r: DadosSinais, agora: Date = new Date(), contagens?: readonly ContagemConsultas30[]): SinalCredito[] {
   const L = LIMITES_SINAIS; const out: SinalCredito[] = [];
   // 1. Tempo de existência
   const idade = mesesEntre(r.cadastro?.fundacao, agora);
@@ -122,12 +198,15 @@ export function analisarSinais(r: DadosSinais, agora: Date = new Date()): SinalC
     else if (idade < L.empresaNovaAtencaoMeses) out.push({ codigo: 'EMPRESA_JOVEM', nivel: 'ATENCAO', titulo: 'Empresa com menos de 3 anos', detalhe: `Fundada há ${anos} ano(s).` });
     else if (anos >= L.empresaConsolidadaAnos) out.push({ codigo: 'EMPRESA_CONSOLIDADA', nivel: 'POSITIVO', titulo: 'Empresa consolidada', detalhe: `${anos} anos de existência.` });
   }
-  // 2. Consultas recentes ao documento (busca de crédito acima do normal)
-  if (r.consultasRecentes) {
-    const n = r.consultasRecentes.filter((c) => { const m = mesesEntre(c.data, agora); return m !== null && m * 30.44 <= L.consultasJanelaDias; })
-      .reduce((s, c) => s + (c.quantidade || 1), 0);
-    if (n >= L.consultasAlerta) out.push({ codigo: 'MUITAS_CONSULTAS', nivel: 'ALERTA', titulo: 'Muitas consultas recentes', detalhe: `${n} consulta(s) nos últimos ${L.consultasJanelaDias} dias — pode estar buscando crédito acima do normal.` });
-    else if (n >= L.consultasAtencao) out.push({ codigo: 'CONSULTAS_ACIMA', nivel: 'ATENCAO', titulo: 'Consultas recentes acima do comum', detalhe: `${n} consulta(s) nos últimos ${L.consultasJanelaDias} dias.` });
+  // 2. Consultas recentes ao documento (busca de crédito acima do normal): contagem OFICIAL da fonte primeiro
+  const todas = contagens ?? [contagemConsultas30(r, agora, null)].filter((c): c is ContagemConsultas30 => c !== null);
+  const oficiais = todas.filter((c) => c.origem !== 'lista');
+  const base = oficiais.length ? oficiais : todas;
+  if (base.length) {
+    const n = Math.max(...base.map((c) => c.n));
+    const origem = maiuscula1(base.map((c) => c.texto).join('; '));
+    if (n >= L.consultasAlerta) out.push({ codigo: 'MUITAS_CONSULTAS', nivel: 'ALERTA', titulo: 'Muitas consultas recentes', detalhe: `${origem} — pode estar buscando crédito acima do normal.` });
+    else if (n >= L.consultasAtencao) out.push({ codigo: 'CONSULTAS_ACIMA', nivel: 'ATENCAO', titulo: 'Consultas recentes acima do comum', detalhe: `${origem}.` });
   }
   // 3. Entrada/troca recente de sócios ou administradores
   if (r.socios?.length) {
@@ -164,9 +243,13 @@ export function analisarSinais(r: DadosSinais, agora: Date = new Date()): SinalC
  *   ALERTA (empresa < 1 ano, muitas consultas recentes, sócio novo < 6 meses) → análise manual.
  * - APROVADO: o resto.
  */
-export function calcularVeredito(r: DadosSinais & Pick<RelatorioCredito, 'score'>, agora: Date = new Date()): { veredito: Veredito; motivos: string[] } {
-  const a = r.anotacoes; const s = r.score.valor; const motivos: string[] = []; const atencao: string[] = [];
-  if (s !== null && s < LIMITES_CREDITO.scoreReprova) motivos.push(`Score ${s} abaixo de ${LIMITES_CREDITO.scoreReprova}`);
+export function calcularVeredito(r: DadosSinais & Pick<RelatorioCredito, 'score'>, agora: Date = new Date(), contagens?: readonly ContagemConsultas30[]): { veredito: Veredito; motivos: string[] } {
+  // Fonte com mais de um score (ex.: Serasa Premium): vale o PIOR calculado (regra conservadora; nenhum é descartado nem feito média).
+  const calculados = entradasDeScore(r.score).filter((e): e is ScoreEntrada & { valor: number } => e.valor !== null);
+  const piorScore = calculados.length ? calculados.reduce((a, b) => (b.valor < a.valor ? b : a)) : null;
+  const a = r.anotacoes; const s = piorScore ? piorScore.valor : null; const motivos: string[] = []; const atencao: string[] = [];
+  const ondeScore = piorScore && calculados.length > 1 && piorScore.rotulo ? ` (${piorScore.rotulo})` : '';
+  if (s !== null && s < LIMITES_CREDITO.scoreReprova) motivos.push(`Score ${s}${ondeScore} abaixo de ${LIMITES_CREDITO.scoreReprova}`);
   if (temAlgo(a.protestos)) {
     if (grupoTodoAtenuado(a.protestos, agora)) atencao.push(`${a.protestos.quantidade} protesto(s) pequeno(s)/antigo(s)/de órgão público — estudar com calma`);
     else motivos.push(`${a.protestos.quantidade} protesto(s)`);
@@ -180,10 +263,10 @@ export function calcularVeredito(r: DadosSinais & Pick<RelatorioCredito, 'score'
   if (motivos.length) return { veredito: 'REPROVADO_A_PRAZO', motivos };
   motivos.push(...atencao);
   if (s === null) motivos.push('Score não informado pela fonte');
-  else if (s < LIMITES_CREDITO.scoreRestricao) motivos.push(`Score ${s} abaixo de ${LIMITES_CREDITO.scoreRestricao}`);
+  else if (s < LIMITES_CREDITO.scoreRestricao) motivos.push(`Score ${s}${ondeScore} abaixo de ${LIMITES_CREDITO.scoreRestricao}`);
   if (temAlgo(pend)) motivos.push(`${pend.quantidade} pendência(s) financeira(s)${grupoTodoAtenuado(pend, agora) ? ' — pequenas/antigas/de órgão público' : ''}`);
   if (temAlgo(a.acoesJudiciais)) motivos.push(`${a.acoesJudiciais.quantidade} ação(ões) judicial(is)`);
-  for (const sinal of analisarSinais(r, agora)) if (sinal.nivel === 'ALERTA') motivos.push(`${sinal.titulo} — análise manual`);
+  for (const sinal of analisarSinais(r, agora, contagens)) if (sinal.nivel === 'ALERTA') motivos.push(`${sinal.titulo} — análise manual`);
   return motivos.length ? { veredito: 'COM_RESTRICAO', motivos } : { veredito: 'APROVADO', motivos: [] };
 }
 
@@ -215,6 +298,8 @@ export interface ItemParaConsolidar { relatorio: RelatorioCredito; produto: stri
 
 export interface ScoreDaFonte {
   produto: string; produtoNome: string;
+  /** "Score 1"/"Score 2" (ou o descritor da fonte) quando a MESMA fonte traz mais de um; null com um só. */
+  rotulo: string | null;
   valor: number | null; probabilidadeInadimplencia: number | null; faixa: string | null; texto: string | null;
   /** false = a fonte não calculou o score ("Serasa Premium: score não calculado"). */
   calculado: boolean;
@@ -226,6 +311,21 @@ export const ROTULO_GRUPO: Record<ChaveGrupoAnotacao, string> = {
   acoesJudiciais: 'Ações judiciais', falenciaRecuperacao: 'Falência / Recuperação judicial',
 };
 
+/** O que UMA fonte disse sobre um grupo de anotações (célula da matriz de comparação). */
+export interface CelulaMatriz { produto: string; produtoNome: string; consultado: boolean; quantidade: number; valorTotal: number | null }
+export type LeituraMatriz = 'divergem' | 'coincidem' | 'nada_consta' | 'so_uma' | 'nao_consultado' | 'unica';
+export interface LinhaMatriz {
+  chave: ChaveGrupoAnotacao; rotulo: string; celulas: CelulaMatriz[];
+  leitura: LeituraMatriz; textoLeitura: string;
+}
+/** Consultas ao documento vistas por cada fonte (linha "Consultas" da matriz). */
+export interface ConsultasDaFonte {
+  produto: string; produtoNome: string;
+  c30: ContagemConsultas30 | null;
+  /** Total em 12 meses informado pela fonte (null = não informou). */
+  total12: number | null;
+}
+
 export interface RelatorioConsolidado {
   documento: string;
   tipo: TipoDocumento;
@@ -234,16 +334,24 @@ export interface RelatorioConsolidado {
   /** false = nenhuma fonte tem menos de 30 dias (a tela mostra "vencido"). */
   valido: boolean;
   simulado: boolean;
+  /** TODOS os scores de cada fonte (um por entrada), na ordem das fontes. Nunca fundidos nem em média. */
   scores: ScoreDaFonte[];
   fontes: FonteConsolidada[];
   /** Relatório fundido (cadastro, sócios, anotações, consultas, comportamento). `score` = o PIOR score calculado, só para as regras. */
   fundido: RelatorioCredito;
   /** Por grupo com quantidades diferentes entre as fontes: "Consulta simples: 0 · Serasa Premium: 10". */
   divergenciaPorGrupo: Partial<Record<ChaveGrupoAnotacao, string>>;
-  /** Scores muito distantes entre fontes (null se não há). */
+  /** Scores muito distantes (entre fontes ou dentro da mesma fonte) (null se não há). */
   divergenciaScore: string | null;
+  /** Algum score é alto (>= 600) mas há restrições registradas: a decisão pesa as restrições, não o score. */
+  scoreAltoComRestricao: boolean;
   /** Todas as divergências em frases (scores, quantidades, ocorrência que só uma fonte cobre). */
   divergencias: string[];
+  /** Matriz de comparação por fonte: uma linha por grupo de anotações. */
+  matriz: LinhaMatriz[];
+  consultasPorFonte: ConsultasDaFonte[];
+  /** Total de 12 meses diferente entre as fontes. */
+  consultas12Divergem: boolean;
   veredito: Veredito;
   motivos: string[];
   sinais: SinalCredito[];
@@ -320,23 +428,58 @@ const primeiro = <T,>(valores: Array<T | null | undefined>): T | null => {
   return null;
 };
 
+/** Ordem em que as fontes aparecem para o usuário (colunas da matriz, cards de score). */
+const ORDEM_EXIBICAO = ['boavista', 'serasa_premium', 'define_risco'] as const;
+const ordemExibicao = (produto: string) => {
+  const i = (ORDEM_EXIBICAO as readonly string[]).indexOf(produto);
+  return i === -1 ? 99 : i;
+};
+
+const nomeDoScore = (s: Pick<ScoreDaFonte, 'produtoNome' | 'rotulo'>) => (s.rotulo ? `${s.produtoNome} (${s.rotulo})` : s.produtoNome);
+
+/** Texto curto de uma célula da matriz: "nada consta", "não consultado" ou "3 ocorrências · R$ 5.400,50". */
+export function textoCelulaMatriz(c: Pick<CelulaMatriz, 'consultado' | 'quantidade' | 'valorTotal'>): string {
+  if (!c.consultado) return 'não consultado';
+  if (c.quantidade === 0) return 'nada consta';
+  const valor = c.valorTotal !== null && c.valorTotal !== undefined
+    ? ` · R$ ${c.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+  return `${c.quantidade} ocorrência${c.quantidade === 1 ? '' : 's'}${valor}`;
+}
+
+function leituraDoGrupo(celulas: readonly CelulaMatriz[]): { leitura: LeituraMatriz; textoLeitura: string } {
+  const consultaram = celulas.filter((c) => c.consultado);
+  if (!consultaram.length) return { leitura: 'nao_consultado', textoLeitura: 'Nenhuma fonte consulta' };
+  if (celulas.length === 1) return { leitura: 'unica', textoLeitura: 'Só uma fonte' };
+  if (consultaram.length === 1) return { leitura: 'so_uma', textoLeitura: `Só ${consultaram[0].produtoNome} cobre` };
+  const qtds = consultaram.map((c) => c.quantidade);
+  const difereQtd = new Set(qtds).size > 1;
+  const valores = consultaram.filter((c) => c.quantidade > 0 && c.valorTotal !== null).map((c) => c.valorTotal as number);
+  const difereValor = !difereQtd && valores.length > 1 && Math.max(...valores) - Math.min(...valores) > 0.005;
+  if (difereQtd) return { leitura: 'divergem', textoLeitura: `Divergem (${qtds.join(' × ')})` };
+  if (difereValor) return { leitura: 'divergem', textoLeitura: 'Divergem (valores diferentes)' };
+  if (qtds[0] === 0) return { leitura: 'nada_consta', textoLeitura: 'Nada consta nas fontes' };
+  return { leitura: 'coincidem', textoLeitura: 'Coincidem' };
+}
+
 /**
  * Consolida os relatórios do mesmo documento. Veredito = o PIOR entre o de cada relatório (mesma regra de `ultimo` e
  * `semaforos`) e o do relatório fundido (anotações unidas + pior score). Lança erro se `entrada` for vazia.
  */
 export function consolidarRelatorios(entrada: readonly ItemParaConsolidar[], agora: Date = new Date()): RelatorioConsolidado {
-  const { itens: escolhidos, valido } = escolherParaConsolidar(entrada, agora);
-  if (!escolhidos.length) throw new Error('Sem relatórios para consolidar');
+  const { itens: escolhidosBase, valido } = escolherParaConsolidar(entrada, agora);
+  if (!escolhidosBase.length) throw new Error('Sem relatórios para consolidar');
+  // ordem de EXIBIÇÃO (colunas/cards): Consulta simples, Serasa Premium, ...; estável para os demais
+  const escolhidos = escolhidosBase.map((i, k) => ({ i, k })).sort((a, b) => ordemExibicao(a.i.produto) - ordemExibicao(b.i.produto) || a.k - b.k).map((x) => x.i);
   // ordem de preferência das fontes para campos cadastrais; o resto pelo mais recente
   const ordem = [...escolhidos].sort((a, b) => ordemPreferencia(a.produto) - ordemPreferencia(b.produto) || tempo(b.consultadoEm) - tempo(a.consultadoEm));
   const maisRecente = [...escolhidos].sort((a, b) => tempo(b.consultadoEm) - tempo(a.consultadoEm))[0];
   const rel = ordem.map((i) => i.relatorio);
 
-  const scores: ScoreDaFonte[] = escolhidos.map((i) => ({
-    produto: i.produto, produtoNome: i.produtoNome, valor: i.relatorio.score.valor,
-    probabilidadeInadimplencia: i.relatorio.score.probabilidadeInadimplencia, faixa: i.relatorio.score.faixa,
-    texto: i.relatorio.score.textoInterpretacao, calculado: i.relatorio.score.valor !== null,
-  }));
+  // UM card por score de cada fonte: o principal e os `outros` (ex.: os dois do Serasa Premium), sem somar nem misturar
+  const scores: ScoreDaFonte[] = escolhidos.flatMap((i) => entradasDeScore(i.relatorio.score).map((e) => ({
+    produto: i.produto, produtoNome: i.produtoNome, rotulo: e.rotulo, valor: e.valor,
+    probabilidadeInadimplencia: e.probabilidadeInadimplencia, faixa: e.faixa, texto: e.texto, calculado: e.valor !== null,
+  })));
   const fontes: FonteConsolidada[] = escolhidos.map((i) => ({
     produto: i.produto, produtoNome: i.produtoNome, consultadoEm: i.consultadoEm, custoReais: i.relatorio.fonte.custoReais,
   }));
@@ -370,14 +513,37 @@ export function consolidarRelatorios(entrada: readonly ItemParaConsolidar[], ago
   if (veiculos) complementos.veiculos = veiculos;
   const totais = rel.map((r) => r.complementos?.consultas12Meses).filter((n): n is number => typeof n === 'number');
   if (totais.length) complementos.consultas12Meses = Math.max(...totais);
+  // dados que só uma fonte traz: vale o da primeira (na ordem de preferência) que os tiver
+  const janelas = rel.find((r) => r.complementos?.consultasJanelas)?.complementos?.consultasJanelas;
+  if (janelas) complementos.consultasJanelas = janelas;
+  const segmentos = rel.find((r) => r.complementos?.consultasPorSegmento?.length)?.complementos?.consultasPorSegmento;
+  if (segmentos) complementos.consultasPorSegmento = segmentos;
+  const porMes = rel.find((r) => r.complementos?.consultasPorMes?.length)?.complementos?.consultasPorMes;
+  if (porMes) complementos.consultasPorMes = porMes;
+  const func = primeiro(rel.map((r) => r.complementos?.funcionariosFaixa));
+  if (func !== null) complementos.funcionariosFaixa = func;
+  const cnaes = rel.find((r) => r.complementos?.cnaesSecundarios?.length)?.complementos?.cnaesSecundarios;
+  if (cnaes) complementos.cnaesSecundarios = cnaes;
+  const atuacao = primeiro(rel.map((r) => r.complementos?.tempoAtuacao));
+  if (atuacao !== null) complementos.tempoAtuacao = atuacao;
+  const mf = primeiro(rel.map((r) => r.complementos?.matrizFilial));
+  if (mf !== null) complementos.matrizFilial = mf;
+  const repr = primeiro(rel.map((r) => r.complementos?.representante));
+  if (repr !== null) complementos.representante = repr;
 
   const chaves = Object.keys(ROTULO_GRUPO) as ChaveGrupoAnotacao[];
   const anotacoes = {} as RelatorioCredito['anotacoes'];
   const divergenciaPorGrupo: Partial<Record<ChaveGrupoAnotacao, string>> = {};
   const divergencias: string[] = [];
+  const matriz: LinhaMatriz[] = [];
   for (const k of chaves) {
     const { grupo, porFonte } = juntarGrupo(ordem.map((i) => ({ nome: i.produtoNome, grupo: i.relatorio.anotacoes[k] })), escolhidos.map((i) => i.produtoNome));
     anotacoes[k] = grupo;
+    const celulas: CelulaMatriz[] = escolhidos.map((i) => {
+      const g = i.relatorio.anotacoes[k];
+      return { produto: i.produto, produtoNome: i.produtoNome, consultado: g.consultado, quantidade: g.consultado ? qtdEfetiva(g) : 0, valorTotal: g.consultado ? g.valorTotal : null };
+    });
+    matriz.push({ chave: k, rotulo: ROTULO_GRUPO[k], celulas, ...leituraDoGrupo(celulas) });
     const consultaram = porFonte.filter((f) => f.consultado);
     if (consultaram.length > 1 && new Set(consultaram.map((f) => f.quantidade)).size > 1) {
       const texto = consultaram.map((f) => `${f.nome}: ${f.quantidade}`).join(' · ');
@@ -396,10 +562,12 @@ export function consolidarRelatorios(entrada: readonly ItemParaConsolidar[], ago
   if (calculados.length > 1) {
     const vs = calculados.map((s) => s.valor);
     if (Math.max(...vs) - Math.min(...vs) >= LIMITE_DIVERGENCIA_SCORE) {
-      divergenciaScore = `Scores muito distantes entre as fontes (${calculados.map((s) => `${s.produtoNome}: ${s.valor}`).join(' · ')}); cada fonte usa um modelo próprio.`;
+      divergenciaScore = `Scores muito distantes (${calculados.map((s) => `${nomeDoScore(s)}: ${s.valor}`).join(' · ')}); cada um é um modelo próprio da fonte.`;
       divergencias.unshift(divergenciaScore);
     }
   }
+  const temRestricao = (['protestos', 'pendenciasFinanceiras', 'chequesSemFundo', 'acoesJudiciais', 'falenciaRecuperacao'] as const).some((k) => temAlgo(anotacoes[k]));
+  const scoreAltoComRestricao = temRestricao && calculados.some((s) => s.valor >= LIMITES_CREDITO.scoreRestricao);
 
   const simulado = escolhidos.every((i) => i.relatorio.fonte.provedor === 'simulado');
   const custos = fontes.map((f) => f.custoReais);
@@ -420,20 +588,37 @@ export function consolidarRelatorios(entrada: readonly ItemParaConsolidar[], ago
   };
 
   const dataRef = new Date(maisRecente.consultadoEm);
+  // Consultas dos últimos 30 dias: a contagem OFICIAL de cada fonte, cada uma na data da sua própria consulta
+  const consultasPorFonte: ConsultasDaFonte[] = escolhidos.map((i) => ({
+    produto: i.produto, produtoNome: i.produtoNome,
+    c30: contagemConsultas30(i.relatorio, new Date(i.consultadoEm), i.produtoNome),
+    total12: typeof i.relatorio.complementos?.consultas12Meses === 'number' ? i.relatorio.complementos.consultas12Meses : null,
+  }));
+  const contagens = consultasPorFonte.map((c) => c.c30).filter((c): c is ContagemConsultas30 => c !== null);
+  const t12 = consultasPorFonte.map((c) => c.total12).filter((n): n is number => n !== null);
+  const consultas12Divergem = t12.length > 1 && new Set(t12).size > 1;
+
   const individuais = escolhidos.map((i) => calcularVeredito(i.relatorio, new Date(i.consultadoEm)));
-  const doFundido = calcularVeredito(fundido, dataRef);
+  const doFundido = calcularVeredito(fundido, dataRef, contagens);
   const veredito = piorVeredito([...individuais.map((v) => v.veredito), doFundido.veredito]) as Veredito;
   const motivos: string[] = [];
   // Motivos do relatório fundido; os de um relatório individual só entram quando ele sozinho é mais grave que o fundido
   // (evita "3 protesto(s)" e "2 protesto(s)" lado a lado). "Score não informado pela fonte" é genérico: vira
   // "<fonte>: score não calculado" logo abaixo.
   const individuaisMaisGraves = individuais.filter((v) => v.veredito === veredito && veredito !== doFundido.veredito);
-  for (const m of [...doFundido.motivos, ...individuaisMaisGraves.flatMap((v) => v.motivos)]) {
+  // o score do relatório fundido é o pior calculado: o motivo diz DE QUAL fonte (e qual score) ele é
+  const origemPior = pior ? ` (${pior.produtoNome}${pior.rotulo ? `, ${pior.rotulo}` : ''})` : '';
+  for (const bruto of [...doFundido.motivos, ...individuaisMaisGraves.flatMap((v) => v.motivos)]) {
+    const m = pior && bruto.startsWith(`Score ${pior.valor} abaixo`) ? bruto.replace(`Score ${pior.valor} `, `Score ${pior.valor}${origemPior} `) : bruto;
     if (m !== 'Score não informado pela fonte' && !motivos.includes(m)) motivos.push(m);
   }
-  for (const s of scores) if (!s.calculado) motivos.push(`${s.produtoNome}: score não calculado`);
+  // fonte inteira sem nenhum score calculado
+  for (const i of escolhidos) {
+    if (!calculados.some((s) => s.produto === i.produto)) motivos.push(`${i.produtoNome}: score não calculado`);
+  }
   return {
     documento: fundido.documento, tipo: fundido.tipo, consultadoEm: maisRecente.consultadoEm, valido, simulado, scores, fontes, fundido,
-    divergenciaPorGrupo, divergenciaScore, divergencias, veredito, motivos, sinais: analisarSinais(fundido, dataRef),
+    divergenciaPorGrupo, divergenciaScore, scoreAltoComRestricao, divergencias, matriz, consultasPorFonte, consultas12Divergem,
+    veredito, motivos, sinais: analisarSinais(fundido, dataRef, contagens),
   };
 }

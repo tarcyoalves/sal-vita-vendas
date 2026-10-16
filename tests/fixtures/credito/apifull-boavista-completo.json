@@ -1,0 +1,325 @@
+{
+  "status": "sucesso",
+  "API Full": "scpc-boavista",
+  "dados": {
+    "HEADER": {
+      "DADOS_RETORNADOS": {
+        "CREDCADASTRAL": "1"
+      }
+    },
+    "CREDCADASTRAL": {
+      "INFORMACOES_DA_EMPRESA": {
+        "RAZAO_SOCIAL": "DISTRIBUIDORA ALFA BETA EXEMPLO LTDA",
+        "NOME_FANTASIA": "ALFA BETA ATACADO",
+        "SITUACAO": "ATIVA",
+        "DATA_SITUACAO": "12/03/2003",
+        "DATA_FUNDACAO": "12/03/2003",
+        "NATUREZA_JURIDICA": "SOCIEDADE EMPRESARIA LIMITADA",
+        "CNAE_PRIMARIO": "4637-1/99",
+        "RAMO_ATIVIDADE_PRIMARIO": "COMERCIO ATACADISTA DE PRODUTOS ALIMENTICIOS",
+        "INSCRICAO_ESTADUAL": "20.123.456-7",
+        "ENDERECO": {
+          "ENDERECO": "AVENIDA DAS PALMEIRAS, 1200",
+          "BAIRRO": "CENTRO",
+          "CIDADE": "CIDADE EXEMPLO",
+          "UF": "RN",
+          "CEP": "59600000"
+        }
+      },
+      "SCORES": {
+        "OCORRENCIAS": [
+          {
+            "SCORE": "640",
+            "TIPO_SCORE": "12 MESES",
+            "CLASSIF_ABC": "B",
+            "CLASSIF_NRO": "2",
+            "PROBABILIDADE_INADIMPLENCIA": "13,0%",
+            "TEXTO": "Probabilidade moderada de inadimplencia"
+          }
+        ]
+      },
+      "PEND_FINANCEIRAS": {
+        "QUANTIDADE_OCORRENCIA": "0",
+        "VALOR_TOTAL": "0,00",
+        "OCORRENCIAS": []
+      },
+      "PROTESTOS": {
+        "QUANTIDADE_OCORRENCIA": "1",
+        "VALOR_TOTAL": "1200,00",
+        "OCORRENCIAS": [
+          {
+            "DATA_PROTESTO": "05/03/2026",
+            "VALOR": "1200,00",
+            "CARTORIO": "CARTORIO CENTRAL",
+            "CIDADE": "CIDADE EXEMPLO",
+            "UF": "RN",
+            "ESPECIE": "DUPLICATA MERCANTIL",
+            "CREDOR": "CREDOR FICTICIO UM S.A."
+          }
+        ]
+      },
+      "CH_SEM_FUNDOS_BACEN": {
+        "QUANTIDADE_OCORRENCIA": "0",
+        "OCORRENCIAS": []
+      },
+      "CH_SEM_FUNDOS_VAREJO": {
+        "QUANTIDADE_OCORRENCIA": "0",
+        "OCORRENCIAS": []
+      },
+      "HIST_CONSULTAS": {
+        "QUANTIDADE_OCORRENCIAS": "17",
+        "DATA_INICIAL": "01/11/2025",
+        "DATA_FINAL": "16/10/2026",
+        "QUANTIDADES": [
+          {
+            "ANO": "2026",
+            "JANEIRO": "1",
+            "FEVEREIRO": "0",
+            "MARCO": "2",
+            "ABRIL": "1",
+            "MAIO": "1",
+            "JUNHO": "2",
+            "JULHO": "1",
+            "AGOSTO": "2",
+            "SETEMBRO": "2",
+            "OUTUBRO": "3",
+            "NOVEMBRO": "",
+            "DEZEMBRO": ""
+          },
+          {
+            "ANO": "2025",
+            "NOVEMBRO": "1",
+            "DEZEMBRO": "1"
+          }
+        ],
+        "DETALHES": [
+          {
+            "DATA": "14/10/2026",
+            "RAZAO_SOCIAL": "FORNECEDOR FICTICIO A LTDA",
+            "CNPJ": "00000000000191"
+          },
+          {
+            "DATA": "09/10/2026",
+            "RAZAO_SOCIAL": "BANCO FICTICIO DE FOMENTO S.A.",
+            "CNPJ": "00000000000272"
+          },
+          {
+            "DATA": "02/10/2026",
+            "RAZAO_SOCIAL": "DISTRIBUIDORA FICTICIA MODELO S.A.",
+            "CNPJ": "00000000000353"
+          },
+          {
+            "DATA": "22/09/2026",
+            "RAZAO_SOCIAL": "TRANSPORTADORA FICTICIA LTDA",
+            "CNPJ": "00000000000434"
+          },
+          {
+            "DATA": "15/09/2026",
+            "RAZAO_SOCIAL": "FORNECEDOR FICTICIO B SA",
+            "CNPJ": "00000000000515"
+          }
+        ]
+      },
+      "EVENTOS_PESSOA_JURIDICA": {
+        "OCORRENCIAS": [
+          {
+            "INDICADOR": "ULTIMA COMPRA",
+            "PERIODO": "SET/2026",
+            "PONTUACAO": ""
+          },
+          {
+            "INDICADOR": "MAIOR FATURA",
+            "PERIODO": "MAR/2026",
+            "VALOR": "18500,00"
+          },
+          {
+            "INDICADOR": "MAIOR CREDITO",
+            "PERIODO": "JUN/2026",
+            "VALOR": "30000,00"
+          }
+        ]
+      },
+      "PAGAMENTO_PONTUAL": {
+        "STATUS_RETORNO": "1",
+        "PONTUACAO": "88",
+        "ITENS": [
+          {
+            "PERIODO": "SET/2026",
+            "PONTUACAO_MENSAL": "81"
+          },
+          {
+            "PERIODO": "AGO/2026",
+            "PONTUACAO_MENSAL": "80"
+          },
+          {
+            "PERIODO": "JUL/2026",
+            "PONTUACAO_MENSAL": "79"
+          },
+          {
+            "PERIODO": "JUN/2026",
+            "PONTUACAO_MENSAL": "-"
+          },
+          {
+            "PERIODO": "MAI/2026",
+            "PONTUACAO_MENSAL": "77"
+          },
+          {
+            "PERIODO": "ABR/2026",
+            "PONTUACAO_MENSAL": "76"
+          },
+          {
+            "PERIODO": "MAR/2026",
+            "PONTUACAO_MENSAL": "75"
+          },
+          {
+            "PERIODO": "FEV/2026",
+            "PONTUACAO_MENSAL": "-"
+          },
+          {
+            "PERIODO": "JAN/2026",
+            "PONTUACAO_MENSAL": "73"
+          },
+          {
+            "PERIODO": "DEZ/2025",
+            "PONTUACAO_MENSAL": "72"
+          },
+          {
+            "PERIODO": "NOV/2025",
+            "PONTUACAO_MENSAL": "71"
+          },
+          {
+            "PERIODO": "OUT/2025",
+            "PONTUACAO_MENSAL": "-"
+          }
+        ]
+      },
+      "PAGAMENTO_ATRASADO": {
+        "STATUS_RETORNO": "1",
+        "OCORRENCIAS": [
+          {
+            "DESCRICAO": "6 a 15 dias",
+            "ITENS": [
+              {
+                "PERIODO": "SET/2026",
+                "PONTUACAO_MENSAL": "12"
+              },
+              {
+                "PERIODO": "AGO/2026",
+                "PONTUACAO_MENSAL": "11"
+              },
+              {
+                "PERIODO": "JUL/2026",
+                "PONTUACAO_MENSAL": "10"
+              },
+              {
+                "PERIODO": "JUN/2026",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "MAI/2026",
+                "PONTUACAO_MENSAL": "8"
+              },
+              {
+                "PERIODO": "ABR/2026",
+                "PONTUACAO_MENSAL": "7"
+              },
+              {
+                "PERIODO": "MAR/2026",
+                "PONTUACAO_MENSAL": "6"
+              },
+              {
+                "PERIODO": "FEV/2026",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "JAN/2026",
+                "PONTUACAO_MENSAL": "4"
+              },
+              {
+                "PERIODO": "DEZ/2025",
+                "PONTUACAO_MENSAL": "3"
+              },
+              {
+                "PERIODO": "NOV/2025",
+                "PONTUACAO_MENSAL": "2"
+              },
+              {
+                "PERIODO": "OUT/2025",
+                "PONTUACAO_MENSAL": "-"
+              }
+            ]
+          },
+          {
+            "DESCRICAO": "Mais de 60 dias",
+            "ITENS": [
+              {
+                "PERIODO": "OUT/2025",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "NOV/2025",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "DEZ/2025",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "JAN/2026",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "FEV/2026",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "MAR/2026",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "ABR/2026",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "MAI/2026",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "JUN/2026",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "JUL/2026",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "AGO/2026",
+                "PONTUACAO_MENSAL": "-"
+              },
+              {
+                "PERIODO": "SET/2026",
+                "PONTUACAO_MENSAL": "-"
+              }
+            ]
+          }
+        ]
+      },
+      "PERIODO_RELACIONAMENTO_FORNECEDORES": {
+        "OCORRENCIAS": [
+          {
+            "PERIODO": "ACIMA DE 5 ANOS",
+            "VALOR": "12000,00"
+          }
+        ]
+      },
+      "TELEFONE_FIXO": "8400000001",
+      "EMAILS": [
+        "financeiro@exemplo.invalid"
+      ]
+    }
+  },
+  "aux": {
+    "type": "link",
+    "data": "https://exemplo.invalid/boavista.pdf"
+  }
+}
