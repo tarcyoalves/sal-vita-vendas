@@ -4,6 +4,7 @@ import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
 import { Page, PageHeader, Panel, PanelHeader, StatStrip, Stat, EmptyState } from '../components/layout/Page';
 import { Button } from '../components/ui/button';
+import AvisosAdmin from '../components/AvisosAdmin';
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import {
@@ -716,6 +717,9 @@ export default function AdminDashboard() {
           </ul>
         </Panel>
       )}
+
+      {/* Avisos informativos fixos (só admin) — editar em lib/avisosAdmin.ts */}
+      {isFullAdmin && <AvisosAdmin />}
 
       {/* Indicadores */}
       <StatStrip>

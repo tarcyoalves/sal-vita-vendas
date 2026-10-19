@@ -311,6 +311,11 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
 - Planejamento em `PLANO-PROSPECCAO-B2B.md` (estratégia) e
   `PLANO-FINAL-EXECUCAO-B2B.md` (execução por sprints).
 
+**Avisos informativos do admin (Neon)**
+- Cards fixos no Dashboard do admin, só leitura (sem banco/API). Para editar ou incluir
+  avisos: `client/src/lib/avisosAdmin.ts` (`AVISOS_ADMIN`, data em YYYY-MM-DD). Somem 7 dias
+  após a data; "Entendi" oculta por navegador (localStorage).
+
 ---
 
 ## 6. Pendências — em ordem de urgência
