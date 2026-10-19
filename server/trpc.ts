@@ -1,4 +1,5 @@
 import { initTRPC, TRPCError } from '@trpc/server';
+import { mensagemSeguraDeBanco } from './lib/dbErro';
 import type { CreateExpressContextOptions } from '@trpc/server/adapters/express';
 import superjson from 'superjson';
 import { getCookieFromRequest, verifyToken, currentPasswordVersion } from './auth';
@@ -104,7 +105,15 @@ export async function createContext({ req, res }: CreateExpressContextOptions) {
 
 type Context = Awaited<ReturnType<typeof createContext>>;
 
-const t = initTRPC.context<Context>().create({ transformer: superjson });
+const t = initTRPC.context<Context>().create({
+  transformer: superjson,
+  // Erro de banco (Drizzle/Neon) traz SQL e parâmetros na mensagem: troca por texto seguro antes de ir à tela.
+  errorFormatter({ shape, error }) {
+    const causa = error.cause instanceof Error ? error.cause.message : undefined;
+    const segura = mensagemSeguraDeBanco(shape.message, causa);
+    return segura ? { ...shape, message: segura } : shape;
+  },
+});
 
 export const router = t.router;
 export const publicProcedure = t.procedure;

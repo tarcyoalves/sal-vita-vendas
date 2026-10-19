@@ -32853,6 +32853,28 @@ var init_dist = __esm({
   }
 });
 
+// server/lib/dbErro.ts
+function ehErroDeCotaDoBanco(msg) {
+  return PADROES_QUOTA.some((p4) => p4.test(msg));
+}
+function mensagemSeguraDeBanco(msg, causa) {
+  const alvo = `${msg} ${causa ?? ""}`;
+  if (ehErroDeCotaDoBanco(alvo)) {
+    return "O banco de dados do sistema atingiu o limite do plano e est\xE1 bloqueado. Avise o administrador (Neon: Billing/Usage).";
+  }
+  if (/^Failed query:/i.test(msg) || /\bparams:/i.test(msg) || /NeonDbError|ECONNREFUSED|fetch failed/i.test(alvo)) {
+    return "Falha tempor\xE1ria ao acessar o banco de dados. Tente novamente em instantes.";
+  }
+  return null;
+}
+var PADROES_QUOTA;
+var init_dbErro = __esm({
+  "server/lib/dbErro.ts"() {
+    "use strict";
+    PADROES_QUOTA = [/exceeded the quota/i, /HTTP status 402/i, /compute time quota/i, /data transfer quota/i];
+  }
+});
+
 // node_modules/superjson/dist/double-indexed-kv.js
 var DoubleIndexedKV;
 var init_double_indexed_kv = __esm({
@@ -52549,6 +52571,7 @@ var init_trpc = __esm({
   "server/trpc.ts"() {
     "use strict";
     init_dist();
+    init_dbErro();
     init_dist4();
     init_auth();
     init_sessionToken();
@@ -52559,7 +52582,15 @@ var init_trpc = __esm({
     init_cache2();
     init_clientIp();
     init_authGate();
-    t = initTRPC.context().create({ transformer: dist_default });
+    t = initTRPC.context().create({
+      transformer: dist_default,
+      // Erro de banco (Drizzle/Neon) traz SQL e parâmetros na mensagem: troca por texto seguro antes de ir à tela.
+      errorFormatter({ shape, error }) {
+        const causa = error.cause instanceof Error ? error.cause.message : void 0;
+        const segura = mensagemSeguraDeBanco(shape.message, causa);
+        return segura ? { ...shape, message: segura } : shape;
+      }
+    });
     router = t.router;
     publicProcedure = t.procedure;
     protectedProcedure = t.procedure.use(({ ctx, next, path: path2 }) => {
