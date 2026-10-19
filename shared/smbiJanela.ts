@@ -46,7 +46,7 @@ const fmt = new Intl.DateTimeFormat('en-GB', {
 });
 
 /** Minutos desde a meia-noite em Fortaleza. */
-function minutoLocal(agora: Date): number {
+export function minutoLocal(agora: Date): number {
   const partes = fmt.formatToParts(agora);
   const h = Number(partes.find((p) => p.type === 'hour')?.value ?? 0);
   const m = Number(partes.find((p) => p.type === 'minute')?.value ?? 0);

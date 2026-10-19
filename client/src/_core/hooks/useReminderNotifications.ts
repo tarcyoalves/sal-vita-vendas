@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { trpc } from "../../lib/trpc";
 import { toast } from "sonner";
+import { useExpediente } from "../../lib/useExpediente";
 
 function playBeep() {
   try {
@@ -24,9 +25,13 @@ const markFired = (key: string) => {
 };
 
 export function useReminderNotifications(enabled: boolean, userName: string = '', isAdmin: boolean = false) {
+  // Fora do expediente NÃO desligamos: um lembrete agendado para 19:30 precisa notificar quem
+  // deixou a aba aberta. O polling apenas se espaça (15 min em vez de 5), o que deixa o Neon
+  // dormir entre uma consulta e outra (suspende após ~5 min).
+  const expediente = useExpediente();
   const { data: reminders } = trpc.tasks.reminders.useQuery(undefined, {
     enabled,
-    refetchInterval: 300_000,
+    refetchInterval: expediente ? 300_000 : 900_000,
     staleTime: 120_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,

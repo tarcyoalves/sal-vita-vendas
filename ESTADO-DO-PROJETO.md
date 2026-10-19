@@ -146,6 +146,22 @@ minerais. Até lá, não.
 
 ## 5. O que está feito
 
+**Expediente das telas e Painel TV desligado (19/10/2026 — CRM Lembretes)** — Para o Neon dormir à noite,
+o cliente para o polling periódico fora do expediente (padrão 07:00–19:00, todos os dias, America/Fortaleza;
+fim exclusivo). A primeira carga ao abrir a tela continua normal; o polling retoma sozinho (reavalia a cada
+minuto e ao voltar o foco da aba, sem chamar o servidor). Código: `shared/expediente.ts`,
+`client/src/lib/useExpediente.ts`. Env do cliente `VITE_EXPEDIENTE` (`07:00-19:00`; vazio = padrão;
+`sempre` = nunca pausa; inválido = não pausa). **`VITE_*` é embutida no build: mudar exige novo deploy.**
+- **Pausam fora do expediente:** `smbiRoboStatus` (SmbiRoboPanel), contadores do AppShell
+  (`pendingApproval`, `deletionLogs`), `pendingApproval` do AdminDashboard, `workSessions.current` (ActiveTimer).
+- **NÃO pausam, de propósito:** (1) o heartbeat de `workSessions` do ActiveTimer — roda só com sessão ATIVA e aba
+  visível; o servidor fecha sessão esquecida no último sinal de vida e rejeita sessão sem sinal há >15 min, então
+  parar às 19:00 cortaria as horas de quem trabalha mais tarde; (2) `tasks.reminders` (notificações): fora do
+  expediente o polling só espaça de 5 para 15 min, para um lembrete das 19:30 ainda notificar quem deixou a aba aberta.
+- **Painel TV desligado por padrão:** `/tv` mostra "Painel TV desligado" e não consulta nada. Para religar,
+  defina `VITE_TV_PAINEL_ATIVO=1` na Vercel e faça novo deploy; ligado, ainda só consulta no expediente. As rotas
+  `tv.*` do servidor e o código do painel continuam intactos.
+
 **Janela do robô SMBI (19/10/2026 — CRM Lembretes)** — O Neon Free estourou porque o robô
 chamava o CRM a cada ~2 min, 24h. Agora `GET /api/smbi/pedidos` (exceto `?id=`/`?simular=1`)
 e `POST /api/smbi/heartbeat` só tocam o banco em 08:00–11:00 e 14:00–17:00

@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { trpc } from '../lib/trpc';
+import { useExpediente } from '../lib/useExpediente';
+import { TV_PAINEL_ATIVO } from '../lib/tvPainel';
 import {
   LineChart, Line, XAxis, YAxis,
   ResponsiveContainer, Tooltip, CartesianGrid,
@@ -191,18 +193,23 @@ function ChartTooltip({ active, payload, label }: any) {
 export default function TvDashboard() {
   // Cheap, lightweight check — polled on its own so the heavy dashboard query
   // can be turned off entirely (no DB load) when the panel is switched off.
+  // Desligado por padrão (lib/tvPainel.ts) e, ligado, só consulta no expediente: sem isto a TV
+  // aberta 24h mantinha o Neon acordado. Os hooks seguem chamados sempre; `enabled` os barra.
+  const expediente = useExpediente();
+  const consulta = TV_PAINEL_ATIVO && expediente;
   const { data: panelStatus } = trpc.tv.getPanelStatus.useQuery(undefined, {
-    refetchInterval: 120_000,
+    enabled: consulta,
+    refetchInterval: consulta ? 120_000 : false,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
   const panelEnabled = panelStatus?.enabled !== false;
 
   const { data, isLoading, dataUpdatedAt } = trpc.tv.dashboard.useQuery(undefined, {
-    refetchInterval: 600_000,
+    refetchInterval: consulta ? 600_000 : false,
     staleTime: 300_000,
     retry: 3,
-    enabled: panelEnabled,
+    enabled: panelEnabled && consulta,
     refetchOnWindowFocus: false,
   });
 
@@ -277,6 +284,18 @@ export default function TvDashboard() {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   }, [dataUpdatedAt]);
 
+  if (!TV_PAINEL_ATIVO) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-slate-900 text-center px-6">
+        <img src="/sal-vita-logo.svg" alt="Sal Vita" className="h-14 opacity-40" />
+        <p className="text-slate-300 text-lg font-bold tracking-wide mt-2">Painel TV desligado</p>
+        <p className="text-slate-500 text-sm max-w-xs">
+          Este painel está desligado para economizar recursos do sistema.
+        </p>
+      </div>
+    );
+  }
+
   if (!panelEnabled) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-slate-900 text-center px-6">
@@ -285,6 +304,16 @@ export default function TvDashboard() {
         <p className="text-slate-500 text-sm max-w-xs">
           Um administrador desligou este painel para economizar recursos.
         </p>
+      </div>
+    );
+  }
+
+  if (!expediente && !data) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-slate-900 text-center px-6">
+        <img src="/sal-vita-logo.svg" alt="Sal Vita" className="h-14 opacity-40" />
+        <p className="text-slate-300 text-lg font-bold tracking-wide mt-2">Fora do expediente</p>
+        <p className="text-slate-500 text-sm max-w-xs">O painel volta a atualizar quando o expediente abrir.</p>
       </div>
     );
   }

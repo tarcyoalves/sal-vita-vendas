@@ -4,6 +4,7 @@ import { useAuth } from '../_core/hooks/useAuth';
 import { toast } from 'sonner';
 import { Pause, Play, Square, Clock } from 'lucide-react';
 import { ConfirmDialog } from './ConfirmDialog';
+import { useExpediente } from '../lib/useExpediente';
 
 function fmt(ms: number) {
   const s = Math.floor(ms / 1000);
@@ -32,10 +33,12 @@ export default function ActiveTimer() {
   const [expanded, setExpanded] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const expediente = useExpediente();
 
+  // Polling ocioso (3 min) só no expediente. O HEARTBEAT abaixo NÃO pausa: ver comentário dele.
   const { data: session, refetch } = trpc.workSessions.current.useQuery(undefined, {
     enabled: !!user,
-    refetchInterval: 180_000,
+    refetchInterval: expediente ? 180_000 : false,
     staleTime: 120_000,
     // refetchOnWindowFocus: política global (main.tsx) — refaz só se passaram >5 min.
   });
@@ -49,6 +52,11 @@ export default function ActiveTimer() {
   // que o servidor usa para fechar uma sessão esquecida sem zerar as horas. O servidor só
   // atualiza sessão não esquecida; se não atualizou nada (`updated: 0`), a sessão atual
   // mudou (esquecida/encerrada) e recarregamos para o relógio sumir em vez de contar a noite.
+  // NÃO pausa fora do expediente (decisão consciente): o servidor fecha sessão esquecida no
+  // ÚLTIMO sinal de vida (effectiveEndMs) e o heartbeat rejeita sessão sem sinal há >15 min.
+  // Se parássemos às 19:00, quem trabalha até mais tarde teria as horas cortadas às 19:00 e a
+  // sessão tratada como esquecida. Só roda com sessão 'active' e aba visível, ou seja, alguém
+  // trabalhando de fato; o polling ocioso (workSessions.current acima) é o que pausa.
   const sessionStatus = session?.status;
   useEffect(() => {
     if (sessionStatus !== 'active') return;

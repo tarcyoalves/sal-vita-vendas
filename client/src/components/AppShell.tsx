@@ -32,6 +32,7 @@ import { useAuth } from "../_core/hooks/useAuth";
 import { trpc } from "../lib/trpc";
 import ActiveTimer from "./ActiveTimer";
 import { toast } from "sonner";
+import { useExpediente } from "../lib/useExpediente";
 
 interface NavItem {
   label: string;
@@ -222,13 +223,14 @@ export default function AppShell({ children }: AppShellProps) {
   }, [sidebarOpen]);
 
   const role = (user?.role ?? "user") as "admin" | "manager" | "user";
+  const expediente = useExpediente(); // fora do expediente o polling dos contadores para
   const { data: pendingDeletions } = trpc.tasks.deletionLogs.useQuery(
     { onlyUnreviewed: true },
-    { enabled: role === "admin", refetchInterval: 120_000, staleTime: 90_000, select: (d) => d.length }
+    { enabled: role === "admin", refetchInterval: expediente ? 120_000 : false, staleTime: 90_000, select: (d) => d.length }
   );
   const { data: pendingPedidosCount } = trpc.faturamento.pendingApproval.useQuery(
     undefined,
-    { enabled: role === "admin" || role === "manager", refetchInterval: 60_000, staleTime: 30_000, select: (d) => d.length }
+    { enabled: role === "admin" || role === "manager", refetchInterval: expediente ? 60_000 : false, staleTime: 30_000, select: (d) => d.length }
   );
   const totalDashboardAlerts = (pendingDeletions || 0) + (pendingPedidosCount || 0);
   const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(role));
