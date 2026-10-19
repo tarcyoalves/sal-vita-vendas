@@ -23616,15 +23616,15 @@ var require_request = __commonJS({
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports2) {
     var crypto13 = require("crypto");
-    exports2.sign = function(val, secret) {
+    exports2.sign = function(val, secret2) {
       if ("string" !== typeof val) throw new TypeError("Cookie value must be provided as a string.");
-      if (null == secret) throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto13.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
+      if (null == secret2) throw new TypeError("Secret key must be provided.");
+      return val + "." + crypto13.createHmac("sha256", secret2).update(val).digest("base64").replace(/\=+$/, "");
     };
-    exports2.unsign = function(val, secret) {
+    exports2.unsign = function(val, secret2) {
       if ("string" !== typeof val) throw new TypeError("Signed cookie string must be provided.");
-      if (null == secret) throw new TypeError("Secret key must be provided.");
-      var str = val.slice(0, val.lastIndexOf(".")), mac = exports2.sign(str, secret);
+      if (null == secret2) throw new TypeError("Secret key must be provided.");
+      var str = val.slice(0, val.lastIndexOf(".")), mac = exports2.sign(str, secret2);
       return sha1(mac) == sha1(val) ? str : false;
     };
     function sha1(str) {
@@ -24236,14 +24236,14 @@ var require_response = __commonJS({
     };
     res.cookie = function(name, value2, options) {
       var opts2 = merge2({}, options);
-      var secret = this.req.secret;
+      var secret2 = this.req.secret;
       var signed = opts2.signed;
-      if (signed && !secret) {
+      if (signed && !secret2) {
         throw new Error('cookieParser("secret") required for signed cookies');
       }
       var val = typeof value2 === "object" ? "j:" + JSON.stringify(value2) : String(value2);
       if (signed) {
-        val = "s:" + sign(val, secret);
+        val = "s:" + sign(val, secret2);
       }
       if (opts2.maxAge != null) {
         var maxAge = opts2.maxAge - 0;
@@ -28442,11 +28442,11 @@ function isValidIP(ip, version3) {
   }
   return false;
 }
-function isValidJWT(jwt2, alg) {
-  if (!jwtRegex.test(jwt2))
+function isValidJWT(jwt3, alg) {
+  if (!jwtRegex.test(jwt3))
     return false;
   try {
-    const [header] = jwt2.split(".");
+    const [header] = jwt3.split(".");
     if (!header)
       return false;
     const base64 = header.replace(/-/g, "+").replace(/_/g, "/").padEnd(header.length + (4 - header.length % 4) % 4, "=");
@@ -34120,10 +34120,10 @@ var require_jwa = __commonJS({
       return thing;
     }
     function createHmacSigner(bits) {
-      return function sign(thing, secret) {
-        checkIsSecretKey(secret);
+      return function sign(thing, secret2) {
+        checkIsSecretKey(secret2);
         thing = normalizeInput(thing);
-        var hmac = crypto13.createHmac("sha" + bits, secret);
+        var hmac = crypto13.createHmac("sha" + bits, secret2);
         var sig = (hmac.update(thing), hmac.digest("base64"));
         return fromBase64(sig);
       };
@@ -34141,8 +34141,8 @@ var require_jwa = __commonJS({
       return bufferEqual(a5, b3);
     };
     function createHmacVerifier(bits) {
-      return function verify(thing, signature, secret) {
-        var computedSig = createHmacSigner(bits)(thing, secret);
+      return function verify(thing, signature, secret2) {
+        var computedSig = createHmacSigner(bits)(thing, secret2);
         return timingSafeEqual3(Buffer4.from(signature), Buffer4.from(computedSig));
       };
     }
@@ -34289,13 +34289,13 @@ var require_sign_stream = __commonJS({
       return util2.format("%s.%s", securedInput, signature);
     }
     function SignStream(opts2) {
-      var secret = opts2.secret;
-      secret = secret == null ? opts2.privateKey : secret;
-      secret = secret == null ? opts2.key : secret;
-      if (/^hs/i.test(opts2.header.alg) === true && secret == null) {
+      var secret2 = opts2.secret;
+      secret2 = secret2 == null ? opts2.privateKey : secret2;
+      secret2 = secret2 == null ? opts2.key : secret2;
+      if (/^hs/i.test(opts2.header.alg) === true && secret2 == null) {
         throw new TypeError("secret must be a string or buffer or a KeyObject");
       }
-      var secretStream = new DataStream(secret);
+      var secretStream = new DataStream(secret2);
       this.readable = true;
       this.header = opts2.header;
       this.encoding = opts2.encoding;
@@ -34487,9 +34487,9 @@ var require_jws = __commonJS({
 var require_decode = __commonJS({
   "node_modules/jsonwebtoken/decode.js"(exports2, module2) {
     var jws = require_jws();
-    module2.exports = function(jwt2, options) {
+    module2.exports = function(jwt3, options) {
       options = options || {};
-      var decoded = jws.decode(jwt2, options);
+      var decoded = jws.decode(jwt3, options);
       if (!decoded) {
         return null;
       }
@@ -37483,8 +37483,8 @@ var init_safeEqual = __esm({
 });
 
 // server/lib/sessionToken.ts
-function passwordVersion(secret, passwordHash) {
-  return (0, import_crypto2.createHmac)("sha256", secret).update(passwordHash).digest("hex").slice(0, 16);
+function passwordVersion(secret2, passwordHash) {
+  return (0, import_crypto2.createHmac)("sha256", secret2).update(passwordHash).digest("hex").slice(0, 16);
 }
 function tokenMatchesPassword(decoded, currentPv) {
   if (!decoded || typeof decoded !== "object") return false;
@@ -37504,11 +37504,12 @@ var init_sessionToken = __esm({
 });
 
 // shared/const.ts
-var COOKIE_NAME, ONE_YEAR_MS, UNAUTHED_ERR_MSG, EMPRESA;
+var COOKIE_NAME, PREMIUM_COOKIE_NAME, ONE_YEAR_MS, UNAUTHED_ERR_MSG, EMPRESA;
 var init_const = __esm({
   "shared/const.ts"() {
     "use strict";
     COOKIE_NAME = "sal-vita-session";
+    PREMIUM_COOKIE_NAME = "sal-vita-premium-session";
     ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1e3;
     UNAUTHED_ERR_MSG = "UNAUTHORIZED";
     EMPRESA = {
@@ -37599,6 +37600,70 @@ var init_auth = __esm({
     JWT_SECRET = process.env.JWT_SECRET;
     CURRENT_ITERATIONS = 31e4;
     dummyHash = null;
+  }
+});
+
+// server/lib/premiumSession.ts
+function secret() {
+  const s4 = process.env.JWT_SECRET;
+  if (!s4) throw new Error("JWT_SECRET env var is required");
+  return s4;
+}
+function getPremiumConfig() {
+  const email = (process.env.PREMIUM_ADMIN_EMAIL ?? "").trim().toLowerCase();
+  const passwordHash = (process.env.PREMIUM_ADMIN_PASSWORD_HASH ?? "").trim();
+  if (!email || !passwordHash) return null;
+  return { email, passwordHash };
+}
+function versionOf(cfg) {
+  return passwordVersion(secret(), `${cfg.email}|${cfg.passwordHash}`);
+}
+function signPremiumToken(cfg) {
+  return import_jsonwebtoken2.default.sign(
+    { email: cfg.email, pv: versionOf(cfg) },
+    secret(),
+    { algorithm: "HS256", expiresIn: MAX_AGE_S, audience: PREMIUM_AUDIENCE }
+  );
+}
+function verifyPremiumToken(token) {
+  if (!token) return null;
+  const cfg = getPremiumConfig();
+  if (!cfg) return null;
+  try {
+    const p4 = import_jsonwebtoken2.default.verify(token, secret(), { algorithms: ["HS256"], audience: PREMIUM_AUDIENCE });
+    if (!p4 || typeof p4 !== "object" || typeof p4.email !== "string" || typeof p4.pv !== "string") return null;
+    if ("id" in p4) return null;
+    if (!safeEqual(p4.email, cfg.email) || !safeEqual(p4.pv, versionOf(cfg))) return null;
+    return { email: cfg.email };
+  } catch {
+    return null;
+  }
+}
+function premiumCookieHeader(name, token) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${name}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${MAX_AGE_S}; SameSite=Lax`;
+}
+function clearPremiumCookieHeader(name) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${name}=; HttpOnly${secure}; Path=/; Max-Age=0; SameSite=Lax`;
+}
+function isPremiumOnlyRequest(url3) {
+  if (!url3) return false;
+  const m4 = /\/api\/trpc\/([^?#]*)/.exec(url3);
+  const raw = m4 ? m4[1] : url3.split("?")[0].replace(/^\/+/, "");
+  const names = raw.split(",").map((x2) => x2.trim().toLowerCase()).filter(Boolean);
+  return names.length > 0 && names.every((n5) => PREMIUM_PREFIXES.some((pre) => n5.startsWith(pre)));
+}
+var import_jsonwebtoken2, PREMIUM_AUDIENCE, MAX_AGE_S, PREMIUM_PREFIXES;
+var init_premiumSession = __esm({
+  "server/lib/premiumSession.ts"() {
+    "use strict";
+    import_jsonwebtoken2 = __toESM(require_jsonwebtoken());
+    init_sessionToken();
+    init_safeEqual();
+    PREMIUM_AUDIENCE = "premium";
+    MAX_AGE_S = 7 * 24 * 60 * 60;
+    PREMIUM_PREFIXES = ["premiumauth.", "shipping.", "recovery.", "b2b.", "premiumemailmarketing."];
   }
 });
 
@@ -52516,7 +52581,9 @@ function ipToNum(ip) {
   return (parts[0] << 24 | parts[1] << 16 | parts[2] << 8 | parts[3]) >>> 0;
 }
 async function createContext({ req, res }) {
-  const token = getCookieFromRequest(req.headers.cookie, COOKIE_NAME);
+  const premiumAdmin = verifyPremiumToken(getCookieFromRequest(req.headers.cookie, PREMIUM_COOKIE_NAME));
+  const skipCrmUser = premiumAdmin !== null && isPremiumOnlyRequest(req.originalUrl ?? req.url);
+  const token = skipCrmUser ? void 0 : getCookieFromRequest(req.headers.cookie, COOKIE_NAME);
   let user = null;
   if (token) {
     try {
@@ -52564,9 +52631,24 @@ async function createContext({ req, res }) {
     } catch {
     }
   }
-  return { req, res, user, clientIp: getClientIp(req) };
+  return { req, res, user, premiumAdmin, clientIp: getClientIp(req) };
 }
-var t, router, publicProcedure, protectedProcedure, adminProcedure, staffProcedure;
+function storeProcedure(roles, forbiddenMessage) {
+  return t.procedure.use(({ ctx, next, path: path2 }) => {
+    if (ctx.premiumAdmin) {
+      const actor2 = { kind: "premium", email: ctx.premiumAdmin.email, name: "Admin da loja", id: null };
+      return next({ ctx: { ...ctx, actor: actor2 } });
+    }
+    if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+    if (!canProceed(ctx.user, path2)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Troque a senha para continuar" });
+    }
+    if (!roles.includes(ctx.user.role)) throw new TRPCError({ code: "FORBIDDEN", message: forbiddenMessage });
+    const actor = { kind: "crm", email: ctx.user.email, name: ctx.user.name, id: ctx.user.id };
+    return next({ ctx: { ...ctx, actor } });
+  });
+}
+var t, router, publicProcedure, protectedProcedure, adminProcedure, staffProcedure, premiumStaffProcedure, premiumAdminProcedure;
 var init_trpc = __esm({
   "server/trpc.ts"() {
     "use strict";
@@ -52576,6 +52658,7 @@ var init_trpc = __esm({
     init_auth();
     init_sessionToken();
     init_const();
+    init_premiumSession();
     init_db2();
     init_schema2();
     init_drizzle_orm();
@@ -52614,6 +52697,8 @@ var init_trpc = __esm({
       }
       return next({ ctx });
     });
+    premiumStaffProcedure = storeProcedure(["admin", "manager"], "Acesso restrito");
+    premiumAdminProcedure = storeProcedure(["admin"], "Admin only");
   }
 });
 
@@ -65071,9 +65156,9 @@ function isRecentEvent(info, event, now = Date.now()) {
   if (Number.isNaN(t5)) return true;
   return now - t5 <= 4 * 24 * 60 * 60 * 1e3;
 }
-function verifyMeSignature(rawBody, signature, secret) {
-  if (!signature || !secret) return false;
-  const mac = import_crypto8.default.createHmac("sha256", secret).update(rawBody);
+function verifyMeSignature(rawBody, signature, secret2) {
+  if (!signature || !secret2) return false;
+  const mac = import_crypto8.default.createHmac("sha256", secret2).update(rawBody);
   const digest = mac.digest();
   const given = signature.trim();
   for (const expected of [digest.toString("hex"), digest.toString("base64")]) {
@@ -65503,14 +65588,14 @@ async function sendWhatsAppMsg(phone, message) {
   }
   const digits = (phone || "").replace(/\D/g, "");
   if (!digits) return false;
-  const fmt = digits.startsWith("55") ? digits : `55${digits}`;
+  const fmt2 = digits.startsWith("55") ? digits : `55${digits}`;
   try {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 8e3);
     const r5 = await fetch(`${url3}/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "apikey": key },
-      body: JSON.stringify({ phone: fmt, message }),
+      body: JSON.stringify({ phone: fmt2, message }),
       signal: ac.signal
     });
     clearTimeout(timer);
@@ -66250,14 +66335,12 @@ var init_shipping = __esm({
           trackToken: order.trackToken
         };
       }),
-      listOrders: protectedProcedure.input(external_exports.object({ status: external_exports.string().optional() }).optional()).query(async ({ ctx }) => {
-        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      listOrders: premiumAdminProcedure.input(external_exports.object({ status: external_exports.string().optional() }).optional()).query(async ({ ctx }) => {
         return ordersDb.select().from(siteOrders).where(
           sql`NOT (${siteOrders.paymentStatus} = 'awaiting' AND ${siteOrders.mpPreferenceId} IS NULL AND ${siteOrders.mpPaymentId} IS NULL)`
         ).orderBy(desc(siteOrders.createdAt));
       }),
-      analyzeOrders: protectedProcedure.mutation(async ({ ctx }) => {
-        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      analyzeOrders: premiumAdminProcedure.mutation(async ({ ctx }) => {
         const apiKey = process.env.GROQ_API_KEY;
         if (!apiKey) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "GROQ_API_KEY n\xE3o configurado" });
         const orders = await ordersDb.select().from(siteOrders).orderBy(desc(siteOrders.createdAt));
@@ -66310,7 +66393,7 @@ Seja direto e use emojis para facilitar leitura.`;
           summary: { total: orders.length, revenue, paid: paid.length, pending: paymentCounts["awaiting"] ?? 0, last7: last7.length, topCities, ticketMedio: paid.length ? revenue / paid.length : 0 }
         };
       }),
-      updateOrder: protectedProcedure.input(external_exports.object({
+      updateOrder: premiumAdminProcedure.input(external_exports.object({
         id: external_exports.number(),
         customerName: external_exports.string().min(2).optional(),
         customerPhone: external_exports.string().min(10).optional(),
@@ -66325,7 +66408,6 @@ Seja direto e use emojis para facilitar leitura.`;
         postalCode: external_exports.string().optional(),
         notes: external_exports.string().optional()
       })).mutation(async ({ ctx, input }) => {
-        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
         const { id: id2, ...fields } = input;
         const updates = { updatedAt: /* @__PURE__ */ new Date() };
         if (fields.customerName) updates.customerName = fields.customerName;
@@ -66343,12 +66425,11 @@ Seja direto e use emojis para facilitar leitura.`;
         const [updated] = await ordersDb.update(siteOrders).set(updates).where(eq(siteOrders.id, id2)).returning();
         return updated;
       }),
-      updateStatus: protectedProcedure.input(external_exports.object({
+      updateStatus: premiumAdminProcedure.input(external_exports.object({
         id: external_exports.number(),
         status: external_exports.enum(["pending", "confirmed", "shipped", "delivered", "cancelled"]).optional(),
         paymentStatus: external_exports.enum(["awaiting", "confirmed", "failed"]).optional()
       })).mutation(async ({ ctx, input }) => {
-        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
         const [before] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
         const updates = { updatedAt: /* @__PURE__ */ new Date() };
         if (input.status) updates.status = input.status;
@@ -66386,11 +66467,10 @@ Seja direto e use emojis para facilitar leitura.`;
           deliveryIssue: order.status === "shipped" ? await latestShippingOccurrence(order.id) : null
         };
       }),
-      updateTracking: protectedProcedure.input(external_exports.object({
+      updateTracking: premiumAdminProcedure.input(external_exports.object({
         id: external_exports.number(),
         trackingCode: external_exports.string().min(1)
       })).mutation(async ({ ctx, input }) => {
-        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
         const [updated] = await ordersDb.update(siteOrders).set({ trackingCode: input.trackingCode, status: "shipped", updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, input.id)).returning();
         if (updated) {
           try {
@@ -66565,16 +66645,13 @@ Seja direto e use emojis para facilitar leitura.`;
           return { paid: false, status: order.paymentStatus };
         }
       }),
-      autoLabelReport: protectedProcedure.query(async ({ ctx }) => {
-        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      autoLabelReport: premiumAdminProcedure.query(async ({ ctx }) => {
         return autoLabelReport();
       }),
-      generateLabel: protectedProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ ctx, input }) => {
-        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      generateLabel: premiumAdminProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ ctx, input }) => {
         return generateLabelForOrder(input.orderId);
       }),
-      cancelOrder: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
-        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      cancelOrder: premiumAdminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
         const orders = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.id));
         const order = orders[0];
         if (!order) throw new TRPCError({ code: "NOT_FOUND" });
@@ -66630,8 +66707,7 @@ Seja direto e use emojis para facilitar leitura.`;
       }),
       // Admin: permanently remove an order (e.g. test orders). No refund/label
       // cancellation is attempted — use cancelOrder first for real orders.
-      deleteOrder: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
-        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      deleteOrder: premiumAdminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
         const [deleted] = await ordersDb.delete(siteOrders).where(and(eq(siteOrders.id, input.id), sql`${siteOrders.paymentStatus} <> 'confirmed'`)).returning();
         if (!deleted) {
           const [exists2] = await ordersDb.select({ id: siteOrders.id }).from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
@@ -66642,8 +66718,7 @@ Seja direto e use emojis para facilitar leitura.`;
       }),
       // Admin: e-mail de "pedido postado" com o rastreio, enviado à mão (reenvio ou pedido
       // que ficou sem o aviso automático). Registra o evento para o automático não repetir.
-      sendTrackingEmail: protectedProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ ctx, input }) => {
-        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      sendTrackingEmail: premiumAdminProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ ctx, input }) => {
         const [order] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
         if (!order) throw new TRPCError({ code: "NOT_FOUND" });
         if (!order.customerEmail) throw new TRPCError({ code: "BAD_REQUEST", message: "Pedido sem e-mail do cliente." });
@@ -66663,8 +66738,7 @@ Seja direto e use emojis para facilitar leitura.`;
         return { success: true, email: order.customerEmail };
       }),
       // Admin: send direct WhatsApp tracking notification via server API
-      sendTrackingWhatsApp: protectedProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ ctx, input }) => {
-        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      sendTrackingWhatsApp: premiumAdminProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ ctx, input }) => {
         const orders = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
         const order = orders[0];
         if (!order) throw new TRPCError({ code: "NOT_FOUND" });
@@ -66696,8 +66770,7 @@ Obrigado! \u{1F64F}`;
         return { success: true };
       }),
       // Admin: generate shipping labels in batch for multiple paid orders
-      batchGenerateLabels: protectedProcedure.input(external_exports.object({ orderIds: external_exports.array(external_exports.number()).max(25) })).mutation(async ({ ctx, input }) => {
-        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      batchGenerateLabels: premiumAdminProcedure.input(external_exports.object({ orderIds: external_exports.array(external_exports.number()).max(25) })).mutation(async ({ ctx, input }) => {
         if (!input.orderIds.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum pedido selecionado." });
         const token = process.env.MELHOR_ENVIO_TOKEN;
         if (!token) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure MELHOR_ENVIO_TOKEN no painel Vercel" });
@@ -238422,9 +238495,9 @@ function verifyResendWebhook(rawBody, headers, secrets) {
   const signedContent = `${svixId}.${svixTimestamp}.${rawBody}`;
   const providedSigs = svixSignature.split(" ").map((part) => part.split(",")[1]).filter(Boolean);
   if (providedSigs.length === 0) return false;
-  for (const secret of candidateSecrets) {
+  for (const secret2 of candidateSecrets) {
     try {
-      const secretKey = secret.startsWith("whsec_") ? secret.slice("whsec_".length) : secret;
+      const secretKey = secret2.startsWith("whsec_") ? secret2.slice("whsec_".length) : secret2;
       const secretBytes = Buffer.from(secretKey, "base64");
       const expected = import_crypto5.default.createHmac("sha256", secretBytes).update(signedContent).digest("base64");
       for (const sig of providedSigs) {
@@ -239401,27 +239474,27 @@ async function executarComOrcamento(itens, fn, opts2) {
   const agora = opts2.agora ?? Date.now;
   const limite = agora() + opts2.orcamentoMs;
   let executados = 0;
-  let falhas = 0;
+  let falhas2 = 0;
   let i4 = 0;
   const rodar = async (item) => {
     try {
       await fn(item);
       executados++;
     } catch {
-      falhas++;
+      falhas2++;
     }
   };
   for (; i4 < Math.min(opts2.sequenciais, itens.length); i4++) {
-    if (agora() >= limite) return { executados, falhas, naoExecutados: itens.slice(i4) };
+    if (agora() >= limite) return { executados, falhas: falhas2, naoExecutados: itens.slice(i4) };
     await rodar(itens[i4]);
   }
   while (i4 < itens.length) {
-    if (agora() >= limite) return { executados, falhas, naoExecutados: itens.slice(i4) };
+    if (agora() >= limite) return { executados, falhas: falhas2, naoExecutados: itens.slice(i4) };
     const lote = itens.slice(i4, i4 + opts2.concorrencia);
     await Promise.allSettled(lote.map(rodar));
     i4 += lote.length;
   }
-  return { executados, falhas, naoExecutados: [] };
+  return { executados, falhas: falhas2, naoExecutados: [] };
 }
 
 // server/routers/tasks.ts
@@ -240693,15 +240766,15 @@ async function executeTool(name, args, callerUserId) {
       (t5) => t5.reminderDate && t5.reminderEnabled !== false && new Date(t5.reminderDate) >= todayStart && new Date(t5.reminderDate) <= todayEnd
     );
     const quentes = rows.filter((t5) => t5.hotLead);
-    const fmt = (t5) => ({
+    const fmt2 = (t5) => ({
       cliente: t5.title.slice(0, 60),
       venceu: t5.reminderDate ? new Date(t5.reminderDate).toLocaleDateString("pt-BR") : "sem data",
       anotacao: (t5.notes ?? "").trim().slice(0, 120) || "(sem anota\xE7\xE3o)"
     });
     return {
-      vencidos: { quantidade: overdue.length, top: overdue.slice(0, 10).map(fmt) },
-      para_hoje: { quantidade: hoje.length, lista: hoje.slice(0, 10).map(fmt) },
-      leads_quentes: { quantidade: quentes.length, lista: quentes.slice(0, 10).map(fmt) }
+      vencidos: { quantidade: overdue.length, top: overdue.slice(0, 10).map(fmt2) },
+      para_hoje: { quantidade: hoje.length, lista: hoje.slice(0, 10).map(fmt2) },
+      leads_quentes: { quantidade: quentes.length, lista: quentes.slice(0, 10).map(fmt2) }
     };
   }
   if (name === "find_my_client") {
@@ -242407,8 +242480,7 @@ var recoveryRouter = router({
     };
   }),
   // Admin: list abandoned carts (not yet recovered)
-  listAbandoned: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  listAbandoned: premiumAdminProcedure.query(async ({ ctx }) => {
     const rows = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.recovered, false)).orderBy(desc(abandonedCarts.updatedAt));
     const activeCoupon = await getActiveRecoveryCoupon();
     return rows.map((r5) => ({
@@ -242419,8 +242491,7 @@ var recoveryRouter = router({
     }));
   }),
   // Admin: list unpaid orders (payment awaiting, not cancelled)
-  listUnpaid: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  listUnpaid: premiumAdminProcedure.query(async ({ ctx }) => {
     const rows = await ordersDb.select().from(siteOrders).where(and(
       eq(siteOrders.paymentStatus, "awaiting"),
       eq(siteOrders.status, "pending")
@@ -242432,24 +242503,21 @@ var recoveryRouter = router({
     }));
   }),
   // Admin: mark abandoned cart as recovered
-  markRecovered: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  markRecovered: premiumAdminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
     await ordersDb.update(abandonedCarts).set({ recovered: true, updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.id));
     return { ok: true };
   }),
   // Admin: mark recovery message sent
-  markSent: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  markSent: premiumAdminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
     await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.id));
     return { ok: true };
   }),
   // Admin: list coupons
-  listCoupons: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  listCoupons: premiumAdminProcedure.query(async ({ ctx }) => {
     return ordersDb.select().from(coupons).orderBy(desc(coupons.createdAt));
   }),
   // Admin: create coupon
-  createCoupon: protectedProcedure.input(external_exports.object({
+  createCoupon: premiumAdminProcedure.input(external_exports.object({
     code: external_exports.string().min(2).max(20).transform((s4) => s4.toUpperCase().trim()),
     description: external_exports.string().max(200).optional(),
     discountType: external_exports.enum(["percent", "fixed"]),
@@ -242461,7 +242529,6 @@ var recoveryRouter = router({
     message: "Desconto percentual n\xE3o pode passar de 100%",
     path: ["discountValue"]
   })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
     const [dup] = await ordersDb.select({ id: coupons.id }).from(coupons).where(eq(coupons.code, input.code)).limit(1);
     if (dup) throw new TRPCError({ code: "CONFLICT", message: `J\xE1 existe um cupom com o c\xF3digo ${input.code}` });
     const [created] = await ordersDb.insert(coupons).values({
@@ -242476,30 +242543,26 @@ var recoveryRouter = router({
     return created;
   }),
   // Admin: toggle coupon active/inactive
-  toggleCoupon: protectedProcedure.input(external_exports.object({ id: external_exports.number(), active: external_exports.boolean() })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  toggleCoupon: premiumAdminProcedure.input(external_exports.object({ id: external_exports.number(), active: external_exports.boolean() })).mutation(async ({ ctx, input }) => {
     await ordersDb.update(coupons).set({ active: input.active }).where(eq(coupons.id, input.id));
     return { ok: true };
   }),
   // Admin: designate the coupon used by default in automated/AI recovery
   // messages ({cupom} placeholder, "+ Cupom" button when no coupon is chosen).
   // Only one coupon can be the recovery default at a time.
-  setRecoveryCoupon: protectedProcedure.input(external_exports.object({ id: external_exports.number(), enabled: external_exports.boolean() })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  setRecoveryCoupon: premiumAdminProcedure.input(external_exports.object({ id: external_exports.number(), enabled: external_exports.boolean() })).mutation(async ({ ctx, input }) => {
     if (input.enabled) await ordersDb.update(coupons).set({ useForRecovery: false });
     await ordersDb.update(coupons).set({ useForRecovery: input.enabled }).where(eq(coupons.id, input.id));
     return { ok: true };
   }),
   // Admin: mark cart customer as opted out (no more automated messages)
-  markOptedOut: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  markOptedOut: premiumAdminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
     await ordersDb.update(abandonedCarts).set({ optedOut: true, updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, input.id));
     await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(automationRuns.cartId, input.id), eq(automationRuns.status, "scheduled")));
     return { ok: true };
   }),
   // Admin: send WhatsApp recovery message to specific cart
-  sendRecovery: protectedProcedure.input(external_exports.object({ id: external_exports.number(), coupon: external_exports.string().optional(), useCoupon: external_exports.boolean().optional(), templateId: external_exports.number().optional() })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  sendRecovery: premiumAdminProcedure.input(external_exports.object({ id: external_exports.number(), coupon: external_exports.string().optional(), useCoupon: external_exports.boolean().optional(), templateId: external_exports.number().optional() })).mutation(async ({ ctx, input }) => {
     const [cart] = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.id)).limit(1);
     if (!cart) throw new TRPCError({ code: "NOT_FOUND" });
     if (cart.optedOut) throw new TRPCError({ code: "BAD_REQUEST", message: "Cliente optou por n\xE3o receber mensagens (PARAR)" });
@@ -242549,8 +242612,7 @@ var recoveryRouter = router({
     };
   }),
   // Admin: send WhatsApp to unpaid order (with optional template + PIX fetch)
-  sendUnpaid: protectedProcedure.input(external_exports.object({ id: external_exports.number(), templateId: external_exports.number().optional() })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  sendUnpaid: premiumAdminProcedure.input(external_exports.object({ id: external_exports.number(), templateId: external_exports.number().optional() })).mutation(async ({ ctx, input }) => {
     const [order] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
     if (!order) throw new TRPCError({ code: "NOT_FOUND" });
     const phone = order.customerPhone.replace(/\D/g, "");
@@ -242603,8 +242665,7 @@ var recoveryRouter = router({
     return { ok: ok2, phone: usedPhone, hasPix: !!pixCode, preview: msg, waLink: waLink(order.customerPhone, msg) };
   }),
   // Admin: get payment info (PIX code / boleto) for unpaid order
-  getPaymentInfo: protectedProcedure.input(external_exports.object({ orderId: external_exports.number() })).query(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  getPaymentInfo: premiumAdminProcedure.input(external_exports.object({ orderId: external_exports.number() })).query(async ({ ctx, input }) => {
     const [order] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
     if (!order) return { pixCode: null, boletoUrl: null };
     const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
@@ -242647,8 +242708,7 @@ var recoveryRouter = router({
     }
   }),
   // Admin: auto-send to all carts not contacted in last 24h
-  autoSendAbandoned: protectedProcedure.mutation(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  autoSendAbandoned: premiumAdminProcedure.mutation(async ({ ctx }) => {
     if (!isBusinessHours()) return { sent: 0, total: 0, skipped: "outside business hours (08:00\u201321:00 BRT)" };
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
     const claimed = await ordersDb.execute(sql`
@@ -242695,8 +242755,7 @@ var recoveryRouter = router({
     return { sent, total: pending.length };
   }),
   // Admin: check WA connection status
-  waStatus: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  waStatus: premiumAdminProcedure.query(async ({ ctx }) => {
     const url3 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
     const key = process.env.WA_API_KEY;
     if (!key) {
@@ -242748,8 +242807,7 @@ var recoveryRouter = router({
   // Admin: fetch the pairing QR code so a dropped session can be restored from
   // the panel. Without this the operator saw "WA Desconectado" with no way
   // forward — the reconnect button cannot help once WhatsApp has logged out.
-  waQrCode: protectedProcedure.mutation(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  waQrCode: premiumAdminProcedure.mutation(async ({ ctx }) => {
     const url3 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
     const key = process.env.WA_API_KEY;
     if (!key) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "WA_API_KEY n\xE3o configurado" });
@@ -242786,8 +242844,7 @@ var recoveryRouter = router({
     return { ok: false, qr: null, pending, path: null, tried };
   }),
   // Admin: force WA reconnect — tries /reconnect then /restart endpoints on the wa-server
-  waReconnect: protectedProcedure.mutation(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  waReconnect: premiumAdminProcedure.mutation(async ({ ctx }) => {
     const url3 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
     const key = process.env.WA_API_KEY;
     if (!key) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "WA_API_KEY n\xE3o configurado" });
@@ -242811,12 +242868,11 @@ var recoveryRouter = router({
     return { ok: false, path: null, tried };
   }),
   // Admin: list message templates
-  listTemplates: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  listTemplates: premiumAdminProcedure.query(async ({ ctx }) => {
     return ordersDb.select().from(msgTemplates).orderBy(msgTemplates.type, msgTemplates.label);
   }),
   // Admin: save (create or update) template
-  saveTemplate: protectedProcedure.input(external_exports.object({
+  saveTemplate: premiumAdminProcedure.input(external_exports.object({
     id: external_exports.number().optional(),
     slug: external_exports.string().min(2).max(50).regex(/^[a-z0-9_]+$/),
     type: external_exports.enum(["abandoned", "unpaid", "failed", "general"]),
@@ -242825,7 +242881,6 @@ var recoveryRouter = router({
     active: external_exports.boolean().default(true),
     isDefault: external_exports.boolean().default(false)
   })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
     if (input.id) {
       const [updated] = await ordersDb.update(msgTemplates).set({
         slug: input.slug,
@@ -242849,21 +242904,18 @@ var recoveryRouter = router({
     return created;
   }),
   // Admin: delete template
-  deleteTemplate: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  deleteTemplate: premiumAdminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
     await ordersDb.delete(msgTemplates).where(eq(msgTemplates.id, input.id));
     return { ok: true };
   }),
   // Admin: set template as default for its type
-  setDefaultTemplate: protectedProcedure.input(external_exports.object({ id: external_exports.number(), type: external_exports.string() })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  setDefaultTemplate: premiumAdminProcedure.input(external_exports.object({ id: external_exports.number(), type: external_exports.string() })).mutation(async ({ ctx, input }) => {
     await ordersDb.update(msgTemplates).set({ isDefault: false }).where(eq(msgTemplates.type, input.type));
     await ordersDb.update(msgTemplates).set({ isDefault: true }).where(eq(msgTemplates.id, input.id));
     return { ok: true };
   }),
   // Admin: AI processes all pending abandoned carts — generates personalized messages + optimal timing
-  aiProcessCarts: protectedProcedure.mutation(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  aiProcessCarts: premiumAdminProcedure.mutation(async ({ ctx }) => {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "GROQ_API_KEY n\xE3o configurado" });
     const pending = await ordersDb.select({
@@ -242938,8 +242990,7 @@ var recoveryRouter = router({
     return { processed, results };
   }),
   // Admin: AI processes a single unpaid order — generates personalized follow-up
-  aiProcessOrder: protectedProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  aiProcessOrder: premiumAdminProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ ctx, input }) => {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "GROQ_API_KEY n\xE3o configurado" });
     const [order] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
@@ -242987,8 +243038,7 @@ Responda SOMENTE em JSON: {"mensagem": "texto aqui", "raciocinio": "motivo"}`;
     return { message: finalMsg, hasPix: !!pixCode, reasoning: parsed.raciocinio ?? "" };
   }),
   // Admin: AI processes + immediately sends to one specific cart
-  aiSendCart: protectedProcedure.input(external_exports.object({ cartId: external_exports.number() })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  aiSendCart: premiumAdminProcedure.input(external_exports.object({ cartId: external_exports.number() })).mutation(async ({ ctx, input }) => {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "GROQ_API_KEY n\xE3o configurado" });
     const [cart] = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.cartId)).limit(1);
@@ -243022,8 +243072,7 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
   }),
   // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts
   // Called by cron (/api/cron/abandoned-cart) or manually from admin UI
-  runAutomationJob: protectedProcedure.mutation(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  runAutomationJob: premiumAdminProcedure.mutation(async ({ ctx }) => {
     if (!isBusinessHours()) return { processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: "outside business hours (08:00\u201321:00 BRT)" };
     const now = /* @__PURE__ */ new Date();
     const due = await ordersDb.select().from(automationRuns).where(
@@ -243064,19 +243113,16 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
     return { processed: due.length, sent, cancelled, failed };
   }),
   // Admin: list automation runs
-  listAutomationRuns: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  listAutomationRuns: premiumAdminProcedure.query(async ({ ctx }) => {
     return ordersDb.select().from(automationRuns).orderBy(desc(automationRuns.createdAt)).limit(100);
   }),
   // Admin: delete coupon
-  deleteCoupon: protectedProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  deleteCoupon: premiumAdminProcedure.input(external_exports.object({ id: external_exports.number() })).mutation(async ({ ctx, input }) => {
     await ordersDb.delete(coupons).where(eq(coupons.id, input.id));
     return { ok: true };
   }),
   // Admin: AI recovery analysis (uses separate GROQ key for premium)
-  aiRecovery: protectedProcedure.mutation(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+  aiRecovery: premiumAdminProcedure.mutation(async ({ ctx }) => {
     const apiKey = process.env.SAL_VITA_PREMIUM_1KG_GROQ ?? process.env.GROQ_API_KEY_PREMIUM ?? process.env.GROQ_API_KEY;
     if (!apiKey) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "SAL_VITA_PREMIUM_1KG_GROQ n\xE3o configurado" });
     const [carts, unpaidOrders, allOrders] = await Promise.all([
@@ -246385,7 +246431,7 @@ init_blockedEmailDomains();
 init_dist();
 var premiumEmailMarketingRouter = router({
   // ── Dashboard Metrics & Quotas ────────────────────────────────────────────
-  getMetrics: staffProcedure.query(async () => {
+  getMetrics: premiumStaffProcedure.query(async () => {
     const today2 = todayBrt();
     const currentMonth2 = today2.slice(0, 7);
     const accounts = getAccounts();
@@ -246453,7 +246499,7 @@ var premiumEmailMarketingRouter = router({
     };
   }),
   // ── Audience Building Preview ──────────────────────────────────────────────
-  previewAudience: staffProcedure.query(async () => {
+  previewAudience: premiumStaffProcedure.query(async () => {
     const audience = await buildAudience2();
     const sourcesCount = { order: 0, cart: 0, b2b: 0, contact: 0 };
     for (const m4 of audience) {
@@ -246466,13 +246512,13 @@ var premiumEmailMarketingRouter = router({
     };
   }),
   // ── Campaigns ─────────────────────────────────────────────────────────────
-  getCampaigns: staffProcedure.query(async () => {
+  getCampaigns: premiumStaffProcedure.query(async () => {
     const res = await ordersDb.execute(sql`
       SELECT * FROM email_campaigns ORDER BY created_at DESC
     `);
     return res.rows;
   }),
-  createCampaign: staffProcedure.input(external_exports.object({
+  createCampaign: premiumStaffProcedure.input(external_exports.object({
     name: external_exports.string().min(1),
     subject: external_exports.string().min(1),
     subjectB: external_exports.string().optional(),
@@ -246504,27 +246550,27 @@ var premiumEmailMarketingRouter = router({
       `);
     return { ok: true, campaignId, totalRecipients: recipientCount };
   }),
-  dispatchCampaign: staffProcedure.input(external_exports.object({ campaignId: external_exports.number() })).mutation(async ({ input }) => {
+  dispatchCampaign: premiumStaffProcedure.input(external_exports.object({ campaignId: external_exports.number() })).mutation(async ({ input }) => {
     await ordersDb.execute(sql`
         UPDATE email_campaigns SET status = 'sending', updated_at = NOW() WHERE id = ${input.campaignId}
       `);
     const result = await processCampaignBatch2(input.campaignId, 100);
     return result;
   }),
-  pauseCampaign: staffProcedure.input(external_exports.object({ campaignId: external_exports.number(), pause: external_exports.boolean() })).mutation(async ({ input }) => {
+  pauseCampaign: premiumStaffProcedure.input(external_exports.object({ campaignId: external_exports.number(), pause: external_exports.boolean() })).mutation(async ({ input }) => {
     const status = input.pause ? "paused" : "sending";
     await ordersDb.execute(sql`
         UPDATE email_campaigns SET status = ${status}, updated_at = NOW() WHERE id = ${input.campaignId}
       `);
     return { ok: true, status };
   }),
-  deleteCampaign: staffProcedure.input(external_exports.object({ campaignId: external_exports.number() })).mutation(async ({ input }) => {
+  deleteCampaign: premiumStaffProcedure.input(external_exports.object({ campaignId: external_exports.number() })).mutation(async ({ input }) => {
     await ordersDb.execute(sql`DELETE FROM email_campaign_recipients WHERE campaign_id = ${input.campaignId}`);
     await ordersDb.execute(sql`DELETE FROM email_campaigns WHERE id = ${input.campaignId}`);
     return { ok: true };
   }),
   // ── Sequences (Drip) ──────────────────────────────────────────────────────
-  getSequences: staffProcedure.query(async () => {
+  getSequences: premiumStaffProcedure.query(async () => {
     const seqsRes = await ordersDb.execute(sql`SELECT * FROM email_sequences ORDER BY id DESC`);
     const sequences = seqsRes.rows;
     const result = [];
@@ -246543,7 +246589,7 @@ var premiumEmailMarketingRouter = router({
     }
     return result;
   }),
-  createSequence: staffProcedure.input(external_exports.object({
+  createSequence: premiumStaffProcedure.input(external_exports.object({
     name: external_exports.string().min(1),
     description: external_exports.string().optional(),
     repeat: external_exports.boolean().default(false),
@@ -246570,7 +246616,7 @@ var premiumEmailMarketingRouter = router({
     }
     return { ok: true, sequenceId: sequenceId2 };
   }),
-  toggleSequence: staffProcedure.input(external_exports.object({ sequenceId: external_exports.number(), active: external_exports.boolean() })).mutation(async ({ input }) => {
+  toggleSequence: premiumStaffProcedure.input(external_exports.object({ sequenceId: external_exports.number(), active: external_exports.boolean() })).mutation(async ({ input }) => {
     await ordersDb.execute(sql`
         UPDATE email_sequences SET active = ${input.active}, updated_at = NOW() WHERE id = ${input.sequenceId}
       `);
@@ -246578,7 +246624,7 @@ var premiumEmailMarketingRouter = router({
   }),
   // Edição de texto/atraso de um passo (o dono ajusta o follow-up sem programador). {nome},
   // {link_loja} e {unsubscribe} funcionam no assunto/corpo; o corpo é sanitizado no envio.
-  updateSequenceStep: staffProcedure.input(external_exports.object({
+  updateSequenceStep: premiumStaffProcedure.input(external_exports.object({
     stepId: external_exports.number().int().positive(),
     subject: external_exports.string().trim().min(1).max(200),
     htmlBody: external_exports.string().trim().min(1).max(2e4),
@@ -246593,22 +246639,22 @@ var premiumEmailMarketingRouter = router({
     if (res.rows.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Passo n\xE3o encontrado." });
     return { ok: true };
   }),
-  deleteSequence: staffProcedure.input(external_exports.object({ sequenceId: external_exports.number() })).mutation(async ({ input }) => {
+  deleteSequence: premiumStaffProcedure.input(external_exports.object({ sequenceId: external_exports.number() })).mutation(async ({ input }) => {
     await ordersDb.execute(sql`DELETE FROM email_sequence_steps WHERE sequence_id = ${input.sequenceId}`);
     await ordersDb.execute(sql`DELETE FROM email_sequence_enrollments WHERE sequence_id = ${input.sequenceId}`);
     await ordersDb.execute(sql`DELETE FROM email_sequences WHERE id = ${input.sequenceId}`);
     return { ok: true };
   }),
-  runSequencesCronNow: staffProcedure.mutation(async () => {
+  runSequencesCronNow: premiumStaffProcedure.mutation(async () => {
     const result = await processSequenceEnrollments2(100);
     return result;
   }),
   // ── Automation Rules Engine ───────────────────────────────────────────────
-  getAutomationRules: staffProcedure.query(async () => {
+  getAutomationRules: premiumStaffProcedure.query(async () => {
     const res = await ordersDb.execute(sql`SELECT * FROM automation_rules ORDER BY id DESC`);
     return res.rows;
   }),
-  createAutomationRule: staffProcedure.input(external_exports.object({
+  createAutomationRule: premiumStaffProcedure.input(external_exports.object({
     name: external_exports.string().min(1),
     triggerType: external_exports.string().min(1),
     triggerConfig: external_exports.string().optional(),
@@ -246622,16 +246668,16 @@ var premiumEmailMarketingRouter = router({
       `);
     return { ok: true };
   }),
-  deleteAutomationRule: staffProcedure.input(external_exports.object({ ruleId: external_exports.number() })).mutation(async ({ input }) => {
+  deleteAutomationRule: premiumStaffProcedure.input(external_exports.object({ ruleId: external_exports.number() })).mutation(async ({ input }) => {
     await ordersDb.execute(sql`DELETE FROM automation_rules WHERE id = ${input.ruleId}`);
     return { ok: true };
   }),
   // ── Templates ─────────────────────────────────────────────────────────────
-  getTemplates: staffProcedure.query(async () => {
+  getTemplates: premiumStaffProcedure.query(async () => {
     const res = await ordersDb.execute(sql`SELECT * FROM email_templates WHERE active = TRUE ORDER BY name ASC`);
     return res.rows;
   }),
-  createTemplate: staffProcedure.input(external_exports.object({
+  createTemplate: premiumStaffProcedure.input(external_exports.object({
     slug: external_exports.string().min(1),
     name: external_exports.string().min(1),
     subject: external_exports.string().min(1),
@@ -246648,12 +246694,12 @@ var premiumEmailMarketingRouter = router({
       `);
     return { ok: true };
   }),
-  deleteTemplate: staffProcedure.input(external_exports.object({ templateId: external_exports.number() })).mutation(async ({ input }) => {
+  deleteTemplate: premiumStaffProcedure.input(external_exports.object({ templateId: external_exports.number() })).mutation(async ({ input }) => {
     await ordersDb.execute(sql`DELETE FROM email_templates WHERE id = ${input.templateId}`);
     return { ok: true };
   }),
   // ── Contacts & Suppressions ───────────────────────────────────────────────
-  getContacts: staffProcedure.input(external_exports.object({ search: external_exports.string().optional() }).optional()).query(async ({ input }) => {
+  getContacts: premiumStaffProcedure.input(external_exports.object({ search: external_exports.string().optional() }).optional()).query(async ({ input }) => {
     const q = input?.search ? `%${input.search.toLowerCase()}%` : null;
     if (q) {
       const res2 = await ordersDb.execute(sql`
@@ -246666,7 +246712,7 @@ var premiumEmailMarketingRouter = router({
     const res = await ordersDb.execute(sql`SELECT * FROM marketing_contacts ORDER BY created_at DESC LIMIT 200`);
     return res.rows;
   }),
-  addContact: staffProcedure.input(external_exports.object({
+  addContact: premiumStaffProcedure.input(external_exports.object({
     email: external_exports.string().email(),
     name: external_exports.string().optional(),
     phone: external_exports.string().optional(),
@@ -246682,15 +246728,15 @@ var premiumEmailMarketingRouter = router({
       `);
     return { ok: true };
   }),
-  getSuppressions: staffProcedure.query(async () => {
+  getSuppressions: premiumStaffProcedure.query(async () => {
     const res = await ordersDb.execute(sql`SELECT * FROM email_suppressions ORDER BY created_at DESC LIMIT 200`);
     return res.rows;
   }),
-  addSuppression: staffProcedure.input(external_exports.object({ email: external_exports.string().email(), reason: external_exports.string().default("manual") })).mutation(async ({ input }) => {
+  addSuppression: premiumStaffProcedure.input(external_exports.object({ email: external_exports.string().email(), reason: external_exports.string().default("manual") })).mutation(async ({ input }) => {
     await suppressEmailGlobal(input.email, input.reason);
     return { ok: true };
   }),
-  removeSuppression: staffProcedure.input(external_exports.object({ email: external_exports.string().email() })).mutation(async ({ input }) => {
+  removeSuppression: premiumStaffProcedure.input(external_exports.object({ email: external_exports.string().email() })).mutation(async ({ input }) => {
     const cleanEmail = input.email.toLowerCase();
     await ordersDb.execute(sql`DELETE FROM email_suppressions WHERE LOWER(email) = ${cleanEmail}`);
     return { ok: true };
@@ -334092,11 +334138,11 @@ function extractBearerToken(authHeader) {
   const match = /^Bearer\s+(.+)$/.exec(authHeader.trim());
   return match ? match[1].trim() : null;
 }
-function isAuthorized(secret, authHeader) {
-  if (!secret) return false;
+function isAuthorized(secret2, authHeader) {
+  if (!secret2) return false;
   const token = extractBearerToken(authHeader);
   if (!token) return false;
-  return constantTimeEqual(token, secret);
+  return constantTimeEqual(token, secret2);
 }
 function mapOrderToSmbiPayload(row, opcoes = {}) {
   return {
@@ -334938,6 +334984,75 @@ function espelhoDescartouEdicao(existing, input, acao) {
 }
 function atendentePodeRemover(p4) {
   return p4.status !== "faturado" && !p4.smbiMovsaiId;
+}
+
+// shared/smbiJanela.ts
+var SMBI_JANELA_PADRAO = "08:00-11:00,14:00-17:00";
+var SMBI_JANELA_FUSO = "America/Fortaleza";
+var RE_FAIXA = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/;
+var avisados = /* @__PURE__ */ new Set();
+function avisar(config2) {
+  if (avisados.has(config2)) return;
+  avisados.add(config2);
+  console.warn(`[smbi] SMBI_JANELA inv\xE1lida (${JSON.stringify(config2)}): port\xE3o desligado (fail open). Formato: "08:00-11:00,14:00-17:00" ou "sempre".`);
+}
+function interpretarJanela(config2) {
+  const txt3 = (config2 ?? "").trim() || SMBI_JANELA_PADRAO;
+  if (txt3.toLowerCase() === "sempre") return null;
+  const faixas = [];
+  for (const parte of txt3.split(",")) {
+    const m4 = RE_FAIXA.exec(parte.trim());
+    if (!m4) {
+      avisar(txt3);
+      return null;
+    }
+    const [h1, m1, h22, m22] = [Number(m4[1]), Number(m4[2]), Number(m4[3]), Number(m4[4])];
+    if (h1 > 23 || h22 > 23 || m1 > 59 || m22 > 59) {
+      avisar(txt3);
+      return null;
+    }
+    const ini = h1 * 60 + m1;
+    const fim = h22 * 60 + m22;
+    if (fim <= ini) {
+      avisar(txt3);
+      return null;
+    }
+    faixas.push({ ini, fim });
+  }
+  return faixas.sort((a5, b3) => a5.ini - b3.ini);
+}
+var fmt = new Intl.DateTimeFormat("en-GB", {
+  timeZone: SMBI_JANELA_FUSO,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23"
+});
+function minutoLocal(agora) {
+  const partes = fmt.formatToParts(agora);
+  const h3 = Number(partes.find((p4) => p4.type === "hour")?.value ?? 0);
+  const m4 = Number(partes.find((p4) => p4.type === "minute")?.value ?? 0);
+  return h3 * 60 + m4;
+}
+var hhmm = (min2) => `${String(Math.floor(min2 / 60)).padStart(2, "0")}:${String(min2 % 60).padStart(2, "0")}`;
+function dentroDaJanelaDoRobo(agora, config2) {
+  const faixas = interpretarJanela(config2);
+  if (!faixas) return true;
+  const min2 = minutoLocal(agora);
+  return faixas.some((f4) => min2 >= f4.ini && min2 < f4.fim);
+}
+function proximaAberturaDaJanela(agora, config2) {
+  const faixas = interpretarJanela(config2);
+  if (!faixas || dentroDaJanelaDoRobo(agora, config2)) return null;
+  const min2 = minutoLocal(agora);
+  const hoje = faixas.find((f4) => f4.ini > min2);
+  return hoje ? hhmm(hoje.ini) : `${hhmm(faixas[0].ini)} de amanh\xE3`;
+}
+function pollingBarradoPelaJanela(opts2) {
+  if (opts2.id || opts2.simular) return false;
+  return !dentroDaJanelaDoRobo(opts2.agora ?? /* @__PURE__ */ new Date(), opts2.config);
+}
+function janelaDoAmbiente() {
+  return process.env.SMBI_JANELA?.trim() || SMBI_JANELA_PADRAO;
 }
 
 // server/lib/smbiCadastroDecisoes.ts
@@ -336213,14 +336328,14 @@ function planoDeCache(itens, linhas, opts2) {
   return { reaproveita, ultimo };
 }
 function resumirResultados(resultados) {
-  const falhas = resultados.filter((r5) => !r5.ok).length;
+  const falhas2 = resultados.filter((r5) => !r5.ok).length;
   const custoCobradoReais = arredondar(resultados.reduce((s4, r5) => s4 + (r5.cobrado ? r5.custoReais : 0), 0));
   const algumCobrado = resultados.some((r5) => r5.cobrado);
   return {
     custoCobradoReais,
-    falhas,
-    parcial: falhas > 0 && falhas < resultados.length || falhas > 0 && algumCobrado,
-    falhouSemCobranca: falhas === resultados.length && !algumCobrado
+    falhas: falhas2,
+    parcial: falhas2 > 0 && falhas2 < resultados.length || falhas2 > 0 && algumCobrado,
+    falhouSemCobranca: falhas2 === resultados.length && !algumCobrado
   };
 }
 
@@ -336666,7 +336781,10 @@ var faturamentoRouter = router({
   // Painel do robô do SMBI (só admin/gerente): chave de parada + último batimento.
   smbiRoboStatus: staffProcedure.query(async () => {
     const [s4] = await db.select().from(smbiRobotState).where(eq(smbiRobotState.id, 1));
-    const semSinal = roboSemSinal(s4?.ultimoHeartbeatEm);
+    const agora = /* @__PURE__ */ new Date();
+    const config2 = janelaDoAmbiente();
+    const foraDaJanela = !dentroDaJanelaDoRobo(agora, config2);
+    const semSinal = !foraDaJanela && roboSemSinal(s4?.ultimoHeartbeatEm);
     return {
       roboAtivo: s4?.roboAtivo === true,
       multiempresaAtivo: s4?.multiempresaAtivo === true,
@@ -336681,6 +336799,8 @@ var faturamentoRouter = router({
       atualizadoPor: s4?.atualizadoPor ?? null,
       atualizadoEm: s4?.atualizadoEm ?? null,
       semSinal,
+      foraDaJanela,
+      voltaAs: proximaAberturaDaJanela(agora, config2),
       limiteSemSinalMin: SMBI_ROBO_SEM_SINAL_MIN
     };
   }),
@@ -337183,19 +337303,15 @@ init_drizzle_orm();
 init_trpc();
 init_ordersDb();
 init_schema2();
-function requireAdmin(ctx) {
-  if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
-}
 var STAGE_VALUES = ["qualified", "contacted", "lost"];
 var b2bRouter = router({
-  listLeads: protectedProcedure.input(
+  listLeads: premiumAdminProcedure.input(
     external_exports.object({
       segment: external_exports.string().trim().optional(),
       state: external_exports.string().trim().optional(),
       stage: external_exports.string().trim().optional()
     }).optional()
   ).query(async ({ ctx, input }) => {
-    requireAdmin(ctx);
     const conditions = [eq(companies.pipelineType, "inbound")];
     if (input?.segment) conditions.push(eq(companies.segment, input.segment));
     if (input?.state) conditions.push(eq(companies.state, input.state.toUpperCase()));
@@ -337231,8 +337347,7 @@ var b2bRouter = router({
       };
     });
   }),
-  getLead: protectedProcedure.input(external_exports.object({ companyId: external_exports.number().int() })).query(async ({ ctx, input }) => {
-    requireAdmin(ctx);
+  getLead: premiumAdminProcedure.input(external_exports.object({ companyId: external_exports.number().int() })).query(async ({ ctx, input }) => {
     const [company] = await ordersDb.select().from(companies).where(eq(companies.id, input.companyId));
     if (!company) throw new TRPCError({ code: "NOT_FOUND" });
     const [leadContacts, sources, consents, logs] = await Promise.all([
@@ -337243,8 +337358,7 @@ var b2bRouter = router({
     ]);
     return { company, contacts: leadContacts, sources, consents, logs };
   }),
-  updateStage: protectedProcedure.input(external_exports.object({ companyId: external_exports.number().int(), stage: external_exports.enum(STAGE_VALUES) })).mutation(async ({ ctx, input }) => {
-    requireAdmin(ctx);
+  updateStage: premiumAdminProcedure.input(external_exports.object({ companyId: external_exports.number().int(), stage: external_exports.enum(STAGE_VALUES) })).mutation(async ({ ctx, input }) => {
     const [updated] = await ordersDb.update(companies).set({ pipelineStage: input.stage, updatedAt: /* @__PURE__ */ new Date() }).where(eq(companies.id, input.companyId)).returning();
     if (!updated) throw new TRPCError({ code: "NOT_FOUND" });
     await ordersDb.insert(auditLogs).values({
@@ -337252,13 +337366,12 @@ var b2bRouter = router({
       entityId: input.companyId,
       action: "stage_changed",
       actorType: "human",
-      actorId: String(ctx.user.id),
-      metadataJson: { newStage: input.stage, byName: ctx.user.name }
+      actorId: ctx.actor.id === null ? "premium-admin" : String(ctx.actor.id),
+      metadataJson: { newStage: input.stage, byName: ctx.actor.name }
     });
     return updated;
   }),
-  addNote: protectedProcedure.input(external_exports.object({ companyId: external_exports.number().int(), note: external_exports.string().trim().min(1).max(2e3) })).mutation(async ({ ctx, input }) => {
-    requireAdmin(ctx);
+  addNote: premiumAdminProcedure.input(external_exports.object({ companyId: external_exports.number().int(), note: external_exports.string().trim().min(1).max(2e3) })).mutation(async ({ ctx, input }) => {
     const [company] = await ordersDb.select({ id: companies.id }).from(companies).where(eq(companies.id, input.companyId));
     if (!company) throw new TRPCError({ code: "NOT_FOUND" });
     await ordersDb.insert(auditLogs).values({
@@ -337266,8 +337379,8 @@ var b2bRouter = router({
       entityId: input.companyId,
       action: "note_added",
       actorType: "human",
-      actorId: String(ctx.user.id),
-      metadataJson: { note: input.note, byName: ctx.user.name }
+      actorId: ctx.actor.id === null ? "premium-admin" : String(ctx.actor.id),
+      metadataJson: { note: input.note, byName: ctx.actor.name }
     });
     return { ok: true };
   })
@@ -342313,6 +342426,61 @@ var creditoRouter = router({
   })
 });
 
+// server/routers/premiumAuth.ts
+init_zod();
+init_dist();
+init_trpc();
+init_auth();
+init_safeEqual();
+init_premiumSession();
+init_const();
+var falhas = /* @__PURE__ */ new Map();
+var throttle = {
+  blocked: (ip) => (falhas.get(ip)?.until ?? 0) > Date.now(),
+  fail(ip) {
+    if (falhas.size > 5e3) falhas.clear();
+    const n5 = (falhas.get(ip)?.count ?? 0) + 1;
+    falhas.set(ip, { count: n5, until: Date.now() + Math.min(n5 * 3e4, 3e5) });
+  },
+  ok: (ip) => {
+    falhas.delete(ip);
+  }
+};
+var GENERIC = "Email ou senha inv\xE1lidos";
+function safeVerify(password, hash) {
+  try {
+    return verifyPassword(password, hash);
+  } catch {
+    return false;
+  }
+}
+var premiumAuthRouter = router({
+  me: publicProcedure.query(({ ctx }) => ctx.premiumAdmin ? { email: ctx.premiumAdmin.email, role: "admin" } : null),
+  login: publicProcedure.input(external_exports.object({ email: external_exports.string().trim().min(1).max(254), password: external_exports.string().min(1).max(256) })).mutation(({ input, ctx }) => {
+    const cfg = getPremiumConfig();
+    if (!cfg) {
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Login da loja n\xE3o configurado" });
+    }
+    const typed = input.email.trim().toLowerCase();
+    const emailOk = safeEqual(typed, cfg.email);
+    if (throttle.blocked(ctx.clientIp)) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Muitas tentativas. Tente novamente em alguns minutos." });
+    }
+    const passOk = emailOk ? safeVerify(input.password, cfg.passwordHash) : (safeVerify(input.password, getDummyHash()), false);
+    if (!passOk) {
+      throttle.fail(ctx.clientIp);
+      throw new TRPCError({ code: "UNAUTHORIZED", message: GENERIC });
+    }
+    throttle.ok(ctx.clientIp);
+    ctx.res.setHeader("Set-Cookie", premiumCookieHeader(PREMIUM_COOKIE_NAME, signPremiumToken(cfg)));
+    return { email: cfg.email, role: "admin" };
+  }),
+  logout: publicProcedure.mutation(({ ctx }) => {
+    ctx.res.setHeader("Set-Cookie", clearPremiumCookieHeader(PREMIUM_COOKIE_NAME));
+    return { ok: true };
+  })
+});
+
 // server/routers/index.ts
 var appRouter = router({
   auth: authRouter,
@@ -342335,7 +342503,9 @@ var appRouter = router({
   b2b: b2bRouter,
   catalog: catalogRouter,
   prospectingRadar: prospectingRadarRouter,
-  credito: creditoRouter
+  credito: creditoRouter,
+  // Login da loja Premium: sem banco, independente do `auth` do CRM.
+  premiumAuth: premiumAuthRouter
 });
 
 // api/index.ts
@@ -344862,8 +345032,8 @@ var import_crypto17 = __toESM(require("crypto"));
 init_ordersDb();
 init_drizzle_orm();
 function verifySvixSignature(req, rawBodyBuf) {
-  const secret = process.env.RESEND_WEBHOOK_SECRET;
-  if (!secret) {
+  const secret2 = process.env.RESEND_WEBHOOK_SECRET;
+  if (!secret2) {
     return process.env.NODE_ENV !== "production";
   }
   const svixId = req.headers["svix-id"];
@@ -344877,7 +345047,7 @@ function verifySvixSignature(req, rawBodyBuf) {
   if (isNaN(msgSec) || Math.abs(nowSec - msgSec) > 300) {
     return false;
   }
-  const secretBytes = secret.startsWith("whsec_") ? Buffer.from(secret.slice(6), "base64") : Buffer.from(secret, "utf-8");
+  const secretBytes = secret2.startsWith("whsec_") ? Buffer.from(secret2.slice(6), "base64") : Buffer.from(secret2, "utf-8");
   const signedPayload = `${svixId}.${svixTimestamp}.${rawBodyBuf.toString("utf-8")}`;
   const computedHmac = import_crypto17.default.createHmac("sha256", secretBytes).update(signedPayload).digest("base64");
   const signatures = svixSignature.split(" ");
@@ -344935,6 +345105,7 @@ async function handleResendWebhook(req, res) {
 // server/lib/trpcBatchGuard.ts
 var RATE_LIMITED_PROCEDURES = [
   "auth.login",
+  "premiumAuth.login",
   "auth.emergencyReset",
   "shipping.calculate",
   "shipping.trackOrder",
@@ -345164,9 +345335,9 @@ var adminApiLimiter = rate_limit_default({
   message: { error: "Too many requests" }
 });
 app.get("/api/db-stats", adminApiLimiter, async (req, res) => {
-  const secret = process.env.ADMIN_RESET_SECRET;
+  const secret2 = process.env.ADMIN_RESET_SECRET;
   const adminHeader = req.headers["x-admin-secret"];
-  if (!secret || typeof adminHeader !== "string" || !safeEqual(adminHeader, secret)) {
+  if (!secret2 || typeof adminHeader !== "string" || !safeEqual(adminHeader, secret2)) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   try {
@@ -345218,11 +345389,11 @@ var webhookLimiter = rate_limit_default({
   validate: { xForwardedForHeader: false }
 });
 app.post("/api/me-webhook", webhookLimiter, import_express3.default.raw({ type: "*/*" }), async (req, res) => {
-  const secret = process.env.MELHOR_ENVIO_WEBHOOK_SECRET;
+  const secret2 = process.env.MELHOR_ENVIO_WEBHOOK_SECRET;
   const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(String(req.body ?? ""));
   const sig = req.headers["x-me-signature"];
-  if (!secret || !verifyMeSignature(raw, typeof sig === "string" ? sig : void 0, secret)) {
-    console.warn(`[me-webhook] ignorado: ${secret ? "assinatura inv\xE1lida ou ausente" : "MELHOR_ENVIO_WEBHOOK_SECRET n\xE3o configurado"}`);
+  if (!secret2 || !verifyMeSignature(raw, typeof sig === "string" ? sig : void 0, secret2)) {
+    console.warn(`[me-webhook] ignorado: ${secret2 ? "assinatura inv\xE1lida ou ausente" : "MELHOR_ENVIO_WEBHOOK_SECRET n\xE3o configurado"}`);
     res.json({ ok: true, ignored: true });
     return;
   }
@@ -345438,14 +345609,14 @@ var brevoWebhookLimiter = rate_limit_default({
 var brevoQuerySecretWarned = false;
 app.post("/api/brevo-webhook", brevoWebhookLimiter, import_express3.default.json({ limit: "256kb" }), async (req, res) => {
   try {
-    const secret = process.env.BREVO_WEBHOOK_SECRET;
-    if (!secret && process.env.NODE_ENV === "production") {
+    const secret2 = process.env.BREVO_WEBHOOK_SECRET;
+    if (!secret2 && process.env.NODE_ENV === "production") {
       console.warn("[brevo-webhook] BREVO_WEBHOOK_SECRET not configured");
       res.status(401).json({ error: "Webhook secret not configured" });
       return;
     }
-    if (secret) {
-      const check = checkWebhookSecret(secret, req.headers, req.query);
+    if (secret2) {
+      const check = checkWebhookSecret(secret2, req.headers, req.query);
       if (!check.ok) {
         console.warn("[brevo-webhook] Invalid secret");
         res.status(401).json({ error: "Invalid secret" });
@@ -345832,6 +346003,7 @@ app.use("/api/trpc", (req, res, next) => {
   next();
 });
 app.use("/api/trpc/auth.login", authLimiter, authIpLimiter);
+app.use("/api/trpc/premiumAuth.login", authLimiter, authIpLimiter);
 app.use("/api/trpc/auth.emergencyReset", authLimiter, authIpLimiter);
 app.use("/api/trpc/shipping.calculate", storeLimiter);
 app.use("/api/trpc/shipping.trackOrder", storeLimiter);
@@ -345844,8 +346016,8 @@ app.use("/api/trpc/recovery.validateCoupon", couponCheckLimiter);
 app.use("/api/trpc/recovery.chat", chatLimiter);
 app.use("/api/trpc/ai.chat", chatLimiter);
 app.use("/api/trpc/ai.testConnection", authLimiter);
-app.use("/api/trpc", async (_req, _res, next) => {
-  if (!migrationSettled) await dbReady;
+app.use("/api/trpc", async (req, _res, next) => {
+  if (!migrationSettled && !/^\/premiumAuth\./i.test(req.path)) await dbReady;
   next();
 });
 app.use(
@@ -346063,9 +346235,9 @@ _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
   return { sent };
 }
 app.all("/api/cron/abandoned-cart", import_express3.default.json(), async (req, res) => {
-  const secret = process.env.CRON_SECRET;
+  const secret2 = process.env.CRON_SECRET;
   const provided = req.headers["x-cron-secret"] ?? req.headers["authorization"]?.replace("Bearer ", "");
-  if (!secret || typeof provided !== "string" || !safeEqual(provided, secret)) {
+  if (!secret2 || typeof provided !== "string" || !safeEqual(provided, secret2)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -346204,9 +346376,9 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 app.get("/api/cron/email-daily", async (req, res) => {
-  const secret = process.env.CRON_SECRET;
+  const secret2 = process.env.CRON_SECRET;
   const provided = req.headers["authorization"]?.replace("Bearer ", "");
-  if (!secret || typeof provided !== "string" || !safeEqual(provided, secret)) {
+  if (!secret2 || typeof provided !== "string" || !safeEqual(provided, secret2)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -346282,9 +346454,9 @@ app.get("/api/cron/email-daily", async (req, res) => {
   }
 });
 app.get("/api/orders-health", async (req, res) => {
-  const secret = process.env.CRON_SECRET;
+  const secret2 = process.env.CRON_SECRET;
   const provided = req.headers["x-cron-secret"] ?? req.headers["authorization"]?.replace("Bearer ", "");
-  if (!secret || typeof provided !== "string" || !safeEqual(provided, secret)) {
+  if (!secret2 || typeof provided !== "string" || !safeEqual(provided, secret2)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -346323,6 +346495,17 @@ app.get("/api/smbi/pedidos", smbiApiLimiter, async (req, res) => {
   }
   const id2 = typeof req.query.id === "string" ? req.query.id : void 0;
   const simular = req.query.simular === "1";
+  if (pollingBarradoPelaJanela({ id: id2, simular, config: janelaDoAmbiente() })) {
+    res.json({
+      ok: true,
+      roboAtivo: false,
+      simulacao: false,
+      pedidos: [],
+      foraDaJanela: true,
+      aviso: "Fora da janela de atendimento do rob\xF4 (08:00-11:00 e 14:00-17:00, Fortaleza). Nada foi consultado nem reservado."
+    });
+    return;
+  }
   try {
     const [estadoRobo] = await db.select({ roboAtivo: smbiRobotState.roboAtivo, multiempresaAtivo: smbiRobotState.multiempresaAtivo }).from(smbiRobotState).where(eq(smbiRobotState.id, 1));
     const roboAtivo = estadoRobo?.roboAtivo === true;
@@ -346488,6 +346671,10 @@ app.post("/api/smbi/heartbeat", smbiApiLimiter, import_express3.default.json({ l
   if (!parsed.success) {
     console.warn("[smbi] POST /api/smbi/heartbeat \u2192 400 (corpo inv\xE1lido)");
     res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() });
+    return;
+  }
+  if (!dentroDaJanelaDoRobo(/* @__PURE__ */ new Date(), janelaDoAmbiente())) {
+    res.json({ ok: true, roboAtivo: false, foraDaJanela: true });
     return;
   }
   try {
