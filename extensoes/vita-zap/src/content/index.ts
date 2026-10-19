@@ -8,6 +8,13 @@ import { ErroSeletor } from './lista';
 import { encontrar } from './selectors';
 import { varrerLista } from './varredura';
 
+declare global {
+  interface Window { __vitaZapCarregado?: boolean }
+}
+// Pode ser injetado de novo pelo painel (aba aberta antes da instalação): registra uma vez só.
+const jaCarregado = window.__vitaZapCarregado === true;
+window.__vitaZapCarregado = true;
+
 let ocupado = false;
 
 function emitir(evento: EventoConteudo): void {
@@ -54,7 +61,7 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
   }
 }
 
-chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo, remetente, responder: (r: RespostaConteudo) => void) => {
+if (!jaCarregado) chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo, remetente, responder: (r: RespostaConteudo) => void) => {
   if (remetente.id !== chrome.runtime.id) return false;
   const longo = mensagem.tipo === 'varrer' || mensagem.tipo === 'abrirEColar';
   if (longo && ocupado) {

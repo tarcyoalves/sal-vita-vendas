@@ -11,12 +11,25 @@ export async function abaDoWhatsApp(): Promise<chrome.tabs.Tab | null> {
   return abas.find((a) => a.windowId === janela.id && a.active) ?? abas.find((a) => a.windowId === janela.id) ?? abas[0];
 }
 
+/** Aba aberta antes da instalação/atualização não tem o content script: injeta o MESMO content.js do manifesto. */
+async function injetarConteudo(tabId: number): Promise<void> {
+  await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+}
+
 export async function pedir(pedido: PedidoConteudo, trazerParaFrente = false): Promise<RespostaConteudo> {
   const aba = await abaDoWhatsApp().catch(() => null);
   if (!aba?.id) return { ok: false, codigo: 'nao_pronto', erro: 'Abra o WhatsApp Web (web.whatsapp.com) nesta janela do Chrome.' };
+  const tabId = aba.id;
+  const enviarPedido = () => chrome.tabs.sendMessage<PedidoConteudo, RespostaConteudo | undefined>(tabId, pedido);
   try {
-    if (trazerParaFrente && !aba.active) await chrome.tabs.update(aba.id, { active: true });
-    const r = await chrome.tabs.sendMessage<PedidoConteudo, RespostaConteudo | undefined>(aba.id, pedido);
+    if (trazerParaFrente && !aba.active) await chrome.tabs.update(tabId, { active: true });
+    let r: RespostaConteudo | undefined;
+    try {
+      r = await enviarPedido();
+    } catch {
+      await injetarConteudo(tabId);
+      r = await enviarPedido();
+    }
     return r ?? { ok: false, codigo: 'interno', erro: 'O WhatsApp Web não respondeu.' };
   } catch {
     return {

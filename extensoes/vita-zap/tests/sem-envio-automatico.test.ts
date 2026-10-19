@@ -80,7 +80,12 @@ describe('nenhum código dispara o envio', () => {
   });
 
   it('sem injeção de código nem APIs que geram teclas reais', () => {
-    expect(ocorrencias(/chrome\.debugger|chrome\.scripting|\beval\s*\(|new Function\s*\(|chrome\.input\b/)).toEqual([]);
+    expect(ocorrencias(/chrome\.debugger|\beval\s*\(|new Function\s*\(|chrome\.input\b/)).toEqual([]);
+    // chrome.scripting só para reinjetar o próprio content.js (aba aberta antes da instalação).
+    expect(ocorrencias(/chrome\.scripting/)).toEqual(['src/sidepanel/whatsapp.ts']);
+    const wa = arquivos.find((a) => a.caminho === 'src/sidepanel/whatsapp.ts')?.codigo ?? '';
+    const usos = wa.match(/chrome\.scripting\.[a-zA-Z]+\([^)]*\)/g) ?? [];
+    expect(usos).toEqual(["chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] })"]);
   });
 
   it('o protocolo não tem pedido de envio', () => {
@@ -95,7 +100,7 @@ describe('nenhum código dispara o envio', () => {
   it('manifesto não pede permissões que permitiriam digitar/enviar por fora', () => {
     const manifesto = JSON.parse(readFileSync(join(RAIZ, 'public/manifest.json'), 'utf8')) as { permissions?: string[]; host_permissions?: string[] };
     expect(manifesto.permissions ?? []).not.toEqual(expect.arrayContaining(['debugger']));
-    for (const p of ['debugger', 'scripting', 'input', 'nativeMessaging']) expect(manifesto.permissions ?? []).not.toContain(p);
+    for (const p of ['debugger', 'input', 'nativeMessaging']) expect(manifesto.permissions ?? []).not.toContain(p);
     expect(manifesto.host_permissions).toEqual(['https://web.whatsapp.com/*']);
   });
 });
