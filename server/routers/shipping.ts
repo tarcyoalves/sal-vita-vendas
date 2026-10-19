@@ -59,8 +59,8 @@ export const CATALOG: Record<ProductId, {
   grossWeightKg: number;
   pkg: { height: number; width: number; length: number };
 }> = {
-  '1kg':   { name: 'Sal Marinho Integral 1kg',        price: 29.90,  kgPerUnit: 1,  grossWeightKg: 1.2,  pkg: PKG_1KG  },
-  '3kg':   { name: 'Trio Sal Vita 3kg (3×1kg)',      price: 74.90,  kgPerUnit: 3,  grossWeightKg: 3.6,  pkg: PKG_3KG  },
+  '1kg':   { name: 'Sal Marinho Integral 1kg',        price: 29.90,  kgPerUnit: 1,  grossWeightKg: 1.0,  pkg: PKG_1KG  },
+  '3kg':   { name: 'Trio Sal Vita 3kg (3×1kg)',      price: 74.90,  kgPerUnit: 3,  grossWeightKg: 3.0,  pkg: PKG_3KG  },
   'caixa': { name: 'Caixa Sal Vita 10kg (10×1kg)',   price: 149.90, kgPerUnit: 10, grossWeightKg: 10.0, pkg: PKG_10KG },
 };
 
@@ -83,7 +83,7 @@ function resolveProduct(productId?: string | null, qty?: number | null): Product
 
 /** Gross weight in kg for a given product and number of packs of that product. */
 function shipWeight(product: ProductId, packs: number): number {
-  return +(Math.max(1.2, CATALOG[product].grossWeightKg * Math.max(1, packs))).toFixed(2);
+  return +(Math.max(1.0, CATALOG[product].grossWeightKg * Math.max(1, packs))).toFixed(2);
 }
 
 function renderTpl(body: string, vars: Record<string, string>): string {

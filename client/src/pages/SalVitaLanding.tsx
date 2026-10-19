@@ -118,9 +118,9 @@ interface ApiShipOpt {serviceId?:string;name?:string;company?:string;price:numbe
 interface CouponResult {valid:boolean;message:string;discountValue?:number;discountType?:string}
 interface PendingOrder {id:number;total:number;ts:number;trackToken?:string|null;productId?:string;shipService?:string;shipPrice?:number}
 
-const PRODUCTS:Product[]=[
-  {id:'1kg',  name:'SAL VITA PREMIUM',      subtitle:'Embalagem zip lock com janela',      weight:'1kg',          weightKg:1.2, units:1,  price:29.90, pricePerKg:29.90, tag:'Para experimentar',      highlight:false},
-  {id:'3kg',  name:'TRIO SAL VITA',         subtitle:'3 embalagens zip lock de 1kg cada',  weight:'3kg (3×1kg)',  weightKg:3.6, units:3,  price:74.90, pricePerKg:24.97, tag:'Ideal para a Família', highlight:false},
+const PRODUCTS:Product[] = [
+  {id:'1kg',  name:'SAL VITA PREMIUM',      subtitle:'Embalagem zip lock com janela',      weight:'1kg',          weightKg:1,   units:1,  price:29.90, pricePerKg:29.90, tag:'Para experimentar',      highlight:false},
+  {id:'3kg',  name:'TRIO SAL VITA',         subtitle:'3 embalagens zip lock de 1kg cada',  weight:'3kg (3×1kg)',  weightKg:3,   units:3,  price:74.90, pricePerKg:24.97, tag:'Ideal para a Família', highlight:false},
   {id:'caixa',name:'CAIXA SAL VITA PREMIUM',subtitle:'10 embalagens zip lock de 1kg cada', weight:'10kg (10×1kg)',weightKg:10,  units:10, price:149.90,pricePerKg:14.99, tag:'Melhor Custo-Benefício', highlight:true},
 ];
 
