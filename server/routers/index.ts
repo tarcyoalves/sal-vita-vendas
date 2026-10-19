@@ -18,6 +18,7 @@ import { b2bRouter } from './b2b';
 import { catalogRouter } from './catalog';
 import { prospectingRadarRouter } from './prospectingRadar';
 import { creditoRouter } from './credito';
+import { premiumAuthRouter } from './premiumAuth';
 export const appRouter = router({
   auth: authRouter,
   reminders: remindersRouter,
@@ -40,6 +41,8 @@ export const appRouter = router({
   catalog: catalogRouter,
   prospectingRadar: prospectingRadarRouter,
   credito: creditoRouter,
+  // Login da loja Premium: sem banco, independente do `auth` do CRM.
+  premiumAuth: premiumAuthRouter,
 });
 
 export type AppRouter = typeof appRouter;

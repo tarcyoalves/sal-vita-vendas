@@ -1145,6 +1145,7 @@ app.use('/api/trpc', (req, res, next) => {
   next();
 });
 app.use('/api/trpc/auth.login', authLimiter, authIpLimiter);
+app.use('/api/trpc/premiumAuth.login', authLimiter, authIpLimiter);
 app.use('/api/trpc/auth.emergencyReset', authLimiter, authIpLimiter);
 app.use('/api/trpc/shipping.calculate', storeLimiter);
 app.use('/api/trpc/shipping.trackOrder', storeLimiter);
@@ -1161,8 +1162,9 @@ app.use('/api/trpc/ai.testConnection', authLimiter);
 // On the very first request after a cold start, wait for migration to settle
 // so the admin seed and schema exist before any login attempt.
 // After the first request, migrationSettled=true and all subsequent requests skip the wait.
-app.use('/api/trpc', async (_req, _res, next) => {
-  if (!migrationSettled) await dbReady;
+app.use('/api/trpc', async (req, _res, next) => {
+  // Login da loja não usa banco: não espera a migração do CRM (que pode estar fora do ar).
+  if (!migrationSettled && !/^\/premiumAuth\./i.test(req.path)) await dbReady;
   next();
 });
 

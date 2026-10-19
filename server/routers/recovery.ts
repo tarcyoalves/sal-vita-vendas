@@ -1,6 +1,6 @@
 import { safeErr } from '../lib/logSafe';
 import { z } from 'zod';
-import { router, publicProcedure, protectedProcedure } from '../trpc';
+import { router, publicProcedure, premiumAdminProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
 import { nomeClienteValido, normalizarNomeCliente, nomeComoDadoNoPrompt, podeAgendarCadencia, CADENCIA_JANELA_DIAS } from '../lib/recoveryInput';
 import { abandonedCarts, automationRuns, coupons, msgTemplates, siteOrders } from '../db/schema';
@@ -401,9 +401,8 @@ export const recoveryRouter = router({
     }),
 
   // Admin: list abandoned carts (not yet recovered)
-  listAbandoned: protectedProcedure
+  listAbandoned: premiumAdminProcedure
     .query(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const rows = await db.select().from(abandonedCarts)
         .where(eq(abandonedCarts.recovered, false))
         .orderBy(desc(abandonedCarts.updatedAt));
@@ -417,9 +416,8 @@ export const recoveryRouter = router({
     }),
 
   // Admin: list unpaid orders (payment awaiting, not cancelled)
-  listUnpaid: protectedProcedure
+  listUnpaid: premiumAdminProcedure
     .query(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const rows = await db.select().from(siteOrders)
         .where(and(
           eq(siteOrders.paymentStatus, 'awaiting'),
@@ -434,10 +432,9 @@ export const recoveryRouter = router({
     }),
 
   // Admin: mark abandoned cart as recovered
-  markRecovered: protectedProcedure
+  markRecovered: premiumAdminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       await db.update(abandonedCarts)
         .set({ recovered: true, updatedAt: new Date() })
         .where(eq(abandonedCarts.id, input.id));
@@ -445,10 +442,9 @@ export const recoveryRouter = router({
     }),
 
   // Admin: mark recovery message sent
-  markSent: protectedProcedure
+  markSent: premiumAdminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       await db.update(abandonedCarts)
         .set({ recoverySentAt: new Date(), updatedAt: new Date() })
         .where(eq(abandonedCarts.id, input.id));
@@ -456,14 +452,13 @@ export const recoveryRouter = router({
     }),
 
   // Admin: list coupons
-  listCoupons: protectedProcedure
+  listCoupons: premiumAdminProcedure
     .query(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       return db.select().from(coupons).orderBy(desc(coupons.createdAt));
     }),
 
   // Admin: create coupon
-  createCoupon: protectedProcedure
+  createCoupon: premiumAdminProcedure
     .input(z.object({
       code: z.string().min(2).max(20).transform(s => s.toUpperCase().trim()),
       description: z.string().max(200).optional(),
@@ -477,7 +472,6 @@ export const recoveryRouter = router({
       path: ['discountValue'],
     }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       // Checa antes (sem depender só do UNIQUE) para devolver um erro claro.
       const [dup] = await db.select({ id: coupons.id }).from(coupons).where(eq(coupons.code, input.code)).limit(1);
       if (dup) throw new TRPCError({ code: 'CONFLICT', message: `Já existe um cupom com o código ${input.code}` });
@@ -494,10 +488,9 @@ export const recoveryRouter = router({
     }),
 
   // Admin: toggle coupon active/inactive
-  toggleCoupon: protectedProcedure
+  toggleCoupon: premiumAdminProcedure
     .input(z.object({ id: z.number(), active: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       await db.update(coupons).set({ active: input.active }).where(eq(coupons.id, input.id));
       return { ok: true };
     }),
@@ -505,20 +498,18 @@ export const recoveryRouter = router({
   // Admin: designate the coupon used by default in automated/AI recovery
   // messages ({cupom} placeholder, "+ Cupom" button when no coupon is chosen).
   // Only one coupon can be the recovery default at a time.
-  setRecoveryCoupon: protectedProcedure
+  setRecoveryCoupon: premiumAdminProcedure
     .input(z.object({ id: z.number(), enabled: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       if (input.enabled) await db.update(coupons).set({ useForRecovery: false });
       await db.update(coupons).set({ useForRecovery: input.enabled }).where(eq(coupons.id, input.id));
       return { ok: true };
     }),
 
   // Admin: mark cart customer as opted out (no more automated messages)
-  markOptedOut: protectedProcedure
+  markOptedOut: premiumAdminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       await db.update(abandonedCarts)
         .set({ optedOut: true, updatedAt: new Date() })
         .where(eq(abandonedCarts.id, input.id));
@@ -530,10 +521,9 @@ export const recoveryRouter = router({
     }),
 
   // Admin: send WhatsApp recovery message to specific cart
-  sendRecovery: protectedProcedure
+  sendRecovery: premiumAdminProcedure
     .input(z.object({ id: z.number(), coupon: z.string().optional(), useCoupon: z.boolean().optional(), templateId: z.number().optional() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [cart] = await db.select().from(abandonedCarts).where(eq(abandonedCarts.id, input.id)).limit(1);
       if (!cart) throw new TRPCError({ code: 'NOT_FOUND' });
       if (cart.optedOut) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente optou por não receber mensagens (PARAR)' });
@@ -598,10 +588,9 @@ export const recoveryRouter = router({
     }),
 
   // Admin: send WhatsApp to unpaid order (with optional template + PIX fetch)
-  sendUnpaid: protectedProcedure
+  sendUnpaid: premiumAdminProcedure
     .input(z.object({ id: z.number(), templateId: z.number().optional() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
       // Check opt-out via the matching abandoned cart record (if any)
@@ -669,10 +658,9 @@ export const recoveryRouter = router({
     }),
 
   // Admin: get payment info (PIX code / boleto) for unpaid order
-  getPaymentInfo: protectedProcedure
+  getPaymentInfo: premiumAdminProcedure
     .input(z.object({ orderId: z.number() }))
     .query(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
       if (!order) return { pixCode: null, boletoUrl: null };
       const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
@@ -717,9 +705,8 @@ export const recoveryRouter = router({
     }),
 
   // Admin: auto-send to all carts not contacted in last 24h
-  autoSendAbandoned: protectedProcedure
+  autoSendAbandoned: premiumAdminProcedure
     .mutation(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       if (!isBusinessHours()) return { sent: 0, total: 0, skipped: 'outside business hours (08:00–21:00 BRT)' };
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       // Claim atômico: carimba recovery_sent_at (guarda o valor anterior) antes de
@@ -768,9 +755,8 @@ export const recoveryRouter = router({
     }),
 
   // Admin: check WA connection status
-  waStatus: protectedProcedure
+  waStatus: premiumAdminProcedure
     .query(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
       const key = process.env.WA_API_KEY;
       if (!key) {
@@ -812,9 +798,8 @@ export const recoveryRouter = router({
   // Admin: fetch the pairing QR code so a dropped session can be restored from
   // the panel. Without this the operator saw "WA Desconectado" with no way
   // forward — the reconnect button cannot help once WhatsApp has logged out.
-  waQrCode: protectedProcedure
+  waQrCode: premiumAdminProcedure
     .mutation(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
       const key = process.env.WA_API_KEY;
       if (!key) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'WA_API_KEY não configurado' });
@@ -859,9 +844,8 @@ export const recoveryRouter = router({
     }),
 
   // Admin: force WA reconnect — tries /reconnect then /restart endpoints on the wa-server
-  waReconnect: protectedProcedure
+  waReconnect: premiumAdminProcedure
     .mutation(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
       const key = process.env.WA_API_KEY;
       if (!key) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'WA_API_KEY não configurado' });
@@ -890,14 +874,13 @@ export const recoveryRouter = router({
     }),
 
   // Admin: list message templates
-  listTemplates: protectedProcedure
+  listTemplates: premiumAdminProcedure
     .query(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       return db.select().from(msgTemplates).orderBy(msgTemplates.type, msgTemplates.label);
     }),
 
   // Admin: save (create or update) template
-  saveTemplate: protectedProcedure
+  saveTemplate: premiumAdminProcedure
     .input(z.object({
       id: z.number().optional(),
       slug: z.string().min(2).max(50).regex(/^[a-z0-9_]+$/),
@@ -908,7 +891,6 @@ export const recoveryRouter = router({
       isDefault: z.boolean().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       if (input.id) {
         const [updated] = await db.update(msgTemplates).set({
           slug: input.slug, type: input.type, label: input.label,
@@ -925,28 +907,25 @@ export const recoveryRouter = router({
     }),
 
   // Admin: delete template
-  deleteTemplate: protectedProcedure
+  deleteTemplate: premiumAdminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       await db.delete(msgTemplates).where(eq(msgTemplates.id, input.id));
       return { ok: true };
     }),
 
   // Admin: set template as default for its type
-  setDefaultTemplate: protectedProcedure
+  setDefaultTemplate: premiumAdminProcedure
     .input(z.object({ id: z.number(), type: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       await db.update(msgTemplates).set({ isDefault: false }).where(eq(msgTemplates.type, input.type));
       await db.update(msgTemplates).set({ isDefault: true }).where(eq(msgTemplates.id, input.id));
       return { ok: true };
     }),
 
   // Admin: AI processes all pending abandoned carts — generates personalized messages + optimal timing
-  aiProcessCarts: protectedProcedure
+  aiProcessCarts: premiumAdminProcedure
     .mutation(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const apiKey = process.env.GROQ_API_KEY;
       if (!apiKey) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'GROQ_API_KEY não configurado' });
 
@@ -1038,10 +1017,9 @@ export const recoveryRouter = router({
     }),
 
   // Admin: AI processes a single unpaid order — generates personalized follow-up
-  aiProcessOrder: protectedProcedure
+  aiProcessOrder: premiumAdminProcedure
     .input(z.object({ orderId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const apiKey = process.env.GROQ_API_KEY;
       if (!apiKey) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'GROQ_API_KEY não configurado' });
 
@@ -1098,10 +1076,9 @@ Responda SOMENTE em JSON: {"mensagem": "texto aqui", "raciocinio": "motivo"}`;
     }),
 
   // Admin: AI processes + immediately sends to one specific cart
-  aiSendCart: protectedProcedure
+  aiSendCart: premiumAdminProcedure
     .input(z.object({ cartId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const apiKey = process.env.GROQ_API_KEY;
       if (!apiKey) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'GROQ_API_KEY não configurado' });
 
@@ -1147,9 +1124,8 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
 
   // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts
   // Called by cron (/api/cron/abandoned-cart) or manually from admin UI
-  runAutomationJob: protectedProcedure
+  runAutomationJob: premiumAdminProcedure
     .mutation(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       if (!isBusinessHours()) return { processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours (08:00–21:00 BRT)' };
       const now = new Date();
       const due = await db.select().from(automationRuns).where(
@@ -1203,27 +1179,24 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
     }),
 
   // Admin: list automation runs
-  listAutomationRuns: protectedProcedure
+  listAutomationRuns: premiumAdminProcedure
     .query(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       return db.select().from(automationRuns)
         .orderBy(desc(automationRuns.createdAt))
         .limit(100);
     }),
 
   // Admin: delete coupon
-  deleteCoupon: protectedProcedure
+  deleteCoupon: premiumAdminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       await db.delete(coupons).where(eq(coupons.id, input.id));
       return { ok: true };
     }),
 
   // Admin: AI recovery analysis (uses separate GROQ key for premium)
-  aiRecovery: protectedProcedure
+  aiRecovery: premiumAdminProcedure
     .mutation(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const apiKey = process.env.SAL_VITA_PREMIUM_1KG_GROQ ?? process.env.GROQ_API_KEY_PREMIUM ?? process.env.GROQ_API_KEY;
       if (!apiKey) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'SAL_VITA_PREMIUM_1KG_GROQ não configurado' });
 

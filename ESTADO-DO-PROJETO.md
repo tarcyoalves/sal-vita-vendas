@@ -154,6 +154,21 @@ Configurável por `SMBI_JANELA` (`sempre` desliga). O robô da VPS NÃO precisa 
 mostra "Robô fora do horário" em vez de "sem sinal". Código: `shared/smbiJanela.ts`. Exige
 rebuild do `api/bundle.js` na integração. Contrato: `docs/CONTRATO-ROBO-CRM.md`.
 
+**Login da loja Premium isolado do banco do CRM (19/10/2026, branch `worktree-agent-a1e4ec0cf71a3d124`, ainda
+não integrado em `main`)** — O painel `SalVitaAdmin` não usa mais `trpc.auth` (tabela `users` do CRM). Agora
+usa `trpc.premiumAuth.{login,me,logout}`, sem consultar banco: um único admin da loja, credencial em duas
+variáveis de ambiente da Vercel:
+- `PREMIUM_ADMIN_EMAIL` — e-mail do admin da loja;
+- `PREMIUM_ADMIN_PASSWORD_HASH` — hash da senha (formato do `hashPassword` de `server/auth.ts`, PBKDF2-SHA512 310k).
+Se qualquer uma faltar, o login responde "Login da loja não configurado" e nunca aceita senha vazia.
+**Gerar/trocar a senha:** `npm run premium:hash` (digite a senha, sem eco; ou `printf '%s' "$SENHA" | npm run premium:hash --silent`),
+copie a linha impressa para `PREMIUM_ADMIN_PASSWORD_HASH` na Vercel (Settings → Environment Variables) e faça redeploy.
+Trocar o hash ou o e-mail derruba as sessões abertas da loja. Nunca escreva a senha nem o hash em arquivo do repo.
+Cookie próprio (`sal-vita-premium-session`) e JWT com `aud: 'premium'` sem `id`: token da loja não vale no CRM e vice-versa.
+`premiumStaffProcedure` (admin da loja OU admin/gerente do CRM) e `premiumAdminProcedure` (admin da loja OU admin do CRM)
+protegem `shipping` (admin), `recovery`, `b2b` e `premiumEmailMarketing`; as públicas (cliente final) não mudaram.
+Com sessão da loja, requisições só da loja nem tocam no banco do CRM. Testes: `tests/premium-auth.test.ts`.
+
 **Produto SMBI 55 (08/10/2026 — CRM Lembretes)** — De-para autorizado pelo Tarcyo:
 `SAL CHURRASCO COM IODO VITA 25 KG` → `55`, saco de 25 kg. Incluído no catálogo
 CRM e no arquivo de catálogo instalado do robô na VPS. Typecheck, 652 testes

@@ -40,7 +40,7 @@ describe('webhook handler source guards', () => {
 
 describe('listOrders', () => {
   it('only hides orders with no payment attempt at all', () => {
-    const fn = shipping.slice(shipping.indexOf('listOrders: protectedProcedure'), shipping.indexOf('analyzeOrders'));
+    const fn = shipping.slice(shipping.indexOf('listOrders: premiumAdminProcedure'), shipping.indexOf('analyzeOrders'));
     expect(fn).toContain("mpPreferenceId} IS NULL AND ${siteOrders.mpPaymentId} IS NULL");
   });
 });

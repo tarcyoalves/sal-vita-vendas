@@ -2,8 +2,8 @@
 
 - **Agente:** claude
 - **Início:** 2026-10-19
-- **Fim:** (preencher ao concluir)
-- **Status:** em andamento
+- **Fim:** 2026-10-19
+- **Status:** parcial (commit só na branch; falta integrar em `main`, rebuild de `api/bundle.js` e configurar as 2 variáveis na Vercel)
 - **Branch:** `worktree-agent-a1e4ec0cf71a3d124` (não vai para `main` por este agente; o responsável integra e reconstrói `api/bundle.js`)
 
 ## Objetivo
@@ -27,5 +27,20 @@ admin da loja, credencial em variáveis de ambiente (`PREMIUM_ADMIN_EMAIL`,
 
 ## Progresso
 
-- [ ] implementação
-- [ ] testes
+- [x] implementação
+- [x] testes
+
+## Resultado
+
+Login da loja sem banco (`premiumAuth`), cookie/JWT próprios, `premiumStaffProcedure`/`premiumAdminProcedure`,
+routers da loja trocados, frontend sem `trpc.auth`, script `premium:hash`, testes.
+
+## Verificado
+
+- `npm run check` e `npm test` verdes (99 arquivos, 1324 testes). Não testado em navegador.
+
+## Armadilhas encontradas
+
+- `api/index.ts` esperava a migração do CRM (`dbReady`) antes de qualquer `/api/trpc`; agora `premiumAuth.*` não espera.
+- Throttle por e-mail (como no `emergencyReset`) deixaria qualquer um trancar o dono para fora; o da loja é só por IP.
+- Alguns testes leem o código-fonte e fixavam `protectedProcedure`/`staffProcedure` nos routers da loja.

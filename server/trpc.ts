@@ -4,7 +4,8 @@ import type { CreateExpressContextOptions } from '@trpc/server/adapters/express'
 import superjson from 'superjson';
 import { getCookieFromRequest, verifyToken, currentPasswordVersion } from './auth';
 import { tokenMatchesPassword } from './lib/sessionToken';
-import { COOKIE_NAME, UNAUTHED_ERR_MSG } from '../shared/const';
+import { COOKIE_NAME, PREMIUM_COOKIE_NAME, UNAUTHED_ERR_MSG } from '../shared/const';
+import { verifyPremiumToken, isPremiumOnlyRequest } from './lib/premiumSession';
 import { db } from './db';
 import { users, sellers } from './db/schema';
 import { eq } from 'drizzle-orm';
@@ -48,7 +49,12 @@ function ipToNum(ip: string): number {
 }
 
 export async function createContext({ req, res }: CreateExpressContextOptions) {
-  const token = getCookieFromRequest(req.headers.cookie, COOKIE_NAME);
+  // Sessão do admin da loja Premium: valida só o JWT (sem banco) e NUNCA preenche ctx.user
+  // (ids colidiriam com os do CRM e abririam rotas do CRM).
+  const premiumAdmin = verifyPremiumToken(getCookieFromRequest(req.headers.cookie, PREMIUM_COOKIE_NAME));
+  // Requisição só de procedures da loja com sessão da loja válida: não toca no banco do CRM.
+  const skipCrmUser = premiumAdmin !== null && isPremiumOnlyRequest(req.originalUrl ?? req.url);
+  const token = skipCrmUser ? undefined : getCookieFromRequest(req.headers.cookie, COOKIE_NAME);
   let user: { id: number; email: string; name: string; role: string; mustChangePassword: boolean } | null = null;
 
   if (token) {
@@ -100,7 +106,7 @@ export async function createContext({ req, res }: CreateExpressContextOptions) {
     }
   }
 
-  return { req, res, user, clientIp: getClientIp(req) };
+  return { req, res, user, premiumAdmin, clientIp: getClientIp(req) };
 }
 
 type Context = Awaited<ReturnType<typeof createContext>>;
@@ -144,3 +150,31 @@ export const staffProcedure = protectedProcedure.use(({ ctx, next }) => {
   }
   return next({ ctx });
 });
+
+/** Quem executa uma procedure da loja: o admin da loja (sem id) ou um usuário do CRM. */
+export type StoreActor =
+  | { kind: 'premium'; email: string; name: string; id: null }
+  | { kind: 'crm'; email: string; name: string; id: number };
+
+function storeProcedure(roles: readonly string[], forbiddenMessage: string) {
+  return t.procedure.use(({ ctx, next, path }) => {
+    // Admin da loja: autorizado só pelo cookie da loja, sem consultar banco.
+    if (ctx.premiumAdmin) {
+      const actor: StoreActor = { kind: 'premium', email: ctx.premiumAdmin.email, name: 'Admin da loja', id: null };
+      return next({ ctx: { ...ctx, actor } });
+    }
+    // Transição: usuário do CRM com papel autorizado continua entrando.
+    if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED', message: UNAUTHED_ERR_MSG });
+    if (!canProceed(ctx.user, path)) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'Troque a senha para continuar' });
+    }
+    if (!roles.includes(ctx.user.role)) throw new TRPCError({ code: 'FORBIDDEN', message: forbiddenMessage });
+    const actor: StoreActor = { kind: 'crm', email: ctx.user.email, name: ctx.user.name, id: ctx.user.id };
+    return next({ ctx: { ...ctx, actor } });
+  });
+}
+
+// Painel da loja Premium (banco ordersDb). Aceita o admin da loja OU admin/gerente do CRM.
+export const premiumStaffProcedure = storeProcedure(['admin', 'manager'], 'Acesso restrito');
+// Igual ao adminProcedure do CRM, para o que antes era só admin (pedidos, recuperação, leads B2B).
+export const premiumAdminProcedure = storeProcedure(['admin'], 'Admin only');

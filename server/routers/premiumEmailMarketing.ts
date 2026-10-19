@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, staffProcedure } from '../trpc';
+import { router, premiumStaffProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
 import { sql } from 'drizzle-orm';
 import { getAccounts, getAccountLimits, getMonthlyCounter, todayBrt } from '../email/marketingQuota';
@@ -18,13 +18,13 @@ import { TRPCError } from '@trpc/server';
  * `trpc.emailMarketing.*` e o Premium sobrescreveu o do CRM, derrubando 59
  * procedures em produção. Namespace correto aqui: `trpc.premiumEmailMarketing.*`.
  *
- * Todas as procedures são `staffProcedure` (admin/manager). Estavam como
+ * Todas as procedures são `premiumStaffProcedure` (admin/manager). Estavam como
  * `publicProcedure`, o que expunha disparo de campanha, exclusões e a lista de
  * contatos a qualquer pessoa na internet.
  */
 export const premiumEmailMarketingRouter = router({
   // ── Dashboard Metrics & Quotas ────────────────────────────────────────────
-  getMetrics: staffProcedure.query(async () => {
+  getMetrics: premiumStaffProcedure.query(async () => {
     const today = todayBrt();
     const currentMonth = today.slice(0, 7);
 
@@ -106,7 +106,7 @@ export const premiumEmailMarketingRouter = router({
   }),
 
   // ── Audience Building Preview ──────────────────────────────────────────────
-  previewAudience: staffProcedure.query(async () => {
+  previewAudience: premiumStaffProcedure.query(async () => {
     const audience = await buildAudience();
     const sourcesCount = { order: 0, cart: 0, b2b: 0, contact: 0 };
     for (const m of audience) {
@@ -120,14 +120,14 @@ export const premiumEmailMarketingRouter = router({
   }),
 
   // ── Campaigns ─────────────────────────────────────────────────────────────
-  getCampaigns: staffProcedure.query(async () => {
+  getCampaigns: premiumStaffProcedure.query(async () => {
     const res = await db.execute(sql`
       SELECT * FROM email_campaigns ORDER BY created_at DESC
     `);
     return res.rows as any[];
   }),
 
-  createCampaign: staffProcedure
+  createCampaign: premiumStaffProcedure
     .input(z.object({
       name: z.string().min(1),
       subject: z.string().min(1),
@@ -169,7 +169,7 @@ export const premiumEmailMarketingRouter = router({
       return { ok: true, campaignId, totalRecipients: recipientCount };
     }),
 
-  dispatchCampaign: staffProcedure
+  dispatchCampaign: premiumStaffProcedure
     .input(z.object({ campaignId: z.number() }))
     .mutation(async ({ input }) => {
       await db.execute(sql`
@@ -179,7 +179,7 @@ export const premiumEmailMarketingRouter = router({
       return result;
     }),
 
-  pauseCampaign: staffProcedure
+  pauseCampaign: premiumStaffProcedure
     .input(z.object({ campaignId: z.number(), pause: z.boolean() }))
     .mutation(async ({ input }) => {
       const status = input.pause ? 'paused' : 'sending';
@@ -189,7 +189,7 @@ export const premiumEmailMarketingRouter = router({
       return { ok: true, status };
     }),
 
-  deleteCampaign: staffProcedure
+  deleteCampaign: premiumStaffProcedure
     .input(z.object({ campaignId: z.number() }))
     .mutation(async ({ input }) => {
       await db.execute(sql`DELETE FROM email_campaign_recipients WHERE campaign_id = ${input.campaignId}`);
@@ -198,7 +198,7 @@ export const premiumEmailMarketingRouter = router({
     }),
 
   // ── Sequences (Drip) ──────────────────────────────────────────────────────
-  getSequences: staffProcedure.query(async () => {
+  getSequences: premiumStaffProcedure.query(async () => {
     const seqsRes = await db.execute(sql`SELECT * FROM email_sequences ORDER BY id DESC`);
     const sequences = seqsRes.rows as any[];
 
@@ -219,7 +219,7 @@ export const premiumEmailMarketingRouter = router({
     return result;
   }),
 
-  createSequence: staffProcedure
+  createSequence: premiumStaffProcedure
     .input(z.object({
       name: z.string().min(1),
       description: z.string().optional(),
@@ -251,7 +251,7 @@ export const premiumEmailMarketingRouter = router({
       return { ok: true, sequenceId };
     }),
 
-  toggleSequence: staffProcedure
+  toggleSequence: premiumStaffProcedure
     .input(z.object({ sequenceId: z.number(), active: z.boolean() }))
     .mutation(async ({ input }) => {
       await db.execute(sql`
@@ -262,7 +262,7 @@ export const premiumEmailMarketingRouter = router({
 
   // Edição de texto/atraso de um passo (o dono ajusta o follow-up sem programador). {nome},
   // {link_loja} e {unsubscribe} funcionam no assunto/corpo; o corpo é sanitizado no envio.
-  updateSequenceStep: staffProcedure
+  updateSequenceStep: premiumStaffProcedure
     .input(z.object({
       stepId: z.number().int().positive(),
       subject: z.string().trim().min(1).max(200),
@@ -280,7 +280,7 @@ export const premiumEmailMarketingRouter = router({
       return { ok: true };
     }),
 
-  deleteSequence: staffProcedure
+  deleteSequence: premiumStaffProcedure
     .input(z.object({ sequenceId: z.number() }))
     .mutation(async ({ input }) => {
       await db.execute(sql`DELETE FROM email_sequence_steps WHERE sequence_id = ${input.sequenceId}`);
@@ -289,18 +289,18 @@ export const premiumEmailMarketingRouter = router({
       return { ok: true };
     }),
 
-  runSequencesCronNow: staffProcedure.mutation(async () => {
+  runSequencesCronNow: premiumStaffProcedure.mutation(async () => {
     const result = await processSequenceEnrollments(100);
     return result;
   }),
 
   // ── Automation Rules Engine ───────────────────────────────────────────────
-  getAutomationRules: staffProcedure.query(async () => {
+  getAutomationRules: premiumStaffProcedure.query(async () => {
     const res = await db.execute(sql`SELECT * FROM automation_rules ORDER BY id DESC`);
     return res.rows as any[];
   }),
 
-  createAutomationRule: staffProcedure
+  createAutomationRule: premiumStaffProcedure
     .input(z.object({
       name: z.string().min(1),
       triggerType: z.string().min(1),
@@ -317,7 +317,7 @@ export const premiumEmailMarketingRouter = router({
       return { ok: true };
     }),
 
-  deleteAutomationRule: staffProcedure
+  deleteAutomationRule: premiumStaffProcedure
     .input(z.object({ ruleId: z.number() }))
     .mutation(async ({ input }) => {
       await db.execute(sql`DELETE FROM automation_rules WHERE id = ${input.ruleId}`);
@@ -325,12 +325,12 @@ export const premiumEmailMarketingRouter = router({
     }),
 
   // ── Templates ─────────────────────────────────────────────────────────────
-  getTemplates: staffProcedure.query(async () => {
+  getTemplates: premiumStaffProcedure.query(async () => {
     const res = await db.execute(sql`SELECT * FROM email_templates WHERE active = TRUE ORDER BY name ASC`);
     return res.rows as any[];
   }),
 
-  createTemplate: staffProcedure
+  createTemplate: premiumStaffProcedure
     .input(z.object({
       slug: z.string().min(1),
       name: z.string().min(1),
@@ -350,7 +350,7 @@ export const premiumEmailMarketingRouter = router({
       return { ok: true };
     }),
 
-  deleteTemplate: staffProcedure
+  deleteTemplate: premiumStaffProcedure
     .input(z.object({ templateId: z.number() }))
     .mutation(async ({ input }) => {
       await db.execute(sql`DELETE FROM email_templates WHERE id = ${input.templateId}`);
@@ -358,7 +358,7 @@ export const premiumEmailMarketingRouter = router({
     }),
 
   // ── Contacts & Suppressions ───────────────────────────────────────────────
-  getContacts: staffProcedure
+  getContacts: premiumStaffProcedure
     .input(z.object({ search: z.string().optional() }).optional())
     .query(async ({ input }) => {
       const q = input?.search ? `%${input.search.toLowerCase()}%` : null;
@@ -374,7 +374,7 @@ export const premiumEmailMarketingRouter = router({
       return res.rows as any[];
     }),
 
-  addContact: staffProcedure
+  addContact: premiumStaffProcedure
     .input(z.object({
       email: z.string().email(),
       name: z.string().optional(),
@@ -393,19 +393,19 @@ export const premiumEmailMarketingRouter = router({
       return { ok: true };
     }),
 
-  getSuppressions: staffProcedure.query(async () => {
+  getSuppressions: premiumStaffProcedure.query(async () => {
     const res = await db.execute(sql`SELECT * FROM email_suppressions ORDER BY created_at DESC LIMIT 200`);
     return res.rows as any[];
   }),
 
-  addSuppression: staffProcedure
+  addSuppression: premiumStaffProcedure
     .input(z.object({ email: z.string().email(), reason: z.string().default('manual') }))
     .mutation(async ({ input }) => {
       await suppressEmailGlobal(input.email, input.reason);
       return { ok: true };
     }),
 
-  removeSuppression: staffProcedure
+  removeSuppression: premiumStaffProcedure
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ input }) => {
       const cleanEmail = input.email.toLowerCase();

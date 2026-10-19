@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { trpc } from '../lib/trpc';
 import { toast } from 'sonner';
-import { useAuth } from '../_core/hooks/useAuth';
+import { usePremiumAuth } from '../_core/hooks/usePremiumAuth';
 import { RecoveryPanel } from './SalVitaRecovery';
 import { B2bLeadsPanel } from './B2bLeads';
 import { SalVitaEmailMarketing } from './SalVitaEmailMarketing';
@@ -179,7 +179,7 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const loginMut = trpc.auth.login.useMutation();
+  const loginMut = trpc.premiumAuth.login.useMutation();
 
   const handle = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1068,9 +1068,9 @@ function sectionFromPath(): Section {
 }
 
 function AdminShell() {
-  const { user } = useAuth();
+  const { admin } = usePremiumAuth();
   const [section, setSection] = useState<Section>(sectionFromPath);
-  const logoutMut = trpc.auth.logout.useMutation();
+  const logoutMut = trpc.premiumAuth.logout.useMutation();
 
   const go = (key: Section) => {
     setSection(key);
@@ -1120,7 +1120,7 @@ function AdminShell() {
             </nav>
 
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-200 font-medium hidden lg:inline-block">{user?.name}</span>
+              <span className="text-xs text-slate-200 font-medium hidden lg:inline-block">{admin?.email}</span>
               <button
                 onClick={handleLogout}
                 disabled={logoutMut.isPending}
@@ -1146,7 +1146,7 @@ function AdminShell() {
 }
 
 export default function SalVitaAdmin() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading } = usePremiumAuth();
 
   if (loading) {
     return (
@@ -1156,6 +1156,6 @@ export default function SalVitaAdmin() {
     );
   }
 
-  if (!isAuthenticated || user?.role !== 'admin') return <LoginForm />;
+  if (!isAuthenticated) return <LoginForm />;
   return <AdminShell />;
 }

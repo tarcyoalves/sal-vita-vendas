@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { eq, and, desc, inArray } from 'drizzle-orm';
-import { router, protectedProcedure } from '../trpc';
+import { router, premiumAdminProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
 import { companies, contacts, publicSources, consentRecords, auditLogs } from '../db/schema';
 
@@ -9,14 +9,10 @@ import { companies, contacts, publicSources, consentRecords, auditLogs } from '.
 // free-text notes (stored as audit_logs entries — no schema change needed).
 // NO scoring, NO outbound, NO automation — see PLANO-FINAL-EXECUCAO-B2B.md.
 
-function requireAdmin(ctx: { user: { role: string } }) {
-  if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
-}
-
 const STAGE_VALUES = ['qualified', 'contacted', 'lost'] as const;
 
 export const b2bRouter = router({
-  listLeads: protectedProcedure
+  listLeads: premiumAdminProcedure
     .input(
       z.object({
         segment: z.string().trim().optional(),
@@ -25,7 +21,6 @@ export const b2bRouter = router({
       }).optional(),
     )
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx);
       const conditions = [eq(companies.pipelineType, 'inbound')];
       if (input?.segment) conditions.push(eq(companies.segment, input.segment));
       if (input?.state) conditions.push(eq(companies.state, input.state.toUpperCase()));
@@ -70,10 +65,9 @@ export const b2bRouter = router({
       });
     }),
 
-  getLead: protectedProcedure
+  getLead: premiumAdminProcedure
     .input(z.object({ companyId: z.number().int() }))
     .query(async ({ ctx, input }) => {
-      requireAdmin(ctx);
       const [company] = await db.select().from(companies).where(eq(companies.id, input.companyId));
       if (!company) throw new TRPCError({ code: 'NOT_FOUND' });
 
@@ -89,10 +83,9 @@ export const b2bRouter = router({
       return { company, contacts: leadContacts, sources, consents, logs };
     }),
 
-  updateStage: protectedProcedure
+  updateStage: premiumAdminProcedure
     .input(z.object({ companyId: z.number().int(), stage: z.enum(STAGE_VALUES) }))
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx);
       const [updated] = await db.update(companies)
         .set({ pipelineStage: input.stage, updatedAt: new Date() })
         .where(eq(companies.id, input.companyId))
@@ -104,17 +97,16 @@ export const b2bRouter = router({
         entityId: input.companyId,
         action: 'stage_changed',
         actorType: 'human',
-        actorId: String(ctx.user.id),
-        metadataJson: { newStage: input.stage, byName: ctx.user.name },
+        actorId: ctx.actor.id === null ? 'premium-admin' : String(ctx.actor.id),
+        metadataJson: { newStage: input.stage, byName: ctx.actor.name },
       });
 
       return updated;
     }),
 
-  addNote: protectedProcedure
+  addNote: premiumAdminProcedure
     .input(z.object({ companyId: z.number().int(), note: z.string().trim().min(1).max(2000) }))
     .mutation(async ({ ctx, input }) => {
-      requireAdmin(ctx);
       const [company] = await db.select({ id: companies.id }).from(companies).where(eq(companies.id, input.companyId));
       if (!company) throw new TRPCError({ code: 'NOT_FOUND' });
 
@@ -123,8 +115,8 @@ export const b2bRouter = router({
         entityId: input.companyId,
         action: 'note_added',
         actorType: 'human',
-        actorId: String(ctx.user.id),
-        metadataJson: { note: input.note, byName: ctx.user.name },
+        actorId: ctx.actor.id === null ? 'premium-admin' : String(ctx.actor.id),
+        metadataJson: { note: input.note, byName: ctx.actor.name },
       });
 
       return { ok: true };

@@ -2,7 +2,7 @@ import { safeErr } from '../lib/logSafe';
 import { z } from 'zod';
 import { decideLabelStep, RESUME_MIN_AGE_MS } from '../lib/labelResume';
 import crypto from 'crypto';
-import { router, publicProcedure, protectedProcedure } from '../trpc';
+import { router, publicProcedure, premiumAdminProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
 import { siteOrders, coupons, msgTemplates } from '../db/schema';
 import { desc, eq, and, or, ne, gte, isNull, sql } from 'drizzle-orm';
@@ -944,10 +944,9 @@ export const shippingRouter = router({
       };
     }),
 
-  listOrders: protectedProcedure
+  listOrders: premiumAdminProcedure
     .input(z.object({ status: z.string().optional() }).optional())
     .query(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       // Hide only orders with no payment attempt at all (no preference AND no payment id).
       // On-page PIX orders have mpPaymentId but never an mpPreferenceId, so they must show.
       // Never-attempted ones go to the recovery panel instead
@@ -958,9 +957,8 @@ export const shippingRouter = router({
         .orderBy(desc(siteOrders.createdAt));
     }),
 
-  analyzeOrders: protectedProcedure
+  analyzeOrders: premiumAdminProcedure
     .mutation(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const apiKey = process.env.GROQ_API_KEY;
       if (!apiKey) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'GROQ_API_KEY não configurado' });
 
@@ -1015,7 +1013,7 @@ Seja direto e use emojis para facilitar leitura.`;
       };
     }),
 
-  updateOrder: protectedProcedure
+  updateOrder: premiumAdminProcedure
     .input(z.object({
       id: z.number(),
       customerName: z.string().min(2).optional(),
@@ -1032,7 +1030,6 @@ Seja direto e use emojis para facilitar leitura.`;
       notes: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const { id, ...fields } = input;
       const updates: Record<string,unknown> = { updatedAt: new Date() };
       if (fields.customerName) updates.customerName = fields.customerName;
@@ -1051,14 +1048,13 @@ Seja direto e use emojis para facilitar leitura.`;
       return updated;
     }),
 
-  updateStatus: protectedProcedure
+  updateStatus: premiumAdminProcedure
     .input(z.object({
       id: z.number(),
       status: z.enum(['pending','confirmed','shipped','delivered','cancelled']).optional(),
       paymentStatus: z.enum(['awaiting','confirmed','failed']).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [before] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
       const updates: Record<string,unknown> = { updatedAt: new Date() };
       if (input.status) updates.status = input.status;
@@ -1106,13 +1102,12 @@ Seja direto e use emojis para facilitar leitura.`;
       };
     }),
 
-  updateTracking: protectedProcedure
+  updateTracking: premiumAdminProcedure
     .input(z.object({
       id: z.number(),
       trackingCode: z.string().min(1),
     }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [updated] = await db.update(siteOrders)
         .set({ trackingCode: input.trackingCode, status: 'shipped', updatedAt: new Date() })
         .where(eq(siteOrders.id, input.id))
@@ -1325,22 +1320,19 @@ Seja direto e use emojis para facilitar leitura.`;
       }
     }),
 
-  autoLabelReport: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
+  autoLabelReport: premiumAdminProcedure.query(async ({ ctx }) => {
     return autoLabelReport();
   }),
 
-  generateLabel: protectedProcedure
+  generateLabel: premiumAdminProcedure
     .input(z.object({ orderId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       return generateLabelForOrder(input.orderId);
     }),
 
-  cancelOrder: protectedProcedure
+  cancelOrder: premiumAdminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
 
       const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.id));
       const order = orders[0];
@@ -1409,10 +1401,9 @@ Seja direto e use emojis para facilitar leitura.`;
 
   // Admin: permanently remove an order (e.g. test orders). No refund/label
   // cancellation is attempted — use cancelOrder first for real orders.
-  deleteOrder: protectedProcedure
+  deleteOrder: premiumAdminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       // Condicional no próprio DELETE: pedido pago não some (perde-se o rastro do dinheiro).
       const [deleted] = await db.delete(siteOrders)
         .where(and(eq(siteOrders.id, input.id), sql`${siteOrders.paymentStatus} <> 'confirmed'`))
@@ -1427,10 +1418,9 @@ Seja direto e use emojis para facilitar leitura.`;
 
   // Admin: e-mail de "pedido postado" com o rastreio, enviado à mão (reenvio ou pedido
   // que ficou sem o aviso automático). Registra o evento para o automático não repetir.
-  sendTrackingEmail: protectedProcedure
+  sendTrackingEmail: premiumAdminProcedure
     .input(z.object({ orderId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
       if (!order.customerEmail) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Pedido sem e-mail do cliente.' });
@@ -1446,10 +1436,9 @@ Seja direto e use emojis para facilitar leitura.`;
     }),
 
   // Admin: send direct WhatsApp tracking notification via server API
-  sendTrackingWhatsApp: protectedProcedure
+  sendTrackingWhatsApp: premiumAdminProcedure
     .input(z.object({ orderId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId));
       const order = orders[0];
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
@@ -1476,10 +1465,9 @@ Seja direto e use emojis para facilitar leitura.`;
     }),
 
   // Admin: generate shipping labels in batch for multiple paid orders
-  batchGenerateLabels: protectedProcedure
+  batchGenerateLabels: premiumAdminProcedure
     .input(z.object({ orderIds: z.array(z.number()).max(25) }))
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN' });
       if (!input.orderIds.length) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nenhum pedido selecionado.' });
 
       const token = process.env.MELHOR_ENVIO_TOKEN;

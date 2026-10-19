@@ -275,7 +275,7 @@ describe('textos dos e-mails', () => {
 describe('painel e privacidade', () => {
   it('updateSequenceStep existe com assunto, corpo e atraso', () => {
     const r = read('server/routers/premiumEmailMarketing.ts');
-    expect(r).toMatch(/updateSequenceStep: staffProcedure/);
+    expect(r).toMatch(/updateSequenceStep: premiumStaffProcedure/);
     expect(r).toMatch(/subject: z\.string\(\)\.trim\(\)\.min\(1\)/);
     expect(r).toMatch(/delayDays: z\.number\(\)\.int\(\)\.min\(0\)/);
     expect(r).toMatch(/utm_medium = 'posvenda'/);

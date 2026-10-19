@@ -90,6 +90,6 @@ describe('ligação no servidor', () => {
     const admin = read('client/src/pages/SalVitaAdmin.tsx');
     expect(admin).toMatch(/<AutoLabelPanel \/>/);
     expect(admin).toMatch(/shipping\.autoLabelReport\.useQuery/);
-    expect(shipping).toMatch(/autoLabelReport: protectedProcedure/);
+    expect(shipping).toMatch(/autoLabelReport: premiumAdminProcedure/);
   });
 });

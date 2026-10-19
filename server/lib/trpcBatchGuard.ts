@@ -3,6 +3,7 @@
 // lotes que contenham qualquer uma delas são recusados.
 export const RATE_LIMITED_PROCEDURES = [
   'auth.login',
+  'premiumAuth.login',
   'auth.emergencyReset',
   'shipping.calculate',
   'shipping.trackOrder',
