@@ -4,20 +4,25 @@ import { Button } from './ui/button';
 import { dataBR } from '../lib/credito/regras';
 import { AVISOS_ADMIN, avisosVisiveis, hojeFortaleza, urgenciaAviso, type Urgencia } from '../lib/avisosAdmin';
 
-const CHAVE = 'avisosAdmin:ocultos';
+// "Entendi" esconde o aviso só pelo resto do dia: amanhã ele volta (até a data + 7 dias).
+// Chave nova de propósito: o formato antigo escondia para sempre.
+const CHAVE = 'avisosAdmin:ocultosNoDia';
 
-function lerOcultos(): string[] {
+type Ocultos = Record<string, string>; // id → dia (YYYY-MM-DD, Fortaleza) em que foi escondido
+
+function lerOcultos(): Ocultos {
   try {
-    const v: unknown = JSON.parse(localStorage.getItem(CHAVE) ?? '[]');
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+    const v: unknown = JSON.parse(localStorage.getItem(CHAVE) ?? '{}');
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+    return Object.fromEntries(Object.entries(v).filter(([, d]) => typeof d === 'string')) as Ocultos;
   } catch {
-    return [];
+    return {};
   }
 }
 
-function gravarOcultos(ids: string[]): void {
+function gravarOcultos(o: Ocultos): void {
   try {
-    localStorage.setItem(CHAVE, JSON.stringify(ids));
+    localStorage.setItem(CHAVE, JSON.stringify(o));
   } catch {
     /* sem storage: o aviso some só até recarregar */
   }
@@ -31,19 +36,31 @@ const SELO: Record<Urgencia, string> = {
 
 /** Avisos informativos fixos (admin). Puro cliente: sem servidor, sem timers. */
 export default function AvisosAdmin() {
-  const [ocultos, setOcultos] = useState<string[]>(lerOcultos);
+  const [ocultos, setOcultos] = useState<Ocultos>(lerOcultos);
   const hoje = hojeFortaleza();
-  const lista = avisosVisiveis(AVISOS_ADMIN, hoje).filter((a) => !ocultos.includes(a.id));
-  if (lista.length === 0) return null;
+  const todos = avisosVisiveis(AVISOS_ADMIN, hoje);
+  const lista = todos.filter((a) => ocultos[a.id] !== hoje);
+  const escondidosHoje = todos.length - lista.length;
+  if (todos.length === 0) return null;
 
   const ocultar = (id: string) => {
-    const novo = [...ocultos, id];
+    const novo = { ...ocultos, [id]: hoje };
     setOcultos(novo);
     gravarOcultos(novo);
+  };
+  const mostrarTodos = () => {
+    setOcultos({});
+    gravarOcultos({});
   };
 
   return (
     <section aria-label="Avisos informativos" className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      {lista.length === 0 && (
+        <p className="text-xs text-slate-500 md:col-span-2">
+          {escondidosHoje} aviso(s) escondido(s) por hoje.{' '}
+          <button type="button" className="underline" onClick={mostrarTodos}>Mostrar</button>
+        </p>
+      )}
       {lista.map((a) => {
         const u = urgenciaAviso(a.data, hoje);
         return (
@@ -58,7 +75,7 @@ export default function AvisosAdmin() {
               </div>
               <p className="mt-1 text-sm text-slate-600">{a.texto}</p>
               <Button variant="outline" size="sm" className="mt-2" onClick={() => ocultar(a.id)}>
-                <X className="mr-1 h-3.5 w-3.5" aria-hidden /> Entendi
+                <X className="mr-1 h-3.5 w-3.5" aria-hidden /> Entendi (some por hoje)
               </Button>
             </div>
           </article>
