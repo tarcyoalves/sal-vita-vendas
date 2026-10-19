@@ -1,0 +1,271 @@
+:root {
+  --azul: #0c3680;
+  --fundo: #f4f6fa;
+  --cartao: #ffffff;
+  --texto: #1b2333;
+  --suave: #5b6578;
+  --borda: #dde2ea;
+  --erro: #b42318;
+  --aviso: #8a5a00;
+  --aviso-fundo: #fff6e0;
+  --ok: #1a7f37;
+  --balao: #d9fdd3;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fundo: #12161f;
+    --cartao: #1b212d;
+    --texto: #e6e9ef;
+    --suave: #9aa3b5;
+    --borda: #2e3646;
+    --erro: #ff8a80;
+    --aviso: #ffd27a;
+    --aviso-fundo: #3a3020;
+    --ok: #6fdc8c;
+    --balao: #1f3d2a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--fundo);
+  color: var(--texto);
+}
+
+.app {
+  padding: 12px;
+}
+
+.topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.topo strong {
+  font-size: 18px;
+  color: var(--azul);
+}
+
+@media (prefers-color-scheme: dark) {
+  .topo strong {
+    color: #8fb0ff;
+  }
+}
+
+.selo {
+  font-size: 12px;
+  color: var(--suave);
+}
+
+.abas {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.abas button {
+  flex: 1;
+  border-radius: 6px;
+}
+
+.abas button.ativa {
+  background: var(--azul);
+  border-color: var(--azul);
+  color: #fff;
+}
+
+section > * + * {
+  margin-top: 10px;
+}
+
+.cartao {
+  background: var(--cartao);
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.cartao h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+label {
+  display: block;
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--suave);
+}
+
+label input:not([type='checkbox']),
+label textarea,
+label select {
+  display: block;
+  width: 100%;
+  margin-top: 3px;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--texto);
+  background: var(--fundo);
+  border: 1px solid var(--borda);
+  border-radius: 6px;
+}
+
+label.check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--texto);
+}
+
+label.inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+label.inline input {
+  margin-top: 0;
+}
+
+.linha2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+button {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--borda);
+  border-radius: 6px;
+  background: var(--cartao);
+  color: var(--texto);
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primario {
+  background: var(--azul);
+  border-color: var(--azul);
+  color: #fff;
+  font-weight: 600;
+}
+
+button.perigo {
+  border-color: var(--erro);
+  color: var(--erro);
+}
+
+button.pequeno {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.botoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ajuda {
+  color: var(--suave);
+  font-size: 13px;
+  margin: 4px 0;
+}
+
+.info {
+  color: var(--ok);
+  margin: 4px 0;
+}
+
+.erro {
+  color: var(--erro);
+  margin: 4px 0;
+}
+
+.aviso {
+  color: var(--aviso);
+  background: var(--aviso-fundo);
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin: 4px 0;
+}
+
+.numeros {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 4px;
+}
+
+.lista {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.lista li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--borda);
+}
+
+.lista small {
+  color: var(--suave);
+}
+
+.lista-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.balao {
+  background: var(--balao);
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin-top: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.contagem {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 4px 0;
+}
+
+.estado-aguardando_envio {
+  border-color: var(--azul);
+  border-width: 2px;
+}
+
+.carregando {
+  padding: 16px;
+}

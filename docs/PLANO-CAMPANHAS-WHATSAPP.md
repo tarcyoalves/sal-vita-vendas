@@ -1,6 +1,8 @@
 # Plano — "Vita Zap": copiloto comercial com IA no WhatsApp Web
 
-Status: **especificação, nada implementado**. Versão 2 (19/10/2026), substitui a v1 centrada no CRM.
+Status: **fase 1 (MVP sem IA) implementada em `extensoes/vita-zap/`** — ainda não validada contra o
+WhatsApp Web real (ver README da extensão). Versão 2.1 (19/10/2026), substitui a v1 centrada no CRM.
+Decisões do dono registradas na seção 9.
 Decisão do dono: começar **só no WhatsApp**, sem depender do CRM; público = contatos **já salvos
 com nome e com conversa anterior**. Ligação com o CRM vem depois, por sincronização opcional.
 
@@ -34,8 +36,8 @@ contato). Motivo na seção 6.
 │ IndexedDB — contatos, campanhas, envios, opt-outs      │
 └───────────────┬────────────────────────────────────────┘
                 │ HTTPS (token pessoal)
-        ┌───────▼─────────┐            (fase 4, opcional)
-        │ Proxy de IA      │ ── Groq → Cerebras → OpenRouter
+        ┌───────▼─────────┐            (fase 2)
+        │ Proxy de IA      │ ── Gemini (chave do dono, só no servidor)
         │ (sem banco)      │
         └───────┬─────────┘
                 └──► Sync com CRM (/api/zap/sync)  ── fase 4
@@ -91,7 +93,8 @@ Botões no painel: Pular, Não é cliente, Número com problema, Pausar.
 - A IA classifica a resposta: **interessado / pediu preço / tem estoque / vai comprar depois /
   reclamação / pediu para sair / sem relação**.
 - Sugere a resposta (você edita e envia) e cria um **lembrete local** ("retornar em 7 dias").
-- "SAIR", "não quero", "pare" → opt-out automático e permanente.
+- Pedido explícito de não receber na resposta ("não quero", "pare", "me tire da lista") →
+  opt-out permanente (detecção na fase 2; a mensagem **não** traz linha "responda SAIR").
 - Painel "Hoje": quem respondeu, quem pediu preço, retornos vencidos, campanhas em andamento.
 
 ### 3.6 Biblioteca e aprendizado
@@ -112,13 +115,13 @@ Reduz risco; **não garante** ausência de banimento.
 | Regra | Valor inicial |
 |---|---|
 | Público | Só contatos salvos com nome **e** conversa anterior. Nunca número novo. |
-| Teto diário de mensagens de campanha por número | **30**, subindo +10/semana se não houver bloqueio |
+| Teto diário de mensagens de campanha por número | **30** (configurável; nunca acima do máximo fixo no código — `TETO_DIARIO_MAXIMO`); subir aos poucos só se não houver bloqueio |
 | Horário | seg–sex 08–18h, sáb 08–12h (America/Fortaleza) |
 | Intervalo entre contatos | mínimo 60–120 s (ritmo de pessoa) |
 | Repetição | uma mensagem por contato por campanha; não reenviar a quem foi contatado há < 14 dias |
 | Texto | nome do contato, curto, **sem link e sem mídia na primeira mensagem**, variações reais |
-| Saída | linha "Se preferir não receber, responda SAIR." (pode ser desligada em campanhas pequenas de clientes fiéis) |
-| Freio | pausa a campanha se: 3 falhas seguidas, aviso de restrição/conta, ou queda brusca de respostas |
+| Saída (opt-out) | **sem** linha "responda SAIR" no texto (decisão do dono). Opt-out = botão "Não enviar mais" no painel (fase 1) + detecção de pedido explícito na resposta (fase 2). Quem está na lista nunca entra em campanha. |
+| Freio | pausa a campanha se: 3 problemas seguidos (fase 1), aviso de restrição/conta, ou queda brusca de respostas (fases seguintes) |
 | Número novo | número com menos de ~30 dias de uso não roda campanha |
 
 ---
@@ -162,8 +165,18 @@ acompanhar). Para automação real em volume, o caminho é a API oficial (fase 5
 - Teste de código-fonte: nenhum `click()`/evento de tecla no botão de enviar.
 - Teste manual guiado (checklist) a cada atualização do WhatsApp Web.
 
-## 9. Decisões pendentes do dono
-1. Qual(is) número(s) vão usar: o seu, o da empresa, um por atendente?
-2. Teto inicial de 30/dia está bom?
-3. Linha "responda SAIR": sempre, ou só em campanhas grandes?
-4. Proxy de IA no projeto Vercel atual (simples) ou separado (Cloudflare Worker, isolado do CRM)?
+## 9. Decisões
+
+### Decididas (19/10/2026, pelo dono)
+1. **Número:** o pessoal do dono, que já tem muitos contatos salvos com conversa anterior.
+2. **Linha "responda SAIR": não vai.** Removida do texto e da política. O opt-out continua
+   existindo como marcação manual "Não enviar mais" no painel (fase 1) e detecção de pedido
+   explícito na resposta (fase 2).
+3. **IA:** o dono tem chave da API **Gemini**. Fica para a **fase 2**, num proxy no servidor —
+   **nunca** na extensão. Na fase 1 só existe a interface (`extensoes/vita-zap/src/shared/ia.ts`),
+   desligada.
+4. **Teto inicial: 30/dia**, configurável no painel, com máximo de segurança fixo no código.
+
+### Ainda pendentes
+1. Proxy de IA (fase 2) no projeto Vercel atual (simples) ou separado (Cloudflare Worker,
+   isolado do CRM)?

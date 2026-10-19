@@ -1,0 +1,253 @@
+import { useMemo, useState } from 'react';
+import { salvarCampanha, type Banco } from '../shared/banco';
+import { type Campanha, criarItens, type ItemCampanha, novoId, textoDoItem, validarParaAprovar } from '../shared/campanha';
+import { DIAS_SEM_REPETIR, MARCADOR_PRIMEIRO_NOME, MAX_VARIACOES } from '../shared/constantes';
+import { formatarDataBr, lerDataIso } from '../shared/datas';
+import { aplicarFiltros, type Filtros, ultimoEnvioPorChave } from '../shared/filtros';
+import { separarTermos } from '../shared/nomes';
+import { validarModelos } from '../shared/texto';
+import type { DadosLocais } from './App';
+import { lerPreferencia, salvarPreferencia } from './preferencias';
+
+interface Props {
+  db: Banco;
+  dados: DadosLocais;
+  aoAprovar: (campanhaId: string) => Promise<void>;
+}
+
+const TEXTO_EXEMPLO = `Boa tarde, ${MARCADOR_PRIMEIRO_NOME}, tudo bem? Como estão de sal por aí?`;
+
+export function Previa({ db, dados, aoAprovar }: Props) {
+  const hojeBr = new Date().toLocaleDateString('pt-BR');
+  const [nome, setNome] = useState(`Campanha ${hojeBr}`);
+  const [contem, setContem] = useState(() => lerPreferencia('termo', 'CLIENTE'));
+  const [naoContem, setNaoContem] = useState('');
+  const [antesDe, setAntesDe] = useState('');
+  const [depoisDe, setDepoisDe] = useState('');
+  const [dias, setDias] = useState(DIAS_SEM_REPETIR);
+  const [base, setBase] = useState(() => lerPreferencia('textoBase', TEXTO_EXEMPLO));
+  const [variacoes, setVariacoes] = useState<string[]>(() => Array.from({ length: MAX_VARIACOES }, () => ''));
+  const [itens, setItens] = useState<ItemCampanha[] | null>(null);
+  const [assinaturaPrevia, setAssinaturaPrevia] = useState('');
+  const [errosAprovacao, setErrosAprovacao] = useState<string[]>([]);
+  const [salvando, setSalvando] = useState(false);
+
+  const filtros: Filtros = useMemo(
+    () => ({
+      contem: separarTermos(contem),
+      naoContem: separarTermos(naoContem),
+      ultimaConversaAntesDe: lerDataIso(antesDe),
+      ultimaConversaDepoisDe: lerDataIso(depoisDe),
+      excluirContatadosHaDias: Math.max(DIAS_SEM_REPETIR, dias),
+    }),
+    [contem, naoContem, antesDe, depoisDe, dias],
+  );
+
+  const avaliados = useMemo(
+    () =>
+      aplicarFiltros(dados.contatos, filtros, {
+        agora: new Date(),
+        naoEnviar: new Set(dados.naoEnviar.map((n) => n.chave)),
+        ultimoEnvioPorChave: ultimoEnvioPorChave(dados.envios),
+      }),
+    [dados, filtros],
+  );
+  const motivoPorChave = useMemo(() => new Map(avaliados.map((a) => [a.contato.chave, a.decisao.motivo])), [avaliados]);
+
+  const { modelos, erros: errosTexto } = validarModelos(base, variacoes);
+  const assinatura = JSON.stringify({ filtros, modelos });
+  const desatualizada = itens != null && assinatura !== assinaturaPrevia;
+
+  const incluidos = avaliados.filter((a) => a.decisao.situacao === 'incluido');
+  const revisar = avaliados.filter((a) => a.decisao.situacao === 'revisar');
+  const excluidos = avaliados.filter((a) => a.decisao.situacao === 'excluido');
+  const naPrevia = new Set((itens ?? []).map((i) => i.chave));
+
+  function gerarPrevia() {
+    salvarPreferencia('textoBase', base);
+    setErrosAprovacao([]);
+    setItens(criarItens(incluidos.map((a) => a.contato), modelos, filtros.contem));
+    setAssinaturaPrevia(assinatura);
+  }
+
+  function incluirManual(chave: string) {
+    const a = revisar.find((x) => x.contato.chave === chave);
+    if (!a || !itens) return;
+    setItens([...itens, ...criarItens([a.contato], modelos, filtros.contem)]);
+  }
+
+  function atualizarItem(chave: string, mudanca: Partial<ItemCampanha>) {
+    setItens((atual) => (atual ?? []).map((i) => (i.chave === chave ? { ...i, ...mudanca } : i)));
+  }
+
+  async function aprovar() {
+    if (!itens) return;
+    const erros = [...errosTexto, ...validarParaAprovar({ itens, modelos })];
+    setErrosAprovacao(erros);
+    if (erros.length > 0 || desatualizada) return;
+    setSalvando(true);
+    try {
+      const agora = new Date();
+      const campanha: Campanha = {
+        id: novoId(agora),
+        nome: nome.trim() || `Campanha ${hojeBr}`,
+        criadaEm: agora.toISOString(),
+        aprovadaEm: agora.toISOString(),
+        termoBusca: contem,
+        filtros,
+        modelos,
+        status: 'pausada',
+        motivoPausa: 'Aprovada. Clique em Iniciar quando estiver pronto.',
+        itens,
+        problemasSeguidos: 0,
+        ultimoEnvioEm: null,
+        intervaloAtualSeg: null,
+      };
+      await salvarCampanha(db, campanha);
+      setItens(null);
+      await aoAprovar(campanha.id);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  if (dados.contatos.length === 0) {
+    return <p className="ajuda">Faça a varredura primeiro (aba 1).</p>;
+  }
+
+  return (
+    <section>
+      <div className="cartao">
+        <h3>Filtros</h3>
+        <label>
+          Nome contém (separe por vírgula)
+          <input value={contem} onChange={(e) => setContem(e.target.value)} />
+        </label>
+        <label>
+          Nome NÃO contém
+          <input value={naoContem} onChange={(e) => setNaoContem(e.target.value)} placeholder="ex.: FORNECEDOR" />
+        </label>
+        <div className="linha2">
+          <label>
+            Última conversa antes de
+            <input type="date" value={antesDe} onChange={(e) => setAntesDe(e.target.value)} />
+          </label>
+          <label>
+            Última conversa depois de
+            <input type="date" value={depoisDe} onChange={(e) => setDepoisDe(e.target.value)} />
+          </label>
+        </div>
+        <label>
+          Excluir quem recebeu campanha há menos de (dias, mínimo {DIAS_SEM_REPETIR})
+          <input
+            type="number"
+            min={DIAS_SEM_REPETIR}
+            value={dias}
+            onChange={(e) => setDias(Math.max(DIAS_SEM_REPETIR, Number(e.target.value) || DIAS_SEM_REPETIR))}
+          />
+        </label>
+        <p className="info">
+          {incluidos.length} entram · {revisar.length} para revisar · {excluidos.length} fora
+        </p>
+      </div>
+
+      <div className="cartao">
+        <h3>Texto</h3>
+        <p className="ajuda">
+          Use {MARCADOR_PRIMEIRO_NOME} para o primeiro nome. Sem link na primeira mensagem. Cada contato recebe um dos textos, sorteado.
+        </p>
+        <label>
+          Texto base
+          <textarea rows={3} value={base} onChange={(e) => setBase(e.target.value)} />
+        </label>
+        {variacoes.map((v, i) => (
+          <label key={i}>
+            Variação {i + 1} (opcional)
+            <textarea rows={2} value={v} onChange={(e) => setVariacoes(variacoes.map((x, j) => (j === i ? e.target.value : x)))} />
+          </label>
+        ))}
+        {errosTexto.map((e) => (
+          <p key={e} className="erro">
+            {e}
+          </p>
+        ))}
+        <label>
+          Nome da campanha
+          <input value={nome} onChange={(e) => setNome(e.target.value)} />
+        </label>
+        <button type="button" className="primario" onClick={gerarPrevia} disabled={errosTexto.length > 0 || incluidos.length === 0}>
+          {itens ? 'Gerar prévia de novo (novo sorteio)' : 'Gerar prévia'}
+        </button>
+      </div>
+
+      {itens && (
+        <div className="cartao">
+          <h3>Prévia · {itens.length} contatos</h3>
+          {desatualizada && <p className="aviso">Filtros ou textos mudaram depois da prévia. Gere a prévia de novo antes de aprovar.</p>}
+          <ul className="lista">
+            {itens.map((i) => (
+              <li key={i.chave}>
+                <div className="lista-topo">
+                  <b>{i.nome}</b>
+                  <button type="button" className="pequeno" onClick={() => setItens(itens.filter((x) => x.chave !== i.chave))}>
+                    Remover
+                  </button>
+                </div>
+                <small>{motivoPorChave.get(i.chave)}</small>
+                <label className="inline">
+                  Primeiro nome
+                  <input value={i.primeiroNome} onChange={(e) => atualizarItem(i.chave, { primeiroNome: e.target.value })} />
+                </label>
+                <div className="balao">{textoDoItem(i)}</div>
+              </li>
+            ))}
+          </ul>
+          {errosAprovacao.map((e) => (
+            <p key={e} className="erro">
+              {e}
+            </p>
+          ))}
+          <button type="button" className="primario" onClick={() => void aprovar()} disabled={salvando || desatualizada || itens.length === 0}>
+            Aprovar campanha ({itens.length})
+          </button>
+        </div>
+      )}
+
+      {revisar.length > 0 && (
+        <details className="cartao" open>
+          <summary>Revisar ({revisar.length}) — não entram sozinhos</summary>
+          <ul className="lista">
+            {revisar.map((a) => (
+              <li key={a.contato.chave}>
+                <div className="lista-topo">
+                  <b>{a.contato.nome}</b>
+                  {/* Nome repetido não pode entrar: não há como saber qual conversa abrir. */}
+                  {itens && !a.contato.duplicado && !naPrevia.has(a.contato.chave) && (
+                    <button type="button" className="pequeno" onClick={() => incluirManual(a.contato.chave)}>
+                      Incluir mesmo assim
+                    </button>
+                  )}
+                </div>
+                <small>
+                  {a.decisao.motivo} · lista mostrava "{a.contato.rotuloData ?? '—'}"
+                </small>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      <details className="cartao">
+        <summary>Fora da campanha ({excluidos.length})</summary>
+        <ul className="lista">
+          {excluidos.map((a) => (
+            <li key={a.contato.chave}>
+              <b>{a.contato.nome}</b> <small>— {a.decisao.motivo}</small>
+              {a.contato.ultimaConversa && <small> · {formatarDataBr(a.contato.ultimaConversa)}</small>}
+            </li>
+          ))}
+        </ul>
+      </details>
+    </section>
+  );
+}

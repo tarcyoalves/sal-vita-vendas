@@ -441,6 +441,11 @@ saíram desta lista e estão no registro `coordenacao/registro/2026-10-07-claude
     aceita telefone completo como alternativa ao token; rate limit em memória (por
     instância serverless); dinheiro em float/texto; carrinhos abandonados sem pedido nunca
     são apagados (LGPD — apagar dado é decisão do dono).
+12. **Vita Zap (extensão do WhatsApp Web), fase 1** *(19/10/2026)* — implementada em
+    `extensoes/vita-zap/` (projeto separado; o CRM ignora a pasta). **Seletores do WhatsApp
+    Web não validados contra o site real**: rodar o checklist manual do
+    `extensoes/vita-zap/README.md` antes da primeira campanha. Fase 2 (IA Gemini via proxy no
+    servidor) não começou. Plano: `docs/PLANO-CAMPANHAS-WHATSAPP.md`.
 
 ### 🔵 Operacional
 12. Pedidos com PIX inline (sem `mpPreferenceId`) não aparecem em `listOrders`.
