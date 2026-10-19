@@ -61,7 +61,7 @@ export const CATALOG: Record<ProductId, {
 }> = {
   '1kg':   { name: 'Sal Marinho Integral 1kg',        price: 29.90,  kgPerUnit: 1,  grossWeightKg: 1.2,  pkg: PKG_1KG  },
   '3kg':   { name: 'Trio Sal Vita 3kg (3×1kg)',      price: 74.90,  kgPerUnit: 3,  grossWeightKg: 3.6,  pkg: PKG_3KG  },
-  'caixa': { name: 'Caixa Sal Vita 10kg (10×1kg)',   price: 149.90, kgPerUnit: 10, grossWeightKg: 12.0, pkg: PKG_10KG },
+  'caixa': { name: 'Caixa Sal Vita 10kg (10×1kg)',   price: 149.90, kgPerUnit: 10, grossWeightKg: 10.0, pkg: PKG_10KG },
 };
 
 function isProductId(v: unknown): v is ProductId {
