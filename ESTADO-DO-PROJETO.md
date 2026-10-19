@@ -146,6 +146,14 @@ minerais. Até lá, não.
 
 ## 5. O que está feito
 
+**Janela do robô SMBI (19/10/2026 — CRM Lembretes)** — O Neon Free estourou porque o robô
+chamava o CRM a cada ~2 min, 24h. Agora `GET /api/smbi/pedidos` (exceto `?id=`/`?simular=1`)
+e `POST /api/smbi/heartbeat` só tocam o banco em 08:00–11:00 e 14:00–17:00
+(America/Fortaleza); fora disso respondem 200 com fila vazia e `foraDaJanela: true`.
+Configurável por `SMBI_JANELA` (`sempre` desliga). O robô da VPS NÃO precisa mudar. A tela
+mostra "Robô fora do horário" em vez de "sem sinal". Código: `shared/smbiJanela.ts`. Exige
+rebuild do `api/bundle.js` na integração. Contrato: `docs/CONTRATO-ROBO-CRM.md`.
+
 **Produto SMBI 55 (08/10/2026 — CRM Lembretes)** — De-para autorizado pelo Tarcyo:
 `SAL CHURRASCO COM IODO VITA 25 KG` → `55`, saco de 25 kg. Incluído no catálogo
 CRM e no arquivo de catálogo instalado do robô na VPS. Typecheck, 652 testes

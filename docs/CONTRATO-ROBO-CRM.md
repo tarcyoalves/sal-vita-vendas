@@ -45,3 +45,10 @@ Objetivo: envio de pedidos estável, pedido faturado no SMBI espelhado no CRM, v
 - Rota 4b `GET /api/smbi/ligados`: pedidos com movsai ligado e ainda não faturados no CRM: `[{ pedidoId, movsaiNumeros, vinculoEstado }]`. O robô confere o faturamento deles no SMBI (não depende de arquivo local).
 
 - `GET /api/smbi/ligados` e `GET /api/smbi/vinculos` trazem também `cnpj` (do pedido) e `comissaoPct` (do pedido), para a trava de documento (raiz do CNPJ / CPF) e para decidir se manda `comissaoPct`.
+
+## Janela de atendimento do robô (19/10/2026) — economia de computação do Neon
+- O CRM só atende o polling do robô em **08:00–11:00 e 14:00–17:00 (America/Fortaleza)**, todos os dias; fim exclusivo. Lógica em `shared/smbiJanela.ts`; env `SMBI_JANELA` (mesmo formato; `sempre` desliga o portão; valor inválido = portão desligado + aviso no log).
+- Fora da janela, **sem tocar no banco**: `GET /api/smbi/pedidos` (sem `?id=` e sem `?simular=1`) responde `200 { ok: true, roboAtivo: false, simulacao: false, pedidos: [], foraDaJanela: true, aviso }` (sem `multiempresaAtivo`: o valor é desconhecido sem consultar o banco; `pedidos: []` + `roboAtivo: false` nunca é ordem de criar/alterar nada). `POST /api/smbi/heartbeat` responde `200 { ok: true, roboAtivo: false, foraDaJanela: true }` e não grava.
+- Seguem funcionando **sempre**: `?id=` (reconferência), `?simular=1`, `/iniciar`, `/retorno`, `/faturamento`, `/status`, cadastro e demais rotas (servem pedido já em andamento).
+- A tela "Robô do SMBI" mostra "Robô fora do horário — volta às HH:MM" em vez de "sem sinal" fora da janela.
+- **O robô da VPS NÃO precisa mudar**: ele continua chamando como hoje e recebe fila vazia fora do horário. (Opcional, para economizar ainda mais requisições: o robô pode dormir quando vier `foraDaJanela: true`.)

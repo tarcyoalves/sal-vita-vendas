@@ -147,6 +147,11 @@ export default function SmbiRoboPanel() {
           </span>
         )}
       </div>
+      {data.foraDaJanela && (
+        <p className="mt-2 text-xs text-slate-500">
+          Robô fora do horário{data.voltaAs ? ` — volta às ${data.voltaAs}` : ''}. Pedidos enviados esperam a próxima janela.
+        </p>
+      )}
       {data.semSinal && (
         <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-red-700">
           <AlertTriangle size={14} aria-hidden />

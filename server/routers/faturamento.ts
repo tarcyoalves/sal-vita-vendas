@@ -19,6 +19,7 @@ import {
   totalAcordadoDoPedido, pesoLiquidoDoPedido,
 } from '../lib/smbiFaturamento';
 import { SMBI_ROBO_SEM_SINAL_MIN } from '../../shared/smbiEstados';
+import { dentroDaJanelaDoRobo, janelaDoAmbiente, proximaAberturaDaJanela } from '../../shared/smbiJanela';
 import { hashPedido, motivoAprovacaoInvalida, normalizarCnpj, avaliarSnapshot } from '../lib/smbiCadastro';
 import {
   aprovarInputSchema, decidirAprovacao, decidirRevisaoContatos, decidirSolicitacao, podeLiberarPedido, podeSolicitarPrevia,
@@ -524,7 +525,11 @@ export const faturamentoRouter = router({
   // Painel do robô do SMBI (só admin/gerente): chave de parada + último batimento.
   smbiRoboStatus: staffProcedure.query(async () => {
     const [s] = await db.select().from(smbiRobotState).where(eq(smbiRobotState.id, 1));
-    const semSinal = roboSemSinal(s?.ultimoHeartbeatEm);
+    // Fora da janela o robô dorme de propósito: não é "sem sinal" (shared/smbiJanela.ts).
+    const agora = new Date();
+    const config = janelaDoAmbiente();
+    const foraDaJanela = !dentroDaJanelaDoRobo(agora, config);
+    const semSinal = !foraDaJanela && roboSemSinal(s?.ultimoHeartbeatEm);
     return {
       roboAtivo: s?.roboAtivo === true,
       multiempresaAtivo: s?.multiempresaAtivo === true,
@@ -539,6 +544,8 @@ export const faturamentoRouter = router({
       atualizadoPor: s?.atualizadoPor ?? null,
       atualizadoEm: s?.atualizadoEm ?? null,
       semSinal,
+      foraDaJanela,
+      voltaAs: proximaAberturaDaJanela(agora, config),
       limiteSemSinalMin: SMBI_ROBO_SEM_SINAL_MIN,
     };
   }),

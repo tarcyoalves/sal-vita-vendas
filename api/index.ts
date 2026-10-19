@@ -37,6 +37,7 @@ import {
 import { proximoPedidoIndividual, reservaAte, reservaConfere } from '../server/lib/smbiFaturamento';
 import { decidirRetorno, filaBloqueadaPorProtocolo, motivoForaDaFila, protocoloDoRobo, reservaVigente } from '../server/lib/smbiMultiempresa';
 import { SMBI_ESTADOS_QUE_PARAM } from '../shared/smbiEstados';
+import { dentroDaJanelaDoRobo, janelaDoAmbiente, pollingBarradoPelaJanela } from '../shared/smbiJanela';
 import { registerSmbiExtraRoutes } from '../server/smbiRoutes';
 import { registerSmbiCadastroRoutes } from '../server/smbiCadastroRoutes';
 
@@ -1762,6 +1763,15 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
   const id = typeof req.query.id === 'string' ? req.query.id : undefined;
   // `?simular=1`: o robô vê o que criaria (para conferir antes de ligar), sem poder criar.
   const simular = req.query.simular === '1';
+  // Janela do robô (shared/smbiJanela.ts): fora dela o polling NÃO toca o banco (Neon dorme). Vem depois do 401 e
+  // antes de qualquer consulta. `?id=` e `?simular=1` seguem sempre. Fila vazia + roboAtivo:false = nada a criar.
+  if (pollingBarradoPelaJanela({ id, simular, config: janelaDoAmbiente() })) {
+    res.json({
+      ok: true, roboAtivo: false, simulacao: false, pedidos: [], foraDaJanela: true,
+      aviso: 'Fora da janela de atendimento do robô (08:00-11:00 e 14:00-17:00, Fortaleza). Nada foi consultado nem reservado.',
+    });
+    return;
+  }
   try {
     // Chave de parada (CONTRATO-ROBO-CRM.md, rota 9): sem linha = desligado (fail closed).
     const [estadoRobo] = await db
@@ -1972,6 +1982,11 @@ app.post('/api/smbi/heartbeat', smbiApiLimiter, express.json({ limit: '4kb' }), 
   if (!parsed.success) {
     console.warn('[smbi] POST /api/smbi/heartbeat → 400 (corpo inválido)');
     res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    return;
+  }
+  // Fora da janela do robô: não escreve no banco (o Neon pode dormir). Corpo inválido segue 400 acima.
+  if (!dentroDaJanelaDoRobo(new Date(), janelaDoAmbiente())) {
+    res.json({ ok: true, roboAtivo: false, foraDaJanela: true });
     return;
   }
   try {
