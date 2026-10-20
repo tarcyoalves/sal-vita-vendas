@@ -17,6 +17,11 @@ export function validarModelo(texto: string): string[] {
     erros.push('texto vazio');
     return erros;
   }
+  // Versão 0.2: sem quebra de linha. O editor do WhatsApp trata Enter/parágrafo de um jeito
+  // que não dá para colar com segurança (e Enter é o gatilho do envio) — só texto corrido.
+  if (/[\r\n\u2028\u2029]/.test(t)) {
+    erros.push('quebra de linha não é suportada nesta versão (0.2) — escreva o texto em uma linha só, com frases corridas');
+  }
   if (contemLink(t)) erros.push('a primeira mensagem não pode ter link (regra da política)');
   if (t.length > TAMANHO_MAX_TEXTO) erros.push(`texto longo demais (${t.length}/${TAMANHO_MAX_TEXTO} caracteres)`);
   const marcadores = t.match(/\{[^}]*\}/g) ?? [];

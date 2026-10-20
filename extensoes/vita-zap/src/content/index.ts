@@ -1,25 +1,44 @@
 // Content script do WhatsApp Web: recebe pedidos do painel lateral e responde.
-// Pedidos possíveis: verificar, varrer (só leitura), abrirEColar, limparCaixa, pararObservacao.
-// Não existe pedido de envio.
+// Pedidos possíveis: verificar, varrer (só leitura), abrirEColar, limparCaixa, pararObservacao,
+// cancelarAbertura, consultarPendencias, confirmarPendencias. Não existe pedido de envio.
 
-import type { EventoConteudo, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
-import { abrirEColar, limparCaixa, pararObservacao } from './execucao';
-import { ErroSeletor } from './lista';
+import type { EventoConteudo, PedidoConteudo, PendenciaEnvio, RespostaConteudo } from '../shared/mensagens';
+import { abrirEColar, cancelarAbertura, limparBuscaPeloBotao, limparCaixa, pararObservacao } from './execucao';
+import { assumirGeracao } from './geracao';
+import { ErroSeletor, ErroUsuarioDigitando } from './lista';
 import { encontrar } from './selectors';
 import { varrerLista } from './varredura';
+import { iniciarVigia, lerAvisoWhatsApp, novoEstadoVigia, pararVigia } from './vigia';
 
-declare global {
-  interface Window { __vitaZapCarregado?: boolean }
-}
-// Pode ser injetado de novo pelo painel (aba aberta antes da instalação): registra uma vez só.
-const jaCarregado = window.__vitaZapCarregado === true;
-window.__vitaZapCarregado = true;
+// Pode ser injetado de novo pelo painel (aba aberta antes da atualização): a geração mais nova
+// encerra o que a antiga deixou rodando, e os ouvintes antigos passam a ignorar os pedidos.
+const geracao = assumirGeracao(() => {
+  pararObservacao();
+  pararVigia();
+});
 
 let ocupado = false;
+const MAX_PENDENCIAS = 50;
 
-function emitir(evento: EventoConteudo): void {
-  // O painel pode estar fechado: aí não há ouvinte e o Chrome rejeita — ignorar.
-  chrome.runtime.sendMessage(evento).catch(() => undefined);
+function novoId(): string {
+  return `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+}
+
+/** Entrega um evento ao painel. Devolve false se não há painel ouvindo (fechado). */
+function emitir(evento: EventoConteudo): Promise<boolean> {
+  return chrome.runtime.sendMessage(evento).then(
+    () => true,
+    () => false,
+  );
+}
+
+/** Envio percebido: fica guardado até o painel confirmar (painel fechado ou recarregado não perde). */
+function guardarEEmitirEnvio(nome: string, texto: string, textoConfere: boolean, jid: string | null): void {
+  const pendencia: PendenciaEnvio = { id: novoId(), nome, texto, textoConfere, jid, detectadoEm: new Date().toISOString() };
+  const fila = geracao.estado.pendencias;
+  fila.push(pendencia);
+  while (fila.length > MAX_PENDENCIAS) fila.shift();
+  void emitir({ tipo: 'vitaZap:envioDetectado', ...pendencia });
 }
 
 function idiomaSuportado(): string | null {
@@ -36,6 +55,8 @@ function verificar(): RespostaConteudo {
   if (!encontrar(document, 'caixaBusca')) avisos.push('Caixa de busca não encontrada (seletor caixaBusca).');
   const idioma = idiomaSuportado();
   if (idioma) avisos.push(idioma);
+  const aviso = lerAvisoWhatsApp(novoEstadoVigia(), Date.now());
+  if (aviso) avisos.push(aviso);
   return { ok: true, avisos };
 }
 
@@ -45,23 +66,47 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
       return verificar();
     case 'pararObservacao':
       pararObservacao();
+      pararVigia();
+      return { ok: true };
+    case 'cancelarAbertura':
+      cancelarAbertura();
       return { ok: true };
     case 'limparCaixa':
       return limparCaixa(pedido.texto);
+    case 'consultarPendencias':
+      return { ok: true, pendencias: [...geracao.estado.pendencias], avisoWhatsApp: lerAvisoWhatsApp(novoEstadoVigia(), Date.now()) };
+    case 'confirmarPendencias': {
+      const ids = new Set(pedido.ids);
+      geracao.estado.pendencias = geracao.estado.pendencias.filter((p) => !ids.has(p.id));
+      return { ok: true };
+    }
     case 'varrer': {
       const idioma = idiomaSuportado();
       if (idioma) return { ok: false, codigo: 'seletor', erro: idioma };
-      const r = await varrerLista(pedido.termo, (lidas, unicas) => emitir({ tipo: 'vitaZap:progressoVarredura', lidas, unicas }));
+      const r = await varrerLista(
+        pedido.termo,
+        (lidas, unicas) => void emitir({ tipo: 'vitaZap:progressoVarredura', lidas, unicas }),
+        limparBuscaPeloBotao,
+      );
       return { ok: true, linhas: r.linhas, avisos: r.avisos };
     }
     case 'abrirEColar':
-      return abrirEColar(pedido.nome, pedido.texto, (texto, textoConfere) =>
-        emitir({ tipo: 'vitaZap:envioDetectado', nome: pedido.nome, texto, textoConfere }),
+      iniciarVigia((texto) => void emitir({ tipo: 'vitaZap:aviso', texto }));
+      return abrirEColar(
+        pedido.nome,
+        pedido.texto,
+        {
+          aoDetectarEnvio: (texto, textoConfere, jid) => guardarEEmitirEnvio(pedido.nome, texto, textoConfere, jid),
+          aoExpirar: () => void emitir({ tipo: 'vitaZap:observacaoExpirou', nome: pedido.nome }),
+        },
+        pedido.fotoAntes,
       );
   }
 }
 
-if (!jaCarregado) chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo, remetente, responder: (r: RespostaConteudo) => void) => {
+chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo, remetente, responder: (r: RespostaConteudo) => void) => {
+  // Injeção antiga (a página recebeu content.js de novo): só a geração atual responde.
+  if (!geracao.atual()) return false;
   if (remetente.id !== chrome.runtime.id) return false;
   const longo = mensagem.tipo === 'varrer' || mensagem.tipo === 'abrirEColar';
   if (longo && ocupado) {
@@ -73,6 +118,7 @@ if (!jaCarregado) chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo
     .then(responder)
     .catch((e: unknown) => {
       if (e instanceof ErroSeletor) responder({ ok: false, codigo: 'seletor', erro: e.message });
+      else if (e instanceof ErroUsuarioDigitando) responder({ ok: false, codigo: 'usuario_digitando', erro: e.message });
       else responder({ ok: false, codigo: 'interno', erro: e instanceof Error ? e.message : String(e) });
     })
     .finally(() => {

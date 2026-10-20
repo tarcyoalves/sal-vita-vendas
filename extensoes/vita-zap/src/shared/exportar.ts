@@ -14,6 +14,8 @@ export interface Envio {
   enviadoEm: string;
   /** O texto que apareceu no chat confere com o texto colado. */
   textoConfere: boolean;
+  /** JID da conversa (ex.: 5584...@c.us) lido do chat no momento do envio; null se não deu para ler. */
+  jid?: string | null;
 }
 
 export interface NaoEnviar {
@@ -91,6 +93,7 @@ const envioSchema = z.object({
   nome: z.string(),
   enviadoEm: iso,
   textoConfere: z.boolean(),
+  jid: z.string().nullable().optional(),
 });
 
 const naoEnviarSchema = z.object({ chave: z.string().min(1), nome: z.string(), desde: iso, motivo: z.string() });

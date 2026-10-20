@@ -1,9 +1,10 @@
 // Leitura (só leitura) de uma linha da lista de conversas. Sem efeitos colaterais.
 
 import type { LinhaBruta } from '../shared/contatos';
+import { previaTemPrefixoDeGrupo } from '../shared/avisos';
 import { pareceRotuloData } from '../shared/datas';
 import { normalizarTexto } from '../shared/nomes';
-import { limparMarcas } from './dom';
+import { limparMarcas, textoDoNo } from './dom';
 import { encontrar, SECOES_SEM_CONVERSA } from './selectors';
 
 export type LeituraLinha =
@@ -34,6 +35,22 @@ export function rotuloDataDaLinha(el: HTMLElement, titulo: HTMLElement): string 
   return null;
 }
 
+/**
+ * Texto da prévia da última mensagem: tudo que sobra na linha depois de tirar o título e o
+ * rótulo de data (peças de texto folha juntadas com espaço, na ordem do DOM).
+ */
+export function previaDaLinha(el: HTMLElement, titulo: HTMLElement, rotuloData: string | null): string {
+  const pecas: string[] = [];
+  for (const f of el.querySelectorAll<HTMLElement>('*')) {
+    if (f.children.length > 0) continue; // só folhas
+    if (titulo.contains(f) || f.contains(titulo)) continue;
+    const texto = limparMarcas(textoDoNo(f)).trim();
+    if (texto === '' || texto === rotuloData) continue;
+    pecas.push(texto);
+  }
+  return pecas.join(' ');
+}
+
 export function lerLinha(el: HTMLElement): LeituraLinha {
   const titulo = encontrar(el, 'tituloLinha');
   if (!titulo) {
@@ -43,13 +60,15 @@ export function lerLinha(el: HTMLElement): LeituraLinha {
   }
   const nome = limparMarcas(titulo.getAttribute('title') || titulo.textContent || '');
   if (nome === '') return { tipo: 'ignorar' };
+  const rotuloData = rotuloDataDaLinha(el, titulo);
   return {
     tipo: 'conversa',
     linha: {
       nome,
-      rotuloData: rotuloDataDaLinha(el, titulo),
+      rotuloData,
       posicao: posicaoDaLinha(el),
-      pareceGrupo: encontrar(el, 'iconeGrupo') != null,
+      // Ícone de grupo OU prévia no formato "Fulano: texto" (quem falou por último).
+      pareceGrupo: encontrar(el, 'iconeGrupo') != null || previaTemPrefixoDeGrupo(previaDaLinha(el, titulo, rotuloData)),
     },
   };
 }

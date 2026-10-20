@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vita Zap",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Copiloto comercial no WhatsApp Web. Você sempre aperta o Enter: a extensão nunca envia sozinha.",
   "minimum_chrome_version": "116",
   "permissions": [

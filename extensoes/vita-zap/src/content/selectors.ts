@@ -11,6 +11,8 @@
 // Cada entrada é uma lista de alternativas, tentadas em ordem. Se nenhuma bater, a operação
 // para com erro 'seletor' (falha fechada) — nunca "tenta outra coisa".
 //
+// data-testid estáveis valem como alternativa; classes com hash (_ak72 etc.) nunca.
+//
 // PROIBIDO: seletor do botão de enviar. A extensão não toca nele (teste em
 // tests/sem-envio-automatico.test.ts).
 
@@ -19,13 +21,18 @@ export const SELETORES = {
   colunaEsquerda: ['#side'],
 
   /** Lista de conversas dentro da coluna da esquerda. */
-  painelLateral: ['#pane-side', '[aria-label="Lista de conversas"]', '[aria-label="Chat list"]'],
+  painelLateral: [
+    '#pane-side',
+    '[aria-label="Lista de conversas"]',
+    '[aria-label="Chat list"]',
+    '[data-testid="chat-list"]',
+  ],
 
   /** Uma linha da lista de conversas (ou de resultados da busca). */
   linhaConversa: ['[role="listitem"]', '[role="row"]'],
 
   /** Nome da conversa dentro da linha: o primeiro span com title. */
-  tituloLinha: ['span[dir="auto"][title]', 'span[title]'],
+  tituloLinha: ['span[dir="auto"][title]', 'span[title]', '[data-testid="cell-frame-title"] span'],
 
   /** Ícones que só aparecem em grupo / comunidade / lista de transmissão (foto padrão). */
   iconeGrupo: ['[data-icon="default-group"]', '[data-icon="default-community"]', '[data-icon="default-broadcast"]'],
@@ -37,7 +44,14 @@ export const SELETORES = {
     'div[contenteditable="true"][role="textbox"][aria-label*="esquisar"]',
     'div[contenteditable="true"][data-tab="3"]',
     'input[role="textbox"][aria-label*="earch"]',
+    'div[role="textbox"][data-testid="chat-list-search"]',
   ],
+
+  /**
+   * Botão X do próprio WhatsApp que limpa a busca (NÃO é o botão de enviar nem de cancelar
+   * mensagem). Procurado só na coluna da esquerda, fora da lista; veja `limparBuscaPeloBotao`.
+   */
+  limparBusca: ['button[aria-label*="Limpar"]', 'button[aria-label*="Clear search"]', '[data-icon="x-alt"]'],
 
   /** Painel da conversa aberta. */
   painelConversa: ['#main'],
@@ -50,6 +64,7 @@ export const SELETORES = {
     '#main footer div[contenteditable="true"][role="textbox"]',
     '#main footer div[contenteditable="true"][data-tab="10"]',
     '#main footer div[contenteditable="true"]',
+    'div[contenteditable="true"][data-testid="conversation-compose-box-input"]',
   ],
 
   /**
@@ -57,7 +72,18 @@ export const SELETORES = {
    * true = enviada por você; o jid termina em @c.us/@lid (individual), @g.us (grupo) ou
    * @broadcast (transmissão).
    */
-  mensagem: ['#main [data-id]'],
+  mensagem: ['#main [data-id]', '[data-testid="conversation-panel-messages"] [data-id]'],
+
+  /** Sinal secundário de mensagem sua (além do data-id "true_"). Classe semântica, não gerada. */
+  mensagemSua: ['.message-out'],
+
+  /** Relógio de "ainda não saiu" dentro de uma mensagem sua. */
+  relogioPendente: ['[data-icon="msg-time"]'],
+
+  /** Avisos do WhatsApp que pausam a campanha. */
+  avisoTelefone: ['[data-testid="alert-phone-not-connected"]', '[data-icon="alert-computer"]', '[data-icon="alert-phone"]'],
+  avisoBanner: ['div[role="alert"]'],
+  modal: ['[role="dialog"]', 'div[data-animate-modal-popup="true"]'],
 
   /** Texto de uma mensagem. */
   textoMensagem: ['span.selectable-text', '.copyable-text span[dir]'],

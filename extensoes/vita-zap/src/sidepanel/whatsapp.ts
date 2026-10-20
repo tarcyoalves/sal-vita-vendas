@@ -16,6 +16,13 @@ async function injetarConteudo(tabId: number): Promise<void> {
   await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
 }
 
+/** O Chrome diz isto quando a aba não tem content script (aba aberta antes da instalação/atualização). */
+const SEM_RECEPTOR = /Receiving end does not exist|Could not establish connection/i;
+
+export function semReceptor(e: unknown): boolean {
+  return SEM_RECEPTOR.test(e instanceof Error ? e.message : String(e));
+}
+
 export async function pedir(pedido: PedidoConteudo, trazerParaFrente = false): Promise<RespostaConteudo> {
   const aba = await abaDoWhatsApp().catch(() => null);
   if (!aba?.id) return { ok: false, codigo: 'nao_pronto', erro: 'Abra o WhatsApp Web (web.whatsapp.com) nesta janela do Chrome.' };
@@ -26,16 +33,23 @@ export async function pedir(pedido: PedidoConteudo, trazerParaFrente = false): P
     let r: RespostaConteudo | undefined;
     try {
       r = await enviarPedido();
-    } catch {
+    } catch (e) {
+      // Só reinjeta quando o motivo é "não há content script". Qualquer outro erro (porta
+      // fechada no meio de uma operação, por exemplo) NÃO reinjeta: isso empilharia outra
+      // cópia do script em cima de uma operação em andamento.
+      if (!semReceptor(e)) throw e;
       await injetarConteudo(tabId);
       r = await enviarPedido();
     }
     return r ?? { ok: false, codigo: 'interno', erro: 'O WhatsApp Web não respondeu.' };
-  } catch {
-    return {
-      ok: false,
-      codigo: 'nao_pronto',
-      erro: 'Não consegui falar com a aba do WhatsApp Web. Recarregue a aba (F5) — isso é necessário depois de instalar ou atualizar a extensão.',
-    };
+  } catch (e) {
+    if (semReceptor(e)) {
+      return {
+        ok: false,
+        codigo: 'nao_pronto',
+        erro: 'Não consegui falar com a aba do WhatsApp Web. Recarregue a aba (F5) — isso é necessário depois de instalar ou atualizar a extensão.',
+      };
+    }
+    return { ok: false, codigo: 'interno', erro: `Falha ao falar com o WhatsApp Web: ${e instanceof Error ? e.message : String(e)}` };
   }
 }

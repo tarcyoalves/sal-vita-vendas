@@ -7,6 +7,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { SELETORES } from '../src/content/selectors';
 
 const RAIZ = join(__dirname, '..');
 const SRC = join(RAIZ, 'src');
@@ -102,6 +103,70 @@ describe('nenhum código dispara o envio', () => {
     expect(manifesto.permissions ?? []).not.toEqual(expect.arrayContaining(['debugger']));
     for (const p of ['debugger', 'input', 'nativeMessaging']) expect(manifesto.permissions ?? []).not.toContain(p);
     expect(manifesto.host_permissions).toEqual(['https://web.whatsapp.com/*']);
+  });
+});
+
+describe('cliques permitidos na 0.2: só a linha da lista e o X de limpar a busca', () => {
+  const abrirConversa = arquivos.find((a) => a.caminho === 'src/content/abrir-conversa.ts')?.codigo ?? '';
+  const execucao = arquivos.find((a) => a.caminho === 'src/content/execucao.ts')?.codigo ?? '';
+
+  it('abrir-conversa.ts exporta exatamente duas funções: abrirLinhaDaLista e limparBuscaPeloX', () => {
+    const exportadas = [...abrirConversa.matchAll(/export\s+(?:async\s+)?function\s+(\w+)/g)].map((m) => m[1]);
+    expect(exportadas).toEqual(['abrirLinhaDaLista', 'limparBuscaPeloX']);
+  });
+
+  it('só eventos de mouse mousedown/mouseup/click, e só dois pontos de disparo', () => {
+    const tipos = [...abrirConversa.matchAll(/'(mouse\w+|click|pointer\w+|key\w+|submit|dblclick|contextmenu)'/g)].map((m) => m[1]);
+    expect([...new Set(tipos)].sort()).toEqual(['click', 'mousedown', 'mouseup']);
+    expect(abrirConversa.match(/dispararCliqueEm\(/g)?.length).toBe(3); // definição + 2 usos
+  });
+
+  it('limparBuscaPeloX só é chamado de execucao.ts, uma vez, sobre o botão achado por seletor de LIMPAR busca', () => {
+    expect(ocorrencias(/limparBuscaPeloX\s*\(/).sort()).toEqual(['src/content/abrir-conversa.ts', 'src/content/execucao.ts']);
+    expect(execucao.match(/limparBuscaPeloX\(([^)]*)\)/g)).toEqual(['limparBuscaPeloX(botao)']);
+    // O botão vem de SELETORES.limparBusca, dentro da coluna da esquerda, fora da lista e fora do rodapé.
+    expect(execucao).toMatch(/SELETORES\.limparBusca/);
+    expect(execucao).toMatch(/lista\?\.contains\(botao\)/);
+    expect(execucao).toMatch(/closest\('footer'\)/);
+    expect(execucao.match(/limparBuscaPeloBotao/g)?.length).toBeGreaterThan(0);
+  });
+
+  it('os seletores do X identificam LIMPAR busca e nunca o botão de enviar, mic ou rodapé', () => {
+    expect(SELETORES.limparBusca.length).toBeGreaterThan(0);
+    for (const s of SELETORES.limparBusca) {
+      expect(s, s).toMatch(/Limpar|Clear search|x-alt/);
+      expect(s, s).not.toMatch(/send|enviar|ptt|mic|footer|attach|clip|plus|emoji|submit/i);
+    }
+    const todos = JSON.stringify(SELETORES);
+    expect(todos).not.toMatch(/send|enviar|data-icon="(?:wds-ic-send|ptt|mic)/i);
+  });
+
+  it('o único pedido de abertura do chat passa por abrirLinhaDaLista(candidatas[0]) (título da linha)', () => {
+    expect(execucao).toMatch(/encontrar\(c\.el, 'tituloLinha'\) \?\? c\.el/);
+  });
+
+  it('focus() só existe em dom.ts, protegido por usuarioDigitando()', () => {
+    expect(ocorrencias(/\.focus\s*\(/)).toEqual(['src/content/dom.ts']);
+    const dom = arquivos.find((a) => a.caminho === 'src/content/dom.ts')?.codigo ?? '';
+    expect(dom.match(/\.focus\s*\(/g)).toHaveLength(1);
+    const corpoFocar = /function focarComSeguranca[\s\S]*?\n\}/.exec(dom)?.[0] ?? '';
+    expect(corpoFocar).toMatch(/usuarioDigitando\(\)[\s\S]*el\.focus\(\)/);
+  });
+
+  it('o protocolo da 0.2 continua sem pedido de envio', () => {
+    const msgs = arquivos.find((a) => a.caminho === 'src/shared/mensagens.ts')?.codigo ?? '';
+    const tipos = [...msgs.matchAll(/tipo: '([a-zA-Z:]+)'/g)].map((m) => m[1]);
+    expect(tipos).toEqual(expect.arrayContaining(['cancelarAbertura', 'consultarPendencias', 'confirmarPendencias', 'vitaZap:aviso', 'vitaZap:observacaoExpirou']));
+    expect(tipos.filter((t) => /envi|send/i.test(t) && t !== 'vitaZap:envioDetectado')).toEqual([]);
+  });
+});
+
+describe('versão', () => {
+  it('manifest.json e package.json estão na mesma versão (0.2.0)', () => {
+    const manifesto = JSON.parse(readFileSync(join(RAIZ, 'public/manifest.json'), 'utf8')) as { version: string };
+    const pacote = JSON.parse(readFileSync(join(RAIZ, 'package.json'), 'utf8')) as { version: string };
+    expect(manifesto.version).toBe(pacote.version);
+    expect(pacote.version).toBe('0.2.0');
   });
 });
 

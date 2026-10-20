@@ -11,9 +11,13 @@ import { encontrar } from './selectors';
 const MAX_PASSOS = 400; // ~ alguns milhares de conversas
 const MAX_LINHAS = 5000;
 
-export async function varrerLista(termo: string, aoProgredir: (lidas: number, unicas: number) => void): Promise<{ linhas: LinhaBruta[]; avisos: string[] }> {
+export async function varrerLista(
+  termo: string,
+  aoProgredir: (lidas: number, unicas: number) => void,
+  limparPeloBotao: (() => boolean) | null = null,
+): Promise<{ linhas: LinhaBruta[]; avisos: string[] }> {
   exigir(encontrar(document, 'painelLateral'), 'lista de conversas');
-  await buscar(termo);
+  await buscar(termo, limparPeloBotao);
 
   const avisos: string[] = [];
   const todas: LinhaBruta[] = [];

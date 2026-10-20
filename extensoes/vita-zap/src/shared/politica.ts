@@ -101,6 +101,29 @@ export function podeAbrirProximo(estado: EstadoPolitica, cfgBruta: ConfigPolitic
   return { pode: true };
 }
 
+/**
+ * Estado de intervalo usando o último envio GLOBAL (todas as campanhas deste número), não só o
+ * da campanha atual. O intervalo sorteado só vale se o último envio global for o da própria
+ * campanha; se foi de outra, vale o mínimo da política (o sorteio daquela não é conhecido).
+ */
+export function ultimoEnvioParaIntervalo(
+  envios: ReadonlyArray<{ enviadoEm: string }>,
+  campanha: { ultimoEnvioEm: string | null; intervaloAtualSeg: number | null },
+): { ultimoEnvioEm: string | null; intervaloAtualSeg: number | null } {
+  let global: string | null = null;
+  let globalMs = -Infinity;
+  for (const e of envios) {
+    const ms = new Date(e.enviadoEm).getTime();
+    if (Number.isFinite(ms) && ms > globalMs) {
+      globalMs = ms;
+      global = e.enviadoEm;
+    }
+  }
+  const propriaMs = campanha.ultimoEnvioEm ? new Date(campanha.ultimoEnvioEm).getTime() : -Infinity;
+  if (global && globalMs > propriaMs) return { ultimoEnvioEm: global, intervaloAtualSeg: null };
+  return { ultimoEnvioEm: campanha.ultimoEnvioEm, intervaloAtualSeg: campanha.intervaloAtualSeg };
+}
+
 /** Conta mais um problema. `pausar` = freio acionado. */
 export function registrarProblema(problemasSeguidos: number): { problemasSeguidos: number; pausar: boolean } {
   const n = problemasSeguidos + 1;

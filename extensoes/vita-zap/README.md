@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (fase 1, sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (fase 1, sem IA) — versão 0.2.0
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -18,6 +18,67 @@ esta pasta.
 > (`tests/sem-envio-automatico.test.ts`) reprova o build se aparecer qualquer clique no botão
 > de enviar ou evento de teclado. A política de proteção abaixo **reduz** o risco; ela **não
 > garante** que o número não será restringido.
+
+---
+
+## 0. O que mudou na 0.2.0
+
+Versão de correção (manifest e `package.json` em 0.2.0). Nenhuma regra de proteção foi
+afrouxada; o teste `tests/sem-envio-automatico.test.ts` continua valendo e ganhou verificações
+mais estritas (só dois cliques permitidos: a linha da lista e o X de limpar a busca).
+
+**Segurança de uso**
+- **Nada abre sozinho depois do intervalo.** Quando o intervalo acaba, o painel mostra
+  **"Próximo pronto — clique em Abrir próximo"** (botão; atalho **Alt+Shift+P** com o painel
+  em foco). Antes a conversa trocava sozinha, mesmo com você digitando. A extensão também
+  **nunca chama `focus()`** se o foco do WhatsApp está num campo com texto seu: ela para e
+  avisa ("Você está digitando…"), sem marcar o contato como problema.
+- **Painel fechado ou recarregado no meio de um contato não gera reenvio.** O item colado
+  (campanha, nome, texto e a "foto" dos `data-id` das mensagens antes de colar) é gravado no
+  IndexedDB. Ao reabrir, o painel mostra o item em andamento; ao retomar, o content script
+  confere se já existe mensagem sua nova naquela conversa **antes** de colar e, se existir,
+  conta como enviada. Envios percebidos com o painel fechado ficam guardados no content script
+  e são entregues quando o painel volta (pedido `consultarPendencias`). Nunca cola duas vezes
+  no mesmo contato.
+- **Botão "Já enviei"**: registra o envio manualmente (status enviado, conta no teto diário e
+  no intervalo). Use quando o painel não percebeu o Enter ou foi fechado.
+- **Avisos do WhatsApp pausam a campanha**: telefone desconectado
+  (`alert-phone-not-connected`, `alert-computer`), banner `div[role="alert"]`, modal de
+  restrição/"não foi possível enviar" e mensagem sua presa no relógio por mais de 60 s. O painel
+  mostra o aviso. O sumiço da lista de conversas (`#pane-side`) continua pausando.
+- **Intervalo mínimo** conta a partir do último envio de **qualquer campanha** deste número.
+
+**Leitura mais confiável**
+- **Emoji**: o texto da caixa/mensagem é lido percorrendo os nós e usando `alt` /
+  `data-plain-text` das `<img>`. Rascunho só com emoji **não** é caixa vazia.
+- **Reconferência**: título == nome, conversa individual (mesmo JID) e caixa vazia são
+  conferidos de novo imediatamente **antes** de colar e logo **depois** (se algo mudou, o texto
+  é retirado).
+- **Classificação estável**: o JID é lido duas vezes seguidas (iguais) depois das mensagens
+  carregarem, e gravado no registro do envio (`jid`).
+- **Lista de busca estável** (duas leituras iguais) antes de decidir entre homônimos; **grupo**
+  também pelo prefixo "Fulano:" na prévia da última mensagem ("Você:" não conta).
+- **Clique de abrir** vai no título da linha (o evento sobe até a linha).
+- **Limpar busca** primeiro pelo botão X do próprio WhatsApp (`aria-label` "Limpar…"), só
+  depois pelo campo.
+- **Envio detectado** também por `.message-out` (sinal secundário ao `data-id` `true_`).
+- Seletores `data-testid` estáveis como alternativas extras (nunca classes com hash).
+
+**Controle**
+- **Quebra de linha não é suportada**: `validarModelo` rejeita quebras de linha com mensagem
+  clara, e o texto (link, tamanho, quebra de linha) é revalidado imediatamente antes de colar —
+  inclusive de backup importado (vira "problema", não é colado).
+- **Pausar durante "abrindo"** cancela a abertura no content script (token) e limpa a caixa se
+  o texto já tinha sido colado.
+- **A observação de 30 min que expira** agora avisa o painel ("não percebo mais o envio — use
+  *Já enviei* ou *Pular*").
+- **Reinjeção**: o content script tem número de geração; instâncias antigas ignoram pedidos e a
+  nova encerra o que a antiga deixou rodando. O painel só reinjeta no erro "Receiving end does
+  not exist" / "Could not establish connection".
+
+**Ideias da outra extensão**: aproveitadas (avisos, `data-testid`, botão X, `.message-out`).
+Descartadas de propósito: apagar rascunho do usuário, `textContent =` no editor e seletores de
+classe com hash.
 
 ---
 
@@ -70,13 +131,18 @@ e salve. Sem isso nenhuma campanha roda. Confira também se o WhatsApp Web está
    2. confere que é conversa individual (não grupo/transmissão);
    3. cola o texto na caixa de mensagem (se já houver rascunho seu, não mexe e marca problema);
    4. **para e espera**. Você clica na caixa do WhatsApp, confere e aperta **Enter**;
-   5. percebe a mensagem nova no chat, registra o envio, espera 60–120 s e abre o próximo.
+   5. percebe a mensagem nova no chat, registra o envio e espera 60–120 s;
+   6. mostra **"Próximo pronto"**. Quando você terminar o que estiver fazendo, clique em
+      **Abrir próximo** (ou Alt+Shift+P). Nada abre sozinho.
 
-   Botões durante a espera: **Pular**, **Não é cliente**, **Problema**, **Não enviar mais**,
-   **Pausar**. Pular/Pausar tiram da caixa o texto colado (se você não o editou).
-   Enter dentro do painel não aciona botão — o Enter é para o WhatsApp.
+   Botões durante a espera: **Já enviei**, **Pular**, **Não é cliente**, **Problema**,
+   **Não enviar mais**, **Pausar**. Pular/Pausar tiram da caixa o texto colado (se você não o
+   editou). Enter dentro do painel não aciona botão — o Enter é para o WhatsApp.
+   O texto não pode ter quebra de linha (escreva em uma linha só).
 
-**Feche o painel = campanha pausada.** A lógica roda no painel; ao reabrir, use *Retomar*.
+**Feche o painel = campanha pausada.** A lógica roda no painel; ao reabrir, o painel mostra o
+item que ficou em andamento. Se a mensagem já saiu, clique em *Já enviei*; senão use *Retomar*
+(a extensão confere o WhatsApp antes de colar e nunca reenvia ao mesmo contato).
 
 ### Dados e backup
 
@@ -115,8 +181,13 @@ Outros sinais usados (todos isolados e testados com HTML sintético):
 - **Grupo:** ícone padrão de grupo na linha e, ao abrir, o `data-id` das mensagens
   (`@g.us` = grupo, `@broadcast` = transmissão, `@newsletter` = canal; `@c.us`/`@lid` =
   individual). Sem sinal → não cola (falha fechada).
-- **Envio detectado:** a última mensagem do chat é sua (`data-id` começa com `true_`), não
-  existia antes de colar, e a caixa ficou vazia.
+- **Envio detectado:** a última mensagem do chat é sua (`data-id` começa com `true_`, ou está
+  dentro de `.message-out`), não existia antes de colar, e a caixa ficou vazia.
+- **Avisos do WhatsApp:** `[data-testid="alert-phone-not-connected"]`, `div[role="alert"]`,
+  `[data-icon="alert-computer"]`, `[data-icon="msg-time"]` (relógio) em mensagem sua e modal
+  `[role="dialog"]` com texto de falha/restrição.
+- **Limpar busca:** botão X (`button[aria-label*="Limpar"]`, `[data-icon="x-alt"]`) na coluna da
+  esquerda, fora da lista. É o único clique permitido além da linha da lista.
 
 ## 6. ⚠️ O que NÃO foi validado
 
@@ -131,6 +202,23 @@ especial, não verificado:
 - se `execCommand('insertText')` coloca o texto no editor do WhatsApp (e quebras de linha);
 - o formato do `data-id` das mensagens e a detecção do envio;
 - se `<html lang>` do WhatsApp Web indica o idioma.
+
+Novos na 0.2 (também **não** validados no WhatsApp real — os testes usam um WhatsApp falso
+escrito à mão):
+
+- como o editor representa emoji (`<img alt>` / `data-plain-text`) e se `execCommand` os cola;
+- todos os `data-testid` novos (busca, título da linha, caixa, histórico, lista);
+- se existe e qual é o `aria-label` real do botão X de limpar a busca;
+- se `.message-out` existe nas mensagens enviadas e se `[data-icon="msg-time"]` é o relógio;
+- os avisos (`alert-phone-not-connected`, `alert-computer`, `div[role="alert"]`, modal de
+  falha) — o texto e o momento em que aparecem; `div[role="alert"]` pode aparecer por motivos
+  inofensivos e, nesse caso, **pausará a campanha à toa** (é o lado seguro);
+- se a prévia de grupo na lista tem mesmo o formato "Fulano: texto" (e se "Você:" é o rótulo
+  das suas mensagens); prévia individual com "Algo: …" é tratada como grupo (fica de fora);
+- se o clique despachado no título da linha abre a conversa;
+- o `data-id` mudar de formato (JID `@lid`) e a leitura estável de JID em conversas lentas;
+- o comportamento real do foco quando o painel lateral está em primeiro plano e o WhatsApp tem
+  rascunho (`document.activeElement` da aba).
 
 **Rode o checklist abaixo antes da primeira campanha real** e a cada atualização do
 WhatsApp Web. Se algo falhar, ajuste só `selectors.ts` (ou o sinal correspondente) e rode
@@ -167,11 +255,33 @@ número salvo como "CLIENTE TESTE").
 - [ ] *Iniciar*: a conversa certa abre (nome no cabeçalho) e o texto aparece na caixa.
 - [ ] A extensão **não envia sozinha** — espere 1 minuto sem apertar nada.
 - [ ] Aperte Enter no WhatsApp: o painel registra "enviado" e mostra a contagem do intervalo.
-- [ ] Após o intervalo, abre o próximo sozinho.
+- [ ] Após o intervalo aparece "Próximo pronto" e nada abre sozinho; *Abrir próximo* abre o seguinte.
 - [ ] *Pular* tira o texto da caixa e abre o próximo.
 - [ ] Deixe um rascunho seu num contato da lista: a extensão não sobrescreve (marca problema).
 - [ ] *Não enviar mais*: o contato some das próximas prévias (aba Dados lista ele).
 - [ ] *Pausar* e *Retomar* funcionam; fechar o painel pausa.
+- [ ] **Emoji**: use um texto com emoji (ex.: "Oi {primeiroNome} 😀"). Ele aparece na caixa
+      como emoji, o envio é detectado e o painel registra "texto confere". Depois deixe um
+      rascunho **só com um emoji** na caixa de um contato: a extensão não pode sobrescrever
+      (marca problema).
+- [ ] **Abrir próximo**: depois do intervalo o painel mostra "Próximo pronto" e **a conversa
+      não troca sozinha**. Digite algo em outra conversa durante o intervalo, depois clique
+      *Abrir próximo*: se o foco estiver num campo com texto seu, a extensão avisa e não mexe.
+      O atalho Alt+Shift+P (painel em foco) faz o mesmo.
+- [ ] **Painel fechado e retomado**: cole o texto de um contato, **feche o painel**, reabra:
+      aparece "Ficou em andamento: …". (a) Não envie e clique *Retomar*: a extensão confere o
+      WhatsApp e cola de novo só uma vez. (b) Repita, mas dessa vez aperte Enter com o painel
+      fechado, reabra e clique *Retomar*: o contato conta como enviado e **nada é colado de
+      novo**.
+- [ ] **Já enviei**: com o texto colado, envie e clique *Já enviei* antes da detecção (ou
+      depois de uma observação expirada): o contato vira enviado, entra na contagem do teto e
+      o intervalo é sorteado.
+- [ ] **Aviso de desconexão**: com uma campanha rodando, ponha o celular em modo avião (ou
+      desconecte o WhatsApp Web). A campanha deve **pausar** e mostrar o aviso. Reconecte e
+      confira que *Retomar* só segue depois que o aviso sumiu.
+- [ ] Pausar durante "Abrindo a conversa…": a caixa fica vazia e a campanha pausa.
+- [ ] Texto com quebra de linha: a Prévia recusa com a mensagem clara.
+- [ ] Dois chats com o mesmo nome / um grupo com o nome do contato: a extensão não abre.
 - [ ] Contato inexistente/renomeado 3 vezes seguidas → campanha pausa (freio).
 - [ ] Fora do horário (ou mude o relógio): *Iniciar* não abre ninguém.
 
@@ -193,8 +303,11 @@ extensoes/vita-zap/
 │   │   ├── extrair.ts                 leitura de uma linha da lista (puro)
 │   │   ├── varredura.ts               rolagem com pausas, só leitura
 │   │   ├── execucao.ts                abrir + colar + observar envio
-│   │   ├── abrir-conversa.ts          único clique simulado (linha da lista)
-│   │   ├── dom.ts, lista.ts           utilidades
+│   │   ├── abrir-conversa.ts          únicos cliques simulados (linha da lista; X de limpar busca)
+│   │   ├── chat.ts                    título, mensagens, tipo/JID da conversa aberta
+│   │   ├── vigia.ts                   avisos do WhatsApp (desconexão, restrição, relógio)
+│   │   ├── geracao.ts                 geração do content script (reinjeção)
+│   │   ├── dom.ts, lista.ts           utilidades (texto com emoji, foco seguro)
 │   │   └── index.ts                   recebe pedidos do painel
 │   ├── shared/                        lógica pura + IndexedDB
 │   │   ├── constantes.ts              política (pisos/tetos)
@@ -203,6 +316,7 @@ extensoes/vita-zap/
 │   │   ├── filtros.ts, politica.ts, texto.ts, campanha.ts
 │   │   ├── banco.ts, exportar.ts      IndexedDB, backup JSON, CSV
 │   │   ├── mensagens.ts               protocolo painel ↔ content (sem "enviar")
+│   │   ├── avisos.ts                  padrões de aviso/grupo (texto puro)
 │   │   └── ia.ts                      interface da fase 2 (desligada)
 │   └── sidepanel/                     React: Varredura, Prévia, Envio, Dados + executor.ts
 └── tests/                             vitest (npm test)

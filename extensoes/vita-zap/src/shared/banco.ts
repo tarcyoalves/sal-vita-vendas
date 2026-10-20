@@ -13,23 +13,41 @@ interface EsquemaVitaZap extends DBSchema {
   envios: { key: string; value: Envio; indexes: { porChave: string; porCampanha: string } };
   naoEnviar: { key: string; value: NaoEnviar };
   config: { key: string; value: { id: 'politica'; valor: ConfigPolitica } };
+  /** Item colado e esperando o Enter do usuário (sobrevive a fechar/recarregar o painel). */
+  emAndamento: { key: string; value: EmAndamento };
+}
+
+/** O item em andamento de uma campanha (no máximo um por campanha). */
+export interface EmAndamento {
+  campanhaId: string;
+  chave: string;
+  nome: string;
+  /** Texto exato colado na caixa. */
+  texto: string;
+  /** "Foto": data-id das mensagens da conversa ANTES de colar. */
+  foto: string[];
+  jid: string | null;
+  iniciadoEm: string;
 }
 
 export const NOME_BANCO = 'vita-zap';
-const VERSAO_BANCO = 1;
+const VERSAO_BANCO = 2;
 
 export type Banco = IDBPDatabase<EsquemaVitaZap>;
 
 export function abrirBanco(nome: string = NOME_BANCO): Promise<Banco> {
   return openDB<EsquemaVitaZap>(nome, VERSAO_BANCO, {
-    upgrade(db) {
-      db.createObjectStore('contatos', { keyPath: 'chave' });
-      db.createObjectStore('campanhas', { keyPath: 'id' });
-      const envios = db.createObjectStore('envios', { keyPath: 'id' });
-      envios.createIndex('porChave', 'chave');
-      envios.createIndex('porCampanha', 'campanhaId');
-      db.createObjectStore('naoEnviar', { keyPath: 'chave' });
-      db.createObjectStore('config', { keyPath: 'id' });
+    upgrade(db, versaoAntiga) {
+      if (versaoAntiga < 1) {
+        db.createObjectStore('contatos', { keyPath: 'chave' });
+        db.createObjectStore('campanhas', { keyPath: 'id' });
+        const envios = db.createObjectStore('envios', { keyPath: 'id' });
+        envios.createIndex('porChave', 'chave');
+        envios.createIndex('porCampanha', 'campanhaId');
+        db.createObjectStore('naoEnviar', { keyPath: 'chave' });
+        db.createObjectStore('config', { keyPath: 'id' });
+      }
+      if (versaoAntiga < 2) db.createObjectStore('emAndamento', { keyPath: 'campanhaId' });
     },
   });
 }
@@ -92,6 +110,20 @@ export function listarEnvios(db: Banco): Promise<Envio[]> {
   return db.getAll('envios');
 }
 
+// ── Item em andamento (0.2) ──────────────────────────────────────────────────
+
+export async function gravarEmAndamento(db: Banco, item: EmAndamento): Promise<void> {
+  await db.put('emAndamento', item);
+}
+
+export function lerEmAndamento(db: Banco, campanhaId: string): Promise<EmAndamento | undefined> {
+  return db.get('emAndamento', campanhaId);
+}
+
+export async function limparEmAndamento(db: Banco, campanhaId: string): Promise<void> {
+  await db.delete('emAndamento', campanhaId);
+}
+
 // ── Não enviar mais ──────────────────────────────────────────────────────────
 
 export async function marcarNaoEnviar(db: Banco, item: NaoEnviar): Promise<void> {
@@ -142,10 +174,10 @@ export async function exportarTudo(db: Banco, agora: Date = new Date()): Promise
  * - 'substituir': apaga tudo e grava o backup.
  */
 export async function importarTudo(db: Banco, b: Backup, modo: 'mesclar' | 'substituir'): Promise<void> {
-  const tx = db.transaction(['contatos', 'campanhas', 'envios', 'naoEnviar', 'config'], 'readwrite');
+  const tx = db.transaction(['contatos', 'campanhas', 'envios', 'naoEnviar', 'config', 'emAndamento'], 'readwrite');
   const ops: Promise<unknown>[] = [];
   if (modo === 'substituir') {
-    for (const s of ['contatos', 'campanhas', 'envios', 'naoEnviar', 'config'] as const) ops.push(tx.objectStore(s).clear());
+    for (const s of ['contatos', 'campanhas', 'envios', 'naoEnviar', 'config', 'emAndamento'] as const) ops.push(tx.objectStore(s).clear());
   }
   for (const c of b.contatos) ops.push(tx.objectStore('contatos').put(c));
   for (const c of b.campanhas) ops.push(tx.objectStore('campanhas').put(c));

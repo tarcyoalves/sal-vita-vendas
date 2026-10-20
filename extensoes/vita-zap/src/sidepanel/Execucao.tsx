@@ -20,6 +20,7 @@ const ROTULO_FASE: Record<EstadoExecutor['fase'], string> = {
   abrindo: 'Abrindo a conversa…',
   aguardando_envio: 'Confira o texto no WhatsApp e aperte Enter lá',
   intervalo: 'Intervalo entre contatos',
+  proximo_pronto: 'Próximo pronto — clique em Abrir próximo',
   concluida: 'Concluída',
 };
 
@@ -58,6 +59,8 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
       return;
     }
     const sair = executor.assinar(setEstado);
+    // Painel (re)aberto: recupera o item que ficou em andamento e os envios percebidos com o painel fechado.
+    void executor.preparar();
     const ouvir = (msg: unknown) => {
       if (ehEventoConteudo(msg)) void executor.aoReceberEvento(msg);
     };
@@ -91,6 +94,8 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
   const faltaSeg = estado.liberaEm ? Math.max(0, Math.ceil((estado.liberaEm - agora) / 1000)) : null;
   const item = estado.itemAtual;
   const podeAgir = estado.fase === 'aguardando_envio' && item != null;
+  const emAndamento = !rodando ? estado.emAndamento : null;
+  const podeJaEnviei = podeAgir || emAndamento != null;
 
   return (
     <section>
@@ -131,6 +136,15 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
             <div className="balao">{textoDoItem(item)}</div>
           </>
         )}
+        {emAndamento && (
+          <>
+            <p className="aviso">
+              Ficou em andamento: <b>{emAndamento.nome}</b>. Se a mensagem já saiu, clique em <b>Já enviei</b>. Ao retomar, confiro o WhatsApp antes de
+              colar qualquer coisa — nunca envio de novo para o mesmo contato.
+            </p>
+            <div className="balao">{emAndamento.texto}</div>
+          </>
+        )}
         {podeAgir && (
           <p className="ajuda">
             Clique na caixa de mensagem do WhatsApp, confira e aperte <b>Enter</b>. A extensão percebe o envio e segue sozinha.
@@ -143,9 +157,19 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
               {c.status === 'em_execucao' || r.enviado + r.pulado + r.problema > 0 ? 'Retomar' : 'Iniciar'}
             </button>
           )}
+          {estado.fase === 'proximo_pronto' && (
+            <button type="button" className="primario" accessKey="p" title="Atalho: Alt+Shift+P" onClick={() => void executor.abrirProximo()}>
+              Abrir próximo (Alt+Shift+P)
+            </button>
+          )}
           {rodando && (
             <button type="button" onClick={() => void executor.pausar()}>
               Pausar
+            </button>
+          )}
+          {podeJaEnviei && (
+            <button type="button" onClick={() => void executor.jaEnviei()}>
+              Já enviei
             </button>
           )}
         </div>

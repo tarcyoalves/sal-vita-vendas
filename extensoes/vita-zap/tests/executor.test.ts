@@ -3,71 +3,9 @@
 
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
-import { abrirBanco, listarEnvios, listarNaoEnviar, marcarNaoEnviar, registrarEnvio, salvarConfig } from '../src/shared/banco';
-import type { Campanha } from '../src/shared/campanha';
+import { listarEnvios, listarNaoEnviar, marcarNaoEnviar, registrarEnvio, salvarConfig } from '../src/shared/banco';
 import { CONFIG_PADRAO } from '../src/shared/politica';
-import { FILTROS_PADRAO } from '../src/shared/filtros';
-import type { PedidoConteudo, RespostaConteudo } from '../src/shared/mensagens';
-import { Executor } from '../src/sidepanel/executor';
-
-let n = 0;
-
-function campanha(nomes: string[]): Campanha {
-  return {
-    id: 'camp',
-    nome: 'teste',
-    criadaEm: '2026-10-19T12:00:00.000Z',
-    aprovadaEm: '2026-10-19T12:00:00.000Z',
-    termoBusca: 'CLIENTE',
-    filtros: FILTROS_PADRAO,
-    modelos: ['Oi {primeiroNome}'],
-    status: 'pausada',
-    motivoPausa: null,
-    itens: nomes.map((nome) => ({ chave: nome.toLowerCase(), nome, primeiroNome: nome, modelo: 'Oi {primeiroNome}', status: 'pendente', motivo: null, atualizadoEm: null })),
-    problemasSeguidos: 0,
-    ultimoEnvioEm: null,
-    intervaloAtualSeg: null,
-  };
-}
-
-async function montar(nomes: string[], respostas: (p: PedidoConteudo) => RespostaConteudo = () => ({ ok: true })) {
-  const db = await abrirBanco(`exec-${Date.now()}-${(n += 1)}`);
-  await salvarConfig(db, { ...CONFIG_PADRAO, numeroComMaisDe30Dias: true });
-  let agora = new Date('2026-10-19T13:00:00Z'); // 10h em Fortaleza, segunda
-  const pedidos: PedidoConteudo[] = [];
-  const agendados: Array<{ fn: () => void; ms: number }> = [];
-  const ex = new Executor(
-    {
-      db,
-      pedir: async (p) => {
-        pedidos.push(p);
-        return respostas(p);
-      },
-      agora: () => agora,
-      aleatorio: () => 0.5,
-      agendar: (fn, ms) => {
-        agendados.push({ fn, ms });
-        return () => undefined;
-      },
-    },
-    campanha(nomes),
-  );
-  return {
-    db,
-    ex,
-    pedidos,
-    agendados,
-    avancarRelogio: (ms: number) => {
-      agora = new Date(agora.getTime() + ms);
-    },
-    setAgora: (d: Date) => {
-      agora = d;
-    },
-  };
-}
-
-const abertos = (pedidos: PedidoConteudo[]) =>
-  pedidos.filter((p): p is Extract<PedidoConteudo, { tipo: 'abrirEColar' }> => p.tipo === 'abrirEColar').map((p) => p.nome);
+import { abertos, esperarFila, montar } from './_executor-helpers';
 
 describe('Executor — modo uma tecla', () => {
   it('abre e cola, espera o Enter do usuário, registra e respeita o intervalo', async () => {
@@ -75,7 +13,7 @@ describe('Executor — modo uma tecla', () => {
     await t.ex.iniciar();
     expect(t.ex.atual.fase).toBe('aguardando_envio');
     expect(abertos(t.pedidos)).toEqual(['Ana']);
-    expect(t.pedidos[0]).toEqual({ tipo: 'abrirEColar', nome: 'Ana', texto: 'Oi Ana' });
+    expect(t.pedidos.find((p) => p.tipo === 'abrirEColar')).toEqual({ tipo: 'abrirEColar', nome: 'Ana', texto: 'Oi Ana' });
 
     // Sem evento de envio, nada acontece: não existe "enviar" no protocolo.
     expect(await listarEnvios(t.db)).toHaveLength(0);
@@ -89,8 +27,11 @@ describe('Executor — modo uma tecla', () => {
 
     t.avancarRelogio(90_000);
     t.agendados.at(-1)?.fn();
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
+    await esperarFila();
+    // 0.2: acabou o intervalo, mas NADA abre sozinho — o usuário clica em "Abrir próximo".
+    expect(t.ex.atual.fase).toBe('proximo_pronto');
+    expect(abertos(t.pedidos)).toEqual(['Ana']);
+    await t.ex.abrirProximo();
     expect(abertos(t.pedidos)).toEqual(['Ana', 'Bia']);
   });
 
@@ -107,7 +48,7 @@ describe('Executor — modo uma tecla', () => {
     const t = await montar(['Ana', 'Bia']);
     await t.ex.iniciar();
     await t.ex.acao('pulado');
-    expect(t.pedidos.map((p) => p.tipo)).toEqual(['abrirEColar', 'limparCaixa', 'abrirEColar']);
+    expect(t.pedidos.map((p) => p.tipo).filter((x) => x !== 'consultarPendencias')).toEqual(['abrirEColar', 'limparCaixa', 'abrirEColar']);
     expect(t.ex.atual.campanha.itens[0].status).toBe('pulado');
   });
 
@@ -170,7 +111,8 @@ describe('Executor — modo uma tecla', () => {
     const t = await montar(['Ana']);
     await t.ex.iniciar();
     await t.ex.pausar();
-    expect(t.pedidos.at(-1)).toEqual({ tipo: 'limparCaixa', texto: 'Oi Ana' });
+    expect(t.pedidos).toContainEqual({ tipo: 'limparCaixa', texto: 'Oi Ana' });
+    expect(t.pedidos.at(-1)).toEqual({ tipo: 'pararObservacao' });
     expect(t.ex.atual.campanha.status).toBe('pausada');
   });
 
