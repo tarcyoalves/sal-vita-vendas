@@ -5,7 +5,7 @@
 // (tests/envio-so-no-automatico-autorizado.test.ts confere). Não devolve nomes nem textos de mensagem.
 
 import type { CaixaBuscaDiagnosticada, DiagnosticoPagina, LinhasMensagemDiagnosticadas, SeletorDiagnosticado } from '../shared/mensagens';
-import { autorDaMensagem, classificarConversa, lerMensagens, lerSinaisDaConversa } from './chat';
+import { autorDaMensagem, autoresDoOutroLado, classificarConversa, lerMensagens, lerSinaisDaConversa } from './chat';
 import { encontrar, encontrarTodos, SELETORES, type ChaveSeletor } from './selectors';
 
 /** Troca os dígitos por * em cada bloco numérico, mantendo os 4 últimos (prefixo true_/false_, @c.us etc. ficam). */
@@ -39,6 +39,10 @@ export function diagnosticarClassificacao(raiz: ParentNode): DiagnosticoPagina['
   // Sem in/out no DOM atual, os autores valem para todas as linhas (suas e do contato).
   const autores = sinais.mensagens.flatMap((m) => (m.autor ? [m.autor.trim().toLowerCase()] : []));
   const titulo = sinais.titulo?.trim().toLowerCase() ?? '';
+  const icones = new Set<string>();
+  for (const { el } of lerMensagens()) {
+    for (const i of el.querySelectorAll('[data-icon]')) icones.add(i.getAttribute('data-icon') ?? '');
+  }
   return {
     tipo: classificarConversa(ids, sinais),
     iconeGrupo: sinais.iconeGrupoNoCabecalho,
@@ -48,6 +52,11 @@ export function diagnosticarClassificacao(raiz: ParentNode): DiagnosticoPagina['
     autoresDistintos: new Set(autores).size,
     autorIgualAoTitulo: autores.length > 0 && titulo !== '' ? autores.some((a) => a === titulo) : null,
     elementoAutor: sinais.mensagens.some((m) => m.temElementoAutor),
+    comIconeDeStatus: sinais.mensagens.filter((m) => m.comIcone).length,
+    sistema: sinais.sistema ?? 0,
+    meuNome: sinais.meuNome ? sinais.meuNome.trim().toLowerCase().slice(0, 3) : null,
+    autoresDoOutroLado: autoresDoOutroLado(sinais).outros.size,
+    iconesNasLinhas: [...icones].filter((i) => i !== '').sort().slice(0, 30),
   };
 }
 

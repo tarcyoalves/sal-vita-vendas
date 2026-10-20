@@ -2,7 +2,8 @@
 
 import { mensagensIguais } from '../shared/texto';
 import { esperar, limparMarcas, textoDoNo } from './dom';
-import { encontrar, encontrarTodos, SELETORES } from './selectors';
+import { aprenderMeuNome, meuNomeAtual } from './meuNome';
+import { encontrar, encontrarTodos, ROTULO_STATUS_MINHA, SELETORES } from './selectors';
 
 export type TipoConversa = 'individual' | 'grupo' | 'desconhecido';
 
@@ -14,13 +15,20 @@ export interface MensagemLida {
   autor: string | null;
   /** Existe um elemento com o nome do autor dentro da linha da mensagem (só em grupo). */
   temElementoAutor: boolean;
+  /** A linha tem ícone/rótulo de status de entrega (✓, ✓✓, relógio…): só mensagens minhas têm. */
+  comIcone?: boolean;
 }
 
 /** Sinais do DOM (só leitura) usados na classificação quando o data-id não traz o JID. */
 export interface SinaisDom {
   titulo: string | null;
   iconeGrupoNoCabecalho: boolean;
+  /** Mensagens de conversa (minhas e recebidas). Linhas de sistema não entram aqui. */
   mensagens: MensagemLida[];
+  /** Meu nome no WhatsApp (autor das minhas mensagens), se já conhecido. */
+  meuNome?: string | null;
+  /** Quantas linhas de sistema (código de segurança, "carregar mais antigas"…) foram ignoradas. */
+  sistema?: number;
 }
 
 function normalizarAutor(s: string): string {
@@ -35,21 +43,41 @@ export function autorDoPrePlainText(valor: string): string | null {
 }
 
 /**
- * Classifica a conversa aberta. Conservador: na dúvida → 'desconhecido' (não cola).
+ * Autores do "outro lado" da conversa: os autores distintos dos data-pre-plain-text SEM os meus.
+ * Meus = `meuNome` (aprendido/configurado) + o autor das linhas que são minhas (ícone de status,
+ * .message-out). Um "meu nome" igual ao título não separa nada. Sem nenhum nome meu conhecido
+ * vale a regra da 0.3.0: 2 autores, um deles igual ao título → o outro sou eu.
+ */
+export function autoresDoOutroLado(sinais: SinaisDom): { outros: Set<string>; meuConhecido: boolean } {
+  const titulo = sinais.titulo ? normalizarAutor(sinais.titulo) : '';
+  const todos = new Set(sinais.mensagens.flatMap((m) => (m.autor ? [normalizarAutor(m.autor)] : [])));
+  const meus = new Set<string>();
+  if (sinais.meuNome) meus.add(normalizarAutor(sinais.meuNome));
+  for (const m of sinais.mensagens) if (m.sua && m.autor) meus.add(normalizarAutor(m.autor));
+  meus.delete(titulo);
+  if (meus.size === 0) {
+    if (todos.size === 2 && titulo !== '' && todos.has(titulo)) return { outros: new Set([titulo]), meuConhecido: false };
+    return { outros: todos, meuConhecido: false };
+  }
+  return { outros: new Set([...todos].filter((a) => !meus.has(a))), meuConhecido: true };
+}
+
+/**
+ * Classifica a conversa aberta. Conservador: na dúvida → 'desconhecido' ou 'grupo' (não cola).
  *
  * Formato antigo: o data-id traz o JID ("true_5584...@c.us_ABC"); @g.us/@broadcast/@newsletter
  * = grupo, @c.us/@lid = individual.
  *
- * Formato atual (20/10/2026): o data-id é só o id da mensagem e NÃO há .message-in/.message-out,
- * então não dá para separar "eu" de "contato". Vale só o conjunto de autores dos
- * data-pre-plain-text das linhas renderizadas (a conversa é virtualizada):
+ * Formato atual (20/10/2026): o data-id é só o id da mensagem e NÃO há .message-in/.message-out.
+ * Minhas mensagens têm ícone de status; o autor delas (data-pre-plain-text) é o meu nome, que é
+ * descontado: sobram os `autoresDoOutroLado`.
  *  - GRUPO: ícone de grupo/comunidade no cabeçalho; OU elemento de autor dentro de uma linha de
- *    mensagem; OU mais de 2 autores distintos; OU 2 autores distintos e nenhum igual ao título.
- *  - INDIVIDUAL: nenhum sinal de grupo e (nenhum autor legível; OU ≤ 2 autores com ao menos um
- *    igual ao título).
- *  - Qualquer outra coisa (ex.: 1 autor diferente do título) → desconhecido.
- * Sinal de grupo vence sempre. Risco residual (README): grupo sem ícone cujas linhas renderizadas
- * não mostram autor nenhum parece individual — a varredura já exclui grupos pela lista.
+ *    mensagem; OU mais de 1 autor do outro lado; OU 1 autor do outro lado diferente do título.
+ *  - INDIVIDUAL: nenhum sinal de grupo, o outro lado é vazio (só mensagens minhas) ou é só o
+ *    título, e existe ao menos 1 mensagem (minha ou recebida).
+ *  - Sem nenhuma mensagem → desconhecido.
+ * Risco residual (README): grupo sem ícone cujas linhas renderizadas não mostram autor nenhum
+ * parece individual — a varredura já exclui grupos pela lista.
  */
 export function classificarConversa(dataIds: string[], sinais?: SinaisDom): TipoConversa {
   let individualPeloJid = false;
@@ -64,16 +92,13 @@ export function classificarConversa(dataIds: string[], sinais?: SinaisDom): Tipo
 
   if (sinais.iconeGrupoNoCabecalho) return 'grupo';
   if (sinais.mensagens.some((m) => m.temElementoAutor)) return 'grupo';
-  const autores = new Set(sinais.mensagens.flatMap((m) => (m.autor ? [normalizarAutor(m.autor)] : [])));
   const titulo = sinais.titulo ? normalizarAutor(sinais.titulo) : '';
-  const tituloEntreOsAutores = titulo !== '' && autores.has(titulo);
-  if (autores.size > 2) return 'grupo';
-  if (autores.size === 2 && !tituloEntreOsAutores) return 'grupo';
+  const { outros } = autoresDoOutroLado(sinais);
+  if (outros.size > 1) return 'grupo';
+  if (outros.size === 1 && !outros.has(titulo)) return 'grupo';
 
   if (individualPeloJid) return 'individual';
-  if (sinais.mensagens.length === 0) return 'desconhecido';
-  if (autores.size === 0) return 'individual';
-  return tituloEntreOsAutores ? 'individual' : 'desconhecido';
+  return sinais.mensagens.length > 0 ? 'individual' : 'desconhecido';
 }
 
 /** Elemento com o data-pre-plain-text da mensagem (nela, dentro dela ou acima dela). */
@@ -92,20 +117,77 @@ export function temElementoDeAutor(el: HTMLElement): boolean {
   return SELETORES.autorMensagem.some((s) => el.querySelector(s) !== null);
 }
 
+/** A linha tem ícone de status de entrega (✓, ✓✓, relógio) ou rótulo Lida/Entregue/Enviada/Pendente no rodapé? */
+export function temIconeDeStatus(el: HTMLElement): boolean {
+  if (SELETORES.iconeStatusMinha.some((s) => el.querySelector(s) !== null)) return true;
+  for (const sel of SELETORES.metaMensagem) {
+    const metas = [...(el.matches(sel) ? [el] : []), ...el.querySelectorAll<HTMLElement>(sel)];
+    for (const meta of metas) {
+      const comRotulo = [meta, ...meta.querySelectorAll<HTMLElement>('[aria-label]')];
+      if (comRotulo.some((x) => ROTULO_STATUS_MINHA.test(x.getAttribute('aria-label') ?? ''))) return true;
+    }
+  }
+  return false;
+}
+
+/** A linha foi renderizada por completo (tem contêiner, texto ou rodapé de mensagem)? */
+function temConteudoDeMensagem(el: HTMLElement): boolean {
+  return SELETORES.conteudoMensagem.some((s) => el.matches(s) || el.querySelector(s) !== null);
+}
+
+/**
+ * Linha de sistema ("Seu código de segurança mudou", "Clique neste aviso…"): tem texto, mas não
+ * tem msg-container/copyable-text. Não é mensagem. (Linha virtualizada, sem texto nenhum, não é
+ * de sistema: é uma mensagem ainda não renderizada.)
+ */
+function ehLinhaDeSistema(el: HTMLElement): boolean {
+  return !temConteudoDeMensagem(el) && textoDoNo(el).trim() !== '';
+}
+
 /** Lê os sinais do DOM da conversa aberta (só leitura). */
 export function lerSinaisDaConversa(): SinaisDom {
   const cabecalho = encontrar(document, 'painelConversa')?.querySelector('header') ?? null;
   const iconeGrupoNoCabecalho = cabecalho ? SELETORES.iconeGrupo.some((s) => cabecalho.querySelector(s) !== null) : false;
-  const mensagens = lerMensagens().map(({ el }): MensagemLida => {
-    const sua = ehMensagemSua(el);
-    return { sua, recebida: !sua && ehMensagemRecebida(el), autor: autorDaMensagem(el), temElementoAutor: temElementoDeAutor(el) };
-  });
-  return { titulo: tituloAberto(), iconeGrupoNoCabecalho, mensagens };
+  const mensagens: MensagemLida[] = [];
+  let sistema = 0;
+  for (const { el } of lerMensagens()) {
+    const comIcone = temIconeDeStatus(el);
+    const sua = comIcone || ehMensagemSua(el);
+    const entrada = !sua && ehMensagemRecebida(el);
+    if (!sua && !entrada && ehLinhaDeSistema(el)) {
+      sistema += 1;
+      continue;
+    }
+    mensagens.push({
+      sua,
+      recebida: entrada || (!sua && temConteudoDeMensagem(el)),
+      autor: autorDaMensagem(el),
+      temElementoAutor: temElementoDeAutor(el),
+      comIcone,
+    });
+  }
+  return { titulo: tituloAberto(), iconeGrupoNoCabecalho, mensagens, meuNome: meuNomeAtual(), sistema };
 }
 
-/** Classifica a conversa aberta agora (ids + sinais do DOM). */
+/**
+ * Aprende meu nome: o autor das minhas mensagens (identificadas pelo ícone de status), quando é
+ * um só e não é o título da conversa. Só preenche quando ainda não há nome.
+ */
+function aprenderComSinais(sinais: SinaisDom): void {
+  if (meuNomeAtual() !== null) return;
+  const titulo = sinais.titulo ? normalizarAutor(sinais.titulo) : '';
+  const autores = new Map<string, string>();
+  for (const m of sinais.mensagens) if (m.sua && m.autor) autores.set(normalizarAutor(m.autor), m.autor);
+  if (autores.size !== 1) return;
+  const [chave, nome] = [...autores.entries()][0];
+  if (chave !== titulo) aprenderMeuNome(nome);
+}
+
+/** Classifica a conversa aberta agora (ids + sinais do DOM), aprendendo meu nome no caminho. */
 export function classificarConversaAberta(ids: string[]): TipoConversa {
-  return classificarConversa(ids, lerSinaisDaConversa());
+  const sinais = lerSinaisDaConversa();
+  aprenderComSinais(sinais);
+  return classificarConversa(ids, { ...sinais, meuNome: meuNomeAtual() });
 }
 
 /** JID(s) da conversa nos data-id (ordenados, sem repetição, juntados por vírgula); null se nenhum. */
@@ -210,6 +292,7 @@ export function textoQueBate(el: HTMLElement, textoColado: string): string | nul
 export function pareceEnvioNosso(el: HTMLElement, textoColado: string): boolean {
   if (textoQueBate(el, textoColado) === null) return false;
   if (ehMensagemRecebida(el)) return false;
+  if (temIconeDeStatus(el)) return true; // ícone de status = é minha, qualquer que seja o autor lido
   const autor = autorDaMensagem(el);
   const titulo = tituloAberto();
   if (autor && titulo && normalizarAutor(autor) === normalizarAutor(titulo)) return false;

@@ -96,6 +96,26 @@ export const SELETORES = {
   /** Nome do autor mostrado dentro de uma mensagem recebida (só aparece em grupo). */
   autorMensagem: ['[data-testid="author"]', '[data-testid="msg-author"]'],
 
+  /**
+   * Ícone de status de entrega dentro de uma mensagem SUA (relógio, ✓, ✓✓ cinza ou azul). Só
+   * aparece nas mensagens que eu mandei; no WhatsApp de 20/10/2026 é o único sinal de direção.
+   * Também vale um elemento de `msg-meta` com aria-label de status (`ROTULO_STATUS_MINHA`).
+   */
+  iconeStatusMinha: [
+    '[data-icon="msg-check"]',
+    '[data-icon="msg-dblcheck"]',
+    '[data-icon="msg-dblcheck-ack"]',
+    '[data-icon="msg-time"]',
+    '[data-icon="msg-check-light"]',
+    '[data-icon="msg-dblcheck-light"]',
+  ],
+
+  /** Rodapé de uma mensagem (hora + status). */
+  metaMensagem: ['[data-testid="msg-meta"]'],
+
+  /** Linha de conversa renderizada por completo (as de sistema e as virtualizadas não têm isto). */
+  conteudoMensagem: ['[data-testid="msg-container"]', '.copyable-text', '.selectable-text', '[data-testid="msg-meta"]'],
+
   /** Relógio de "ainda não saiu" dentro de uma mensagem sua. */
   relogioPendente: ['[data-icon="msg-time"]'],
 
@@ -107,6 +127,9 @@ export const SELETORES = {
   /** Texto de uma mensagem. */
   textoMensagem: ['span.selectable-text', '.copyable-text span[dir]'],
 } as const;
+
+/** aria-label de status dentro de msg-meta (Lida/Entregue/Enviada/Pendente e em inglês): a mensagem é minha. */
+export const ROTULO_STATUS_MINHA = /\b(lida|entregue|enviada|pendente|read|delivered|sent|pending)\b/i;
 
 export type ChaveSeletor = keyof typeof SELETORES;
 

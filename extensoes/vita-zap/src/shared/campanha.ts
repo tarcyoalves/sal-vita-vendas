@@ -122,10 +122,13 @@ export function marcarItem(c: Campanha, chave: string, status: Exclude<StatusIte
   return novo;
 }
 
-/** Campanha terminada sem nenhum envio e com problemas: não é um "concluída" verde. */
+/**
+ * Campanha terminada sem nenhum envio e com problemas (ou com contatos pulados para revisar por
+ * um erro de conferência): não é um "concluída" verde.
+ */
 export function terminouComProblemas(c: Campanha): boolean {
   const r = resumo(c);
-  return c.status === 'concluida' && r.enviado === 0 && r.problema > 0;
+  return c.status === 'concluida' && r.enviado === 0 && itensComErro(c).length > 0;
 }
 
 export interface GrupoMotivo {

@@ -11,8 +11,12 @@ import type { LinhaBruta } from './contatos';
 export type PedidoConteudo =
   | { tipo: 'verificar' }
   | { tipo: 'varrer'; termo: string }
-  /** `fotoAntes`: data-id das mensagens de uma tentativa anterior (painel fechado/recarregado). */
-  | { tipo: 'abrirEColar'; nome: string; texto: string; fotoAntes?: string[] }
+  /**
+   * `fotoAntes`: data-id das mensagens de uma tentativa anterior (painel fechado/recarregado).
+   * `meuNome`: meu nome no WhatsApp (autor das minhas mensagens), guardado pelo painel; vale mais
+   * que o nome que o content script aprendeu sozinho.
+   */
+  | { tipo: 'abrirEColar'; nome: string; texto: string; fotoAntes?: string[]; meuNome?: string }
   | { tipo: 'limparCaixa'; texto: string }
   | { tipo: 'pararObservacao' }
   /** Somente leitura: quais seletores batem e contagens na página (nunca clica nem escreve). */
@@ -104,7 +108,28 @@ export interface DiagnosticoPagina {
   /** Linhas de mensagem (conversa virtualizada): quantas têm id, quantas estão renderizadas por completo e autores (3 primeiras letras). */
   linhasMensagem: LinhasMensagemDiagnosticadas;
   /** Resultado da classificação da conversa aberta e os sinais usados (sem nomes). */
-  classificacao: { tipo: string; iconeGrupo: boolean; recebidas: number; enviadas: number; recebidasComAutor: number; autoresDistintos: number; autorIgualAoTitulo: boolean | null; elementoAutor: boolean };
+  classificacao: {
+    tipo: string;
+    iconeGrupo: boolean;
+    /** Linhas de conversa sem ícone de status, com texto/autor (do outro lado). */
+    recebidas: number;
+    /** Linhas minhas por qualquer sinal (ícone de status, .message-out, true_…). */
+    enviadas: number;
+    recebidasComAutor: number;
+    autoresDistintos: number;
+    autorIgualAoTitulo: boolean | null;
+    elementoAutor: boolean;
+    /** Linhas com ícone/rótulo de status de entrega (✓, ✓✓…), isto é, minhas pelo sinal novo. */
+    comIconeDeStatus: number;
+    /** Linhas de sistema ignoradas (código de segurança, "carregar mais antigas"…). */
+    sistema: number;
+    /** Meu nome aprendido/configurado: só as 3 primeiras letras (minúsculas), ou null. */
+    meuNome: string | null;
+    /** Autores distintos do outro lado (sem o meu nome). */
+    autoresDoOutroLado: number;
+    /** data-icon distintos encontrados dentro das linhas de mensagem. */
+    iconesNasLinhas: string[];
+  };
 }
 
 export type RespostaConteudo =
@@ -119,8 +144,10 @@ export type RespostaConteudo =
       pendencias?: PendenciaEnvio[];
       /** consultarPendencias: aviso do WhatsApp ainda visível (desconexão, restrição…). */
       avisoWhatsApp?: string | null;
+      /** abrirEColar: meu nome no WhatsApp conhecido pelo content script (o painel guarda). */
+      meuNome?: string | null;
     }
-  | { ok: false; codigo: CodigoErro; erro: string; /** ja_enviada: texto da mensagem nova. */ texto?: string; jid?: string | null };
+  | { ok: false; codigo: CodigoErro; erro: string; /** ja_enviada: texto da mensagem nova. */ texto?: string; jid?: string | null; meuNome?: string | null };
 
 /** Eventos espontâneos do content script → painel (chrome.runtime.sendMessage). */
 export type EventoConteudo =

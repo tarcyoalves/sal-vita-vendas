@@ -14,7 +14,7 @@ interface EsquemaVitaZap extends DBSchema {
   campanhas: { key: string; value: Campanha };
   envios: { key: string; value: Envio; indexes: { porChave: string; porCampanha: string } };
   naoEnviar: { key: string; value: NaoEnviar };
-  config: { key: string; value: { id: 'politica'; valor: ConfigPolitica } };
+  config: { key: string; value: { id: 'politica'; valor: ConfigPolitica } | { id: 'meuNomeWhatsApp'; valor: string } };
   /** Item colado e esperando o Enter do usuário (sobrevive a fechar/recarregar o painel). */
   emAndamento: { key: string; value: EmAndamento };
   /** Registro circular de diagnóstico (fora do backup). */
@@ -151,7 +151,20 @@ export function listarNaoEnviar(db: Banco): Promise<NaoEnviar[]> {
 
 export async function lerConfig(db: Banco): Promise<ConfigPolitica> {
   const r = await db.get('config', 'politica');
-  return normalizarConfig(r?.valor);
+  return normalizarConfig(r?.id === 'politica' ? r.valor : null);
+}
+
+/** Meu nome no WhatsApp (autor das minhas mensagens), aprendido ou digitado na aba Dados. */
+export async function lerMeuNome(db: Banco): Promise<string> {
+  const r = await db.get('config', 'meuNomeWhatsApp');
+  return r?.id === 'meuNomeWhatsApp' ? r.valor : '';
+}
+
+export async function salvarMeuNome(db: Banco, nome: string): Promise<string> {
+  const valor = nome.replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (valor === '') await db.delete('config', 'meuNomeWhatsApp');
+  else await db.put('config', { id: 'meuNomeWhatsApp', valor });
+  return valor;
 }
 
 export async function salvarConfig(db: Banco, cfg: ConfigPolitica): Promise<ConfigPolitica> {
@@ -207,7 +220,7 @@ export async function exportarTudo(db: Banco, agora: Date = new Date()): Promise
     campanhas: await db.getAll('campanhas'),
     envios: await db.getAll('envios'),
     naoEnviar: await db.getAll('naoEnviar'),
-    config: r?.valor ?? null,
+    config: r?.id === 'politica' ? r.valor : null,
   };
 }
 

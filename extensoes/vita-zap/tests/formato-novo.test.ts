@@ -60,8 +60,12 @@ describe('classificarConversa — ids sem JID (formato atual)', () => {
     expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Tarcyo', 'Sal Vita Hermes', 'Carla'] }))).toBe('grupo');
   });
 
-  it('desconhecido: 1 autor diferente do título (pode ser eu ou outro membro)', () => {
-    expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Tarcyo'] }))).toBe('desconhecido');
+  it('grupo (0.3.1): 1 autor do outro lado diferente do título, sem saber qual é o meu nome', () => {
+    expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Tarcyo'] }))).toBe('grupo');
+  });
+
+  it('individual (0.3.1): o mesmo autor, mas é o meu nome conhecido → sobra o outro lado vazio', () => {
+    expect(classificarConversa(IDS_NOVOS, { ...sinais({ recebidas: ['Tarcyo'] }), meuNome: ' tarcyo ' })).toBe('individual');
   });
 
   it('grupo: ícone de grupo no cabeçalho', () => {
@@ -72,8 +76,8 @@ describe('classificarConversa — ids sem JID (formato atual)', () => {
     expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Ana', 'Bia'], titulo: 'Equipe' }))).toBe('grupo');
   });
 
-  it('autor diferente do título sozinho não é nem grupo nem individual', () => {
-    expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Ana'], titulo: 'Equipe' }))).toBe('desconhecido');
+  it('autor diferente do título sozinho (e não é o meu nome) → grupo, nunca individual', () => {
+    expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Ana'], titulo: 'Equipe' }))).toBe('grupo');
   });
 
   it('grupo: elemento de nome de autor dentro de mensagem recebida', () => {

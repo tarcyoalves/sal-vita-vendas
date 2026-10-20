@@ -12,6 +12,7 @@ import { abrirEColar, cancelarAbertura, limparBuscaPeloBotao, limparCaixa, parar
 import { assumirGeracao } from './geracao';
 import { enviarSeAutorizado } from './envioAutomatico';
 import { ErroSeletor, ErroUsuarioDigitando } from './lista';
+import { definirMeuNome, meuNomeAtual } from './meuNome';
 import { definirModoAutomatico, modoAutomaticoLigado } from './modoAutomatico';
 import { encontrar } from './selectors';
 import { varrerLista } from './varredura';
@@ -127,9 +128,10 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
       );
       return { ok: true, linhas: r.linhas, avisos: r.avisos };
     }
-    case 'abrirEColar':
+    case 'abrirEColar': {
       iniciarVigia((texto) => void emitir({ tipo: 'vitaZap:aviso', texto }));
-      return abrirEColar(
+      if (pedido.meuNome) definirMeuNome(pedido.meuNome);
+      const r = await abrirEColar(
         pedido.nome,
         pedido.texto,
         {
@@ -138,6 +140,9 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
         },
         pedido.fotoAntes,
       );
+      // O painel guarda o nome aprendido ("meuNomeWhatsApp") para as próximas conversas.
+      return { ...r, meuNome: meuNomeAtual() };
+    }
   }
 }
 

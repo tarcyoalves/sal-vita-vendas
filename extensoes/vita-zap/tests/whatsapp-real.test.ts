@@ -150,11 +150,11 @@ describe('B/C — linhas virtualizadas com conv-msg, sem in/out', () => {
     expect(classificarConversaAberta(idsDasMensagens())).toBe('grupo');
   });
 
-  it('um autor diferente do título (não dá para saber se sou eu) → desconhecido, nada é colado', async () => {
+  it('um autor diferente do título e que não é o meu nome → grupo (0.3.1), nada é colado', async () => {
     const c: ContatoFalso = { ...HERMES, autores: ['Outro Nome'] };
     const w = montar([c]);
     const r = await rodar(abrirEColar(c.nome, 'Oi', cb()));
-    expect(r).toMatchObject({ ok: false, codigo: 'nao_confirmado' });
+    expect(r).toMatchObject({ ok: false, codigo: 'grupo' });
     expect(textoDoCampo(w.caixa)).toBe('');
   });
 

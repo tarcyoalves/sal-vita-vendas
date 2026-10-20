@@ -7,7 +7,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ESTADO_AUTOMATICO_PADRAO, emitirToken, ligarAutomatico } from '../src/shared/automatico';
-import { abrirBanco, lerAutomatico, listarEnvios, registrarEnvio, salvarAutomatico, salvarConfig } from '../src/shared/banco';
+import { abrirBanco, lerAutomatico, lerMeuNome, listarEnvios, registrarEnvio, salvarAutomatico, salvarConfig, salvarMeuNome } from '../src/shared/banco';
 import type { NovoEvento } from '../src/shared/diagnostico';
 import type { EventoConteudo, PedidoConteudo, RespostaConteudo } from '../src/shared/mensagens';
 import { CONFIG_PADRAO } from '../src/shared/politica';
@@ -20,14 +20,14 @@ const macro = (): Promise<void> => new Promise((r) => realSetImmediate(r));
 
 type Ouvinte = (m: PedidoConteudo, remetente: { id?: string }, responder: (r: RespostaConteudo) => void) => boolean;
 
-function contato(nome: string): ContatoFalso {
-  return { nome, jid: `${nome.toLowerCase()}@c.us`, formato: 'real' };
+function contato(nome: string, extras: Partial<ContatoFalso> = {}): ContatoFalso {
+  return { nome, jid: `${nome.toLowerCase()}@c.us`, formato: 'real', ...extras };
 }
 const NOMES_EXTRAS = [contato('Outro')];
 
 let n = 0;
 
-async function montarFluxo(nomes: string[], opcoes: OpcoesFalso = { botaoEnviar: 'enviar' }, ligado = true, ausentes: string[] = []) {
+async function montarFluxo(nomes: string[], opcoes: OpcoesFalso = { botaoEnviar: 'enviar' }, ligado = true, ausentes: string[] = [], extras: Record<string, Partial<ContatoFalso>> = {}) {
   let ouvinte: Ouvinte | null = null;
   let aoEvento: (ev: EventoConteudo) => void = () => undefined;
   vi.stubGlobal('chrome', {
@@ -50,7 +50,7 @@ async function montarFluxo(nomes: string[], opcoes: OpcoesFalso = { botaoEnviar:
   vi.resetModules();
   await import('../src/content/index');
 
-  const w = montarWhatsAppFalso([...nomes.filter((x) => !ausentes.includes(x)).map(contato), ...NOMES_EXTRAS], { buscaSemRotulo: true, ...opcoes });
+  const w = montarWhatsAppFalso([...nomes.filter((x) => !ausentes.includes(x)).map((x) => contato(x, extras[x])), ...NOMES_EXTRAS], { buscaSemRotulo: true, ...opcoes });
   const marcasDeClique: number[] = [];
   document.getElementById('enviar')?.addEventListener('click', () => marcasDeClique.push(Date.now()));
 
@@ -488,4 +488,55 @@ describe('desligar e freio', () => {
     expect(t.ex.atual.campanha.itens[2].status).toBe('pendente');
     expect(cliquesEnviar(t.w)).toBe(0);
   });
+});
+
+describe('0.3.1 — conversa só com mensagens minhas e conferências antes de colar', () => {
+  const SO_MINHAS: Partial<ContatoFalso> = { semRecebidas: true, linhasVirtualizadas: 0, minhasIniciais: 2, mensagensSistema: true };
+  const SEM_MENSAGENS: Partial<ContatoFalso> = { semRecebidas: true, linhasVirtualizadas: 0 };
+
+  it('o caso do campo: só balões meus (✓✓) + sistema → individual, cola, envia, confirma e guarda meu nome', async () => {
+    const t = await montarFluxo(['Ana'], { botaoEnviar: 'enviar' }, true, [], { Ana: SO_MINHAS });
+    void t.ex.iniciar();
+    await ate(() => t.ex.atual.fase === 'concluida', 120_000, 'campanha concluída', 500);
+    expect(t.ex.atual.campanha.itens[0]).toMatchObject({ status: 'enviado' });
+    expect(cliquesEnviar(t.w)).toBe(1);
+    expect(await lerMeuNome(t.db)).toBe('Tarcyo');
+    expect(t.ex.atual.automatico).toBe(true);
+  });
+
+  it('o nome guardado é reenviado ao content script nas próximas aberturas', async () => {
+    const t = await montarFluxo(['Ana'], { botaoEnviar: 'enviar' }, true, [], { Ana: SO_MINHAS });
+    await salvarMeuNome(t.db, 'Tarcyo');
+    void t.ex.iniciar();
+    await ate(() => t.ex.atual.fase === 'concluida', 120_000, 'campanha concluída', 500);
+    const abertura = t.pedidos.find((p): p is Extract<PedidoConteudo, { tipo: 'abrirEColar' }> => p.tipo === 'abrirEColar');
+    expect(abertura?.meuNome).toBe('Tarcyo');
+  });
+
+  it('nao_confirmado antes de colar NÃO conta para o freio: vira "pulado (revisar)" e o automático segue', async () => {
+    const t = await montarFluxo(['Ana', 'Bia', 'Cai', 'Dani'], { botaoEnviar: 'enviar' }, true, [], { Ana: SEM_MENSAGENS, Bia: SEM_MENSAGENS, Cai: SEM_MENSAGENS });
+    void t.ex.iniciar();
+    await ate(() => t.ex.atual.fase === 'concluida', 600_000, 'campanha concluída', 500);
+    const itens = t.ex.atual.campanha.itens;
+    expect(itens.slice(0, 3).map((i) => [i.status, i.codigo])).toEqual([
+      ['pulado', 'nao_confirmado'],
+      ['pulado', 'nao_confirmado'],
+      ['pulado', 'nao_confirmado'],
+    ]);
+    expect(itens[0].motivo).toMatch(/Nada foi colado nem enviado/);
+    expect(itens[3].status).toBe('enviado');
+    expect(t.ex.atual.campanha.problemasSeguidos).toBe(0);
+    expect(t.ex.atual.alertaAutomatico).toBeNull();
+    expect((await lerAutomatico(t.db)).ligado).toBe(true);
+    expect(cliquesEnviar(t.w)).toBe(1);
+  }, 60_000);
+
+  it('só pulados e nenhum envio: a campanha não termina como "concluída" verde', async () => {
+    const t = await montarFluxo(['Ana', 'Bia'], { botaoEnviar: 'enviar' }, true, [], { Ana: SEM_MENSAGENS, Bia: SEM_MENSAGENS });
+    void t.ex.iniciar();
+    await ate(() => t.ex.atual.fase === 'concluida', 300_000, 'campanha concluída', 500);
+    expect(t.ex.atual.campanha.itens.map((i) => i.status)).toEqual(['pulado', 'pulado']);
+    expect(t.ex.atual.mensagem).toMatch(/com problemas/);
+    expect(cliquesEnviar(t.w)).toBe(0);
+  }, 60_000);
 });

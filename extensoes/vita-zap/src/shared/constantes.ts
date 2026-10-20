@@ -55,6 +55,8 @@ export const AUTO = {
   confirmacaoMs: 20_000,
   /** Validade do token de autorização de um envio. */
   tokenValidadeMs: 30_000,
+  /** Depois de pular um contato para revisar (conferência falhou antes de colar), espera isto antes do próximo. */
+  pausaAposPuladoMs: 10_000,
   /** Se o usuário está digitando, tenta abrir a conversa de novo depois disto. */
   novaTentativaDigitandoMs: 15_000,
   /** O content script só aceita enviar enquanto o painel renovou o modo há menos que isto. */

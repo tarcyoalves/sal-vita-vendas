@@ -33,6 +33,15 @@ export interface ContatoFalso {
   linhasVirtualizadas?: number;
   /** Formato real: nome que aparece como autor das mensagens enviadas pelo dono. Padrão "Tarcyo". */
   meuNome?: string;
+  /**
+   * Formato real: quantas mensagens MINHAS já estão no histórico (balão verde com ✓✓: um
+   * [data-icon="msg-dblcheck"] dentro de msg-meta e data-pre-plain-text com o meu nome).
+   */
+  minhasIniciais?: number;
+  /** Formato real: linhas de sistema ("Seu código de segurança … mudou", "Clique neste aviso…"): sem msg-container nem copyable-text. */
+  mensagensSistema?: boolean;
+  /** Formato real: como o status aparece nas minhas mensagens. Padrão 'icone' (data-icon="msg-dblcheck" em msg-meta); 'rotulo' = só aria-label "Lida" em msg-meta, sem data-icon. */
+  statusMinhas?: 'icone' | 'rotulo';
 }
 
 export interface OpcoesFalso {
@@ -128,10 +137,11 @@ export function montarWhatsAppFalso(contatos: ContatoFalso[], opcoes: OpcoesFals
   }
   const real = (c: ContatoFalso | null) => c?.formato === 'real';
   /** Linha do WhatsApp de 20/10/2026: sem data-id e sem in/out; virtualizada = só o id. */
-  function msgRealHtml(id: string, texto: string | null, autor: string, comElementoAutor = false): string {
+  function msgRealHtml(id: string, texto: string | null, autor: string, comElementoAutor = false, minha: false | 'icone' | 'rotulo' = false): string {
     if (texto == null) return `<div role="row" data-virtualized="true" class="x1n2onr6 xa0aww2"><div data-testid="conv-msg-${id}"></div></div>`;
     const elAutor = comElementoAutor ? `<span data-testid="author">${autor}</span>` : '';
-    return `<div role="row" data-virtualized="false" class="x1n2onr6 xscbp6u"><div data-testid="conv-msg-${id}"><div data-testid="msg-container">${elAutor}<div class="copyable-text" data-pre-plain-text="[07:37, 20/10/2026] ${autor}: "><span class="selectable-text"><span>${html(texto)}</span></span></div><div data-testid="msg-meta"></div></div></div></div>`;
+    const meta = minha === 'icone' ? '<span data-icon="msg-dblcheck"></span>' : minha === 'rotulo' ? '<span aria-label=" Lida "></span>' : '';
+    return `<div role="row" data-virtualized="false" class="x1n2onr6 xscbp6u"><div data-testid="conv-msg-${id}"><div data-testid="msg-container">${elAutor}<div class="copyable-text" data-pre-plain-text="[07:37, 20/10/2026] ${autor}: "><span class="selectable-text"><span>${html(texto)}</span></span></div><div data-testid="msg-meta">${meta}</div></div></div></div>`;
   }
   function msgHtml(id: string, texto: string, classe = ''): string {
     return `<div data-id="${id}" class="${classe}"><span class="selectable-text"><span>${html(texto)}</span></span></div>`;
@@ -143,7 +153,16 @@ export function montarWhatsAppFalso(contatos: ContatoFalso[], opcoes: OpcoesFals
         const virtualizadas = Array.from({ length: c.linhasVirtualizadas ?? 2 }, (_, i) => msgRealHtml(`3A0V${i}${sufixo}`, null, ''));
         const autores = c.autores ?? [c.nome];
         const recebidas = c.semRecebidas ? [] : [1, 2].map((i) => msgRealHtml(`3A00${i}${sufixo}`, `Mensagem ${i}`, autores[(i - 1) % autores.length], c.autorEmElemento));
-        historico.set(c.jid, [...virtualizadas, ...recebidas]);
+        const sistema = c.mensagensSistema
+          ? [
+              '<div role="row"><div data-testid="conv-msg-SYS1"><div data-testid="system-message"><span>Clique neste aviso para carregar mensagens mais antigas</span></div></div></div>',
+              `<div role="row"><div data-testid="conv-msg-SYS2"><div data-testid="system-message"><span>Seu código de segurança com ${c.nome} mudou</span></div></div></div>`,
+            ]
+          : [];
+        const minhas = Array.from({ length: c.minhasIniciais ?? 0 }, (_, i) =>
+          msgRealHtml(`3A0M${i}${sufixo}`, i === 0 ? 'Opaa, tudo ótimo? Passando para falar do estoque do sal.' : `Minha mensagem ${i}`, c.meuNome ?? 'Tarcyo', false, c.statusMinhas === 'rotulo' ? 'rotulo' : 'icone'),
+        );
+        historico.set(c.jid, [...virtualizadas, ...sistema, ...minhas, ...recebidas]);
       } else if (novo(c)) {
         const autores = c.autores ?? [c.nome];
         const recebidas = c.semRecebidas ? [] : [1, 2].map((i) => msgNovaHtml(`3A00${i}${c.jid.replace(/\D/g, '')}`, `Mensagem ${i}`, 'in', autores[(i - 1) % autores.length], c.autorEmElemento));
@@ -208,7 +227,7 @@ export function montarWhatsAppFalso(contatos: ContatoFalso[], opcoes: OpcoesFals
     const jid = aberto?.jid ?? 'x@c.us';
     const id = comoClasse || novo(aberto) || real(aberto) ? `3EB0${contador}` : `true_${jid}_N${contador}`;
     const bloco = real(aberto)
-      ? msgRealHtml(id, texto, aberto?.meuNome ?? 'Tarcyo')
+      ? msgRealHtml(id, texto, aberto?.meuNome ?? 'Tarcyo', false, aberto?.statusMinhas === 'rotulo' ? 'rotulo' : 'icone')
       : novo(aberto)
         ? msgNovaHtml(id, texto, 'out', null)
         : msgHtml(id, texto, comoClasse ? 'message-out' : '');

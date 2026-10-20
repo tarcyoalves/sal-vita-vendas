@@ -59,7 +59,7 @@ describe('registro circular', () => {
         estruturaMensagem: [],
         caixaBusca: null,
         linhasMensagem: { convMsg: 0, renderizadas: 0, autores: [], elementosAutor: 0 },
-        classificacao: { tipo: 'desconhecido', iconeGrupo: false, recebidas: 0, enviadas: 0, recebidasComAutor: 0, autoresDistintos: 0, autorIgualAoTitulo: null, elementoAutor: false },
+        classificacao: { tipo: 'desconhecido', iconeGrupo: false, recebidas: 0, enviadas: 0, recebidasComAutor: 0, autoresDistintos: 0, autorIgualAoTitulo: null, elementoAutor: false, comIconeDeStatus: 0, sistema: 0, meuNome: null, autoresDoOutroLado: 0, iconesNasLinhas: [] },
       }),
     });
     const t = textoDiagnostico(reg.lista(), '0.2.1', new Date('2026-10-20T10:00:00Z'));
@@ -144,7 +144,7 @@ describe('campanha de 1 contato que falha (caso de campo)', () => {
                 estruturaMensagem: ['attr:data-id'],
                 caixaBusca: null,
                 linhasMensagem: { convMsg: 0, renderizadas: 0, autores: [], elementosAutor: 0 },
-                classificacao: { tipo: 'desconhecido', iconeGrupo: false, recebidas: 0, enviadas: 0, recebidasComAutor: 0, autoresDistintos: 0, autorIgualAoTitulo: null, elementoAutor: false },
+                classificacao: { tipo: 'desconhecido', iconeGrupo: false, recebidas: 0, enviadas: 0, recebidasComAutor: 0, autoresDistintos: 0, autorIgualAoTitulo: null, elementoAutor: false, comIconeDeStatus: 0, sistema: 0, meuNome: null, autoresDoOutroLado: 0, iconesNasLinhas: [] },
               },
             };
           }
@@ -161,7 +161,7 @@ describe('campanha de 1 contato que falha (caso de campo)', () => {
 
     const c = ex.atual.campanha;
     expect(c.status).toBe('concluida');
-    expect(c.itens[0]).toMatchObject({ status: 'problema', codigo: 'nao_confirmado' });
+    expect(c.itens[0]).toMatchObject({ status: 'pulado', codigo: 'nao_confirmado' });
     expect(terminouComProblemas(c)).toBe(true);
     expect(motivosAgrupados(c)).toEqual([{ codigo: 'nao_confirmado', quantidade: 1, mensagem: expect.stringContaining('Ana') }]);
     expect(ex.atual.mensagem).toMatch(/com problemas/);

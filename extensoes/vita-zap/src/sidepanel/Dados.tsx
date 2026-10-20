@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { desmarcarNaoEnviar, exportarTudo, importarTudo, lerAutomatico, lerConfig, salvarAutomatico, salvarConfig, type Banco } from '../shared/banco';
+import { desmarcarNaoEnviar, exportarTudo, importarTudo, lerAutomatico, lerConfig, lerMeuNome, salvarAutomatico, salvarConfig, salvarMeuNome, type Banco } from '../shared/banco';
 import { aceiteValido, AVISO_RISCO_AUTOMATICO, desligarAutomatico, type EstadoAutomatico, ligarAutomatico } from '../shared/automatico';
 import { AUTO, INTERVALO_MIN_SEG, PALAVRA_ACEITE_AUTOMATICO, TETO_DIARIO_MAXIMO } from '../shared/constantes';
 import { type RegistroDiagnostico, resumirPagina, resumirResposta } from '../shared/diagnostico';
@@ -36,6 +36,8 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
   const [palavra, setPalavra] = useState('');
   const [cfg, setCfg] = useState<ConfigPolitica>(CONFIG_PADRAO);
   const [msgCfg, setMsgCfg] = useState<string | null>(null);
+  const [meuNome, setMeuNome] = useState('');
+  const [msgMeuNome, setMsgMeuNome] = useState<string | null>(null);
   const [arquivo, setArquivo] = useState<Arquivo | null>(null);
   const [modoImport, setModoImport] = useState<'mesclar' | 'substituir'>('mesclar');
   const [msgImport, setMsgImport] = useState<string | null>(null);
@@ -60,6 +62,7 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
 
   useEffect(() => {
     void lerConfig(db).then(setCfg);
+    void lerMeuNome(db).then(setMeuNome);
   }, [db]);
 
   useEffect(() => () => {
@@ -74,6 +77,11 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
         ? 'Salvo, ajustado aos limites de segurança.'
         : 'Salvo.',
     );
+  }
+
+  async function gravarMeuNome() {
+    setMeuNome(await salvarMeuNome(db, meuNome));
+    setMsgMeuNome('Salvo.');
   }
 
   async function ligarModoAutomatico() {
@@ -146,11 +154,27 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
           />
           Este número de WhatsApp tem mais de 30 dias de uso (número novo não roda campanha)
         </label>
-        <p className="ajuda">Horário fixo: seg–sex 8h–18h, sáb 8h–12h (Fortaleza). Freio: 3 problemas seguidos pausam.</p>
+        <p className="ajuda">Horário fixo: seg–sex 8h–18h, sáb 8h–12h (Fortaleza). Freio: 3 problemas seguidos pausam (conferências que falham antes de colar viram "pulado (revisar)" e não contam).</p>
         <button type="button" onClick={() => void gravarConfig()}>
           Salvar política
         </button>
         {msgCfg && <p className="info">{msgCfg}</p>}
+      </div>
+
+      <div className="cartao">
+        <h3>Meu nome no WhatsApp</h3>
+        <p className="ajuda">
+          É o nome que aparece como autor das SUAS mensagens (o WhatsApp Web não marca a direção da mensagem). A extensão aprende sozinha, mas você pode
+          corrigir. Serve para separar as suas mensagens das do cliente ao decidir se a conversa é individual.
+        </p>
+        <label>
+          Meu nome
+          <input type="text" value={meuNome} autoComplete="off" onChange={(e) => setMeuNome(e.target.value)} />
+        </label>
+        <button type="button" onClick={() => void gravarMeuNome()}>
+          Salvar meu nome
+        </button>
+        {msgMeuNome && <p className="info">{msgMeuNome}</p>}
       </div>
 
       <div className="cartao">
@@ -264,6 +288,16 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
               {teste.pagina.classificacao.enviadas} · ícone de grupo: {teste.pagina.classificacao.iconeGrupo ? 'sim' : 'não'} · autores distintos:{' '}
               {teste.pagina.classificacao.autoresDistintos}
             </p>
+            <p className="info">
+              Minhas (com ícone de status): {teste.pagina.classificacao.comIconeDeStatus} · recebidas: {teste.pagina.classificacao.recebidas} · de sistema
+              (ignoradas): {teste.pagina.classificacao.sistema} · meu nome aprendido: {teste.pagina.classificacao.meuNome ?? 'ainda não'} · autores do outro
+              lado: {teste.pagina.classificacao.autoresDoOutroLado}
+            </p>
+            {teste.pagina.classificacao.iconesNasLinhas.length > 0 && (
+              <p className="ajuda">
+                data-icon nas linhas de mensagem: <code>{teste.pagina.classificacao.iconesNasLinhas.join(' · ')}</code>
+              </p>
+            )}
             {teste.pagina.dataIds.amostras.length > 0 && (
               <p className="ajuda">
                 Amostras de data-id (mascaradas): <code>{teste.pagina.dataIds.amostras.join(' · ')}</code>

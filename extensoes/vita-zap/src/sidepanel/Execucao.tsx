@@ -213,7 +213,15 @@ export function Execucao({ db, registro, dados, campanhaId, aoEscolher, aoMudar 
 
       {(erros.length > 0 || erroGeral) && (
         <div className="alerta" role="alert">
-          <h3>{erros.length + (erroGeral ? 1 : 0) === 1 ? 'Deu problema com 1 contato' : 'Deu problema com contatos'}</h3>
+          <h3>
+            {!erroGeral && erros.every((i) => i.status === 'pulado')
+              ? erros.length === 1
+                ? '1 contato pulado para revisar'
+                : 'Contatos pulados para revisar'
+              : erros.length + (erroGeral ? 1 : 0) === 1
+                ? 'Deu problema com 1 contato'
+                : 'Deu problema com contatos'}
+          </h3>
           {comProblemas && (
             <ul className="lista">
               {motivosAgrupados(c).map((g) => (

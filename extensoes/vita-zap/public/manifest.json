@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vita Zap",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Copiloto comercial no WhatsApp Web. Padrão: você aperta o Enter. Modo automático opcional (viola os Termos do WhatsApp; risco de bloqueio do número).",
   "minimum_chrome_version": "116",
   "permissions": [

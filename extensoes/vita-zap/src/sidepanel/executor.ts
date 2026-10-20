@@ -31,6 +31,7 @@ import {
   lerConfig,
   lerEmAndamento,
   lerAutomatico,
+  lerMeuNome,
   limparEmAndamento,
   listarEnvios,
   listarNaoEnviar,
@@ -38,6 +39,7 @@ import {
   registrarEnvio,
   salvarAutomatico,
   salvarCampanha,
+  salvarMeuNome,
 } from '../shared/banco';
 import { configAuto, desligarAutomatico, emitirToken, sortearEspera } from '../shared/automatico';
 import { AUTO } from '../shared/constantes';
@@ -94,6 +96,14 @@ type Origem = 'usuario' | 'automatico' | 'timer_auto';
 
 /** Erros do content script que indicam problema geral (não do contato): pausam sem marcar ninguém. */
 const ERROS_GERAIS = new Set(['seletor', 'nao_pronto', 'ocupado', 'interno']);
+
+/**
+ * Erros de conferência que acontecem ANTES de colar o texto. Nada foi colado nem enviado, então
+ * o contato é pulado para revisão e o erro NÃO conta nos "problemas seguidos" do freio. O freio
+ * conta só falhas de depois de colar/enviar (botao_enviar_ausente, envio_nao_confirmado,
+ * colar_falhou, texto_alterado, avisos do WhatsApp…).
+ */
+const ERROS_ANTES_DE_COLAR = new Set(['nao_confirmado', 'ambiguo', 'grupo', 'caixa_ocupada', 'usuario_digitando']);
 
 export const MENSAGEM_PROXIMO_PRONTO = 'Próximo pronto — clique em Abrir próximo quando terminar o que está fazendo no WhatsApp.';
 
@@ -535,7 +545,14 @@ export class Executor {
     }
 
     this.publicar({ fase: 'abrindo', itemAtual: item, liberaEm: null, mensagem: null });
-    const r = await this.pedirRegistrando({ tipo: 'abrirEColar', nome: item.nome, texto, ...(rec ? { fotoAntes: rec.foto } : {}) }, true, item.nome);
+    const meuNomeGuardado = await lerMeuNome(db);
+    const r = await this.pedirRegistrando(
+      { tipo: 'abrirEColar', nome: item.nome, texto, ...(rec ? { fotoAntes: rec.foto } : {}), ...(meuNomeGuardado ? { meuNome: meuNomeGuardado } : {}) },
+      true,
+      item.nome,
+    );
+    // O content script aprende meu nome sozinho (autor das minhas mensagens); guardamos para as próximas conversas.
+    if (r.meuNome && r.meuNome !== meuNomeGuardado) await salvarMeuNome(db, r.meuNome);
 
     if (!this.ativo) {
       // Pausado enquanto abria. Se o texto chegou a ser colado, guarda o registro (a retomada
@@ -587,6 +604,21 @@ export class Executor {
     if (ERROS_GERAIS.has(r.codigo)) {
       this.publicar({ itemAtual: null, erroGeral: { nome: item.nome, codigo: r.codigo, mensagem: r.erro } });
       await this.pausar(r.erro);
+      return;
+    }
+    if (ERROS_ANTES_DE_COLAR.has(r.codigo)) {
+      // Conferência que falhou ANTES de colar: nada foi colado nem enviado, e isso não é sinal de
+      // problema no WhatsApp. O contato vira "pulado (revisar)" com o motivo e NÃO conta no freio.
+      this.etapa('pulado_para_revisar', item.nome, { ok: false, codigo: r.codigo, erro: r.erro });
+      await this.marcar(item, 'pulado', `${r.erro} Nada foi colado nem enviado — pulado para revisar (não conta como problema).`, r.codigo);
+      if (!this.ativo) return;
+      if (auto && proximoPendente(this.estado.campanha)) {
+        // Automático: não abre o contato seguinte de imediato; respira alguns segundos.
+        this.publicar({ fase: 'intervalo', itemAtual: null, liberaEm: this.deps.agora().getTime() + AUTO.pausaAposPuladoMs, mensagem: `${item.nome} foi pulado para revisar.` });
+        this.cancelarTimer = this.deps.agendar(() => this.liberarProximo(), AUTO.pausaAposPuladoMs);
+        return;
+      }
+      await this.passo(origem);
       return;
     }
     if (await this.marcar(item, 'problema', r.erro, r.codigo)) await this.passo(origem);

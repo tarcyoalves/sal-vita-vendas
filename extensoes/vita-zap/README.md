@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (fase 1, sem IA) — versão 0.3.0
+# Vita Zap — extensão do Chrome para o WhatsApp Web (fase 1, sem IA) — versão 0.3.1
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -67,7 +67,7 @@ desliga sozinha (freio, abaixo). Importar um backup nunca liga nem desliga o aut
 | Intervalo entre envios | aleatório de **90 a 180 s** |
 | Pausa longa | aleatória de **10 a 20 min** a cada **10** envios |
 | Horário | seg–sex 08h–18h, sáb 08h–12h (Fortaleza); domingo nunca |
-| Freio | **2 problemas seguidos** ou **qualquer aviso do WhatsApp** → pausa a campanha, **desliga o automático** (volta ao manual) e mostra um alerta |
+| Freio | **2 problemas seguidos** (só falhas de **depois** de colar/enviar, veja 0.3.1) ou **qualquer aviso do WhatsApp** → pausa a campanha, **desliga o automático** (volta ao manual) e mostra um alerta |
 | Número novo | continua exigindo a confirmação "mais de 30 dias de uso" |
 
 **Como é protegido por dentro**
@@ -89,6 +89,48 @@ extensão não envia e marca o contato como problema; o texto colado pode ficar 
 naquela conversa — apague-o à mão.
 
 ---
+
+## 0.3. O que mudou na 0.3.1 (campo: conversa só com mensagens minhas)
+
+Nenhuma regra de proteção do envio foi afrouxada (o teste `envio-so-no-automatico-autorizado`
+só mudou o número da versão). Motivo: dois contatos falharam com `nao_confirmado` **antes de
+colar** (nada foi enviado). Nessas conversas as únicas mensagens visíveis eram minhas (balão
+verde, ✓✓ no rodapé), mais mensagens de sistema ("Seu código de segurança … mudou", "Clique
+neste aviso para carregar mensagens mais antigas"). Sem `.message-in/.message-out`, o único
+autor era o meu nome (≠ título) e a regra "autor único diferente do título = desconhecido" barrou.
+
+- **Mensagem minha pelo ícone de status.** Uma linha é minha se tem, dentro dela, um
+  `[data-icon]` em `msg-check, msg-dblcheck, msg-dblcheck-ack, msg-time, msg-check-light,
+  msg-dblcheck-light` ou um elemento de `msg-meta` com `aria-label` contendo Lida/Entregue/
+  Enviada/Pendente/Read/Delivered/Sent/Pending. `.message-out` e `true_…` continuam valendo.
+  Recebida = linha de conversa (com texto/autor) sem esses sinais. Linha de sistema (tem texto,
+  mas não tem `msg-container`/`copyable-text`) é ignorada: não é mensagem.
+- **Meu nome.** O autor (`data-pre-plain-text`) das minhas linhas é aprendido sozinho (só se
+  for um único autor e não for o título) e guardado no IndexedDB (`config` → `meuNomeWhatsApp`);
+  o painel o reenvia a cada abertura. Dá para corrigir na aba **Dados → Meu nome no WhatsApp**
+  (o digitado vale mais que o aprendido). `autoresDoOutroLado` = autores distintos sem o meu nome.
+- **Classificação.** GRUPO: ícone de grupo no cabeçalho, OU elemento de autor dentro das linhas,
+  OU mais de 1 autor do outro lado, OU 1 autor do outro lado diferente do título. INDIVIDUAL:
+  nada disso, o outro lado vazio (só minhas) ou só o título, e ao menos 1 mensagem (minha ou
+  recebida). Nenhuma mensagem → desconhecido. Consequência: 1 autor diferente do título que
+  **não** é o meu nome agora dá `grupo` (antes `nao_confirmado`); nos dois casos nada é colado.
+  Sem nenhum nome meu conhecido vale ainda a regra da 0.3.0 (2 autores, um igual ao título → o
+  outro sou eu).
+- **Freio do automático.** `nao_confirmado`, `ambiguo`, `grupo`, `caixa_ocupada` e
+  `usuario_digitando` (conferências **antes de colar**) **não** contam para "2 problemas
+  seguidos": o contato vira **pulado (revisar)**, com o motivo, e no automático há uma pausa de
+  10 s antes do próximo. O freio conta só falhas **depois** de colar/enviar (`botao_enviar_ausente`,
+  `envio_nao_confirmado`, `colar_falhou`, `texto_alterado`, `cabecalho`, avisos do WhatsApp).
+  `nao_encontrado` continua contando como problema. Campanha sem envio e com pulados por erro
+  termina como "concluída com problemas" (amarela), não verde.
+- **Detector de envio.** Além de id novo + texto igual + caixa vazia, o ícone de status vale como
+  prova de que a linha é minha (mesmo se o autor lido parecer o contato).
+- **Diagnóstico.** `classificacao` ganhou: linhas com ícone de status, linhas de sistema, meu
+  nome aprendido (3 letras), autores do outro lado e os `data-icon` distintos das linhas.
+- **Risco residual.** Os ícones e rótulos de status são os que o dono descreveu; não foram vistos
+  neste ambiente. Se o WhatsApp trocar o `data-icon`, a conversa só com minhas mensagens volta a
+  falhar (e cai em pulado/revisar, sem colar). Rode **Testar página do WhatsApp** e confira
+  "data-icon nas linhas".
 
 ## 0.2. O que mudou na 0.2.2 (WhatsApp Web de 20/10/2026, dados reais do console)
 
@@ -294,7 +336,7 @@ exportar backup (JSON), importar (mesclar ou substituir) e exportar campanhas em
 | Intervalo | 60–120 s sorteado após cada envio. Pode ser aumentado, nunca reduzido | `shared/politica.ts` |
 | Repetição | uma mensagem por contato por campanha; quem recebeu campanha há < 14 dias fica fora (piso fixo) | `shared/campanha.ts`, `shared/banco.ts` |
 | Texto | sem link na 1ª mensagem (bloqueado), até 500 caracteres, só o marcador `{primeiroNome}`; sem mídia (a extensão só cola texto). **Sem** linha "responda SAIR" (decisão do dono) | `shared/texto.ts` |
-| Freio | 3 problemas seguidos pausam a campanha; erro de seletor pausa na hora (no automático: 2 problemas desligam o automático) | `shared/politica.ts`, `sidepanel/executor.ts` |
+| Freio | 3 problemas seguidos pausam a campanha; erro de seletor pausa na hora (no automático: 2 problemas desligam o automático). Conferências antes de colar (0.3.1) viram "pulado (revisar)" e não contam | `shared/politica.ts`, `sidepanel/executor.ts` |
 | Número novo | sem a confirmação "mais de 30 dias de uso", nada roda | `shared/politica.ts` |
 
 Opt-out: botão **Não enviar mais** (e **Não é cliente**). A detecção automática de pedido
