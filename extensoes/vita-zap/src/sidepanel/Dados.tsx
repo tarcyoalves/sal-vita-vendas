@@ -85,7 +85,8 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
   }
 
   async function ligarModoAutomatico() {
-    if (!aceiteValido(aceitouRisco, palavra)) return;
+    // Já autorizado uma vez: liga com um clique (decisão do dono, 20/10/2026).
+    if (!automatico.aceitoEm && !aceiteValido(aceitouRisco, palavra)) return;
     // Relê o banco: o estado vem sempre dele, não da tela.
     await salvarAutomatico(db, ligarAutomatico(await lerAutomatico(db), new Date()));
     setAceitouRisco(false);
@@ -187,7 +188,7 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
           Limites no automático: no máximo {AUTO.tetoDiario} mensagens por dia; intervalo aleatório de {AUTO.intervaloMinSeg} a {AUTO.intervaloMaxSeg} s;
           pausa longa de {AUTO.pausaLongaMinSeg / 60} a {AUTO.pausaLongaMaxSeg / 60} min a cada {AUTO.enviosAtePausaLonga} envios; só seg–sex 8h–18h e sáb
           8h–12h (Fortaleza); contagem de {AUTO.contagemSeg} s com Cancelar antes de cada envio; {AUTO.problemasParaDesligar} problemas seguidos ou qualquer
-          aviso do WhatsApp desligam o automático.
+          aviso do WhatsApp pausam a campanha (o automático continua ligado; clique em Retomar).
         </p>
         {automatico.ligado ? (
           <>
@@ -201,7 +202,15 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
         ) : (
           <>
             {automatico.motivoDesligado && <p className="aviso">Desligado pela extensão: {automatico.motivoDesligado}</p>}
-            {automatico.aceitoEm && <p className="ajuda">Último aceite: {new Date(automatico.aceitoEm).toLocaleString('pt-BR')}.</p>}
+            {automatico.aceitoEm ? (
+              <>
+                <p className="ajuda">Autorizado em {new Date(automatico.aceitoEm).toLocaleString('pt-BR')}.</p>
+                <button type="button" className="perigo" onClick={() => void ligarModoAutomatico()}>
+                  Ligar o modo automático
+                </button>
+              </>
+            ) : (
+            <>
             <label className="check">
               <input type="checkbox" checked={aceitouRisco} onChange={(e) => setAceitouRisco(e.target.checked)} />
               {AVISO_RISCO_AUTOMATICO}
@@ -213,6 +222,8 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
             <button type="button" className="perigo" disabled={!aceiteValido(aceitouRisco, palavra)} onClick={() => void ligarModoAutomatico()}>
               Ligar o modo automático
             </button>
+            </>
+            )}
           </>
         )}
       </div>

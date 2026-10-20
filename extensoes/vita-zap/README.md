@@ -39,8 +39,12 @@ automático viola os Termos do WhatsApp e pode bloquear meu número de forma per
 digite a palavra `AUTOMATICO`. A data do aceite fica guardada. Com o modo ligado aparece o
 selo vermelho **AUTOMÁTICO** no topo do painel.
 
-**Como desligar:** um clique em **Desligar o modo automático** (aba Dados). A extensão também
-desliga sozinha (freio, abaixo). Importar um backup nunca liga nem desliga o automático.
+**Como desligar:** um clique em **Desligar o modo automático** (aba Dados). Importar um backup nunca
+liga nem desliga o automático.
+
+**0.3.2 (decisão do dono, 20/10/2026):** autorizado uma vez, fica autorizado. Depois do primeiro aceite,
+religar é **um clique** (sem caixa nem palavra). O freio **não desliga** mais o automático: só **pausa a
+campanha** com alerta; ao clicar **Retomar**, continua no automático.
 
 **O que acontece com cada contato**
 1. Checagens de política: horário, teto, intervalo, freio e avisos do WhatsApp.
@@ -67,7 +71,7 @@ desliga sozinha (freio, abaixo). Importar um backup nunca liga nem desliga o aut
 | Intervalo entre envios | aleatório de **90 a 180 s** |
 | Pausa longa | aleatória de **10 a 20 min** a cada **10** envios |
 | Horário | seg–sex 08h–18h, sáb 08h–12h (Fortaleza); domingo nunca |
-| Freio | **2 problemas seguidos** (só falhas de **depois** de colar/enviar, veja 0.3.1) ou **qualquer aviso do WhatsApp** → pausa a campanha, **desliga o automático** (volta ao manual) e mostra um alerta |
+| Freio | **2 problemas seguidos** (só falhas de **depois** de colar/enviar, veja 0.3.1) ou **qualquer aviso do WhatsApp** → **pausa a campanha** e mostra um alerta (desde a 0.3.2 o automático continua ligado; clique em Retomar) |
 | Número novo | continua exigindo a confirmação "mais de 30 dias de uso" |
 
 **Como é protegido por dentro**
@@ -336,7 +340,7 @@ exportar backup (JSON), importar (mesclar ou substituir) e exportar campanhas em
 | Intervalo | 60–120 s sorteado após cada envio. Pode ser aumentado, nunca reduzido | `shared/politica.ts` |
 | Repetição | uma mensagem por contato por campanha; quem recebeu campanha há < 14 dias fica fora (piso fixo) | `shared/campanha.ts`, `shared/banco.ts` |
 | Texto | sem link na 1ª mensagem (bloqueado), até 500 caracteres, só o marcador `{primeiroNome}`; sem mídia (a extensão só cola texto). **Sem** linha "responda SAIR" (decisão do dono) | `shared/texto.ts` |
-| Freio | 3 problemas seguidos pausam a campanha; erro de seletor pausa na hora (no automático: 2 problemas desligam o automático). Conferências antes de colar (0.3.1) viram "pulado (revisar)" e não contam | `shared/politica.ts`, `sidepanel/executor.ts` |
+| Freio | 3 problemas seguidos pausam a campanha; erro de seletor pausa na hora (no automático: 2 problemas pausam a campanha; o automático continua ligado desde a 0.3.2). Conferências antes de colar (0.3.1) viram "pulado (revisar)" e não contam | `shared/politica.ts`, `sidepanel/executor.ts` |
 | Número novo | sem a confirmação "mais de 30 dias de uso", nada roda | `shared/politica.ts` |
 
 Opt-out: botão **Não enviar mais** (e **Não é cliente**). A detecção automática de pedido

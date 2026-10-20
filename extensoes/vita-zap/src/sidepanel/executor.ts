@@ -41,7 +41,7 @@ import {
   salvarCampanha,
   salvarMeuNome,
 } from '../shared/banco';
-import { configAuto, desligarAutomatico, emitirToken, sortearEspera } from '../shared/automatico';
+import { configAuto, emitirToken, sortearEspera } from '../shared/automatico';
 import { AUTO } from '../shared/constantes';
 import { type NovoEvento, resumirPagina, resumirResposta } from '../shared/diagnostico';
 import type { EventoConteudo, PedidoConteudo, PendenciaEnvio, RespostaConteudo } from '../shared/mensagens';
@@ -714,15 +714,15 @@ export class Executor {
     await this.pausar('Envio cancelado por você — nada foi enviado.');
   }
 
-  /** Freio do automático: pausa a campanha, DESLIGA o automático (volta ao manual) e deixa o alerta. */
+  /**
+   * Freio do automático: PAUSA a campanha e deixa o alerta. O modo automático continua ligado
+   * (decisão do dono, 20/10/2026: autorizado uma vez, fica autorizado); Retomar segue no automático.
+   */
   private async freioAutomatico(motivo: string): Promise<void> {
-    const atual = await lerAutomatico(this.deps.db);
-    await salvarAutomatico(this.deps.db, desligarAutomatico(atual, this.deps.agora(), motivo));
-    await this.deps.pedir({ tipo: 'modoAutomatico', ligado: false });
     this.etapa('freio', null, { ok: false, codigo: 'freio', erro: motivo });
-    const alerta = `Modo automático DESLIGADO: ${motivo}. A extensão voltou ao modo manual — confira o WhatsApp antes de continuar.`;
+    const alerta = `Campanha PAUSADA pelo freio: ${motivo}. Confira o WhatsApp e clique em Retomar para continuar no automático.`;
     await this.pausar(alerta);
-    this.publicar({ automatico: false, alertaAutomatico: alerta });
+    this.publicar({ alertaAutomatico: alerta });
   }
 
   private async guardarEmAndamento(item: ItemCampanha, texto: string, r: Extract<RespostaConteudo, { ok: true }>): Promise<void> {

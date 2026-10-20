@@ -212,7 +212,7 @@ describe('o content script reconfere tudo antes de enviar', () => {
     expect(t.w.caixa.textContent).toBe('Oi Ana, mudei de ideia');
   });
 
-  it('aviso do WhatsApp na tela: não envia, pausa e DESLIGA o automático com alerta', async () => {
+  it('aviso do WhatsApp na tela: não envia, PAUSA a campanha e mantém o automático ligado (0.3.2)', async () => {
     const t = await montarFluxo(['Ana', 'Bia']);
     void t.ex.iniciar();
     await ate(() => t.ex.atual.fase === 'contagem', 30_000, 'contagem');
@@ -221,10 +221,9 @@ describe('o content script reconfere tudo antes de enviar', () => {
     await ate(() => t.ex.atual.fase === 'parada', 30_000, 'pausa pelo aviso');
     expect(cliquesEnviar(t.w)).toBe(0);
     expect(t.ex.atual.campanha.status).toBe('pausada');
-    expect(t.ex.atual.automatico).toBe(false);
-    expect(t.ex.atual.alertaAutomatico).toMatch(/Modo automático DESLIGADO/);
-    expect((await lerAutomatico(t.db)).ligado).toBe(false);
-    expect((await lerAutomatico(t.db)).motivoDesligado).toMatch(/alerta/);
+    expect(t.ex.atual.automatico).toBe(true);
+    expect(t.ex.atual.alertaAutomatico).toMatch(/PAUSADA pelo freio/);
+    expect((await lerAutomatico(t.db)).ligado).toBe(true);
     expect(t.w.caixa.textContent).toBe('');
   });
 
@@ -236,8 +235,8 @@ describe('o content script reconfere tudo antes de enviar', () => {
     document.body.insertAdjacentHTML('beforeend', '<div role="alert">Telefone não conectado</div>');
     await ate(() => t.ex.atual.fase === 'parada', 30_000, 'pausa pelo aviso');
     expect(cliquesEnviar(t.w)).toBe(0);
-    expect(t.ex.atual.automatico).toBe(false);
-    expect((await lerAutomatico(t.db)).ligado).toBe(false);
+    expect(t.ex.atual.campanha.status).toBe('pausada');
+    expect((await lerAutomatico(t.db)).ligado).toBe(true);
   });
 
   it('sem botão de enviar no rodapé: para com erro botao_enviar_ausente e não faz mais nada', async () => {
@@ -476,14 +475,15 @@ describe('desligar e freio', () => {
     expect(t.pedidos.some((p) => p.tipo === 'enviarAutomatico')).toBe(false);
   });
 
-  it('2 problemas seguidos desligam o automático e voltam ao manual com alerta', async () => {
+  it('2 problemas seguidos PAUSAM a campanha com alerta e o automático continua ligado (0.3.2)', async () => {
     // Ana e Bia não existem no WhatsApp falso: viram "não encontrado" (problema do contato).
     const t = await montarFluxo(['Ana', 'Bia', 'Cai'], { botaoEnviar: 'enviar' }, true, ['Ana', 'Bia']);
     void t.ex.iniciar();
     await ate(() => t.ex.atual.alertaAutomatico !== null, 120_000, 'freio');
-    expect(t.ex.atual.automatico).toBe(false);
+    expect(t.ex.atual.automatico).toBe(true);
     expect(t.ex.atual.alertaAutomatico).toMatch(/2 problemas seguidos/);
-    expect((await lerAutomatico(t.db)).ligado).toBe(false);
+    expect(t.ex.atual.campanha.status).toBe('pausada');
+    expect((await lerAutomatico(t.db)).ligado).toBe(true);
     expect(t.ex.atual.campanha.itens.filter((i) => i.status === 'problema')).toHaveLength(2);
     expect(t.ex.atual.campanha.itens[2].status).toBe('pendente');
     expect(cliquesEnviar(t.w)).toBe(0);
