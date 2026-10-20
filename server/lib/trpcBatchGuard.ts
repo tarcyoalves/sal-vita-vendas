@@ -5,6 +5,8 @@ export const RATE_LIMITED_PROCEDURES = [
   'auth.login',
   'premiumAuth.login',
   'auth.emergencyReset',
+  'auth.requestPasswordReset',
+  'auth.resetPasswordWithToken',
   'shipping.calculate',
   'shipping.trackOrder',
   'shipping.createOrder',

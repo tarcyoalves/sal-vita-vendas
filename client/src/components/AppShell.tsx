@@ -647,10 +647,10 @@ export default function AppShell({ children }: AppShellProps) {
                   value={forcePwdForm.next}
                   onChange={e => setForcePwdForm(f => ({ ...f, next: e.target.value }))}
                   required
-                  minLength={6}
+                  minLength={10}
                   aria-describedby="force-pwd-hint"
                 />
-                <p id="force-pwd-hint" className="text-xs text-slate-500">Mínimo de 6 caracteres.</p>
+                <p id="force-pwd-hint" className="text-xs text-slate-500">Mínimo de 10 caracteres.</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="force-pwd-confirm">Confirmar senha</Label>
@@ -742,10 +742,10 @@ export default function AppShell({ children }: AppShellProps) {
                 value={pwdForm.next}
                 onChange={e => setPwdForm(f => ({ ...f, next: e.target.value }))}
                 required
-                minLength={6}
+                minLength={10}
                 aria-describedby="pwd-next-hint"
               />
-              <p id="pwd-next-hint" className="text-xs text-slate-500">Mínimo de 6 caracteres.</p>
+              <p id="pwd-next-hint" className="text-xs text-slate-500">Mínimo de 10 caracteres.</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="pwd-confirm">Confirmar nova senha</Label>

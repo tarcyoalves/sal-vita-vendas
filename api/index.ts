@@ -1093,6 +1093,18 @@ const authIpLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+// Recuperação de senha: NÃO pula requisição bem-sucedida (skipSuccessfulRequests do authIpLimiter faria
+// o limite nunca contar, porque requestPasswordReset sempre responde 200 para não revelar e-mails).
+const resetIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
+  validate: { xForwardedForHeader: false },
+});
+
 const storeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
@@ -1175,6 +1187,8 @@ app.use('/api/trpc', (req, res, next) => {
 app.use('/api/trpc/auth.login', authLimiter, authIpLimiter);
 app.use('/api/trpc/premiumAuth.login', authLimiter, authIpLimiter);
 app.use('/api/trpc/auth.emergencyReset', authLimiter, authIpLimiter);
+app.use('/api/trpc/auth.requestPasswordReset', resetIpLimiter, authLimiter, authIpLimiter);
+app.use('/api/trpc/auth.resetPasswordWithToken', resetIpLimiter, authLimiter, authIpLimiter);
 app.use('/api/trpc/shipping.calculate', storeLimiter);
 app.use('/api/trpc/shipping.trackOrder', storeLimiter);
 app.use('/api/trpc/shipping.createOrder', orderLimiter);

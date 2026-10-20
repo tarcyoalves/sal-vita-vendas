@@ -200,10 +200,10 @@ export default function Home() {
           >
             <p className="text-sm text-slate-500">Defina sua nova senha abaixo.</p>
             <Field id="reset-new" label="Nova senha">
-              <Input id="reset-new" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={6} placeholder="Mínimo 6 caracteres" />
+              <Input id="reset-new" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={10} placeholder="Mínimo 10 caracteres" />
             </Field>
             <Field id="reset-confirm" label="Confirmar senha">
-              <Input id="reset-confirm" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required minLength={6} placeholder="Repita a senha" />
+              <Input id="reset-confirm" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required minLength={10} placeholder="Repita a senha" />
             </Field>
             <Button type="submit" disabled={resetting} className="w-full">
               {resetting ? 'Salvando...' : 'Salvar nova senha'}

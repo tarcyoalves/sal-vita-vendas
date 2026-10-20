@@ -8,12 +8,17 @@ import { users, sellers, passwordResetTokens } from '../db/schema';
 import { hashPassword, verifyPassword, signToken, getDummyHash, sessionCookieHeader, clearSessionCookieHeader } from '../auth';
 import { sendEmail } from '../email/resend';
 import { COOKIE_NAME } from '../../shared/const';
+import { SENHA_MINIMA, SENHA_MINIMA_MSG } from '../../shared/senha';
+import { comTempoMinimo } from '../lib/tempoUniforme';
 import { isSellerBlocked } from '../lib/authGate';
 import { cached, cacheInvalidate } from '../lib/cache';
 import { safeEqual } from '../lib/safeEqual';
 import { emailEquals } from '../lib/userEmail';
 import { getClientIp } from '../lib/clientIp';
 import { createEmergencyThrottle } from '../lib/emergencyThrottle';
+
+// Piso de duração da resposta de requestPasswordReset (envio de e-mail costuma levar menos que isso).
+const RESET_TEMPO_MINIMO_MS = 1500;
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -80,7 +85,7 @@ export const authRouter = router({
   changePassword: protectedProcedure
     .input(z.object({
       currentPassword: z.string().min(1),
-      newPassword: z.string().min(6, 'Mínimo 6 caracteres'),
+      newPassword: z.string().min(SENHA_MINIMA, SENHA_MINIMA_MSG),
     }))
     .mutation(async ({ input, ctx }) => {
       const [user] = await db.select().from(users).where(eq(users.id, ctx.user.id));
@@ -101,7 +106,7 @@ export const authRouter = router({
     }),
 
   forceChangePassword: protectedProcedure
-    .input(z.object({ newPassword: z.string().min(6, 'Mínimo 6 caracteres') }))
+    .input(z.object({ newPassword: z.string().min(SENHA_MINIMA, SENHA_MINIMA_MSG) }))
     .mutation(async ({ input, ctx }) => {
       const [user] = await db.select().from(users).where(eq(users.id, ctx.user.id));
       if (!user) throw new Error('Usuário não encontrado');
@@ -165,13 +170,11 @@ export const authRouter = router({
 
   requestPasswordReset: publicProcedure
     .input(z.object({ email: z.string().email() }))
-    .mutation(async ({ input }) => {
+    // Duração mínima fixa em TODOS os caminhos (e-mail inexistente, limite de 3 links, envio): o tempo
+    // não revela se o e-mail está cadastrado. Falha no envio também vira a resposta genérica.
+    .mutation(({ input }) => comTempoMinimo(RESET_TEMPO_MINIMO_MS, async () => {
       const [user] = await db.select().from(users).where(emailEquals(users.email, input.email));
-      if (!user) {
-        // Iguala o tempo de resposta ao do e-mail existente (que aguarda o envio).
-        await new Promise(r => setTimeout(r, 300));
-        return { ok: true };
-      }
+      if (!user) return { ok: true };
 
       // Limite por e-mail: no máximo 3 links ainda não usados nos últimos 15 min.
       // Acima disso devolve a mesma resposta genérica, sem enviar (anti-spam de caixa postal).
@@ -215,14 +218,18 @@ export const authRouter = router({
 </td></tr>
 </table></td></tr></table></body></html>`;
 
-      await sendEmail(user.email, 'Recuperação de Senha — Sal Vita', html);
+      try {
+        await sendEmail(user.email, 'Recuperação de Senha — Sal Vita', html);
+      } catch (err) {
+        console.error('[auth.requestPasswordReset] envio falhou:', err instanceof Error ? err.name : 'erro');
+      }
       return { ok: true };
-    }),
+    })),
 
   resetPasswordWithToken: publicProcedure
     .input(z.object({
       token: z.string().min(1),
-      newPassword: z.string().min(6, 'Mínimo 6 caracteres'),
+      newPassword: z.string().min(SENHA_MINIMA, SENHA_MINIMA_MSG),
     }))
     .mutation(async ({ input }) => {
       // Consome o token de forma atômica ANTES de trocar a senha: duas requisições
