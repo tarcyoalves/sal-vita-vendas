@@ -25,6 +25,8 @@ import {
   aprovarInputSchema, decidirAprovacao, decidirRevisaoContatos, decidirSolicitacao, podeLiberarPedido, podeSolicitarPrevia,
   empresaDoCadastro, reenvioBloqueadoPorCadastro, revisarContatosInputSchema, validarRevisaoContatos, type Recusa,
 } from '../lib/smbiCadastroDecisoes';
+import { atendenteEhDonoDoPedido } from '../lib/pedidoDono';
+import { montarSetUpsertPedido } from '../lib/pedidoUpsert';
 import { decidirBloqueioDoPedido, vincularUltimoRelatorioNoEnvio } from '../lib/credito/repo';
 import type { Pedido } from '../../client/src/lib/faturamento/types';
 
@@ -277,42 +279,21 @@ export const faturamentoRouter = router({
       // Toda gravação pela tela carimba a edição; o robô compara com o clique (payload.atualizadoEm).
       const atualizadoEm = new Date().toISOString();
 
-      const [row] = await db
-        .insert(fatOrders)
-        // Campos empresariais nunca vêm da tela: a segunda barreira além do zod (e o `set` abaixo não os lista).
-        .values({ ...descartarCamposEmpresa(values), atualizadoEm })
-        .onConflictDoUpdate({
-          target: fatOrders.id,
-          set: {
-            atualizadoEm,
-            taskId: values.taskId,
-            sellerId: values.sellerId,
-            sellerName: values.sellerName,
-            clienteNome: values.clienteNome,
-            cnpj: values.cnpj,
-            razaoSocial: values.razaoSocial,
-            cidade: values.cidade,
-            uf: values.uf,
-            status: values.status,
-            comissaoPct: values.comissaoPct,
-            itens: values.itens,
-            itensEstimadoSnapshot: values.itensEstimadoSnapshot,
-            prazoPagamentoSal: values.prazoPagamentoSal,
-            prazoPagamentoFrete: values.prazoPagamentoFrete,
-            valorFretePorUnidade: values.valorFretePorUnidade,
-            observacoes: values.observacoes,
-            previsaoFaturamentoEm: values.previsaoFaturamentoEm,
-            faturadoEm: values.faturadoEm,
-            valorPago: values.valorPago,
-            smbiCondpagSalCod: values.smbiCondpagSalCod,
-            smbiCondpagFreteCod: values.smbiCondpagFreteCod,
-            smbiMovsaiId: values.smbiMovsaiId,
-            numeroNfe: values.numeroNfe,
-            numeroCte: values.numeroCte,
-            comissaoComercialProtegida: values.comissaoComercialProtegida,
-          },
-        })
-        .returning();
+      // Campos empresariais nunca vêm da tela: a segunda barreira além do zod (o `set` abaixo não os lista).
+      const novoPedido = { ...descartarCamposEmpresa(values), atualizadoEm };
+      // O `set` NÃO inclui smbiMovsaiId/numeroNfe/numeroCte (posse do robô; ver server/lib/pedidoUpsert.ts):
+      // copiar o valor lido no início apagaria o vínculo que o robô gravou nesse meio-tempo (pedido duplicado no ERP).
+      const set = montarSetUpsertPedido(values, atualizadoEm, { isAdmin });
+      // Pedido que já existe → UPDATE puro. INSERT ... ON CONFLICT consome o nextval do numero_crm (PED-n)
+      // mesmo quando cai no conflito, e a numeração pulava a cada edição.
+      let row: typeof fatOrders.$inferSelect | undefined;
+      if (existing) {
+        [row] = await db.update(fatOrders).set(set).where(eq(fatOrders.id, values.id)).returning();
+      }
+      // Pedido novo (ou apagado entre a leitura e a gravação): INSERT; o ON CONFLICT cobre duas criações simultâneas.
+      if (!row) {
+        [row] = await db.insert(fatOrders).values(novoPedido).onConflictDoUpdate({ target: fatOrders.id, set }).returning();
+      }
       // espelhoProtegido: o servidor descartou uma edição de campo protegido (pedido espelhado do
       // SMBI); a tela deve avisar e recarregar em vez de mostrar o valor otimista.
       return { ...row, espelhoProtegido, itensAjustados };
@@ -341,7 +322,7 @@ export const faturamentoRouter = router({
 
       if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
         const mySellerId = await sellerIdForUser(ctx.user.id);
-        if (existing.sellerId !== mySellerId) {
+        if (!atendenteEhDonoDoPedido(mySellerId, existing.sellerId)) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido de outro atendente' });
         }
         if (!atendentePodeRemover(existing)) {
@@ -916,7 +897,7 @@ export const faturamentoRouter = router({
 
       if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
         const mySellerId = await sellerIdForUser(ctx.user.id);
-        if (pedido.sellerId !== mySellerId) {
+        if (!atendenteEhDonoDoPedido(mySellerId, pedido.sellerId)) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido de outro atendente' });
         }
       }
@@ -1007,7 +988,7 @@ ${assinatura ? `<div style="margin-top:24px;padding-top:16px;border-top:1px soli
 
       if (ctx.user.role !== 'admin' && ctx.user.role !== 'manager') {
         const mySellerId = await sellerIdForUser(ctx.user.id);
-        if (pedido.sellerId !== mySellerId) {
+        if (!atendenteEhDonoDoPedido(mySellerId, pedido.sellerId)) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido de outro atendente' });
         }
       }
