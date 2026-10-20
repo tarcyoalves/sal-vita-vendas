@@ -24,3 +24,24 @@ E consistência de "atrasadas" entre tarefas, dashboard e TV; lembretes com filt
 - `docs/CONTRATO-ROBO-CRM.md`, testes novos em `tests/`
 
 **Não vou tocar em:** credito*, knowledge, ai.ts, auth, trpcBatchGuard, faturamento.ts, tasks.create, loja Premium, extensoes/, sallog/.
+
+---
+
+## Resultado (status: parcial, só no branch worktree-agent-a43747f002a8cdaef; não está em main)
+
+Lote 4 (itens 1-5) e Lote 3 (itens 6-10) com testes em tests/consumo-banco-lote4.test.ts e tests/tarefas-lote3.test.ts.
+SCHEMA_VERSION do CRM: 2026-10-16a para 2026-10-20a (índice fat_orders_criado_em_idx).
+
+## Commits
+- 393e143 perf: cut Neon wake-ups (código + api/bundle.js)
+
+## Verificado
+- npm run check sem erros; vitest completo 105 arquivos / 1445 testes passando; npm run build:api ok.
+
+## Não verificado
+- Nada rodou contra banco real nem na Vercel; telas (Dashboard em 375 px) não foram abertas no navegador.
+
+## Armadilhas
+- getAll do faturamento e tasks.list continuam sem limite/paginação (a UI depende da lista inteira).
+- bulkCreate: lembrete escalonado (1 a cada 2 min a partir de +5 min) segue igual; 2000 linhas = ~66 h de lembretes.
+- Outro agente também pode subir SCHEMA_VERSION: conflito esperado no merge; reconciliar e rodar npm run schema:lock.
