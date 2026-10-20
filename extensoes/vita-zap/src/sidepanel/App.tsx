@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { abrirBanco, listarCampanhas, listarContatos, listarEnvios, listarNaoEnviar, type Banco } from '../shared/banco';
+import { abrirBanco, lerAutomatico, listarCampanhas, listarContatos, listarEnvios, listarNaoEnviar, type Banco } from '../shared/banco';
+import { ESTADO_AUTOMATICO_PADRAO, type EstadoAutomatico } from '../shared/automatico';
 import type { Campanha } from '../shared/campanha';
 import { RegistroDiagnostico } from '../shared/diagnostico';
 import type { ContatoVarrido } from '../shared/contatos';
@@ -31,6 +32,7 @@ export function App() {
   const [aba, setAba] = useState<Aba>('varredura');
   const [dados, setDados] = useState<DadosLocais>({ contatos: [], campanhas: [], envios: [], naoEnviar: [] });
   const [campanhaAtiva, setCampanhaAtiva] = useState<string | null>(null);
+  const [automatico, setAutomatico] = useState<EstadoAutomatico>(ESTADO_AUTOMATICO_PADRAO);
 
   useEffect(() => {
     abrirBanco().then(setDb, (e: unknown) => setErro(`Não abri o banco local: ${String(e)}`));
@@ -58,6 +60,14 @@ export function App() {
       listarNaoEnviar(db),
     ]);
     setDados({ contatos, campanhas, envios, naoEnviar });
+    setAutomatico(await lerAutomatico(db));
+  }, [db]);
+
+  // O freio pode desligar o automático sozinho: o selo do topo acompanha o banco.
+  useEffect(() => {
+    if (!db) return;
+    const t = setInterval(() => void lerAutomatico(db).then(setAutomatico, () => undefined), 2000);
+    return () => clearInterval(t);
   }, [db]);
 
   useEffect(() => {
@@ -71,7 +81,11 @@ export function App() {
     <div className="app">
       <header className="topo">
         <strong>Vita Zap</strong>
-        <span className="selo">fase 1 · você aperta o Enter</span>
+        {automatico.ligado ? (
+          <span className="selo auto" role="status">AUTOMÁTICO</span>
+        ) : (
+          <span className="selo">fase 1 · você aperta o Enter</span>
+        )}
       </header>
       <nav className="abas">
         {ABAS.map((a) => (
@@ -97,7 +111,7 @@ export function App() {
         <div hidden={aba !== 'execucao'}>
           <Execucao db={db} registro={registro} dados={dados} campanhaId={campanhaAtiva} aoEscolher={setCampanhaAtiva} aoMudar={recarregar} />
         </div>
-        {aba === 'dados' && <Dados db={db} registro={registro} dados={dados} aoMudar={recarregar} />}
+        {aba === 'dados' && <Dados db={db} registro={registro} dados={dados} automatico={automatico} aoMudar={recarregar} />}
       </main>
     </div>
   );

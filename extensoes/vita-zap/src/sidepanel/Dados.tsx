@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { desmarcarNaoEnviar, exportarTudo, importarTudo, lerConfig, salvarConfig, type Banco } from '../shared/banco';
-import { INTERVALO_MIN_SEG, TETO_DIARIO_MAXIMO } from '../shared/constantes';
+import { desmarcarNaoEnviar, exportarTudo, importarTudo, lerAutomatico, lerConfig, salvarAutomatico, salvarConfig, type Banco } from '../shared/banco';
+import { aceiteValido, AVISO_RISCO_AUTOMATICO, desligarAutomatico, type EstadoAutomatico, ligarAutomatico } from '../shared/automatico';
+import { AUTO, INTERVALO_MIN_SEG, PALAVRA_ACEITE_AUTOMATICO, TETO_DIARIO_MAXIMO } from '../shared/constantes';
 import { type RegistroDiagnostico, resumirPagina, resumirResposta } from '../shared/diagnostico';
 import type { DiagnosticoPagina } from '../shared/mensagens';
 import { csvDasCampanhas, lerBackup } from '../shared/exportar';
@@ -13,6 +14,7 @@ interface Props {
   db: Banco;
   registro: RegistroDiagnostico;
   dados: DadosLocais;
+  automatico: EstadoAutomatico;
   aoMudar: () => Promise<void>;
 }
 
@@ -29,7 +31,9 @@ function carimbo(): string {
   return new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
 }
 
-export function Dados({ db, registro, dados, aoMudar }: Props) {
+export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
+  const [aceitouRisco, setAceitouRisco] = useState(false);
+  const [palavra, setPalavra] = useState('');
   const [cfg, setCfg] = useState<ConfigPolitica>(CONFIG_PADRAO);
   const [msgCfg, setMsgCfg] = useState<string | null>(null);
   const [arquivo, setArquivo] = useState<Arquivo | null>(null);
@@ -70,6 +74,20 @@ export function Dados({ db, registro, dados, aoMudar }: Props) {
         ? 'Salvo, ajustado aos limites de segurança.'
         : 'Salvo.',
     );
+  }
+
+  async function ligarModoAutomatico() {
+    if (!aceiteValido(aceitouRisco, palavra)) return;
+    // Relê o banco: o estado vem sempre dele, não da tela.
+    await salvarAutomatico(db, ligarAutomatico(await lerAutomatico(db), new Date()));
+    setAceitouRisco(false);
+    setPalavra('');
+    await aoMudar();
+  }
+
+  async function desligarModoAutomatico() {
+    await salvarAutomatico(db, desligarAutomatico(await lerAutomatico(db), new Date(), null));
+    await aoMudar();
   }
 
   async function exportarJson() {
@@ -133,6 +151,46 @@ export function Dados({ db, registro, dados, aoMudar }: Props) {
           Salvar política
         </button>
         {msgCfg && <p className="info">{msgCfg}</p>}
+      </div>
+
+      <div className="cartao">
+        <h3>Modo automático {automatico.ligado ? '(LIGADO)' : '(desligado)'}</h3>
+        <p className="risco" role="note">
+          ⚠️ O envio automático pelo WhatsApp Web viola os Termos do WhatsApp e pode bloquear seu número de forma permanente. Use só com clientes que já
+          conversam com você, em volume baixo. O modo padrão (você aperta Enter) continua disponível e é o mais seguro.
+        </p>
+        <p className="ajuda">
+          Limites no automático: no máximo {AUTO.tetoDiario} mensagens por dia; intervalo aleatório de {AUTO.intervaloMinSeg} a {AUTO.intervaloMaxSeg} s;
+          pausa longa de {AUTO.pausaLongaMinSeg / 60} a {AUTO.pausaLongaMaxSeg / 60} min a cada {AUTO.enviosAtePausaLonga} envios; só seg–sex 8h–18h e sáb
+          8h–12h (Fortaleza); contagem de {AUTO.contagemSeg} s com Cancelar antes de cada envio; {AUTO.problemasParaDesligar} problemas seguidos ou qualquer
+          aviso do WhatsApp desligam o automático.
+        </p>
+        {automatico.ligado ? (
+          <>
+            <p className="aviso">
+              Ligado{automatico.aceitoEm ? ` desde ${new Date(automatico.aceitoEm).toLocaleString('pt-BR')}` : ''}. O painel precisa ficar aberto.
+            </p>
+            <button type="button" className="perigo" onClick={() => void desligarModoAutomatico()}>
+              Desligar o modo automático (volta ao manual)
+            </button>
+          </>
+        ) : (
+          <>
+            {automatico.motivoDesligado && <p className="aviso">Desligado pela extensão: {automatico.motivoDesligado}</p>}
+            {automatico.aceitoEm && <p className="ajuda">Último aceite: {new Date(automatico.aceitoEm).toLocaleString('pt-BR')}.</p>}
+            <label className="check">
+              <input type="checkbox" checked={aceitouRisco} onChange={(e) => setAceitouRisco(e.target.checked)} />
+              {AVISO_RISCO_AUTOMATICO}
+            </label>
+            <label>
+              Digite {PALAVRA_ACEITE_AUTOMATICO} para confirmar
+              <input type="text" value={palavra} autoComplete="off" onChange={(e) => setPalavra(e.target.value)} />
+            </label>
+            <button type="button" className="perigo" disabled={!aceiteValido(aceitouRisco, palavra)} onClick={() => void ligarModoAutomatico()}>
+              Ligar o modo automático
+            </button>
+          </>
+        )}
       </div>
 
       <div className="cartao">

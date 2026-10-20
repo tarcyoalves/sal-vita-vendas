@@ -1,31 +1,99 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (fase 1, sem IA) — versão 0.2.0
+# Vita Zap — extensão do Chrome para o WhatsApp Web (fase 1, sem IA) — versão 0.3.0
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
-texto pronto. **Quem envia é você, apertando Enter.** Especificação completa:
+texto pronto. **No modo padrão, quem envia é você, apertando Enter.** A 0.3.0 trouxe um
+**modo automático opcional** (veja o aviso e a seção abaixo). Especificação completa:
 [`docs/PLANO-CAMPANHAS-WHATSAPP.md`](../../docs/PLANO-CAMPANHAS-WHATSAPP.md).
 
 Projeto **separado do CRM**: tem `package.json`, dependências e testes próprios. Não usa
 banco, servidor nem chave de IA. O build e os testes do CRM (raiz do repositório) ignoram
 esta pasta.
 
-> ## ⚠️ Por que você precisa apertar Enter
+> ## ⚠️ Por que o padrão é você apertar Enter
 >
 > Enviar mensagens automaticamente pelo WhatsApp Web (extensão clicando sozinha, robôs,
-> Baileys/Evolution) **viola os Termos de Serviço do WhatsApp** e pode levar ao **banimento
-> do número** — e com ele vai o histórico com todos os clientes. Por isso a extensão **não
-> tem código que envie**: ela cola o texto e para. Um teste automático
-> (`tests/sem-envio-automatico.test.ts`) reprova o build se aparecer qualquer clique no botão
-> de enviar ou evento de teclado. A política de proteção abaixo **reduz** o risco; ela **não
-> garante** que o número não será restringido.
+> Baileys/Evolution) **viola os Termos de Serviço do WhatsApp** e pode levar ao **bloqueio
+> permanente do número** — e com ele vai o histórico com todos os clientes. Por isso, **no modo
+> padrão (manual)**, a extensão cola o texto e para: o Enter é seu. A política de proteção
+> abaixo **reduz** o risco; ela **não garante** que o número não será restringido.
+>
+> O **modo automático** (opcional, 0.3.0) existe por **decisão escrita do dono**, para
+> **clientes que já conversam com ele, em volume baixo**. Veja a seção "Modo automático".
+> Todo o código que aciona o envio fica em um único arquivo
+> (`src/content/envioAutomatico.ts`) e o teste
+> `tests/envio-so-no-automatico-autorizado.test.ts` reprova o build se aparecer qualquer outro
+> caminho de envio, evento de teclado ou clique fora do previsto.
+
+## ⚠️ Modo automático (0.3.0, opcional) — LEIA ANTES DE LIGAR
+
+> **RISCO: o envio automático pelo WhatsApp Web VIOLA os Termos do WhatsApp e pode BLOQUEAR O
+> SEU NÚMERO DE FORMA PERMANENTE.** Os limites abaixo reduzem o risco, **não o eliminam**. Se o
+> número for bloqueado, o histórico com todos os clientes se perde junto. Use só para clientes
+> que já conversam com você, em volume baixo.
+
+**Padrão:** continua o modo manual ("uma tecla"). O automático nasce **desligado**.
+
+**Como ligar** (aba **Dados → Modo automático**): marque a caixa *"Entendo que o envio
+automático viola os Termos do WhatsApp e pode bloquear meu número de forma permanente"* **e**
+digite a palavra `AUTOMATICO`. A data do aceite fica guardada. Com o modo ligado aparece o
+selo vermelho **AUTOMÁTICO** no topo do painel.
+
+**Como desligar:** um clique em **Desligar o modo automático** (aba Dados). A extensão também
+desliga sozinha (freio, abaixo). Importar um backup nunca liga nem desliga o automático.
+
+**O que acontece com cada contato**
+1. Checagens de política: horário, teto, intervalo, freio e avisos do WhatsApp.
+2. Abre a conversa **sem esperar o clique em "Abrir próximo"** — mas só se você não estiver
+   digitando em algum campo; senão espera 15 s e tenta de novo.
+3. Todas as conferências do modo manual (título igual ao nome, conversa individual, caixa
+   vazia, texto válido) antes e depois de colar.
+4. Cola o texto e mostra **"Enviando para <nome> em Ns — Cancelar"** (contagem de 8 s).
+   **Cancelar** pausa a campanha e limpa a caixa.
+5. Logo antes de enviar, reconfere: título, conversa individual (mesmo JID), texto da caixa
+   **exatamente igual** ao colado, nenhum aviso do WhatsApp na tela, painel aberto e modo ainda
+   ligado. Qualquer diferença: **não envia**.
+6. Aciona o botão de enviar do rodapé (`#main footer button[aria-label="Enviar"]`, o ícone
+   `[data-icon="send"]` subindo ao `button`, ou `button[aria-label="Send"]`). Não acha: **para
+   com erro** (`botao_enviar_ausente`). Nunca usa tecla/Enter.
+7. Confirma pelo detector (id novo + texto igual + caixa vazia) em até **20 s**. Não confirmou:
+   **pausa** com `envio_nao_confirmado` e **não repete** o contato.
+
+**Limites no automático** (não configuráveis para cima)
+
+| Regra | Valor |
+|---|---|
+| Teto diário | **30** mensagens (mesmo que a política manual permita mais) |
+| Intervalo entre envios | aleatório de **90 a 180 s** |
+| Pausa longa | aleatória de **10 a 20 min** a cada **10** envios |
+| Horário | seg–sex 08h–18h, sáb 08h–12h (Fortaleza); domingo nunca |
+| Freio | **2 problemas seguidos** ou **qualquer aviso do WhatsApp** → pausa a campanha, **desliga o automático** (volta ao manual) e mostra um alerta |
+| Número novo | continua exigindo a confirmação "mais de 30 dias de uso" |
+
+**Como é protegido por dentro**
+- Só `enviarSeAutorizado(ctx)` (em `src/content/envioAutomatico.ts`) aciona o envio. Ela exige um
+  **token do painel por envio**, amarrado a nome + texto + campanha, de **uso único** e com
+  **validade de 30 s**, e a permissão do modo automático, que o painel renova a cada contato e
+  que **expira em 45 s** se o painel fechar.
+- Painel fechado ou recarregado no meio: o token expira e **nada é enviado**. Ao reabrir, a
+  conferência `ja_enviada` (já existe mensagem nossa nova na conversa?) evita duplicar. O
+  estado do automático e o item em andamento ficam no IndexedDB.
+- O **modo manual nunca chama** o pedido `enviarAutomatico` (garantido por teste).
+- O diagnóstico (aba Dados) registra cada etapa do automático (`auto:…`), **sem o texto das
+  mensagens**.
+- Limite honesto: o token protege contra disparo acidental, repetição e painel fechado. Não é uma
+  barreira contra código malicioso dentro da própria extensão.
+
+**Se uma mensagem for colada e depois o contato for trocado** (título mudou na contagem), a
+extensão não envia e marca o contato como problema; o texto colado pode ficar como rascunho
+naquela conversa — apague-o à mão.
 
 ---
 
 ## 0.2. O que mudou na 0.2.2 (WhatsApp Web de 20/10/2026, dados reais do console)
 
-Nenhuma regra de proteção foi afrouxada: a extensão continua sem enviar nada sozinha (o teste
-`tests/sem-envio-automatico.test.ts` segue igual; só ganhou o rótulo `End icon button` na
-lista dos seletores do X de limpar a busca e a versão `0.2.2`).
+Nenhuma regra de proteção foi afrouxada na 0.2.2 (só ganhou o rótulo `End icon button` na
+lista dos seletores do X de limpar a busca). O modo automático só veio na 0.3.0 (acima).
 
 - **Caixa de busca.** Depois que a extensão escreve o nome, o `<input>` fica com
   `role="textbox" data-tab="3"` e `aria-label=""` (vazio), então os seletores por "Pesquisar"
@@ -89,7 +157,7 @@ lista dos seletores do X de limpar a busca e a versão `0.2.2`).
 ## 0. O que mudou na 0.2.0
 
 Versão de correção (manifest e `package.json` em 0.2.0). Nenhuma regra de proteção foi
-afrouxada; o teste `tests/sem-envio-automatico.test.ts` continua valendo e ganhou verificações
+afrouxada; o teste `tests/envio-so-no-automatico-autorizado.test.ts` continua valendo e ganhou verificações
 mais estritas (só dois cliques permitidos: a linha da lista e o X de limpar a busca).
 
 **Segurança de uso**
@@ -226,7 +294,7 @@ exportar backup (JSON), importar (mesclar ou substituir) e exportar campanhas em
 | Intervalo | 60–120 s sorteado após cada envio. Pode ser aumentado, nunca reduzido | `shared/politica.ts` |
 | Repetição | uma mensagem por contato por campanha; quem recebeu campanha há < 14 dias fica fora (piso fixo) | `shared/campanha.ts`, `shared/banco.ts` |
 | Texto | sem link na 1ª mensagem (bloqueado), até 500 caracteres, só o marcador `{primeiroNome}`; sem mídia (a extensão só cola texto). **Sem** linha "responda SAIR" (decisão do dono) | `shared/texto.ts` |
-| Freio | 3 problemas seguidos pausam a campanha; erro de seletor pausa na hora | `shared/politica.ts`, `sidepanel/executor.ts` |
+| Freio | 3 problemas seguidos pausam a campanha; erro de seletor pausa na hora (no automático: 2 problemas desligam o automático) | `shared/politica.ts`, `sidepanel/executor.ts` |
 | Número novo | sem a confirmação "mais de 30 dias de uso", nada roda | `shared/politica.ts` |
 
 Opt-out: botão **Não enviar mais** (e **Não é cliente**). A detecção automática de pedido
@@ -285,11 +353,30 @@ escrito à mão):
 - o comportamento real do foco quando o painel lateral está em primeiro plano e o WhatsApp tem
   rascunho (`document.activeElement` da aba).
 
+Novos na 0.3.0 (modo automático — **não** validados no WhatsApp real; os testes usam o
+WhatsApp falso no formato "real"):
+
+- o seletor do botão de enviar do rodapé (`button[aria-label="Enviar"]`, `[data-icon="send"]`,
+  `button[aria-label="Send"]`) e se o `.click()` nele realmente envia no editor atual;
+- se o clique mantém o foco/rascunho como esperado e o detector confirma a mensagem em 20 s;
+- se o WhatsApp mostra avisos de bloqueio/limite que o vigia reconhece — e o que acontece com
+  a conta depois de dias de uso automático (o risco de bloqueio **não foi medido**);
+- o comportamento com o painel lateral fechado no meio da contagem (testado só em simulação).
+
 **Rode o checklist abaixo antes da primeira campanha real** e a cada atualização do
 WhatsApp Web. Se algo falhar, ajuste só `selectors.ts` (ou o sinal correspondente) e rode
 `npm test` de novo.
 
 ## 7. Checklist de teste manual
+
+**Modo automático (0.3.0)** — só depois do checklist manual abaixo, com 2 contatos de confiança:
+- [ ] Dados → Modo automático: o botão Ligar só habilita com a caixa marcada + `AUTOMATICO`; o selo AUTOMÁTICO aparece.
+- [ ] Iniciar: a conversa abre sozinha, o texto é colado e a contagem "Enviando para … em Ns" aparece.
+- [ ] **Cancelar** na contagem: nada é enviado e a caixa fica vazia.
+- [ ] Sem cancelar: a mensagem sai pelo botão de enviar; o painel registra e espera 90–180 s.
+- [ ] Digite algo em qualquer campo do WhatsApp antes do próximo: a extensão espera e tenta em 15 s.
+- [ ] Mude de conversa durante a contagem: nada é enviado e o contato vira "problema".
+- [ ] Desligue pelo botão: volta ao manual e o selo some.
 
 Use uma conta real, mas teste com **2 ou 3 contatos de confiança** (ex.: você mesmo em outro
 número salvo como "CLIENTE TESTE").
@@ -370,7 +457,9 @@ extensoes/vita-zap/
 │   │   ├── execucao.ts                abrir + colar + observar envio
 │   │   ├── contexto.ts                contexto invalidado: vigia + chamadas seguras
 │   │   ├── diagnostico.ts             pedido `diagnosticar` (somente leitura)
-│   │   ├── abrir-conversa.ts          únicos cliques simulados (linha da lista; X de limpar busca)
+│   │   ├── abrir-conversa.ts          cliques simulados (linha da lista; X de limpar busca)
+│   │   ├── envioAutomatico.ts         ÚNICO código que aciona o envio (modo automático, com token)
+│   │   ├── modoAutomatico.ts          permissão do automático (expira em 45 s sem o painel)
 │   │   ├── chat.ts                    título, mensagens, tipo/JID da conversa aberta
 │   │   ├── vigia.ts                   avisos do WhatsApp (desconexão, restrição, relógio)
 │   │   ├── geracao.ts                 geração do content script (reinjeção)
@@ -382,7 +471,8 @@ extensoes/vita-zap/
 │   │   ├── nomes.ts, contatos.ts      normalização, dedup
 │   │   ├── filtros.ts, politica.ts, texto.ts, campanha.ts
 │   │   ├── banco.ts, exportar.ts      IndexedDB, backup JSON, CSV
-│   │   ├── mensagens.ts               protocolo painel ↔ content (sem "enviar")
+│   │   ├── automatico.ts              estado, ritmo e token do modo automático
+│   │   ├── mensagens.ts               protocolo painel ↔ content (só `enviarAutomatico` aciona envio)
 │   │   ├── avisos.ts                  padrões de aviso/grupo (texto puro)
 │   │   └── ia.ts                      interface da fase 2 (desligada)
 │   └── sidepanel/                     React: Varredura, Prévia, Envio, Dados + executor.ts

@@ -14,7 +14,7 @@
 // data-testid estáveis valem como alternativa; classes com hash (_ak72 etc.) nunca.
 //
 // PROIBIDO: seletor do botão de enviar. A extensão não toca nele (teste em
-// tests/sem-envio-automatico.test.ts).
+// tests/envio-so-no-automatico-autorizado.test.ts).
 
 export const SELETORES = {
   /** Coluna da esquerda inteira (cabeçalho + busca + lista ou resultados da busca). */

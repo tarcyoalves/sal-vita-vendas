@@ -2,7 +2,8 @@
 // Depois, só observa o chat para perceber que a mensagem saiu e avisa o painel.
 //
 // Este arquivo não tem — e não pode ter — nada que envie: nem clique no botão de enviar,
-// nem evento de teclado. tests/sem-envio-automatico.test.ts falha se aparecer.
+// nem evento de teclado. O único código que aciona o envio (modo automático opt-in, 0.3.0) é
+// envioAutomatico.ts. tests/envio-so-no-automatico-autorizado.test.ts falha se aparecer outro.
 
 import type { CodigoErro, RespostaConteudo } from '../shared/mensagens';
 import { normalizarParaComparar, validarModelo } from '../shared/texto';

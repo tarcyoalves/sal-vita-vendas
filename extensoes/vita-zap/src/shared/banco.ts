@@ -6,6 +6,7 @@ import type { Campanha } from './campanha';
 import type { EventoDiagnostico } from './diagnostico';
 import type { ContatoVarrido } from './contatos';
 import type { Backup, Envio, NaoEnviar } from './exportar';
+import { ESTADO_AUTOMATICO_PADRAO, type EstadoAutomatico } from './automatico';
 import { normalizarConfig, type ConfigPolitica } from './politica';
 
 interface EsquemaVitaZap extends DBSchema {
@@ -18,6 +19,8 @@ interface EsquemaVitaZap extends DBSchema {
   emAndamento: { key: string; value: EmAndamento };
   /** Registro circular de diagnóstico (fora do backup). */
   diagnostico: { key: string; value: EventoDiagnostico };
+  /** Estado do modo automático (0.3.0). Fora do backup: importar um backup nunca liga o automático. */
+  automatico: { key: string; value: EstadoAutomatico };
 }
 
 /** O item em andamento de uma campanha (no máximo um por campanha). */
@@ -34,7 +37,7 @@ export interface EmAndamento {
 }
 
 export const NOME_BANCO = 'vita-zap';
-const VERSAO_BANCO = 3;
+const VERSAO_BANCO = 4;
 
 export type Banco = IDBPDatabase<EsquemaVitaZap>;
 
@@ -52,6 +55,7 @@ export function abrirBanco(nome: string = NOME_BANCO): Promise<Banco> {
       }
       if (versaoAntiga < 2) db.createObjectStore('emAndamento', { keyPath: 'campanhaId' });
       if (versaoAntiga < 3) db.createObjectStore('diagnostico', { keyPath: 'id' });
+      if (versaoAntiga < 4) db.createObjectStore('automatico', { keyPath: 'id' });
     },
   });
 }
@@ -154,6 +158,16 @@ export async function salvarConfig(db: Banco, cfg: ConfigPolitica): Promise<Conf
   const valor = normalizarConfig(cfg);
   await db.put('config', { id: 'politica', valor });
   return valor;
+}
+
+// ── Modo automático (0.3.0) ──────────────────────────────────────────────────
+
+export async function lerAutomatico(db: Banco): Promise<EstadoAutomatico> {
+  return (await db.get('automatico', 'estado')) ?? ESTADO_AUTOMATICO_PADRAO;
+}
+
+export async function salvarAutomatico(db: Banco, e: EstadoAutomatico): Promise<void> {
+  await db.put('automatico', e);
 }
 
 // ── Diagnóstico (registro circular; fora do backup) ─────────────────────────

@@ -150,8 +150,8 @@ describe('A2 — banco versão 2 (item em andamento)', () => {
     antigo.close();
 
     const db = await abrirBanco(nome);
-    expect(db.version).toBe(3);
-    expect([...db.objectStoreNames].sort()).toEqual(['campanhas', 'config', 'contatos', 'diagnostico', 'emAndamento', 'envios', 'naoEnviar']);
+    expect(db.version).toBe(4);
+    expect([...db.objectStoreNames].sort()).toEqual(['automatico', 'campanhas', 'config', 'contatos', 'diagnostico', 'emAndamento', 'envios', 'naoEnviar']);
     expect(await db.get('contatos', 'ana')).toMatchObject({ nome: 'Ana' });
     await salvarContatos(db, []); // continua utilizável
   });

@@ -4,7 +4,7 @@
 //
 // Abrir uma conversa ou limpar a busca não envia nada. Clique no botão de enviar, Enter ou
 // qualquer evento de teclado são proibidos em toda a extensão
-// (tests/sem-envio-automatico.test.ts falha se aparecerem). O envio é sempre do usuário.
+// (tests/envio-so-no-automatico-autorizado.test.ts falha se aparecerem). O envio é sempre do usuário.
 
 function criarEventoMouse(tipo: 'mousedown' | 'mouseup' | 'click', base: MouseEventInit): MouseEvent {
   try {

@@ -1,8 +1,11 @@
 // Protocolo entre o painel lateral e o content script do WhatsApp Web.
 //
-// Não existe pedido "enviar": o envio é sempre do usuário (Enter). O content script só lê a
-// lista, abre a conversa, cola o texto e observa se a mensagem saiu.
+// Modo manual (padrão): não existe pedido de envio; o envio é do usuário (Enter). O content
+// script só lê a lista, abre a conversa, cola o texto e observa se a mensagem saiu.
+// Modo automático (0.3.0, opcional): o ÚNICO pedido que aciona o envio é `enviarAutomatico`, que
+// exige um token de autorização do painel (por envio) e o modo automático ligado.
 
+import type { TokenEnvio } from './automatico';
 import type { LinhaBruta } from './contatos';
 
 export type PedidoConteudo =
@@ -18,7 +21,11 @@ export type PedidoConteudo =
   | { tipo: 'cancelarAbertura' }
   /** Envios detectados enquanto o painel estava fechado (e aviso do WhatsApp ainda visível). */
   | { tipo: 'consultarPendencias' }
-  | { tipo: 'confirmarPendencias'; ids: string[] };
+  | { tipo: 'confirmarPendencias'; ids: string[] }
+  /** Modo automático: o painel renova (ligado) ou revoga (desligado) a permissão do content script. */
+  | { tipo: 'modoAutomatico'; ligado: boolean }
+  /** Modo automático: aciona o envio da mensagem JÁ colada, se o token e o modo valerem. */
+  | { tipo: 'enviarAutomatico'; nome: string; texto: string; campanhaId: string; jid: string | null; token: TokenEnvio };
 
 export type CodigoErro =
   | 'seletor' // estrutura do WhatsApp Web não reconhecida → falha fechada, pausa tudo
@@ -34,6 +41,11 @@ export type CodigoErro =
   | 'usuario_digitando' // o foco está num campo com texto do usuário: não mexemos
   | 'texto_invalido' // o texto não passa na validação (link, tamanho, quebra de linha)
   | 'cancelado' // pausado durante a abertura
+  | 'envio_nao_autorizado' // automático: token ausente/expirado/usado/de outro envio, ou modo desligado
+  | 'texto_alterado' // automático: o texto da caixa não é mais exatamente o colado
+  | 'aviso_whatsapp' // automático: o WhatsApp mostra um aviso — não envia
+  | 'botao_enviar_ausente' // automático: botão de enviar do rodapé não encontrado
+  | 'envio_nao_confirmado' // automático: clique dado, mas a mensagem não foi percebida em 20 s
   | 'ocupado' // outra operação em andamento
   | 'interno';
 

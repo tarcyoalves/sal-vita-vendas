@@ -1,7 +1,7 @@
 // Utilidades de DOM do content script: esperar, escrever texto num campo e limpá-lo.
 //
 // Escrever texto NÃO envia nada: o envio do WhatsApp só acontece com Enter/botão, que são
-// sempre do usuário. Aqui não existe evento de teclado (ver tests/sem-envio-automatico.test.ts).
+// sempre do usuário. Aqui não existe evento de teclado (ver tests/envio-so-no-automatico-autorizado.test.ts).
 
 export function esperar(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));

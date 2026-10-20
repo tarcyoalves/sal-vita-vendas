@@ -2,7 +2,7 @@
 //
 // Só consulta o DOM (querySelector). Não importa dom.ts/lista.ts/execucao.ts de propósito:
 // aqui não pode existir nada que escreva, foque, clique ou dispare evento
-// (tests/sem-envio-automatico.test.ts confere). Não devolve nomes nem textos de mensagem.
+// (tests/envio-so-no-automatico-autorizado.test.ts confere). Não devolve nomes nem textos de mensagem.
 
 import type { CaixaBuscaDiagnosticada, DiagnosticoPagina, LinhasMensagemDiagnosticadas, SeletorDiagnosticado } from '../shared/mensagens';
 import { autorDaMensagem, classificarConversa, lerMensagens, lerSinaisDaConversa } from './chat';

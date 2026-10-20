@@ -29,6 +29,38 @@ export const MAX_VARIACOES = 3;
 /** Primeira mensagem curta. */
 export const TAMANHO_MAX_TEXTO = 500;
 
+// ── Modo automático (0.3.0, opcional) ───────────────────────────────────────
+// ⚠️ Envio automático pelo WhatsApp Web VIOLA os Termos do WhatsApp e pode bloquear o número de
+// forma permanente. Foi decisão escrita do dono, para clientes que já conversam com ele, em
+// volume baixo. Estes limites são tetos: nada no painel os afrouxa.
+
+/** Palavra que o usuário digita para ligar o modo automático. */
+export const PALAVRA_ACEITE_AUTOMATICO = 'AUTOMATICO';
+
+export const AUTO = {
+  /** Teto diário no automático (não configurável acima, mesmo que a política manual permita mais). */
+  tetoDiario: 30,
+  /** Intervalo aleatório entre envios. */
+  intervaloMinSeg: 90,
+  intervaloMaxSeg: 180,
+  /** Pausa longa aleatória, uma a cada `enviosAtePausaLonga` envios. */
+  pausaLongaMinSeg: 600,
+  pausaLongaMaxSeg: 1200,
+  enviosAtePausaLonga: 10,
+  /** Freio: este número de problemas seguidos desliga o automático (o manual usa 3). */
+  problemasParaDesligar: 2,
+  /** Contagem regressiva visível antes de enviar. */
+  contagemSeg: 8,
+  /** Depois do clique em enviar, quanto esperar o detector confirmar a mensagem. */
+  confirmacaoMs: 20_000,
+  /** Validade do token de autorização de um envio. */
+  tokenValidadeMs: 30_000,
+  /** Se o usuário está digitando, tenta abrir a conversa de novo depois disto. */
+  novaTentativaDigitandoMs: 15_000,
+  /** O content script só aceita enviar enquanto o painel renovou o modo há menos que isto. */
+  validadeModoMs: 45_000,
+} as const;
+
 /** Placeholder do primeiro nome no texto. */
 export const MARCADOR_PRIMEIRO_NOME = '{primeiroNome}';
 

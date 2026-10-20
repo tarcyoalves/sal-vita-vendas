@@ -1,8 +1,11 @@
-// Teste de CÓDIGO-FONTE: a extensão não pode ter nada que envie mensagem sozinha.
+// Teste de CÓDIGO-FONTE: envio só no modo automático autorizado (0.3.0).
 //
-// Envio automático pelo WhatsApp Web viola os Termos do WhatsApp e arrisca o banimento do
-// número (docs/PLANO-CAMPANHAS-WHATSAPP.md, seção 6). O envio é SEMPRE o Enter do usuário.
-// Se este teste falhar, NÃO "ajuste o teste": remova o código que dispara o envio.
+// Envio automático pelo WhatsApp Web viola os Termos do WhatsApp e arrisca o bloqueio
+// permanente do número (docs/PLANO-CAMPANHAS-WHATSAPP.md, seção 6). O padrão é o modo manual (o
+// Enter é do usuário). O dono decidiu, por escrito, oferecer um modo automático OPT-IN. Por isso
+// TODO código que aciona o envio fica em src/content/envioAutomatico.ts (uma função exportada,
+// `enviarSeAutorizado`), importado só pelo handler do pedido `enviarAutomatico`.
+// Se este teste falhar, NÃO "ajuste o teste": mova/remova o código que aciona o envio.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -31,7 +34,11 @@ function ocorrencias(re: RegExp, lista = arquivos): string[] {
   return lista.filter((a) => re.test(a.codigo)).map((a) => a.caminho);
 }
 
-describe('nenhum código dispara o envio', () => {
+const ARQUIVO_ENVIO = 'src/content/envioAutomatico.ts';
+const semEnvio = conteudo.filter((a) => a.caminho !== ARQUIVO_ENVIO);
+const arquivo = (caminho: string): string => arquivos.find((a) => a.caminho === caminho)?.codigo ?? '';
+
+describe('nenhum código dispara o envio fora do modo automático autorizado', () => {
   it('encontrou os arquivos-fonte (sanidade do teste)', () => {
     expect(arquivos.length).toBeGreaterThan(10);
     expect(conteudo.map((a) => a.caminho)).toContain('src/content/execucao.ts');
@@ -45,16 +52,23 @@ describe('nenhum código dispara o envio', () => {
     expect(ocorrencias(/['"`]Enter['"`]|keydown|keyup|keypress|beforeinput/i, conteudo)).toEqual([]);
   });
 
-  it('nenhum seletor/menção ao botão de enviar no content script', () => {
-    // Tira as APIs do Chrome (sendMessage/sendResponse) e procura "send"/"enviar".
-    const achados = conteudo
-      .filter((a) => /send|enviar/i.test(a.codigo.replace(/\bsendMessage\b|\bsendResponse\b/g, '')))
-      .map((a) => a.caminho);
+  it('nenhum seletor/menção ao botão de enviar no content script, exceto em envioAutomatico.ts (e o nome do pedido no handler)', () => {
+    // Tira as APIs do Chrome (sendMessage/sendResponse) e os nomes do caminho autorizado.
+    const permitidos = /\bsendMessage\b|\bsendResponse\b|\benviarAutomatico\b|\benviarSeAutorizado\b|\.\/envioAutomatico/g;
+    const achados = semEnvio.filter((a) => /send|enviar/i.test(a.codigo.replace(permitidos, ''))).map((a) => a.caminho);
     expect(achados).toEqual([]);
   });
 
-  it('nenhum .click() programático, submit ou requestSubmit', () => {
-    expect(ocorrencias(/\.click\s*\(|\.submit\s*\(|requestSubmit/)).toEqual([]);
+  it('nenhum submit/requestSubmit; .click() programático só em envioAutomatico.ts, uma única vez, no botão de enviar do rodapé', () => {
+    expect(ocorrencias(/\.submit\s*\(|requestSubmit/)).toEqual([]);
+    expect(ocorrencias(/\.click\s*\(/)).toEqual([ARQUIVO_ENVIO]);
+    const envio = arquivo(ARQUIVO_ENVIO);
+    expect(envio.match(/\.click\s*\(/g)).toHaveLength(1);
+    expect(envio.match(/(\w+)\.click\s*\(/)?.[1]).toBe('botao');
+    // O botão só vem destes três seletores, todos dentro de '#main footer'.
+    const seletores = [...envio.matchAll(/'(#main footer [^']*|#main footer button[^']*)'/g)].map((m) => m[1]);
+    expect(seletores.sort()).toEqual(['#main footer [data-icon="send"]', '#main footer button[aria-label="Enviar"]', '#main footer button[aria-label="Send"]'].sort());
+    expect(envio).toMatch(/closest\('#main footer'\)/);
   });
 
   it('dispatchEvent só em dom.ts (evento "input" de campo) e abrir-conversa.ts (clique na linha da lista)', () => {
@@ -89,13 +103,13 @@ describe('nenhum código dispara o envio', () => {
     expect(usos).toEqual(["chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] })"]);
   });
 
-  it('o protocolo não tem pedido de envio', () => {
-    const msgs = arquivos.find((a) => a.caminho === 'src/shared/mensagens.ts')?.codigo ?? '';
+  it('o protocolo tem UM só pedido que aciona envio: enviarAutomatico', () => {
+    const msgs = arquivo('src/shared/mensagens.ts');
     const tipos = [...msgs.matchAll(/tipo: '([a-zA-Z:]+)'/g)].map((m) => m[1]);
     expect(tipos).toEqual(
-      expect.arrayContaining(['verificar', 'varrer', 'abrirEColar', 'limparCaixa', 'pararObservacao']),
+      expect.arrayContaining(['verificar', 'varrer', 'abrirEColar', 'limparCaixa', 'pararObservacao', 'modoAutomatico', 'enviarAutomatico']),
     );
-    expect(tipos.filter((t) => /envi|send/i.test(t) && t !== 'vitaZap:envioDetectado')).toEqual([]);
+    expect(tipos.filter((t) => /envi|send/i.test(t) && t !== 'vitaZap:envioDetectado')).toEqual(['enviarAutomatico']);
   });
 
   it('manifesto não pede permissões que permitiriam digitar/enviar por fora', () => {
@@ -106,7 +120,7 @@ describe('nenhum código dispara o envio', () => {
   });
 });
 
-describe('cliques permitidos na 0.2: só a linha da lista e o X de limpar a busca', () => {
+describe('cliques permitidos: a linha da lista, o X de limpar a busca e (só em envioAutomatico.ts) o botão de enviar do rodapé', () => {
   const abrirConversa = arquivos.find((a) => a.caminho === 'src/content/abrir-conversa.ts')?.codigo ?? '';
   const execucao = arquivos.find((a) => a.caminho === 'src/content/execucao.ts')?.codigo ?? '';
 
@@ -153,20 +167,82 @@ describe('cliques permitidos na 0.2: só a linha da lista e o X de limpar a busc
     expect(corpoFocar).toMatch(/usuarioDigitando\(\)[\s\S]*el\.focus\(\)/);
   });
 
-  it('o protocolo da 0.2 continua sem pedido de envio', () => {
-    const msgs = arquivos.find((a) => a.caminho === 'src/shared/mensagens.ts')?.codigo ?? '';
+  it('os pedidos da 0.2 continuam no protocolo e só enviarAutomatico aciona envio', () => {
+    const msgs = arquivo('src/shared/mensagens.ts');
     const tipos = [...msgs.matchAll(/tipo: '([a-zA-Z:]+)'/g)].map((m) => m[1]);
     expect(tipos).toEqual(expect.arrayContaining(['cancelarAbertura', 'consultarPendencias', 'confirmarPendencias', 'vitaZap:aviso', 'vitaZap:observacaoExpirou']));
-    expect(tipos.filter((t) => /envi|send/i.test(t) && t !== 'vitaZap:envioDetectado')).toEqual([]);
+    expect(tipos.filter((t) => /envi|send/i.test(t) && t !== 'vitaZap:envioDetectado')).toEqual(['enviarAutomatico']);
+  });
+});
+
+describe('envioAutomatico.ts: uma função, autorizada, importada só pelo handler de enviarAutomatico', () => {
+  const envio = arquivo(ARQUIVO_ENVIO);
+  const index = arquivo('src/content/index.ts');
+
+  it('exporta exatamente uma função: enviarSeAutorizado (o resto é tipo)', () => {
+    const exportadas = [...envio.matchAll(/export\s+(?:async\s+)?(function|const|let|var|class)\s+(\w+)/g)].map((m) => `${m[1]} ${m[2]}`);
+    expect(exportadas).toEqual(['function enviarSeAutorizado']);
+    expect(envio).not.toMatch(/export\s*\{|export\s+default/);
+  });
+
+  it('só content/index.ts importa envioAutomatico, e só enviarSeAutorizado', () => {
+    expect(ocorrencias(/envioAutomatico['"]/).sort()).toEqual(['src/content/index.ts']);
+    expect(index.match(/import\s*\{([^}]*)\}\s*from '\.\/envioAutomatico'/)?.[1].trim()).toBe('enviarSeAutorizado');
+  });
+
+  it('enviarSeAutorizado só é chamada no case "enviarAutomatico" do handler, que checa modo ligado e token', () => {
+    expect(ocorrencias(/enviarSeAutorizado\s*\(/).sort()).toEqual([ARQUIVO_ENVIO, 'src/content/index.ts']);
+    expect(index.match(/enviarSeAutorizado\s*\(/g)).toHaveLength(1);
+    const caso = /case 'enviarAutomatico':([\s\S]*?)case 'varrer'/.exec(index)?.[1] ?? '';
+    expect(caso).toContain('enviarSeAutorizado(');
+    expect(caso).toMatch(/modoAutomaticoLigado\(\)/);
+    expect(caso).toMatch(/ehTokenEnvio\(pedido\.token\)/);
+    // A chamada vem DEPOIS das duas travas.
+    expect(caso.indexOf('modoAutomaticoLigado')).toBeLessThan(caso.indexOf('enviarSeAutorizado('));
+    expect(caso.indexOf('ehTokenEnvio')).toBeLessThan(caso.indexOf('enviarSeAutorizado('));
+  });
+
+  it('a função exige token (nome+texto+campanha, uso único, validade) e o modo ligado ANTES de qualquer clique', () => {
+    const corpo = /export async function enviarSeAutorizado[\s\S]*$/.exec(envio)?.[0] ?? '';
+    const iClique = corpo.indexOf('.click(');
+    for (const exigencia of ['recusaDoToken(', 'tokensUsados.add(', 'modoAutomaticoLigado()', 'contextoValido()', 'tituloAberto()', 'classificarConversaAberta(', 'textoIgualExato(', 'lerAvisoWhatsApp(', 'achouBotaoDeEnviar()']) {
+      const i = corpo.indexOf(exigencia);
+      expect(i, exigencia).toBeGreaterThan(-1);
+      expect(i, exigencia).toBeLessThan(iClique);
+    }
+    // Tudo síncrono entre a última conferência e o clique.
+    expect(corpo.slice(corpo.indexOf('\n'), iClique)).not.toMatch(/\bawait\b|setTimeout|Promise/);
+  });
+
+  it('sem teclado: nada de Enter/KeyboardEvent/dispatchEvent em envioAutomatico.ts', () => {
+    expect(envio).not.toMatch(/KeyboardEvent|InputEvent|keyCode|dispatchEvent|['"`]Enter['"`]|keydown|keyup|keypress|execCommand/);
+  });
+
+  it('o modo manual nunca chama o pedido: só o caminho iniciarContagem → concluirContagem do executor usa enviarAutomatico', () => {
+    expect(ocorrencias(/tipo: 'enviarAutomatico'/).sort()).toEqual(['src/shared/mensagens.ts', 'src/sidepanel/executor.ts']);
+    const ex = arquivo('src/sidepanel/executor.ts');
+    expect(ex.match(/tipo: 'enviarAutomatico'/g)).toHaveLength(1);
+    // O pedido está dentro de concluirContagem...
+    const corpoConcluir = /private async concluirContagem[\s\S]*?\n  \}\n/.exec(ex)?.[0] ?? '';
+    expect(corpoConcluir).toContain("tipo: 'enviarAutomatico'");
+    // ...que só é agendada por iniciarContagem...
+    expect(ex.match(/concluirContagem\(/g)).toHaveLength(2); // definição + agendamento
+    expect(/private async iniciarContagem[\s\S]*?\n  \}\n/.exec(ex)?.[0]).toContain('this.concluirContagem(');
+    // ...que só é chamada em passo(), dentro de "if (auto)".
+    expect(ex.match(/this\.iniciarContagem\(/g)).toHaveLength(1);
+    expect(ex).toMatch(/if \(auto\) \{\s*await this\.iniciarContagem\(/);
+    // E concluirContagem relê o banco: modo desligado → não pede.
+    expect(corpoConcluir.indexOf('lerAutomatico(')).toBeGreaterThan(-1);
+    expect(corpoConcluir.indexOf('lerAutomatico(')).toBeLessThan(corpoConcluir.indexOf("tipo: 'enviarAutomatico'"));
   });
 });
 
 describe('versão', () => {
-  it('manifest.json e package.json estão na mesma versão (0.2.2)', () => {
+  it('manifest.json e package.json estão na mesma versão (0.3.0)', () => {
     const manifesto = JSON.parse(readFileSync(join(RAIZ, 'public/manifest.json'), 'utf8')) as { version: string };
     const pacote = JSON.parse(readFileSync(join(RAIZ, 'package.json'), 'utf8')) as { version: string };
     expect(manifesto.version).toBe(pacote.version);
-    expect(pacote.version).toBe('0.2.2');
+    expect(pacote.version).toBe('0.3.0');
   });
 });
 

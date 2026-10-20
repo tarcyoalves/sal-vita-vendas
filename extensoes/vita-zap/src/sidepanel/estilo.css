@@ -67,6 +67,34 @@ body {
   color: var(--suave);
 }
 
+/* Modo automático (0.3.0) */
+.selo.auto {
+  background: var(--erro);
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.estado-contagem,
+.estado-confirmando {
+  border-color: var(--erro);
+  border-width: 2px;
+}
+
+.contagem-envio {
+  color: var(--erro);
+}
+
+.risco {
+  border: 2px solid var(--erro);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 8px 0;
+  font-weight: 600;
+}
+
 .abas {
   display: flex;
   gap: 4px;

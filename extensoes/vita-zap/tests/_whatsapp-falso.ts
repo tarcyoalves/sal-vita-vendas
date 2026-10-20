@@ -46,6 +46,13 @@ export interface OpcoesFalso {
    * existe enquanto há texto; ao lado há o botão "Dados do perfil". Sem isto vale o layout antigo.
    */
   buscaSemRotulo?: boolean;
+  /**
+   * Botão de enviar no rodapé (0.3.0, modo automático). 'enviar' = envia a mensagem quando clicado;
+   * 'ignorar' = o clique não faz nada (o WhatsApp não enviou). Padrão: sem botão.
+   */
+  botaoEnviar?: 'enviar' | 'ignorar';
+  /** Como o botão se apresenta: aria-label "Enviar" (padrão), "Send" ou só o ícone data-icon="send". */
+  rotuloBotaoEnviar?: 'Enviar' | 'Send' | 'icone';
 }
 
 const EMOJI = /\p{Extended_Pictographic}/gu;
@@ -64,6 +71,11 @@ export function montarWhatsAppFalso(contatos: ContatoFalso[], opcoes: OpcoesFals
       <button type="button" aria-label="End icon button" id="x-busca"></button>`
     : `<div><input role="textbox" aria-label="Pesquisar ou começar uma nova conversa" /></div>
       <button type="button" aria-label="Limpar pesquisa" id="x-busca"></button>`;
+  const botaoEnviarHtml = !opcoes.botaoEnviar
+    ? ''
+    : opcoes.rotuloBotaoEnviar === 'icone'
+      ? '<button type="button" id="enviar"><span data-icon="send"></span></button>'
+      : `<button type="button" id="enviar" aria-label="${opcoes.rotuloBotaoEnviar ?? 'Enviar'}"></button>`;
   document.body.innerHTML = `
     <div id="side">
       ${colunaEsquerda}
@@ -72,7 +84,7 @@ export function montarWhatsAppFalso(contatos: ContatoFalso[], opcoes: OpcoesFals
     <div id="main">
       <header><span dir="auto" title=""></span></header>
       <div id="mensagens"></div>
-      <footer><div contenteditable="true" role="textbox" tabindex="0" id="caixa"></div></footer>
+      <footer><div contenteditable="true" role="textbox" tabindex="0" id="caixa"></div>${botaoEnviarHtml}</footer>
     </div>`;
 
   const busca = document.querySelector<HTMLInputElement>('#side input') as HTMLInputElement;
@@ -190,6 +202,24 @@ export function montarWhatsAppFalso(contatos: ContatoFalso[], opcoes: OpcoesFals
   renderLista('');
   mostrarX();
 
+  function enviarComoUsuario(texto: string, comoClasse = false): void {
+    caixa.innerHTML = '';
+    contador += 1;
+    const jid = aberto?.jid ?? 'x@c.us';
+    const id = comoClasse || novo(aberto) || real(aberto) ? `3EB0${contador}` : `true_${jid}_N${contador}`;
+    const bloco = real(aberto)
+      ? msgRealHtml(id, texto, aberto?.meuNome ?? 'Tarcyo')
+      : novo(aberto)
+        ? msgNovaHtml(id, texto, 'out', null)
+        : msgHtml(id, texto, comoClasse ? 'message-out' : '');
+    historico.set(jid, [...(historico.get(jid) ?? []), bloco]);
+    mensagens.insertAdjacentHTML('beforeend', bloco);
+  }
+  document.getElementById('enviar')?.addEventListener('click', () => {
+    cliques.push('enviar');
+    if (opcoes.botaoEnviar === 'enviar') enviarComoUsuario(caixa.textContent ?? '');
+  });
+
   return {
     busca,
     caixa,
@@ -209,19 +239,7 @@ export function montarWhatsAppFalso(contatos: ContatoFalso[], opcoes: OpcoesFals
       caixa.innerHTML = html(texto);
     },
     /** O usuário aperta Enter: a caixa esvazia e a mensagem aparece no chat como sua. */
-    enviarComoUsuario: (texto: string, comoClasse = false) => {
-      caixa.innerHTML = '';
-      contador += 1;
-      const jid = aberto?.jid ?? 'x@c.us';
-      const id = comoClasse || novo(aberto) || real(aberto) ? `3EB0${contador}` : `true_${jid}_N${contador}`;
-      const bloco = real(aberto)
-        ? msgRealHtml(id, texto, aberto?.meuNome ?? 'Tarcyo')
-        : novo(aberto)
-          ? msgNovaHtml(id, texto, 'out', null)
-          : msgHtml(id, texto, comoClasse ? 'message-out' : '');
-      historico.set(jid, [...(historico.get(jid) ?? []), bloco]);
-      mensagens.insertAdjacentHTML('beforeend', bloco);
-    },
+    enviarComoUsuario,
     trocarParaOutraConversa: (c: ContatoFalso) => abrirConversa(c),
   };
 }

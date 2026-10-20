@@ -1,13 +1,18 @@
 // Content script do WhatsApp Web: recebe pedidos do painel lateral e responde.
 // Pedidos possíveis: verificar, diagnosticar (só leitura), varrer (só leitura), abrirEColar, limparCaixa, pararObservacao,
-// cancelarAbertura, consultarPendencias, confirmarPendencias. Não existe pedido de envio.
+// cancelarAbertura, consultarPendencias, confirmarPendencias, modoAutomatico e enviarAutomatico.
+// No modo manual (padrão) nada aciona o envio. O ÚNICO caminho de envio é `enviarAutomatico`
+// (modo automático opt-in, 0.3.0): exige o modo ligado e um token do painel por envio.
 
+import { ehTokenEnvio } from '../shared/automatico';
 import type { EventoConteudo, PedidoConteudo, PendenciaEnvio, RespostaConteudo } from '../shared/mensagens';
 import { contextoValido, emitirSeguro, idDaExtensao, iniciarVigiaDeContexto } from './contexto';
 import { diagnosticarPagina } from './diagnostico';
 import { abrirEColar, cancelarAbertura, limparBuscaPeloBotao, limparCaixa, pararObservacao } from './execucao';
 import { assumirGeracao } from './geracao';
+import { enviarSeAutorizado } from './envioAutomatico';
 import { ErroSeletor, ErroUsuarioDigitando } from './lista';
+import { definirModoAutomatico, modoAutomaticoLigado } from './modoAutomatico';
 import { encontrar } from './selectors';
 import { varrerLista } from './varredura';
 import { iniciarVigia, lerAvisoWhatsApp, novoEstadoVigia, pararVigia } from './vigia';
@@ -18,6 +23,7 @@ let vigiaContexto: { parar: () => void } | null = null;
 let encerrado = false;
 
 const geracao = assumirGeracao(() => {
+  definirModoAutomatico(false);
   pararObservacao();
   pararVigia();
   vigiaContexto?.parar();
@@ -28,6 +34,7 @@ function encerrar(): void {
   if (encerrado) return;
   encerrado = true;
   try {
+    definirModoAutomatico(false);
     pararObservacao();
     pararVigia();
     vigiaContexto?.parar();
@@ -99,6 +106,17 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
       geracao.estado.pendencias = geracao.estado.pendencias.filter((p) => !ids.has(p.id));
       return { ok: true };
     }
+    case 'modoAutomatico':
+      definirModoAutomatico(pedido.ligado);
+      return { ok: true };
+    case 'enviarAutomatico': {
+      // Dupla trava no handler: modo ligado e token presente. A função ainda valida o token
+      // (nome+texto+campanha, uso único, 30 s) e reconfere a conversa.
+      if (!modoAutomaticoLigado() || !ehTokenEnvio(pedido.token)) {
+        return { ok: false, codigo: 'envio_nao_autorizado', erro: 'Envio recusado: modo automático desligado ou sem token do painel.' };
+      }
+      return enviarSeAutorizado({ nome: pedido.nome, texto: pedido.texto, campanhaId: pedido.campanhaId, jid: pedido.jid, token: pedido.token });
+    }
     case 'varrer': {
       const idioma = idiomaSuportado();
       if (idioma) return { ok: false, codigo: 'seletor', erro: idioma };
@@ -132,7 +150,7 @@ function ouvir(mensagem: PedidoConteudo, remetente: { id?: string }, responder: 
     return false;
   }
   if (remetente.id !== meuId) return false;
-  const longo = mensagem.tipo === 'varrer' || mensagem.tipo === 'abrirEColar';
+  const longo = mensagem.tipo === 'varrer' || mensagem.tipo === 'abrirEColar' || mensagem.tipo === 'enviarAutomatico';
   if (longo && ocupado) {
     responder({ ok: false, codigo: 'ocupado', erro: 'Outra operação ainda está em andamento.' });
     return false;

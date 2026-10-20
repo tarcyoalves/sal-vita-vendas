@@ -22,6 +22,8 @@ const ROTULO_FASE: Record<EstadoExecutor['fase'], string> = {
   parada: 'Parada',
   abrindo: 'Abrindo a conversa…',
   aguardando_envio: 'Confira o texto no WhatsApp e aperte Enter lá',
+  contagem: 'Enviando automaticamente…',
+  confirmando: 'Confirmando que a mensagem saiu…',
   intervalo: 'Intervalo entre contatos',
   proximo_pronto: 'Próximo pronto — clique em Abrir próximo',
   concluida: 'Concluída',
@@ -82,7 +84,7 @@ export function Execucao({ db, registro, dados, campanhaId, aoEscolher, aoMudar 
   }, [estado?.campanha]);
 
   useEffect(() => {
-    if (estado?.fase !== 'intervalo') return;
+    if (estado?.fase !== 'intervalo' && estado?.fase !== 'contagem' && estado?.fase !== 'confirmando') return;
     const t = setInterval(() => setAgora(Date.now()), 1000);
     return () => clearInterval(t);
   }, [estado?.fase]);
@@ -134,6 +136,11 @@ export function Execucao({ db, registro, dados, campanhaId, aoEscolher, aoMudar 
       <div className={`cartao estado-${comProblemas ? 'concluida_problemas' : estado.fase}`}>
         <h3>{comProblemas ? 'Concluída com problemas' : ROTULO_FASE[estado.fase]}</h3>
         {estado.fase === 'intervalo' && faltaSeg != null && <p className="contagem">Próximo em {faltaSeg} s</p>}
+        {estado.fase === 'contagem' && item && faltaSeg != null && (
+          <p className="contagem contagem-envio" role="status">
+            Enviando para <b>{item.nome}</b> em {faltaSeg}s
+          </p>
+        )}
         {estado.mensagem && <p className={estado.fase === 'concluida' && !comProblemas ? 'info' : 'aviso'}>{estado.mensagem}</p>}
         {item && (
           <>
@@ -169,7 +176,12 @@ export function Execucao({ db, registro, dados, campanhaId, aoEscolher, aoMudar 
               Abrir próximo (Alt+Shift+P)
             </button>
           )}
-          {rodando && (
+          {estado.fase === 'contagem' && (
+            <button type="button" className="perigo" onClick={() => void executor.cancelarEnvio()}>
+              Cancelar
+            </button>
+          )}
+          {rodando && estado.fase !== 'contagem' && (
             <button type="button" onClick={() => void executor.pausar()}>
               Pausar
             </button>
@@ -191,6 +203,13 @@ export function Execucao({ db, registro, dados, campanhaId, aoEscolher, aoMudar 
           </div>
         )}
       </div>
+
+      {estado.alertaAutomatico && (
+        <div className="alerta" role="alert">
+          <h3>Modo automático desligado</h3>
+          <p>{estado.alertaAutomatico}</p>
+        </div>
+      )}
 
       {(erros.length > 0 || erroGeral) && (
         <div className="alerta" role="alert">
