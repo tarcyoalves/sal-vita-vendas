@@ -22,6 +22,7 @@ import {
   chipsDosProdutos, comoVeredito, escolherEfetivo, maisRecentePorProduto, planoDeCache, resumirResultados, selecionarParaConsolidado,
   validarProdutos, type ResultadoProduto,
 } from '../lib/credito/produtos';
+import { documentosLiberadosPorTarefa } from '../lib/credito/carteira';
 import { montarFiltrosListagem, POR_PAGINA_MAX } from '../lib/credito/listagem';
 import { documentosVisiveis, montarSemaforos, normalizarDocumentosSemaforo, SEMAFOROS_MAX_DOCUMENTOS } from '../lib/credito/semaforos';
 import {
@@ -51,16 +52,12 @@ async function sellerIdDoUsuario(userId: number): Promise<number | null> {
   return row?.id ?? null;
 }
 
-/** Atendente só vê documento de tarefa dele (tasks.cnpj) ou de pedido dele (fat_orders.sellerId). */
+/**
+ * Atendente só vê documento de PEDIDO dele (fat_orders.seller_id) ou de tarefa dele que JÁ existia antes da
+ * primeira consulta de crédito do documento (tasks.cnpj é digitado pelo atendente; ver server/lib/credito/carteira.ts).
+ */
 async function atendentePodeVerDocumento(user: { id: number; name: string }, documento: string): Promise<boolean> {
-  const filtro = await userTaskFilter(user.id, user.name ?? '');
-  const [t] = await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.cnpj, documento), filtro)).limit(1);
-  if (t) return true;
-  const sid = await sellerIdDoUsuario(user.id);
-  if (sid === null) return false;
-  const r = await db.execute(sql`
-    SELECT 1 FROM fat_orders WHERE seller_id = ${sid}::integer AND regexp_replace(cnpj, '\\D', '', 'g') = ${documento} LIMIT 1`);
-  return r.rows.length > 0;
+  return (await documentosDaCarteira(user, [documento])).has(documento);
 }
 
 type LinhaSemBruto = Omit<typeof creditReports.$inferSelect, 'payloadBruto'>;
@@ -85,13 +82,21 @@ function cartaoDoRelatorio(row: LinhaSemBruto, efetivo: { veredito: Veredito; va
   };
 }
 
-/** Dos documentos pedidos, os que o atendente enxerga: de tarefa dele (tasks.cnpj) ou de pedido dele (fat_orders). */
+/** Dos documentos pedidos, os que o atendente enxerga: de pedido dele (fat_orders) ou de tarefa dele anterior à 1ª consulta de crédito. */
 async function documentosDaCarteira(user: { id: number; name: string }, documentos: string[]): Promise<Set<string>> {
   const out = new Set<string>();
   if (documentos.length === 0) return out;
   const filtro = await userTaskFilter(user.id, user.name ?? '');
-  const deTarefas = await db.select({ cnpj: tasks.cnpj }).from(tasks).where(and(inArray(tasks.cnpj, documentos), filtro));
-  for (const t of deTarefas) if (t.cnpj) out.add(t.cnpj);
+  const deTarefas = await db.select({ cnpj: tasks.cnpj, criadaEm: tasks.createdAt }).from(tasks).where(and(inArray(tasks.cnpj, documentos), filtro));
+  if (deTarefas.length > 0) {
+    const docsTarefa = [...new Set(deTarefas.flatMap((t) => (t.cnpj ? [t.cnpj] : [])))];
+    const primeiras = await db.select({ documento: creditReports.documento, primeira: sql<Date | string>`min(${creditReports.consultadoEm})` })
+      .from(creditReports).where(inArray(creditReports.documento, docsTarefa)).groupBy(creditReports.documento);
+    const mapa = new Map(primeiras.map((p) => [p.documento, p.primeira]));
+    const liberados = documentosLiberadosPorTarefa(
+      deTarefas.flatMap((t) => (t.cnpj ? [{ documento: t.cnpj, criadaEm: t.criadaEm }] : [])), mapa);
+    for (const d of liberados) out.add(d);
+  }
   const sid = await sellerIdDoUsuario(user.id);
   if (sid !== null) {
     const lista = sql.join(documentos.map((d) => sql`${d}::text`), sql`, `);

@@ -8,6 +8,7 @@ import { tasks, sellers, users, taskDeletionLogs } from '../db/schema';
 import { runTriggerNow, cancelAllEnrollments } from '../email/automations';
 import { normalizeBrPhone, phoneOfTask } from '../../shared/phone';
 import { searchTerms, SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../shared/searchText';
+import { validarDocumentoDaTarefa } from '../lib/taskDocumento';
 import { isNewContact } from '../lib/taskNotes';
 import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento } from '../lib/taskImport';
 
@@ -144,6 +145,9 @@ export const tasksRouter = router({
       phone: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
+      // CNPJ/CPF da tarefa libera leitura de crédito: vazio é ok, preenchido tem que ter DV válido.
+      const doc = validarDocumentoDaTarefa(input.cnpj);
+      if (!doc.ok) throw new TRPCError({ code: 'BAD_REQUEST', message: doc.erro });
       // assignedTo livre plantava tarefa na lista de outro atendente: o nome informado
       // tem que existir no cadastro (o padrão, o próprio usuário, não precisa).
       const assignedTo = input.assignedTo?.trim()
@@ -167,7 +171,7 @@ export const tasksRouter = router({
         priority: input.priority,
         assignedTo,
         status: 'pending',
-        cnpj: normalizeCnpj(input.cnpj),
+        cnpj: doc.documento,
         // Telefone só no título/anotações também vale: sem isto os botões de WhatsApp/Ligar
         // da lista só apareciam depois da primeira edição.
         phone: normalizePhone(input.phone) ?? phoneOfTask({ title: input.title, notes: input.notes ?? null }),
