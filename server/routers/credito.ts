@@ -23,6 +23,7 @@ import {
   validarProdutos, type ResultadoProduto,
 } from '../lib/credito/produtos';
 import { documentosLiberadosPorTarefa } from '../lib/credito/carteira';
+import { diaBrCompacto } from '../lib/fusoBr';
 import { montarFiltrosListagem, POR_PAGINA_MAX } from '../lib/credito/listagem';
 import { documentosVisiveis, montarSemaforos, normalizarDocumentosSemaforo, SEMAFOROS_MAX_DOCUMENTOS } from '../lib/credito/semaforos';
 import {
@@ -659,7 +660,7 @@ export const creditoRouter = router({
         const buf = await gerarPdfCredito(row.relatorio, {
           veredito: comoVeredito(row.veredito), motivos: row.motivos, consultadoPor: autor?.name ?? null, produto: row.produto,
         }, row.payloadBruto);
-        const dia = row.consultadoEm.toISOString().slice(0, 10).replace(/-/g, '');
+        const dia = diaBrCompacto(row.consultadoEm);
         return { nomeArquivo: `analise-credito-${row.documento}-${dia}.pdf`, base64: buf.toString('base64') };
       } catch (e) {
         console.error('[credito] pdf falhou:', e instanceof Error ? e.message : 'erro');

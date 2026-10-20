@@ -3,6 +3,7 @@ import {
   totalItens, pesoTotalItens, freteTotal, freteUnitItem, formatBRL, formatKg, formatPrazo,
 } from '../../client/src/lib/faturamento/calc';
 import { EMPRESA } from '../../shared/const';
+import { OPCOES_FUSO_BR } from '../lib/fusoBr';
 import type { Pedido } from '../../client/src/lib/faturamento/types';
 
 // PDF anexado ao e-mail — espelha o documento de impressão (OrderPrintDocument.tsx)
@@ -52,7 +53,7 @@ const styles = StyleSheet.create({
 function fmtDate(iso: string | null): string {
   if (!iso) return '--';
   const d = new Date(iso);
-  return isNaN(d.getTime()) ? '--' : d.toLocaleDateString('pt-BR');
+  return isNaN(d.getTime()) ? '--' : d.toLocaleDateString('pt-BR', OPCOES_FUSO_BR);
 }
 
 function PedidoDocument({ pedido }: { pedido: Pedido }) {

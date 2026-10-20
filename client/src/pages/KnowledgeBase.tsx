@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { BookOpen, Plus, Trash2 } from "lucide-react";
 import { QueryError } from "../components/QueryError";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { useAuth } from '../_core/hooks/useAuth';
 
 interface KnowledgeDoc {
   id: number;
@@ -24,6 +25,9 @@ interface KnowledgeDoc {
 }
 
 export default function KnowledgeBase() {
+  const { user } = useAuth();
+  // Só admin e gerente escrevem na base (o servidor também recusa atendente).
+  const podeEditar = user?.role === 'admin' || user?.role === 'manager';
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     title: "",
@@ -75,14 +79,14 @@ export default function KnowledgeBase() {
       <PageHeader
         title="Base de Conhecimento"
         description="Documentos e diretrizes que alimentam o contexto do assistente de IA."
-        actions={
+        actions={podeEditar ? (
           <Button variant={showForm ? "outline" : "default"} onClick={() => setShowForm(!showForm)}>
             {showForm ? "Cancelar" : (<><Plus /> Novo documento</>)}
           </Button>
-        }
+        ) : undefined}
       />
 
-      {showForm && (
+      {podeEditar && showForm && (
         <Panel>
           <PanelHeader title="Novo documento" />
           <form onSubmit={handleSubmit} className="space-y-4 p-4">
@@ -156,7 +160,7 @@ export default function KnowledgeBase() {
             icon={<BookOpen />}
             title="Nenhum documento na base de conhecimento"
             description="Adicione instruções e políticas do negócio para a IA usar nas respostas."
-            action={!showForm ? <Button onClick={() => setShowForm(true)}><Plus /> Novo documento</Button> : undefined}
+            action={podeEditar && !showForm ? <Button onClick={() => setShowForm(true)}><Plus /> Novo documento</Button> : undefined}
           />
         </Panel>
       ) : (
@@ -178,7 +182,7 @@ export default function KnowledgeBase() {
                     Adicionado em {new Date(doc.createdAt).toLocaleDateString("pt-BR")}
                   </p>
                 </div>
-                <Button
+                {podeEditar && <Button
                   variant="ghost"
                   size="icon-sm"
                   onClick={() => setConfirmDeleteId(doc.id)}
@@ -187,7 +191,7 @@ export default function KnowledgeBase() {
                   className="text-slate-500 hover:text-red-700"
                 >
                   <Trash2 />
-                </Button>
+                </Button>}
               </li>
             ))}
           </ul>
