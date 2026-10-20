@@ -40,6 +40,10 @@ import { SMBI_ESTADOS_QUE_PARAM } from '../shared/smbiEstados';
 import { dentroDaJanelaDoRobo, janelaDoAmbiente, pollingBarradoPelaJanela } from '../shared/smbiJanela';
 import { registerSmbiExtraRoutes } from '../server/smbiRoutes';
 import { registerSmbiCadastroRoutes } from '../server/smbiCadastroRoutes';
+import { criarSchemaPreguicoso } from '../server/lib/schemaPreguicoso';
+import { schemasNecessarios, SO_CRM, SO_LOJA, type Schemas } from '../server/lib/schemasNecessarios';
+import { getCookieFromRequest } from '../server/auth';
+import { COOKIE_NAME } from '../shared/const';
 
 function isBusinessHours(): boolean {
   const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
@@ -179,37 +183,59 @@ const app = express();
 // Vercel sits behind a proxy — trust first hop so rate limiters see real client IPs
 app.set('trust proxy', 1);
 
-// Resolve after ms regardless of whether the promise settled, to avoid hanging cold starts
-function withTimeout(p: Promise<unknown>, ms: number, label: string): Promise<unknown> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let grace: ReturnType<typeof setTimeout> | undefined;
-  let settled = false;
-  p.then(() => { settled = true; clearTimeout(grace); }, () => { settled = true; clearTimeout(grace); });
-  const estourou = new Promise<void>(resolve => {
-    timer = setTimeout(() => {
-      // A Vercel pode congelar a instância entre a inicialização e a 1ª requisição: ao
-      // acordar, o cronômetro vence na hora mesmo com o banco respondendo normalmente
-      // (no build a migração inteira leva ~1 s). Por isso só avisa se ela AINDA não
-      // terminou 5 s depois do limite — aí sim é uma migração travada ou incompleta
-      // (faturamento zerado em 28/09, HANDOFF-HERMES.md caso N).
-      grace = setTimeout(() => {
-        if (!settled) console.warn(`[startup] ${label} ainda não terminou ${Math.round((ms + 5000) / 1000)} s depois de iniciar — a migração pode ter ficado incompleta`);
-      }, 5000);
-      resolve();
-    }, ms);
-  });
-  return Promise.race([p, estourou]).finally(() => clearTimeout(timer));
+// ── Schema do banco: migração PREGUIÇOSA ────────────────────────────────────────
+// Antes isto rodava no carregamento do módulo e todo cold start (inclusive robô SMBI fora da
+// janela e login da loja, que não usam banco) acordava os DOIS Neon. Agora cada migração só
+// começa quando alguma requisição precisa daquele banco (server/lib/schemasNecessarios.ts decide
+// quem precisa de quê) e é memoizada por instância; falha permite nova tentativa com backoff.
+// NUNCA chame ensure*TablesExist() no topo do módulo (tests/schema-preguicoso.test.ts reprova).
+const ensureCrmSchema = criarSchemaPreguicoso({
+  nome: 'ensureTablesExist',
+  timeoutMs: 20_000,
+  executar: async () => {
+    await ensureTablesExist();
+  },
+});
+
+// Loja = banco ORDERS_DATABASE_URL: pedidos/carrinhos/cupons (orders) + prospecção B2B (b2b).
+const ensureOrdersSchema = criarSchemaPreguicoso({
+  nome: 'ensureOrdersTablesExist',
+  timeoutMs: 10_000,
+  executar: async () => {
+    const [pedidos, b2b] = await Promise.all([ensureOrdersTablesExist(), ensureB2bTablesExist()]);
+    // Essas funções não lançam: devolvem os passos. Passo com erro (ex.: Neon dormindo →
+    // "fetch failed") vira exceção para a próxima requisição tentar de novo, com backoff.
+    const falhos = [...pedidos, ...b2b].filter(passo => !passo.ok);
+    if (falhos.length) {
+      throw new Error(`${falhos.length} passo(s) falharam: ${falhos.slice(0, 3).map(f => f.name).join(', ')}`);
+    }
+  },
+});
+
+/** Espera só os schemas pedidos (um banco que ninguém pediu continua dormindo). Nunca rejeita. */
+async function garantirSchemas(precisa: Schemas): Promise<void> {
+  await Promise.all([
+    precisa.crm ? ensureCrmSchema.garantir() : undefined,
+    precisa.loja ? ensureOrdersSchema.garantir() : undefined,
+  ]);
 }
 
-const dbReady = Promise.all([
-  withTimeout(ensureTablesExist(), 20_000, 'ensureTablesExist').catch(err => console.error('DB init error:', err)),
-  withTimeout(ensureOrdersTablesExist(), 10_000, 'ensureOrdersTablesExist').catch(err => console.error('Orders DB init error:', err)),
-  withTimeout(ensureB2bTablesExist(), 10_000, 'ensureB2bTablesExist').catch(err => console.error('B2B DB init error:', err)),
-]);
+/** Decide pelo caminho/método/query/horário da requisição (função pura) e espera os schemas. */
+function aguardarSchemasDaRequisicao(req: express.Request): Promise<void> {
+  return garantirSchemas(schemasNecessarios({
+    metodo: req.method,
+    caminho: req.originalUrl.split('?')[0],
+    query: req.query as Record<string, unknown>,
+    agora: new Date(),
+    janelaConfig: janelaDoAmbiente(),
+    sessaoCrm: !!getCookieFromRequest(req.headers.cookie, COOKIE_NAME),
+  }));
+}
 
-// Set once dbReady settles so the guard middleware only blocks the very first request
-let migrationSettled = false;
-dbReady.then(() => { migrationSettled = true; });
+/** Middleware de rota: depois do limiter e ANTES do handler (rotas públicas sem segredo próprio). */
+const aguardarSchemasMw: express.RequestHandler = (req, _res, next) => {
+  aguardarSchemasDaRequisicao(req).then(() => next(), next);
+};
 
 // SY4: Resend tracking + webhook events IIFE removed — it ran HTTP calls to
 // Resend API on every cold start unnecessarily (tracking is already configured).
@@ -260,7 +286,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
 }));
 
-// DB connectivity probe — bypasses the dbReady wait intentionally.
+// DB connectivity probe — não espera (nem dispara) a migração de propósito.
 // Public, so it only answers ok/not-ok. The driver's error message can carry the
 // host, database name and role, and the round-trip time is a free signal about
 // infrastructure; both are logged server-side instead of returned to the caller.
@@ -324,9 +350,9 @@ import { csrfRejection } from '../server/lib/csrfGuard';
 import { STORE_URL } from '../server/lib/storeUrl';
 import { decidirTransicaoPagamento, idPagamentoMpValido, pagamentoAprovadoDuplicado, estornoPertenceAoPedido, motivoValorDivergente } from '../server/lib/paymentTransition';
 
-app.get('/api/unsubscribe', handleUnsubscribe);
+app.get('/api/unsubscribe', aguardarSchemasMw, handleUnsubscribe);
 // RFC 8058 one-click unsubscribe sends a POST request
-app.post('/api/unsubscribe', express.urlencoded({ extended: false }), handleUnsubscribe);
+app.post('/api/unsubscribe', express.urlencoded({ extended: false }), aguardarSchemasMw, handleUnsubscribe);
 
 // Webhook Resend/Svix HMAC time-safe signature verification.
 // Dois produtos recebem em /api/resend-webhook: o Premium assina com RESEND_WEBHOOK_SECRET
@@ -335,17 +361,14 @@ app.post('/api/unsubscribe', express.urlencoded({ extended: false }), handleUnsu
 app.post('/api/resend-webhook', express.raw({ type: 'application/json' }), (req, res, next) => {
   const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
   if (process.env.RESEND_WEBHOOK_SECRET && verifySvixSignature(req, raw)) {
-    void handleResendWebhook(req, res);
+    // Assinatura do Premium válida: só o banco da loja entra em jogo.
+    void garantirSchemas(SO_LOJA).then(() => handleResendWebhook(req, res));
     return;
   }
   next();
 });
 
 
-// Run schema migration in background — do NOT block requests.
-// Tables already exist from prior successful migration; new instances
-// should not wait 10s for migration before serving any tRPC call.
-dbReady.catch(err => console.error('Background dbReady failed:', err));
 
 const adminApiLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -433,6 +456,7 @@ app.post('/api/me-webhook', webhookLimiter, express.raw({ type: '*/*' }), async 
   let payload: { event?: string; data?: MeTrackingInfo };
   try { payload = JSON.parse(raw.toString('utf8')); } catch { res.status(400).json({ error: 'Invalid JSON' }); return; }
   try {
+    await aguardarSchemasDaRequisicao(req); // assinatura já validada: só agora acorda o banco da loja
     const result = await handleMeWebhookEvent(payload);
     console.log(`[me-webhook] ${payload.event ?? '?'}: ${result}`);
     res.json({ ok: true });
@@ -502,6 +526,7 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
     const orderId = parseInt(payment.external_reference ?? '');
     if (!orderId) { res.json({ ok: true }); return; }
 
+    await aguardarSchemasDaRequisicao(req); // pagamento verificado na API do MP: só agora acorda o banco da loja
     const orderRows = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, orderId));
     const order = orderRows[0];
     if (!order) { res.json({ ok: true }); return; }
@@ -635,6 +660,7 @@ app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'appli
     ).toLowerCase().trim();
 
     console.log(`[resend-webhook] type=${eventType} msgId=${messageId} to=${maskEmail(recipientEmail)}`);
+    await garantirSchemas(SO_CRM); // assinatura do CRM válida: só o banco do CRM entra em jogo
 
     if (!recipientEmail) {
       res.status(200).json({ ok: true });
@@ -720,6 +746,7 @@ app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb
     const messageId = rawMsgId.replace(/^<|>$/g, '');
 
     console.log(`[brevo-webhook] event=${event} msgId=${messageId} to=${maskEmail(recipientEmail)}`);
+    await garantirSchemas(SO_CRM); // segredo já validado
 
     if (!recipientEmail) {
       res.status(200).json({ ok: true });
@@ -888,6 +915,7 @@ app.post('/api/b2b/inbound', b2bInboundLimiter, express.json({ limit: '256kb' })
     const phoneDigits = data.whatsapp.replace(/\D/g, '');
     const cnpjDigits = data.cnpj.replace(/\D/g, '');
 
+    await aguardarSchemasDaRequisicao(req); // corpo já validado: só agora acorda o banco da loja
     // Suppression check — never create/update a company or contact for a
     // suppressed e-mail/phone, but still respond politely and audit it.
     const supMatches = await ordersDb.select().from(suppressionList).where(
@@ -1159,13 +1187,12 @@ app.use('/api/trpc/recovery.chat', chatLimiter);
 app.use('/api/trpc/ai.chat', chatLimiter);
 app.use('/api/trpc/ai.testConnection', authLimiter);
 
-// On the very first request after a cold start, wait for migration to settle
-// so the admin seed and schema exist before any login attempt.
-// After the first request, migrationSettled=true and all subsequent requests skip the wait.
-app.use('/api/trpc', async (req, _res, next) => {
-  // Login da loja não usa banco: não espera a migração do CRM (que pode estar fora do ar).
-  if (!migrationSettled && !/^\/premiumAuth\./i.test(req.path)) await dbReady;
-  next();
+// Na 1ª requisição que precisa de um banco após o cold start, espera a migração DAQUELE banco
+// (tabelas e seed do admin existem antes do 1º login). Procedure da loja espera só o schema da
+// loja; `premiumAuth.*` não espera nenhum; lote tRPC (`a.b,c.d`) espera a união.
+// Depois da 1ª vez a promessa já está resolvida e isto custa um microtask.
+app.use('/api/trpc', (req, _res, next) => {
+  aguardarSchemasDaRequisicao(req).then(() => next(), next);
 });
 
 app.use(
@@ -1439,6 +1466,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     return;
   }
   try {
+    await aguardarSchemasDaRequisicao(req); // cron autenticado (CRON_SECRET): loja + supressão do CRM
     const { automationRuns: runs, abandonedCarts: carts } = await import('../server/db/schema');
     // Orçamento de tempo: a função é limitada a 60s (vercel.json). O laço de envio
     // para em ~45s contados daqui e devolve o que sobrou para 'scheduled'.
@@ -1620,6 +1648,7 @@ app.get('/api/cron/email-daily', async (req, res) => {
   // the front-loop or the next daily run — never blowing the 60s ceiling.
   const CRON_BUDGET_MS = 45_000;
   const deadline = Date.now() + CRON_BUDGET_MS;
+  await aguardarSchemasDaRequisicao(req); // cron autenticado (CRON_SECRET): só o banco do CRM
 
   const summary = {
     inactiveDaysRules: 0,
@@ -1750,6 +1779,15 @@ const smbiApiLimiter = rateLimit({
   max: 30,
   keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
   message: { error: 'Too many requests' },
+});
+
+// Portão de schema do robô: decide a janela ANTES de qualquer await de schema. Fora da janela,
+// `GET /pedidos` (sem ?id= / ?simular=1) e `POST /heartbeat` não pedem schema nenhum e o Neon
+// segue dormindo. Sem Bearer válido nada é aguardado (o handler responde 401): chamada
+// anônima não acorda banco. Sem limiter aqui — cada rota já tem o seu.
+app.use('/api/smbi', (req, _res, next) => {
+  if (!isAuthorized(process.env.SMBI_SYNC_SECRET, req.headers['authorization'])) { next(); return; }
+  aguardarSchemasDaRequisicao(req).then(() => next(), next);
 });
 
 // Pedidos aprovados pelo admin/manager e ainda não criados no SMBI

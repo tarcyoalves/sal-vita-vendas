@@ -660,6 +660,11 @@ coluna nova:
 Veja caso M da seção 7 para o que acontece quando você pula qualquer um desses
 passos.
 
+No servidor a migração é **lazy**: roda na 1ª requisição que precisa daquele banco, nunca
+no topo de `api/index.ts` (isso acordava os dois Neon em todo cold start). Rota nova que usa
+banco precisa de regra em `server/lib/schemasNecessarios.ts` e de `await` do schema depois
+da autenticação dela.
+
 Tabelas do Premium ficam em `server/db/ordersMigrate.ts` (banco
 `ORDERS_DATABASE_URL`).
 

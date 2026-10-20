@@ -316,6 +316,19 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
   avisos: `client/src/lib/avisosAdmin.ts` (`AVISOS_ADMIN`, data em YYYY-MM-DD). Somem 7 dias
   após a data; "Entendi" oculta por navegador (localStorage).
 
+**Migração de schema preguiçosa (20/10/2026)**
+- `api/index.ts` não migra mais no carregamento do módulo. `ensureCrmSchema` (CRM) e
+  `ensureOrdersSchema` (loja = orders + B2B) rodam na 1ª requisição que precisa daquele banco,
+  memoizadas por instância (`server/lib/schemaPreguicoso.ts`); falha permite nova tentativa com
+  backoff (5 s, 15 s, 60 s, 120 s). Quem precisa de quê: `server/lib/schemasNecessarios.ts`
+  (função pura, testada em `tests/schema-preguicoso.test.ts`).
+- Robô SMBI fora da janela (`GET /pedidos`, `POST /heartbeat`) e `premiumAuth.*` não conectam em
+  banco nenhum. Rota nova em `api/index.ts` precisa de regra em `schemasNecessarios.ts` (o teste
+  reprova rota sem regra) e de `await` do schema depois da autenticação dela.
+- Continua valendo: `SCHEMA_VERSION` + caminho rápido, `migrate:build` e `/api/orders-health`
+  (força `ensureOrdersTablesExist(true)`). `/api/health` não acorda banco; `/api/db-health` acorda
+  o CRM de propósito (`SELECT 1`).
+
 ---
 
 ## 6. Pendências — em ordem de urgência
@@ -414,7 +427,7 @@ saíram desta lista e estão no registro `coordenacao/registro/2026-10-07-claude
 6. **Cupom:** o desconto é concedido no checkout e o contador só sobe no pagamento.
    Desde 07/10 o excesso não passa calado — o pedido ganha `[REVISAR]` nas notas — mas
    ainda é possível conceder além do limite. Reserva atômica no `createOrder` resolveria.
-7. **Migrações rodam no cold start** com `.catch()` que só loga.
+7. **Migrações rodam sob demanda (lazy) na 1ª requisição que usa o banco** (ver nota em 5); `ensureTablesExist` engole a maioria dos erros, então falha do CRM não gera nova tentativa — só a da loja (passos `ok:false`) gera.
 8. **CSP nunca foi aplicada às páginas** *(achado em 07/10)*. O `vercel.json` usa o formato
    antigo `routes`, e nesse modo a Vercel **ignora a chave `headers`**: CSP, X-Frame-Options e
    HSTS com `includeSubDomains` declarados ali nunca chegaram ao navegador (só o HSTS padrão
