@@ -10,6 +10,7 @@ import express, { type Express, type RequestHandler } from 'express';
 import { and, eq, gt, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from './db';
+import { safeErr } from './lib/logSafe';
 import { fatOrders, smbiOrderEvents, smbiRobotState } from './db/schema';
 import { isAuthorized } from './lib/smbi';
 import {
@@ -94,7 +95,7 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
       console.log(`[smbi] POST iniciar pedido=${id} empresa=${parsed.data.empresaCnpj} → ok`);
       res.json({ ok: true, jaIniciado: false, iniciadoEm: agoraIso });
     } catch (err) {
-      console.error(`[smbi] POST iniciar pedido=${id} error:`, err);
+      console.error(`[smbi] POST iniciar pedido=${id} error:`, safeErr(err));
       res.status(500).json({ error: 'Internal error' });
     }
   });
@@ -128,7 +129,7 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
       console.log(`[smbi] POST faturamento pedido=${id} → ok (movsais ${parsed.data.movsais.map((m) => m.id).join(',')}, alertaDesconto=${patch.smbiAlertaDesconto})`);
       res.json({ ok: true, alertaDesconto: patch.smbiAlertaDesconto === true, status: patch.status ?? row.status });
     } catch (err) {
-      console.error(`[smbi] POST faturamento pedido=${id} error:`, err);
+      console.error(`[smbi] POST faturamento pedido=${id} error:`, safeErr(err));
       res.status(500).json({ error: 'Internal error' });
     }
   });
@@ -161,7 +162,7 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
       console.log(`[smbi] POST status pedido=${id} evento=${evento} → ok${desvincular ? ' (vínculo desfeito)' : ''}`);
       res.json({ ok: true, desvinculado: desvincular });
     } catch (err) {
-      console.error(`[smbi] POST status pedido=${id} error:`, err);
+      console.error(`[smbi] POST status pedido=${id} error:`, safeErr(err));
       res.status(500).json({ error: 'Internal error' });
     }
   });
@@ -189,7 +190,7 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
       console.log(`[smbi] GET ligados → ${ligados.length}`);
       res.json({ ok: true, ligados, ...(omitidos > 0 ? { aviso: 'Pedidos com empresa omitidos: envie X-SMBI-Protocolo: 2.' } : {}) });
     } catch (err) {
-      console.error('[smbi] GET ligados error:', err);
+      console.error('[smbi] GET ligados error:', safeErr(err));
       res.status(500).json({ error: 'Internal error' });
     }
   });
@@ -214,7 +215,7 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
       console.log(`[smbi] GET vinculos → ${vinculos.length}`);
       res.json({ ok: true, vinculos, ...(omitidos > 0 ? { aviso: 'Pedidos com empresa omitidos: envie X-SMBI-Protocolo: 2.' } : {}) });
     } catch (err) {
-      console.error('[smbi] GET vinculos error:', err);
+      console.error('[smbi] GET vinculos error:', safeErr(err));
       res.status(500).json({ error: 'Internal error' });
     }
   });
@@ -261,7 +262,7 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
       console.log(`[smbi] POST vinculos resultado pedido=${pedidoId} → ${estado}`);
       res.json({ ok: true, estado });
     } catch (err) {
-      console.error(`[smbi] POST vinculos resultado pedido=${pedidoId} error:`, err);
+      console.error(`[smbi] POST vinculos resultado pedido=${pedidoId} error:`, safeErr(err));
       res.status(500).json({ error: 'Internal error' });
     }
   });

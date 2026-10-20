@@ -11,6 +11,7 @@ import express, { type Express, type RequestHandler } from 'express';
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, notExists, or, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from './db';
+import { safeErr } from './lib/logSafe';
 import { fatOrders, smbiClientRegistrations as T, smbiOrderEvents, smbiRobotState } from './db/schema';
 import { isAuthorized } from './lib/smbi';
 import { hashPedido } from './lib/smbiCadastro';
@@ -46,7 +47,7 @@ async function evento(c: Pick<Cadastro, 'id' | 'pedidoId' | 'revisao' | 'empresa
       dados: { cadastroId: c.id, empresaCnpj: c.empresaCnpj, revisao: c.revisao, ...dados },
     }).onConflictDoNothing();
   } catch (err) {
-    console.warn(`[smbi-cadastro] evento ${nome} não gravado:`, err instanceof Error ? err.message : err);
+    console.warn(`[smbi-cadastro] evento ${nome} não gravado:`, safeErr(err));
   }
 }
 
@@ -121,7 +122,7 @@ export function registerSmbiCadastroRoutes(app: Express, limiter: RequestHandler
       console.log(`[smbi-cadastro] GET cadastros → lease id=${leased.id} fase=${montarTrabalho(leased, false).fase}`);
       res.json({ ok: true, cadastroAtivo: true, trabalho: montarTrabalho(leased, true) });
     } catch (err) {
-      console.error('[smbi-cadastro] GET cadastros error:', err);
+      console.error('[smbi-cadastro] GET cadastros error:', safeErr(err));
       res.status(500).json({ error: 'Internal error' });
     }
   });
@@ -139,7 +140,7 @@ export function registerSmbiCadastroRoutes(app: Express, limiter: RequestHandler
       const reservaValida = !!t && !!row.reservaToken && !!row.reservadoAte && row.reservaToken === t && row.reservadoAte > agora;
       res.json({ ok: true, reservaValida, cadastroAtivo: await cadastroAtivo(), trabalho: montarTrabalho(row, false) });
     } catch (err) {
-      console.error('[smbi-cadastro] GET cadastro error:', err);
+      console.error('[smbi-cadastro] GET cadastro error:', safeErr(err));
       res.status(500).json({ error: 'Internal error' });
     }
   });
@@ -167,7 +168,7 @@ export function registerSmbiCadastroRoutes(app: Express, limiter: RequestHandler
       console.log(`[smbi-cadastro] POST previa id=${row.id} → ${d.patch.estado} rev=${revisao}`);
       res.json({ ok: true, estado: d.patch.estado, revisao, snapshotHash: d.patch.snapshotHash, pedidoHash: d.patch.pedidoHash, divergencias: d.patch.divergencias });
     } catch (err) {
-      console.error('[smbi-cadastro] POST previa error:', err);
+      console.error('[smbi-cadastro] POST previa error:', safeErr(err));
       res.status(500).json({ error: 'Internal error' });
     }
   });
@@ -205,7 +206,7 @@ export function registerSmbiCadastroRoutes(app: Express, limiter: RequestHandler
       console.log(`[smbi-cadastro] POST iniciar id=${row.id} → CADASTRANDO`);
       res.json({ ok: true, estado: 'CADASTRANDO', jaIniciado: false, iniciadoEm: agora.toISOString() });
     } catch (err) {
-      console.error('[smbi-cadastro] POST iniciar error:', err);
+      console.error('[smbi-cadastro] POST iniciar error:', safeErr(err));
       res.status(500).json({ error: 'Internal error' });
     }
   });
@@ -236,7 +237,7 @@ export function registerSmbiCadastroRoutes(app: Express, limiter: RequestHandler
       console.log(`[smbi-cadastro] POST resultado id=${row.id} → ${d.patch.estado}`);
       res.json({ ok: true, idempotente: false, estado: d.patch.estado });
     } catch (err) {
-      console.error('[smbi-cadastro] POST resultado error:', err);
+      console.error('[smbi-cadastro] POST resultado error:', safeErr(err));
       res.status(500).json({ error: 'Internal error' });
     }
   });
