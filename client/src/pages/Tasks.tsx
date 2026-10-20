@@ -93,7 +93,7 @@ function taskUrgency(task: Task): { isOverdue: boolean; daysOverdue: number; isT
 
 // Dados do próximo lembrete para exibição (data, hora e urgência). null = sem lembrete ativo.
 function reminderInfo(task: Task): { dateStr: string; timeStr: string; isOverdue: boolean; daysOverdue: number; isToday: boolean } | null {
-  if (!task.reminderDate || !task.reminderEnabled) return null;
+  if (!task.reminderDate || task.reminderEnabled === false) return null;
   const rd = new Date(task.reminderDate);
   if (isNaN(rd.getTime())) return null;
   const { isOverdue, daysOverdue, isToday } = taskUrgency(task);

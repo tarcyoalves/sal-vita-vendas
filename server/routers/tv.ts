@@ -5,6 +5,8 @@ import { sellers, tasks, workSessions, clients, appSettings } from '../db/schema
 import { eq, or, and, gte, sql, isNotNull } from 'drizzle-orm';
 import { cached, cacheInvalidate } from '../lib/cache';
 import { spMidnight, spDaysAgo } from '../lib/tz';
+import { isTaskOverdue, indexTasksBySeller } from '../../shared/tarefasAtrasadas';
+import { tvPainelLigado } from '../lib/tvPainel';
 
 const TV_PANEL_SETTING_KEY = 'tv_panel_enabled';
 
@@ -19,6 +21,9 @@ export const tvRouter = router({
   // Public + cheap: the TV kiosk polls this on its own, lighter, interval to
   // decide whether to load (and keep polling) the heavy `dashboard` query.
   getPanelStatus: publicProcedure.query(async () => {
+    // Painel da TV é opt-in por env (TV_PAINEL_ATIVO=1): desligado, a rota pública NÃO toca o banco, então abas
+    // antigas da TV deixam de acordar o Neon.
+    if (!tvPainelLigado(process.env.TV_PAINEL_ATIVO)) return { enabled: false };
     return cached('tv:panelStatus', 60_000, async () => {
       const [row] = await db.select({ value: appSettings.value })
         .from(appSettings).where(eq(appSettings.key, TV_PANEL_SETTING_KEY));
@@ -56,6 +61,7 @@ async function tvDashboardQuery() {
         assignedTo: tasks.assignedTo, status: tasks.status,
         reminderDate: tasks.reminderDate, updatedAt: tasks.updatedAt,
         lastContactedAt: tasks.lastContactedAt,
+        reminderEnabled: tasks.reminderEnabled,
         userId: tasks.userId,
       }).from(tasks).where(
         // Only tasks relevant for dashboard: contacted in last 4 weeks, pending with reminder, or recently updated
@@ -83,6 +89,10 @@ async function tvDashboardQuery() {
       return { label: `S${i + 1}`, start, end };
     });
 
+    // Mesma definição de "atrasada" e de dono do AdminDashboard (shared/tarefasAtrasadas.ts).
+    const nowMs = now.getTime();
+    const porAtendente = indexTasksBySeller(allTasks, allSellers);
+
     const sellerStats = allSellers.map(seller => {
       const mine = allTasks.filter(t => t.assignedTo === seller.name);
 
@@ -105,9 +115,7 @@ async function tvDashboardQuery() {
       const contactsToday = mine.filter(
         t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart
       ).length;
-      const overdueCount = mine.filter(
-        t => t.reminderDate && new Date(t.reminderDate) < now && t.status === 'pending'
-      ).length;
+      const overdueCount = (porAtendente.get(seller.id) ?? []).filter(t => isTaskOverdue(t, nowMs)).length;
       const noNotesCount = mine.filter(
         t => !t.notes || t.notes.trim().length < 10
       ).length;
@@ -157,9 +165,7 @@ async function tvDashboardQuery() {
         alerts.push({ type: 'idle', seller: s.name, count: 0, label: 'online sem contatos hoje' });
     }
 
-    const totalOverdue = allTasks.filter(
-      t => t.reminderDate && new Date(t.reminderDate) < now && t.status === 'pending'
-    ).length;
+    const totalOverdue = allTasks.filter(t => isTaskOverdue(t, nowMs)).length;
     const contactsToday = allTasks.filter(
       t => t.lastContactedAt && new Date(t.lastContactedAt) >= todayStart
     ).length;

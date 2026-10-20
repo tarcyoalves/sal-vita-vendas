@@ -2,6 +2,8 @@
 // Antes cada card de atendente refiltrava todas as tarefas a cada render (O(atendentes×tarefas))
 // e criava `new Date()` por tarefa. Funções puras para poder testar sem React.
 
+import { isTaskOverdue, indexTasksBySeller, detalharAtrasadas } from '../../../shared/tarefasAtrasadas';
+
 export interface DashTask {
   id?: number;
   status?: string | null;
@@ -18,48 +20,12 @@ export interface DashSeller {
   id: number;
   name: string;
   userId?: number | null;
+  status?: string | null;
 }
 
-/** Dono da tarefa comparável: o servidor usa lower(), então maiúsculas/espaços não separam atendentes. */
-export function normalizeOwner(name?: string | null): string {
-  return (name ?? '').trim().toLowerCase();
-}
-
-/**
- * Atrasada = pendente, com data, lembrete não desativado (`!== false`, igual à tela de Tarefas)
- * e data já passada.
- */
-export function isTaskOverdue(t: DashTask, nowMs: number): boolean {
-  if (t.status !== 'pending' || !t.reminderDate || t.reminderEnabled === false) return false;
-  return new Date(t.reminderDate).getTime() < nowMs;
-}
-
-/** Tarefas de cada atendente: pelo nome (normalizado) OU pelo userId. Uma passada nas tarefas. */
-export function indexTasksBySeller<T extends DashTask>(tasks: T[], sellers: DashSeller[]): Map<number, T[]> {
-  const byName = new Map<string, T[]>();
-  const byUser = new Map<number, T[]>();
-  for (const t of tasks) {
-    const key = normalizeOwner(t.assignedTo);
-    if (key) {
-      const a = byName.get(key);
-      if (a) a.push(t); else byName.set(key, [t]);
-    }
-    if (t.userId != null) {
-      const a = byUser.get(t.userId);
-      if (a) a.push(t); else byUser.set(t.userId, [t]);
-    }
-  }
-  const result = new Map<number, T[]>();
-  for (const s of sellers) {
-    const named = byName.get(normalizeOwner(s.name)) ?? [];
-    const owned = s.userId != null ? byUser.get(s.userId) ?? [] : [];
-    if (owned.length === 0) { result.set(s.id, named); continue; }
-    if (named.length === 0) { result.set(s.id, owned); continue; }
-    const seen = new Set<T>(named);
-    result.set(s.id, [...named, ...owned.filter((t) => !seen.has(t))]);
-  }
-  return result;
-}
+// Definição de "atrasada" e de dono da tarefa compartilhada com a TV (shared/tarefasAtrasadas.ts).
+export { normalizeOwner, isTaskOverdue, indexTasksBySeller, detalharAtrasadas } from '../../../shared/tarefasAtrasadas';
+export type { DetalheAtrasadas } from '../../../shared/tarefasAtrasadas';
 
 const DAY = 86_400_000;
 
@@ -87,7 +53,7 @@ export function computeDashboardAgg<T extends DashTask>(tasks: T[], sellers: Das
       contactedTasks.push(t);
       if (ms(t.lastContactedAt) >= todayStartMs) contactsToday++;
     }
-    if (t.reminderDate && t.reminderEnabled) reminderOn++;
+    if (t.reminderDate && t.reminderEnabled !== false) reminderOn++;
   }
 
   const total = tasks.length;
@@ -172,7 +138,7 @@ export function computeDashboardAgg<T extends DashTask>(tasks: T[], sellers: Das
   const lostRateGlobal = decidedTotal > 0 ? Math.round((cancelledTotal / decidedTotal) * 100) : 0;
 
   return {
-    todayStart, pending, overdue, completionRate, contactsToday, reminderOn,
+    todayStart, pending, overdue, overdueDetail: detalharAtrasadas(overdue, sellers, nowMs), completionRate, contactsToday, reminderOn,
     convertedTasks, convertedCount, conversionRate, avgContactsToConvert, convertedThisMonth,
     funnel, avgFirstContactMs, avgFirstContactDays, avgConversionMs, avgConversionDays, staleNoContact, hotLeads,
     sellerStats, conversionRanking, weeklyTrend: weeks, weeklyTrendMax,

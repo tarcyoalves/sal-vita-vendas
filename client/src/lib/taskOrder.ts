@@ -10,6 +10,7 @@ export const ROTULO_ORDEM: Record<OrdemTarefas, string> = {
 
 interface TarefaOrdenavel {
   hotLead?: boolean | null;
+  status?: string | null;
   reminderDate?: Date | string | null;
   reminderEnabled?: boolean | null;
   tags?: string[] | null;
@@ -24,14 +25,21 @@ export function pontosCliente(t: Pick<TarefaOrdenavel, 'tags' | 'convertedAt'>):
   return 0;
 }
 
-const dataLembrete = (t: TarefaOrdenavel): number | null =>
-  t.reminderDate && t.reminderEnabled !== false ? new Date(t.reminderDate).getTime() : null;
+/**
+ * Data que ordena a tarefa. Com `soPendentes` (ordem "atrasadas"), concluída/cancelada vai para o fim como se não
+ * tivesse lembrete, em vez de aparecer como a mais atrasada. `status` ausente conta como pendente.
+ */
+export const dataLembrete = (t: TarefaOrdenavel, soPendentes = false): number | null => {
+  if (!t.reminderDate || t.reminderEnabled === false) return null;
+  if (soPendentes && (t.status ?? 'pending') !== 'pending') return null;
+  return new Date(t.reminderDate).getTime();
+};
 
 /**
  * Ordem da lista de tarefas. Lead quente sempre primeiro (marcação manual). Com `melhoresPrimeiro`, os melhores
  * clientes vêm antes dentro de cada grupo. Depois a data do lembrete: "atrasadas" = da mais antiga para a mais
  * nova; "proximas" = agendadas (mais perto primeiro) e depois atrasadas (mais recente primeiro); "recentes" =
- * da mais nova para a mais antiga. Sem lembrete vai por último.
+ * da mais nova para a mais antiga. Sem lembrete vai por último (em "atrasadas", tarefa não pendente também).
  */
 export function ordenarTarefas<T extends TarefaOrdenavel>(lista: T[], ordem: OrdemTarefas, agora: number, melhoresPrimeiro: boolean): T[] {
   return [...lista].sort((a, b) => {
@@ -40,7 +48,8 @@ export function ordenarTarefas<T extends TarefaOrdenavel>(lista: T[], ordem: Ord
       const d = pontosCliente(b) - pontosCliente(a);
       if (d) return d;
     }
-    const da = dataLembrete(a), db = dataLembrete(b);
+    const soPend = ordem === 'atrasadas';
+    const da = dataLembrete(a, soPend), db = dataLembrete(b, soPend);
     if (da === null || db === null) return da === db ? 0 : da === null ? 1 : -1;
     if (ordem === 'atrasadas') return da - db;
     if (ordem === 'recentes') return db - da;

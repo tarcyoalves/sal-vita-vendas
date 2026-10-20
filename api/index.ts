@@ -37,7 +37,7 @@ import {
 import { proximoPedidoIndividual, reservaAte, reservaConfere } from '../server/lib/smbiFaturamento';
 import { decidirRetorno, filaBloqueadaPorProtocolo, motivoForaDaFila, protocoloDoRobo, reservaVigente } from '../server/lib/smbiMultiempresa';
 import { SMBI_ESTADOS_QUE_PARAM } from '../shared/smbiEstados';
-import { dentroDaJanelaDoRobo, janelaDoAmbiente, pollingBarradoPelaJanela } from '../shared/smbiJanela';
+import { AVISO_FORA_DA_JANELA, dentroDaJanelaDoRobo, janelaDoAmbiente, pollingBarradoPelaJanela } from '../shared/smbiJanela';
 import { registerSmbiExtraRoutes } from '../server/smbiRoutes';
 import { registerSmbiCadastroRoutes } from '../server/smbiCadastroRoutes';
 import { criarSchemaPreguicoso } from '../server/lib/schemaPreguicoso';
@@ -287,18 +287,24 @@ app.use(cors({
 }));
 
 // DB connectivity probe — não espera (nem dispara) a migração de propósito.
-// Public, so it only answers ok/not-ok. The driver's error message can carry the
-// host, database name and role, and the round-trip time is a free signal about
-// infrastructure; both are logged server-side instead of returned to the caller.
-app.get('/api/db-health', async (_req, res) => {
+// Por padrão NÃO consulta o banco (cada SELECT 1 acorda o Neon, cobrado por CU-hora): responde 200 com
+// `banco: 'nao_verificado'`. Só `?deep=1` COM `Authorization: Bearer CRON_SECRET` faz o SELECT 1.
+// The driver's error message can carry the host, database name and role, and the round-trip time is a free
+// signal about infrastructure; both are logged server-side instead of returned to the caller.
+app.get('/api/db-health', async (req, res) => {
+  const deep = req.query.deep === '1' && isAuthorized(process.env.CRON_SECRET, req.headers['authorization']);
+  if (!deep) {
+    res.json({ ok: true, banco: 'nao_verificado' });
+    return;
+  }
   try {
     const t0 = Date.now();
     await sqlClient`SELECT 1`;
     console.log('[db-health] ok in', Date.now() - t0, 'ms');
-    res.json({ db: 'ok' });
+    res.json({ ok: true, banco: 'ok', db: 'ok' });
   } catch (err: any) {
     console.error('[db-health] error:', err?.message ?? err);
-    res.status(500).json({ db: 'error' });
+    res.status(500).json({ ok: false, banco: 'erro', db: 'error' });
   }
 });
 
@@ -1822,7 +1828,7 @@ app.get('/api/smbi/pedidos', smbiApiLimiter, async (req, res) => {
   if (pollingBarradoPelaJanela({ id, simular, config: janelaDoAmbiente() })) {
     res.json({
       ok: true, roboAtivo: false, simulacao: false, pedidos: [], foraDaJanela: true,
-      aviso: 'Fora da janela de atendimento do robô (08:00-11:00 e 14:00-17:00, Fortaleza). Nada foi consultado nem reservado.',
+      aviso: AVISO_FORA_DA_JANELA,
     });
     return;
   }

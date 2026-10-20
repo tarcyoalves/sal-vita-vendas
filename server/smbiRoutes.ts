@@ -13,6 +13,7 @@ import { db } from './db';
 import { safeErr } from './lib/logSafe';
 import { fatOrders, smbiOrderEvents, smbiRobotState } from './db/schema';
 import { isAuthorized } from './lib/smbi';
+import { AVISO_FORA_DA_JANELA, janelaDoAmbiente, pollingBarradoPelaJanela } from '../shared/smbiJanela';
 import {
   faturamentoBodySchema, statusBodySchema, vinculoResultadoSchema,
   resolverFaturamento, deveDesvincular, movsaisLigados, decidirVinculo, montarResultadoVinculo,
@@ -171,6 +172,11 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
   // O robô confere o faturamento destes direto no SMBI (não depende de arquivo local nem do clique).
   app.get('/api/smbi/ligados', limiter, async (req, res) => {
     if (!auth(req, res, 'GET ligados')) return;
+    // Janela do robô: fora dela, lista vazia SEM banco (vazio + foraDaJanela nunca é ordem de nada).
+    if (pollingBarradoPelaJanela({ config: janelaDoAmbiente() })) {
+      res.json({ ok: true, ligados: [], foraDaJanela: true, aviso: AVISO_FORA_DA_JANELA });
+      return;
+    }
     try {
       const rows = await db
         .select({
@@ -198,6 +204,10 @@ export function registerSmbiExtraRoutes(app: Express, limiter: RequestHandler): 
   // ── Rota 4: fila de vínculos manuais a conferir ────────────────────────────
   app.get('/api/smbi/vinculos', limiter, async (req, res) => {
     if (!auth(req, res, 'GET vinculos')) return;
+    if (pollingBarradoPelaJanela({ config: janelaDoAmbiente() })) {
+      res.json({ ok: true, vinculos: [], foraDaJanela: true, aviso: AVISO_FORA_DA_JANELA });
+      return;
+    }
     try {
       const rows = await db
         .select({

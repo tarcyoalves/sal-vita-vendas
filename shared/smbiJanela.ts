@@ -86,6 +86,10 @@ export function pollingBarradoPelaJanela(
   return !dentroDaJanelaDoRobo(opts.agora ?? new Date(), opts.config);
 }
 
+/** Texto do campo `aviso` das respostas de polling fora da janela. */
+export const AVISO_FORA_DA_JANELA =
+  'Fora da janela de atendimento do robô (08:00-11:00 e 14:00-17:00, Fortaleza). Nada foi consultado nem reservado.';
+
 /** Config vinda do ambiente do servidor (vazia = padrão). */
 export function janelaDoAmbiente(): string {
   return process.env.SMBI_JANELA?.trim() || SMBI_JANELA_PADRAO;

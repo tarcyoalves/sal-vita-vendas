@@ -107,7 +107,19 @@ const REGRAS: Regra[] = [
     padrao: /^\/api\/smbi\/heartbeat$/, metodos: ['POST'],
     schemas: (r) => (dentroDaJanelaDoRobo(aoAgora(r), r.janelaConfig) ? SO_CRM : NENHUM),
   },
-  // retorno, iniciar, status, faturamento, ligados, vinculos, cadastros…: sempre CRM.
+  // Filas só-leitura do robô: fora da janela respondem vazio sem banco (não têm `?id=`; `?simular=1` do cadastro passa sempre).
+  {
+    padrao: /^\/api\/smbi\/(ligados|vinculos)$/, metodos: ['GET'],
+    schemas: (r) => (pollingBarradoPelaJanela({ agora: aoAgora(r), config: r.janelaConfig }) ? NENHUM : SO_CRM),
+  },
+  {
+    padrao: /^\/api\/smbi\/cadastros$/, metodos: ['GET'],
+    schemas: (r) => {
+      const simular = r.query?.simular === '1';
+      return pollingBarradoPelaJanela({ simular, agora: aoAgora(r), config: r.janelaConfig }) ? NENHUM : SO_CRM;
+    },
+  },
+  // retorno, iniciar, status, faturamento, cadastros/:id…: sempre CRM.
   { padrao: /^\/api\/smbi\//, schemas: SO_CRM },
 ];
 

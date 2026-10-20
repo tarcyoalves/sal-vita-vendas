@@ -51,3 +51,27 @@ export async function executarComOrcamento<T>(
   }
   return { executados, falhas, naoExecutados: [] };
 }
+
+/**
+ * Descarta linhas repetidas DENTRO do próprio arquivo (mesmo CNPJ ou telefone já normalizado) além das que já
+ * existem no banco (`jaExistem`). A primeira ocorrência fica; `jaExistem` não é alterado.
+ */
+export function deduplicarNoArquivo<T extends { cnpj?: string; phone?: string }>(
+  linhas: T[],
+  jaExistem: { cnpjs: Set<string>; phones: Set<string> },
+): T[] {
+  const vistos = { cnpjs: new Set<string>(), phones: new Set<string>() };
+  const mantidas: T[] = [];
+  for (const l of linhas) {
+    if (ehDuplicada(l, jaExistem) || ehDuplicada(l, vistos)) continue;
+    if (l.cnpj) vistos.cnpjs.add(l.cnpj);
+    if (l.phone) vistos.phones.add(l.phone);
+    mantidas.push(l);
+  }
+  return mantidas;
+}
+
+/** Janela de `tasks.reminders`: de 24 h atrás até 7 dias à frente. */
+export function janelaLembretes(agora: Date): { de: Date; ate: Date } {
+  return { de: new Date(agora.getTime() - 24 * 3_600_000), ate: new Date(agora.getTime() + 7 * 24 * 3_600_000) };
+}

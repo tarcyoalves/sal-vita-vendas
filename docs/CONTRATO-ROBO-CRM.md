@@ -52,3 +52,11 @@ Objetivo: envio de pedidos estável, pedido faturado no SMBI espelhado no CRM, v
 - Seguem funcionando **sempre**: `?id=` (reconferência), `?simular=1`, `/iniciar`, `/retorno`, `/faturamento`, `/status`, cadastro e demais rotas (servem pedido já em andamento).
 - A tela "Robô do SMBI" mostra "Robô fora do horário — volta às HH:MM" em vez de "sem sinal" fora da janela.
 - **O robô da VPS NÃO precisa mudar**: ele continua chamando como hoje e recebe fila vazia fora do horário. (Opcional, para economizar ainda mais requisições: o robô pode dormir quando vier `foraDaJanela: true`.)
+
+## Janela estendida às filas de leitura (20/10/2026) — `ligados`, `vinculos`, `cadastros`
+Mesmo portão da janela (08:00–11:00 e 14:00–17:00 Fortaleza, `SMBI_JANELA`), aplicado depois do auth (401 continua 401) e **antes de qualquer consulta ao banco**. Fora da janela, `200` com lista vazia e `foraDaJanela: true`, no formato que o robô já lê:
+- `GET /api/smbi/ligados` → `{ ok: true, ligados: [], foraDaJanela: true, aviso }`
+- `GET /api/smbi/vinculos` → `{ ok: true, vinculos: [], foraDaJanela: true, aviso }`
+- `GET /api/smbi/cadastros` → `{ ok: true, cadastroAtivo: false, trabalho: null, foraDaJanela: true, aviso }` (não lê o gate `cadastro_ativo` nem expira reservas vencidas; `trabalho: null` nunca é ordem de cadastrar). `?simular=1` segue funcionando sempre. `GET /api/smbi/cadastros/:id` e os POSTs não mudam.
+- `ligados` e `vinculos` não têm `?id=`; fora da janela o robô só deixa de conferir faturamento/vínculos até a próxima abertura (nada se perde: ficam na fila do CRM). **O robô não precisa mudar.**
+- `GET /api/db-health` (monitor externo): responde `200 { ok: true, banco: 'nao_verificado' }` sem tocar no banco. `?deep=1` com `Authorization: Bearer CRON_SECRET` faz o `SELECT 1` (`banco: 'ok'` ou `500 banco: 'erro'`).

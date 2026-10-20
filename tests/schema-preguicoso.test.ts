@@ -44,20 +44,32 @@ describe('schemasNecessarios — robô SMBI', () => {
     expect(req('POST', '/api/smbi/heartbeat', { agora: FORA })).toEqual(NENHUM);
     expect(req('POST', '/api/smbi/heartbeat', { agora: DENTRO })).toEqual(SO_CRM);
   });
-  it('retorno, iniciar, status, faturamento, cadastros: sempre CRM, mesmo fora da janela', () => {
+  it('retorno, iniciar, status, faturamento, cadastros/:id: sempre CRM, mesmo fora da janela', () => {
     for (const [m, c] of [
       ['POST', '/api/smbi/pedidos/123/retorno'],
       ['POST', '/api/smbi/pedidos/123/iniciar'],
       ['POST', '/api/smbi/pedidos/123/status'],
       ['POST', '/api/smbi/pedidos/123/faturamento'],
-      ['GET', '/api/smbi/ligados'],
-      ['GET', '/api/smbi/vinculos'],
       ['POST', '/api/smbi/vinculos/9/resultado'],
-      ['GET', '/api/smbi/cadastros'],
+      ['GET', '/api/smbi/cadastros/9'],
       ['POST', '/api/smbi/cadastros/9/resultado'],
     ]) {
       expect(req(m, c, { agora: FORA })).toEqual(SO_CRM);
     }
+  });
+  it('GET ligados e vinculos: fora da janela nenhum banco; dentro, CRM; "sempre" desliga o portão', () => {
+    for (const c of ['/api/smbi/ligados', '/api/smbi/vinculos']) {
+      expect(req('GET', c, { agora: FORA })).toEqual(NENHUM);
+      expect(req('GET', c, { agora: ALMOCO })).toEqual(NENHUM);
+      expect(req('GET', c, { agora: DENTRO })).toEqual(SO_CRM);
+      expect(req('GET', c, { agora: TARDE })).toEqual(SO_CRM);
+      expect(req('GET', c, { agora: FORA, janelaConfig: 'sempre' })).toEqual(SO_CRM);
+    }
+  });
+  it('GET cadastros: fora da janela nenhum banco, exceto ?simular=1', () => {
+    expect(req('GET', '/api/smbi/cadastros', { agora: FORA, query: {} })).toEqual(NENHUM);
+    expect(req('GET', '/api/smbi/cadastros', { agora: FORA, query: { simular: '1' } })).toEqual(SO_CRM);
+    expect(req('GET', '/api/smbi/cadastros', { agora: DENTRO, query: {} })).toEqual(SO_CRM);
   });
 });
 

@@ -427,7 +427,7 @@ async function ensureRecentSchema() {
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-10-16a';
+const SCHEMA_VERSION = '2026-10-20a';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -1067,6 +1067,8 @@ export async function ensureTablesExist() {
   `;
   await sql`CREATE INDEX IF NOT EXISTS fat_orders_seller_idx ON fat_orders(seller_id)`;
   await sql`CREATE INDEX IF NOT EXISTS fat_orders_status_idx ON fat_orders(status)`;
+  // faturamento.getAll ordena por criado_em DESC (lista inteira); sem índice vira sort completo a cada abertura.
+  await sql`CREATE INDEX IF NOT EXISTS fat_orders_criado_em_idx ON fat_orders(criado_em)`;
 
   // Auditoria de exclusão de pedidos — motivo obrigatório + snapshot dos dados.
   await sql`

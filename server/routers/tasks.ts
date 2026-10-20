@@ -1,6 +1,6 @@
 import { safeErr } from '../lib/logSafe';
 import { z } from 'zod';
-import { eq, inArray, or, isNotNull, isNull, and, gte, count, sql, SQL, asc, desc } from 'drizzle-orm';
+import { eq, inArray, or, isNotNull, isNull, and, gte, lte, count, sql, SQL, asc, desc } from 'drizzle-orm';
 import { router, protectedProcedure, adminProcedure } from '../trpc';
 import { TRPCError } from '@trpc/server';
 import { db } from '../db';
@@ -10,7 +10,7 @@ import { normalizeBrPhone, phoneOfTask } from '../../shared/phone';
 import { searchTerms, SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../shared/searchText';
 import { validarDocumentoDaTarefa } from '../lib/taskDocumento';
 import { isNewContact } from '../lib/taskNotes';
-import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento } from '../lib/taskImport';
+import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento, deduplicarNoArquivo, janelaLembretes } from '../lib/taskImport';
 
 // Tag aplicada/removida automaticamente junto com tasks.emailConfirmed (ver
 // confirmEmail e update abaixo), para permitir filtrar tarefas por confirmação
@@ -238,7 +238,11 @@ export const tasksRouter = router({
           if (e.phone) jaExistem.phones.add(e.phone);
         }
       }
-      const novos = input.items.filter(item => !ehDuplicada({ cnpj: normalizeCnpj(item.cnpj), phone: normalizePhone(item.phone) }, jaExistem));
+      // Além do que já existe no banco, repetidas dentro do próprio arquivo (mesmo CNPJ/telefone normalizado) entram uma só vez.
+      const novos = deduplicarNoArquivo(
+        input.items.map(item => ({ item, cnpj: normalizeCnpj(item.cnpj), phone: normalizePhone(item.phone) })),
+        jaExistem,
+      ).map(x => x.item);
       const duplicadas = input.items.length - novos.length;
       if (novos.length === 0) return { created: [], length: 0, duplicadas };
 
@@ -752,8 +756,13 @@ export const tasksRouter = router({
   }),
 
   reminders: protectedProcedure.query(async ({ ctx }) => {
-    // Only fetch reminders from yesterday onward — no need for historical data for notifications
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    // Só o que as notificações e o painel usam: pendentes, com lembrete ligado (nulo conta como ligado), de ontem
+    // até +7 dias. A janela de cima impede que o limit(300) corte lembretes próximos por causa de datas distantes.
+    const { de: yesterday, ate: ateData } = janelaLembretes(new Date());
+    const filtroLembrete = and(
+      isNotNull(tasks.reminderDate), gte(tasks.reminderDate, yesterday), lte(tasks.reminderDate, ateData),
+      eq(tasks.status, 'pending'), sql`${tasks.reminderEnabled} IS DISTINCT FROM false`,
+    );
     const reminderFields = {
       id: tasks.id, title: tasks.title, reminderDate: tasks.reminderDate,
       reminderEnabled: tasks.reminderEnabled, status: tasks.status,
@@ -763,13 +772,13 @@ export const tasksRouter = router({
     };
     if (ctx.user.role === 'admin') {
       return db.select(reminderFields).from(tasks)
-        .where(and(isNotNull(tasks.reminderDate), gte(tasks.reminderDate, yesterday)))
+        .where(filtroLembrete)
         .orderBy(asc(tasks.reminderDate))
         .limit(300);
     }
     const filter = await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
     return db.select(reminderFields).from(tasks)
-      .where(and(filter, isNotNull(tasks.reminderDate), gte(tasks.reminderDate, yesterday)))
+      .where(and(filter, filtroLembrete))
       .orderBy(asc(tasks.reminderDate))
       .limit(300);
   }),

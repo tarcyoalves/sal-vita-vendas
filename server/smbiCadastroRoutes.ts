@@ -15,6 +15,7 @@ import { safeErr } from './lib/logSafe';
 import { fatOrders, smbiClientRegistrations as T, smbiOrderEvents, smbiRobotState } from './db/schema';
 import { isAuthorized } from './lib/smbi';
 import { hashPedido } from './lib/smbiCadastro';
+import { AVISO_FORA_DA_JANELA, janelaDoAmbiente, pollingBarradoPelaJanela } from '../shared/smbiJanela';
 import {
   decidirIniciar, decidirPrevia, decidirResultado, elegivelParaLease, iniciarBodySchema, montarTrabalho,
   previaBodySchema, reservaCadastroAte, respostaSemTrabalho, resultadoBodySchema, type Cadastro, type PatchCadastro, type Recusa,
@@ -79,6 +80,11 @@ export function registerSmbiCadastroRoutes(app: Express, limiter: RequestHandler
   // ── GET /api/smbi/cadastros ──────────────────────────────────────────────
   app.get('/api/smbi/cadastros', limiter, async (req, res) => {
     if (!auth(req, res, 'GET cadastros')) return;
+    // Janela do robô: fora dela NÃO lê o gate nem faz o UPDATE de reservas vencidas (o Neon dorme). `?simular=1` passa sempre.
+    if (pollingBarradoPelaJanela({ simular: req.query.simular === '1', config: janelaDoAmbiente() })) {
+      res.json({ ...respostaSemTrabalho(false), foraDaJanela: true, aviso: AVISO_FORA_DA_JANELA });
+      return;
+    }
     try {
       const agora = new Date();
       const ativo = await cadastroAtivo();

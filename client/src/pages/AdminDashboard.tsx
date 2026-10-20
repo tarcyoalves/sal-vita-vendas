@@ -35,6 +35,7 @@ import {
 import AttendantDetailModal from '../components/AttendantDetailModal';
 import { useFatStore } from '../lib/faturamento/store';
 import { computeDashboardAgg, type DashSeller, type DashTask } from '../lib/dashboardAgg';
+import { resumoAtrasadas } from '../../../shared/tarefasAtrasadas';
 import { QueryError } from '../components/QueryError';
 import { panoramaPorAtendente, somarResumos, mesAtual, formatBRL } from '../lib/faturamento/calc';
 import { OrderDetailDialog } from '../components/faturamento/OrderDetailDialog';
@@ -526,7 +527,7 @@ export default function AdminDashboard() {
 
   // Agregados vindos do useMemo acima (calculados uma vez por tarefas/atendentes/minuto).
   const {
-    pending, overdue, completionRate, contactsToday, reminderOn,
+    pending, overdue, overdueDetail, completionRate, contactsToday, reminderOn,
     convertedCount, conversionRate, avgContactsToConvert, convertedThisMonth,
     funnel, avgFirstContactMs, avgFirstContactDays, avgConversionMs, avgConversionDays, staleNoContact, hotLeads,
     sellerStats, conversionRanking, weeklyTrend, weeklyTrendMax,
@@ -703,6 +704,7 @@ export default function AdminDashboard() {
                   <Badge variant="danger">{overdue.length}</Badge>
                   <ChevronRight aria-hidden="true" size={16} className="text-slate-500" />
                 </button>
+                <p className="px-4 pb-3 pl-11 text-xs text-slate-500">{resumoAtrasadas(overdueDetail)}</p>
               </li>
             )}
 
@@ -729,7 +731,7 @@ export default function AdminDashboard() {
         <Stat
           label="Atrasados"
           value={overdue.length}
-          hint={overdue.length > 0 ? 'precisam de ação' : 'tudo em dia'}
+          hint={overdue.length > 0 ? (overdueDetail.semAtendente + overdueDetail.atendenteInativo > 0 ? `${overdueDetail.comAtendenteAtivo} com atendente ativo` : 'precisam de ação') : 'tudo em dia'}
           tone={overdue.length > 0 ? 'danger' : 'success'}
           onClick={() => setLocation('/tasks')}
         />
