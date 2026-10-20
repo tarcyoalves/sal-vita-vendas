@@ -68,8 +68,8 @@ describe('pior veredito', () => {
   });
   it('semáforos usam o pior vigente por documento', () => {
     const r = montarSemaforos([
-      { documento: 'A', veredito: 'APROVADO', consultadoEm: '2026-10-15T00:00:00Z', provedor: 'boavista_apifull' },
-      { documento: 'A', veredito: 'COM_RESTRICAO', consultadoEm: '2026-10-12T00:00:00Z', provedor: 'boavista_apifull' },
+      { documento: 'A', veredito: 'APROVADO', consultadoEm: '2026-10-15T00:00:00Z', provedor: 'boavista_apifull', produto: 'boavista' },
+      { documento: 'A', veredito: 'COM_RESTRICAO', consultadoEm: '2026-10-12T00:00:00Z', provedor: 'boavista_apifull', produto: 'serasa_premium' },
       { documento: 'B', veredito: 'REPROVADO_A_PRAZO', consultadoEm: '2026-05-01T00:00:00Z', provedor: 'boavista_apifull' },
     ], AGORA);
     expect(r.A).toMatchObject({ veredito: 'COM_RESTRICAO', semaforo: 'AMARELO', valido: true });

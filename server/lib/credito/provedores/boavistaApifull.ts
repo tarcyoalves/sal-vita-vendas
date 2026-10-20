@@ -73,16 +73,41 @@ function cabecalhos(token: string, json: boolean): Record<string, string> {
   return { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(json ? { 'Content-Type': 'application/json' } : {}) };
 }
 
+/** Códigos que provam que a requisição NUNCA saiu (DNS, conexão recusada, rede fora): aí não houve cobrança. */
+const REDE_SEM_ENVIO = /\b(ENOTFOUND|ECONNREFUSED|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|ERR_INVALID_URL)\b/;
+
+/**
+ * A falha de transporte aconteceu DEPOIS de a consulta poder ter chegado ao provedor? Tempo esgotado, conexão
+ * derrubada no meio (ECONNRESET, "socket hang up", "fetch failed" sem causa de DNS/recusa, UND_ERR_*) ou corpo
+ * cortado: o provedor pode ter processado e cobrado. Só DNS/recusa/rede fora (nunca saiu) isentam.
+ */
+export function redePodeTerCobrado(e: unknown): boolean {
+  if (!(e instanceof Error)) return true;
+  if (e.name === 'AbortError' || e.name === 'TimeoutError') return true;
+  const causa = (e as Error & { cause?: unknown }).cause;
+  const causaTexto = causa instanceof Error
+    ? `${causa.name} ${causa.message} ${(causa as Error & { code?: unknown }).code ?? ''}`
+    : typeof causa === 'string' ? causa : '';
+  const texto = `${e.name} ${e.message} ${(e as Error & { code?: unknown }).code ?? ''} ${causaTexto}`;
+  if (REDE_SEM_ENVIO.test(texto)) return false;
+  // ECONNRESET, EPIPE, "socket hang up", "fetch failed" (sem causa de DNS), UND_ERR_SOCKET, "terminated"... = incerto.
+  return true;
+}
+
 /** Falha de transporte → erro seguro. Registra só o nome do erro (nunca a URL com credencial nem o token). */
-function erroDeRede(e: unknown): ErroProvedorCredito {
+function erroDeRede(e: unknown, consultaPaga = true): ErroProvedorCredito {
   const nome = e instanceof Error ? e.name : 'Erro';
+  const incerta = consultaPaga && redePodeTerCobrado(e);
+  const abortou = nome === 'AbortError';
   return new ErroProvedorCredito(
-    nome === 'AbortError'
+    abortou
       ? 'O provedor demorou demais para responder. A consulta PODE ter sido cobrada na API Full: confira o extrato antes de repetir.'
-      : 'Não foi possível contatar o provedor de crédito.',
+      : incerta
+        ? 'A conexão com o provedor caiu durante a consulta. Ela PODE ter sido cobrada na API Full: confira o extrato antes de repetir.'
+        : 'Não foi possível contatar o provedor de crédito.',
     `falha de rede: ${nome}`,
-    // Só a consulta (não o saldo) pode ter sido cobrada; quem chama decide. Aqui marcamos qualquer queda depois do envio.
-    nome === 'AbortError',
+    // Só a consulta paga (não a leitura de saldo) pode ter sido cobrada.
+    incerta,
   );
 }
 
@@ -170,7 +195,7 @@ export async function consultarSaldoApiFull(): Promise<SaldoApiFull> {
   try {
     r = await chamar(`${base}/api/get-balance`, { method: 'GET', headers: cabecalhos(token, false) }, TIMEOUT_SALDO_MS);
   } catch (e) {
-    throw erroDeRede(e);
+    throw erroDeRede(e, false); // saldo é leitura: nunca cobra
   }
   if (r.http < 200 || r.http >= 300) throw new ErroProvedorCredito('Não foi possível consultar o saldo do provedor.', `HTTP ${r.http}`);
   return extrairSaldo(r.corpo);

@@ -2,7 +2,7 @@
 // Só admin dispara consulta paga. Payload bruto e sócios nunca saem deste arquivo para atendente.
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, like, sql, type SQL } from 'drizzle-orm';
 import { router, protectedProcedure, staffProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
 import { creditQueries, creditReports, creditSettings, fatOrders, sellers, tasks, users } from '../db/schema';
@@ -24,6 +24,7 @@ import {
 } from '../lib/credito/produtos';
 import { documentosLiberadosPorTarefa } from '../lib/credito/carteira';
 import { diaBrCompacto } from '../lib/fusoBr';
+import { JANELA_COBRANCA_INCERTA_MS, MARCA_COBRANCA_INCERTA, bloqueioPorCobrancaIncerta } from '../lib/credito/cobrancaIncerta';
 import { montarFiltrosListagem, POR_PAGINA_MAX } from '../lib/credito/listagem';
 import { documentosVisiveis, montarSemaforos, normalizarDocumentosSemaforo, SEMAFOROS_MAX_DOCUMENTOS } from '../lib/credito/semaforos';
 import {
@@ -204,13 +205,13 @@ export const creditoRouter = router({
           SELECT DISTINCT ON (documento) id FROM credit_reports WHERE documento IN (${lista})
           ORDER BY documento, consultado_em DESC, id DESC
         )
-        SELECT documento, veredito, consultado_em, provedor FROM credit_reports
+        SELECT documento, veredito, consultado_em, provedor, produto FROM credit_reports
         WHERE documento IN (${lista})
           AND (consultado_em > now() - interval '30 days' OR id IN (SELECT id FROM ult))
         ORDER BY documento, consultado_em DESC, id DESC`);
-      type L = { documento: string; veredito: string; consultado_em: Date | string; provedor: string };
+      type L = { documento: string; veredito: string; consultado_em: Date | string; provedor: string; produto: string | null };
       return montarSemaforos((r.rows as unknown as L[]).map((l) => ({
-        documento: l.documento, veredito: comoVeredito(l.veredito), consultadoEm: l.consultado_em, provedor: l.provedor,
+        documento: l.documento, veredito: comoVeredito(l.veredito), consultadoEm: l.consultado_em, provedor: l.provedor, produto: l.produto,
       })));
     }),
 
@@ -313,6 +314,8 @@ export const creditoRouter = router({
       tipo: z.enum(['CNPJ', 'CPF']).optional(),
       motivo: z.string().trim().min(5).max(300),
       forcarNova: z.boolean().optional(),
+      /** Libera nova consulta logo após um erro com cobrança incerta (use só depois de conferir o extrato da API Full). */
+      confirmarRepeticao: z.boolean().optional(),
       taskId: z.number().int().optional(),
       pedidoId: z.string().min(1).max(100).optional(),
       /** Chaves do catálogo (1 a 3, sem repetição, só com custo medido). Ausente = ['boavista'] (compatibilidade). */
@@ -338,6 +341,16 @@ export const creditoRouter = router({
       const linhas = await relatoriosDoDocumento(documento, { limite: 60 });
       const { reaproveita, ultimo } = planoDeCache(itens, linhas, { forcarNova: input.forcarNova, provedorAtual: provedor.nome });
       const aConsultar = itens.filter((i) => !reaproveita[i.chave]);
+      // Erro anterior com cobrança incerta: não repete (e paga de novo) sem o admin conferir o extrato.
+      if (aConsultar.length > 0) {
+        const incertas = await db.select({ produto: creditQueries.produto, finalizadoEm: creditQueries.finalizadoEm }).from(creditQueries).where(and(
+          eq(creditQueries.documento, documento), eq(creditQueries.status, 'ERRO'),
+          like(creditQueries.erro, `%${MARCA_COBRANCA_INCERTA}%`),
+          gt(creditQueries.finalizadoEm, new Date(Date.now() - JANELA_COBRANCA_INCERTA_MS)),
+        ));
+        const msg = bloqueioPorCobrancaIncerta(incertas, aConsultar.map((i) => i.chave), { confirmarRepeticao: input.confirmarRepeticao });
+        if (msg) throw new TRPCError({ code: 'CONFLICT', message: msg });
+      }
       const custos = calcularCustos(itens, reaproveita, simulado);
 
       // 2) Antes de gastar: teto por consulta, saldo conhecido da API (fail-open se indisponível) e limite mensal.
@@ -417,7 +430,7 @@ export const creditoRouter = router({
           const seguro = e instanceof ErroProvedorCredito ? e.mensagemSegura : 'Falha ao consultar o provedor de crédito.';
           const detalhe = (e instanceof ErroProvedorCredito ? e.detalhe : e instanceof Error ? e.name : 'erro').slice(0, 500);
           console.error(`[credito] consulta falhou provedor=${provedor.nome} produto=${item.chave} query=${queryId}: ${detalhe}`);
-          await db.update(creditQueries).set({ status: 'ERRO', erro: e instanceof ErroProvedorCredito && e.cobrancaIncerta ? `${detalhe} (PODE TER SIDO COBRADA: conferir extrato)` : detalhe, finalizadoEm: new Date() }).where(eq(creditQueries.id, queryId));
+          await db.update(creditQueries).set({ status: 'ERRO', erro: e instanceof ErroProvedorCredito && e.cobrancaIncerta ? `${detalhe} (${MARCA_COBRANCA_INCERTA}: conferir extrato)` : detalhe, finalizadoEm: new Date() }).where(eq(creditQueries.id, queryId));
           const incerta = e instanceof ErroProvedorCredito && e.cobrancaIncerta;
           return { ...base, ok: false, cobrado: false, cobrancaIncerta: incerta, custoReais: 0, erro: seguro };
         }

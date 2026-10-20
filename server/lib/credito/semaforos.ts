@@ -28,11 +28,11 @@ export function documentosVisiveis(
 export interface SemaforoDoDocumento { veredito: Veredito; semaforo: Semaforo; valido: boolean; simulado: boolean }
 
 /**
- * Semáforo EFETIVO por documento: o pior veredito entre os relatórios válidos (<30 dias) de qualquer produto.
+ * Semáforo EFETIVO por documento: o mais recente válido (<30 dias) de cada produto e, entre produtos, o pior veredito.
  * `linhas` vêm da mais recente para a mais antiga. Sem nenhum válido, vale o mais recente (marcado vencido).
  */
 export function montarSemaforos(
-  linhas: ReadonlyArray<{ documento: string; veredito: Veredito; consultadoEm: Date | string; provedor: string }>,
+  linhas: ReadonlyArray<{ documento: string; veredito: Veredito; consultadoEm: Date | string; provedor: string; produto?: string | null }>,
   agora: Date = new Date(),
 ): Record<string, SemaforoDoDocumento> {
   const porDocumento = new Map<string, Array<(typeof linhas)[number]>>();

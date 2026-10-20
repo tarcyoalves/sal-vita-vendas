@@ -1,4 +1,4 @@
-// Regras PURAS da consulta com seletor de produtos: veredito efetivo (pior entre produtos), plano de cache por
+// Regras PURAS da consulta com seletor de produtos: veredito efetivo (mais recente por produto, pior entre produtos), plano de cache por
 // (documento, produto) e resultado parcial. O router só executa o SQL e as chamadas; aqui nada toca rede ou banco.
 import {
   CATALOGO_CREDITO, arredondar, chaveDoProdutoGravado, itemDoCatalogo, nomeDoProduto,
@@ -19,9 +19,10 @@ export interface LinhaRelatorio {
 }
 
 /**
- * Relatório EFETIVO de um documento. `linhas` vêm da mais recente para a mais antiga. Entre os relatórios válidos
- * (<30 dias), de qualquer produto, vale o PIOR veredito; o "principal" é o mais recente com esse veredito.
- * Sem nenhum válido: o mais recente, marcado `valido:false` (a tela mostra cinza/vencido).
+ * Relatório EFETIVO de um documento. `linhas` vêm da mais recente para a mais antiga. Vale o MAIS RECENTE
+ * relatório válido (<30 dias) de cada produto — uma consulta nova do produto substitui a antiga, mesmo que a
+ * antiga fosse pior — e, entre os produtos, o PIOR veredito (mesma regra do consolidado). O "principal" é o mais
+ * recente entre os que têm esse veredito. Sem nenhum válido: o mais recente, marcado `valido:false` (cinza/vencido).
  */
 export function escolherEfetivo<T extends LinhaRelatorio>(
   linhas: readonly T[], agora: Date = new Date(),
@@ -29,8 +30,10 @@ export function escolherEfetivo<T extends LinhaRelatorio>(
   if (linhas.length === 0) return null;
   const validas = linhas.filter((l) => relatorioValido(l.consultadoEm, agora));
   if (validas.length === 0) return { principal: linhas[0], veredito: comoVeredito(linhas[0].veredito), valido: false };
-  const pior = piorVeredito(validas.map((l) => comoVeredito(l.veredito))) as Veredito;
-  const principal = validas.find((l) => comoVeredito(l.veredito) === pior) ?? validas[0];
+  // Mais recente por produto (a ordem de chegada é da mais nova para a mais antiga), preservando essa ordem.
+  const vigentes = [...maisRecentePorProduto(validas).values()];
+  const pior = piorVeredito(vigentes.map((l) => comoVeredito(l.veredito))) as Veredito;
+  const principal = vigentes.find((l) => comoVeredito(l.veredito) === pior) ?? vigentes[0];
   return { principal, veredito: pior, valido: true };
 }
 
