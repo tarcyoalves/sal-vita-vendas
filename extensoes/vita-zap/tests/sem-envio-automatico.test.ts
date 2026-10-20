@@ -134,7 +134,7 @@ describe('cliques permitidos na 0.2: só a linha da lista e o X de limpar a busc
   it('os seletores do X identificam LIMPAR busca e nunca o botão de enviar, mic ou rodapé', () => {
     expect(SELETORES.limparBusca.length).toBeGreaterThan(0);
     for (const s of SELETORES.limparBusca) {
-      expect(s, s).toMatch(/Limpar|Clear search|x-alt/);
+      expect(s, s).toMatch(/Limpar|Clear search|x-alt|End icon button/);
       expect(s, s).not.toMatch(/send|enviar|ptt|mic|footer|attach|clip|plus|emoji|submit/i);
     }
     const todos = JSON.stringify(SELETORES);
@@ -162,11 +162,11 @@ describe('cliques permitidos na 0.2: só a linha da lista e o X de limpar a busc
 });
 
 describe('versão', () => {
-  it('manifest.json e package.json estão na mesma versão (0.2.1)', () => {
+  it('manifest.json e package.json estão na mesma versão (0.2.2)', () => {
     const manifesto = JSON.parse(readFileSync(join(RAIZ, 'public/manifest.json'), 'utf8')) as { version: string };
     const pacote = JSON.parse(readFileSync(join(RAIZ, 'package.json'), 'utf8')) as { version: string };
     expect(manifesto.version).toBe(pacote.version);
-    expect(pacote.version).toBe('0.2.1');
+    expect(pacote.version).toBe('0.2.2');
   });
 });
 

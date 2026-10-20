@@ -14,14 +14,17 @@ import {
   idsDasMensagens,
   jidDosIds,
   lerConversaEstavel,
+  lerMensagens,
+  pareceEnvioNosso,
   textoDaMensagem,
+  textoQueBate,
   tituloAberto,
   type TipoConversa,
 } from './chat';
 import { campoVazio, escreverNoCampo, esperar, esperarAte, limparCampo, textoDoCampo, usuarioDigitando } from './dom';
 import { lerConversasVisiveis } from './extrair';
 import { buscar, exigir, linhasDaLista } from './lista';
-import { encontrar, encontrarTodos, SELETORES } from './selectors';
+import { encontrar, SELETORES } from './selectors';
 
 export { classificarConversa };
 export type { TipoConversa };
@@ -34,16 +37,20 @@ function erro(codigo: CodigoErro, mensagem: string, extra: { texto?: string; jid
 
 /**
  * Limpa a busca clicando no X do próprio WhatsApp (o único clique permitido fora da linha da
- * lista). Procura só na coluna da esquerda e FORA da lista de conversas; nunca no rodapé.
+ * lista). Procura só na coluna da esquerda (#side), FORA da lista de conversas e de #main;
+ * nunca no rodapé; e só quando a caixa de busca tem texto.
  */
 export function limparBuscaPeloBotao(): boolean {
   const coluna = encontrar(document, 'colunaEsquerda');
   if (!coluna) return false;
+  const caixaBusca = encontrar(document, 'caixaBusca');
+  if (!caixaBusca || campoVazio(caixaBusca)) return false;
   const lista = encontrar(document, 'painelLateral');
+  const conversa = encontrar(document, 'painelConversa');
   for (const seletor of SELETORES.limparBusca) {
     for (const achado of coluna.querySelectorAll<HTMLElement>(seletor)) {
       const botao = achado.closest<HTMLElement>('button, [role="button"]') ?? achado;
-      if (lista?.contains(botao) || botao.closest('footer')) continue;
+      if (lista?.contains(botao) || conversa?.contains(botao) || botao.closest('footer')) continue;
       limparBuscaPeloX(botao);
       return true;
     }
@@ -72,9 +79,10 @@ export function pararObservacao(): void {
 }
 
 /**
- * Detecta "a mensagem saiu": na conversa de `nome`, a ÚLTIMA mensagem é sua (data-id true_ ou
- * dentro de .message-out), é nova (não estava na foto tirada antes de colar) e a caixa de texto
- * ficou vazia.
+ * Detecta "a mensagem saiu": na conversa de `nome`, aparece uma mensagem NOVA (id fora da foto
+ * tirada antes de colar), a caixa de texto ficou vazia, e ela é sua por um destes sinais:
+ *  - formato de 20/10/2026 (sem in/out): o texto bate com o colado (normalizado, emoji incluído);
+ *  - formato antigo: a ÚLTIMA mensagem é .message-out ou data-id true_ (o texto pode não bater).
  */
 function observarEnvio(
   nome: string,
@@ -88,15 +96,18 @@ function observarEnvio(
     if (!observacao) return;
     observacao.timer = null;
     if (tituloAberto() !== nome) return; // usuário está em outra conversa; segue observando
-    const mensagens = encontrarTodos(document, 'mensagem');
+    const mensagens = lerMensagens();
+    const novas = mensagens.filter((m) => !antes.has(m.id));
     const ultima = mensagens[mensagens.length - 1];
-    if (!ultima) return;
-    const id = ultima.getAttribute('data-id') ?? '';
-    if (antes.has(id) || !ehMensagemSua(ultima)) return;
+    if (!ultima || novas.length === 0) return;
+    const porSinal = !antes.has(ultima.id) && ehMensagemSua(ultima.el) ? ultima : undefined;
+    const achada = porSinal ?? [...novas].reverse().find((m) => pareceEnvioNosso(m.el, textoColado));
+    if (!achada) return;
     const caixa = encontrar(document, 'caixaMensagem');
     if (caixa && !campoVazio(caixa)) return;
-    const texto = textoDaMensagem(ultima);
-    const confere = normalizarParaComparar(texto) === normalizarParaComparar(textoColado);
+    const casado = textoQueBate(achada.el, textoColado);
+    const texto = casado ?? textoDaMensagem(achada.el);
+    const confere = casado !== null;
     const jid = jidDosIds(idsDasMensagens());
     pararObservacao();
     aoDetectar(texto, confere, jid);
@@ -130,17 +141,20 @@ export function cancelarAbertura(): void {
  * Compara a conversa com a "foto" de uma tentativa anterior: existe mensagem SUA depois da
  * última mensagem conhecida? (Mensagens mais antigas que só agora carregaram não contam.)
  */
-export function compararComFoto(foto: string[]): { estado: 'nova'; texto: string } | { estado: 'nenhuma' | 'indeterminado' } {
+export function compararComFoto(foto: string[], textoColado?: string): { estado: 'nova'; texto: string } | { estado: 'nenhuma' | 'indeterminado' } {
   const conhecidas = new Set(foto);
-  const mensagens = encontrarTodos(document, 'mensagem');
+  const mensagens = lerMensagens();
   let ultimaConhecida = -1;
   mensagens.forEach((m, i) => {
-    if (conhecidas.has(m.getAttribute('data-id') ?? '')) ultimaConhecida = i;
+    if (conhecidas.has(m.id)) ultimaConhecida = i;
   });
   if (ultimaConhecida === -1) return { estado: 'indeterminado' };
-  const novas = mensagens.slice(ultimaConhecida + 1).filter(ehMensagemSua);
+  // Sua = sinal do formato antigo, ou (sem in/out) texto igual ao que colamos e que não é do contato.
+  const novas = mensagens.slice(ultimaConhecida + 1).filter((m) => ehMensagemSua(m.el) || (textoColado !== undefined && pareceEnvioNosso(m.el, textoColado)));
   const ultima = novas[novas.length - 1];
-  return ultima ? { estado: 'nova', texto: textoDaMensagem(ultima) } : { estado: 'nenhuma' };
+  if (!ultima) return { estado: 'nenhuma' };
+  const casado = textoColado !== undefined ? textoQueBate(ultima.el, textoColado) : null;
+  return { estado: 'nova', texto: casado ?? textoDaMensagem(ultima.el) };
 }
 
 /**
@@ -260,7 +274,7 @@ async function abrir(nome: string, texto: string, cb: AoAbrir, fotoAntes: string
 
   // 4. Retomada: já existe mensagem nossa nova nesta conversa? Então NÃO cola de novo.
   if (fotoAntes) {
-    const comparacao = compararComFoto(fotoAntes);
+    const comparacao = compararComFoto(fotoAntes, texto);
     if (comparacao.estado === 'nova') {
       return erro('ja_enviada', `Já existe uma mensagem sua nova na conversa de "${nome}".`, { texto: comparacao.texto, jid: leitura.jid });
     }

@@ -55,6 +55,26 @@ export interface SeletorDiagnosticado {
 }
 
 /** Retrato SOMENTE LEITURA da página do WhatsApp Web (sem nomes, sem textos de mensagem). */
+export interface CaixaBuscaDiagnosticada {
+  tag: string;
+  role: string | null;
+  /** null = atributo ausente; "" = presente e vazio. */
+  ariaLabel: string | null;
+  dataTab: string | null;
+  temTexto: boolean;
+}
+
+export interface LinhasMensagemDiagnosticadas {
+  /** Mensagens com id (data-id ou data-testid conv-msg-…). */
+  convMsg: number;
+  /** Quantas têm texto/autor renderizados (selectable-text, copyable-text, msg-container ou msg-meta). */
+  renderizadas: number;
+  /** Autores distintos dos data-pre-plain-text, só as 3 primeiras letras (minúsculas, sem repetição). */
+  autores: string[];
+  /** Elementos de autor DENTRO de linhas de mensagem. */
+  elementosAutor: number;
+}
+
 export interface DiagnosticoPagina {
   url: string;
   idioma: string;
@@ -67,6 +87,10 @@ export interface DiagnosticoPagina {
   dataIds: { total: number; amostras: string[] };
   /** Atributos (só os nomes) e seletores presentes nas linhas de mensagem, p.ex. "attr:data-pre-plain-text". */
   estruturaMensagem: string[];
+  /** Caixa de busca da lista: atributos que a identificam e se tem texto (nunca o texto). null = não achada. */
+  caixaBusca: CaixaBuscaDiagnosticada | null;
+  /** Linhas de mensagem (conversa virtualizada): quantas têm id, quantas estão renderizadas por completo e autores (3 primeiras letras). */
+  linhasMensagem: LinhasMensagemDiagnosticadas;
   /** Resultado da classificação da conversa aberta e os sinais usados (sem nomes). */
   classificacao: { tipo: string; iconeGrupo: boolean; recebidas: number; enviadas: number; recebidasComAutor: number; autoresDistintos: number; autorIgualAoTitulo: boolean | null; elementoAutor: boolean };
 }

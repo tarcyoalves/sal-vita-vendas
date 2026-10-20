@@ -4,8 +4,8 @@
 // aqui não pode existir nada que escreva, foque, clique ou dispare evento
 // (tests/sem-envio-automatico.test.ts confere). Não devolve nomes nem textos de mensagem.
 
-import type { DiagnosticoPagina, SeletorDiagnosticado } from '../shared/mensagens';
-import { classificarConversa, lerSinaisDaConversa } from './chat';
+import type { CaixaBuscaDiagnosticada, DiagnosticoPagina, LinhasMensagemDiagnosticadas, SeletorDiagnosticado } from '../shared/mensagens';
+import { autorDaMensagem, classificarConversa, lerMensagens, lerSinaisDaConversa } from './chat';
 import { encontrar, encontrarTodos, SELETORES, type ChaveSeletor } from './selectors';
 
 /** Troca os dígitos por * em cada bloco numérico, mantendo os 4 últimos (prefixo true_/false_, @c.us etc. ficam). */
@@ -33,10 +33,11 @@ export function estruturaDasMensagens(raiz: ParentNode): string[] {
 
 /** Como a conversa aberta foi classificada e quais sinais pesaram (sem nomes nem textos). */
 export function diagnosticarClassificacao(raiz: ParentNode): DiagnosticoPagina['classificacao'] {
-  const ids = [...raiz.querySelectorAll('#main [data-id]')].map((el) => el.getAttribute('data-id') ?? '').filter(Boolean);
+  const ids = lerMensagens().map((m) => m.id);
   const sinais = lerSinaisDaConversa();
   const recebidas = sinais.mensagens.filter((m) => m.recebida);
-  const autores = recebidas.flatMap((m) => (m.autor ? [m.autor.trim().toLowerCase()] : []));
+  // Sem in/out no DOM atual, os autores valem para todas as linhas (suas e do contato).
+  const autores = sinais.mensagens.flatMap((m) => (m.autor ? [m.autor.trim().toLowerCase()] : []));
   const titulo = sinais.titulo?.trim().toLowerCase() ?? '';
   return {
     tipo: classificarConversa(ids, sinais),
@@ -45,8 +46,53 @@ export function diagnosticarClassificacao(raiz: ParentNode): DiagnosticoPagina['
     enviadas: sinais.mensagens.filter((m) => m.sua).length,
     recebidasComAutor: autores.length,
     autoresDistintos: new Set(autores).size,
-    autorIgualAoTitulo: autores.length > 0 && titulo !== '' ? autores.every((a) => a === titulo) : null,
-    elementoAutor: recebidas.some((m) => m.temElementoAutor),
+    autorIgualAoTitulo: autores.length > 0 && titulo !== '' ? autores.some((a) => a === titulo) : null,
+    elementoAutor: sinais.mensagens.some((m) => m.temElementoAutor),
+  };
+}
+
+/** Sinais de que a linha da mensagem foi renderizada por completo (a conversa é virtualizada). */
+const RENDERIZADA = '.selectable-text, .copyable-text, [data-testid="msg-container"], [data-testid="msg-meta"]';
+
+/** Quantos elementos que casam com alguma alternativa existem DENTRO das linhas de mensagem. */
+function contarDentroDasLinhas(alternativas: readonly string[]): number {
+  let total = 0;
+  for (const { el } of lerMensagens()) {
+    for (const alt of alternativas) {
+      const n = el.querySelectorAll(alt).length;
+      if (n > 0) {
+        total += n;
+        break;
+      }
+    }
+  }
+  return total;
+}
+
+/** Linhas de mensagem: quantas, quantas renderizadas, autores distintos (3 letras) e elementos de autor DENTRO delas. */
+export function diagnosticarLinhasMensagem(): LinhasMensagemDiagnosticadas {
+  const linhas = lerMensagens();
+  const autores = new Set<string>();
+  let renderizadas = 0;
+  for (const { el } of linhas) {
+    if (el.querySelector(RENDERIZADA) !== null) renderizadas += 1;
+    const autor = autorDaMensagem(el);
+    if (autor) autores.add(autor.trim().toLowerCase().slice(0, 3));
+  }
+  return { convMsg: linhas.length, renderizadas, autores: [...autores].sort(), elementosAutor: contarDentroDasLinhas(SELETORES.autorMensagem) };
+}
+
+/** Atributos (nunca o texto) da caixa de busca da lista e se ela tem texto. */
+export function diagnosticarCaixaBusca(raiz: ParentNode): CaixaBuscaDiagnosticada | null {
+  const el = encontrar(raiz, 'caixaBusca');
+  if (!el) return null;
+  const texto = el instanceof HTMLInputElement ? el.value : (el.textContent ?? '');
+  return {
+    tag: el.tagName.toLowerCase(),
+    role: el.getAttribute('role'),
+    ariaLabel: el.getAttribute('aria-label'),
+    dataTab: el.getAttribute('data-tab'),
+    temTexto: texto.replace(/[\s​-‏⁠﻿]/g, '').length > 0,
   };
 }
 
@@ -57,7 +103,8 @@ export function diagnosticarSeletores(raiz: ParentNode): SeletorDiagnosticado[] 
     for (const alternativa of SELETORES[chave]) {
       let n = 0;
       try {
-        n = raiz.querySelectorAll(alternativa).length;
+        // Autor só vale DENTRO de uma linha de mensagem (o mesmo nome no cabeçalho não conta).
+        n = chave === 'autorMensagem' ? contarDentroDasLinhas([alternativa]) : raiz.querySelectorAll(alternativa).length;
       } catch {
         n = 0;
       }
@@ -82,6 +129,8 @@ export function diagnosticarPagina(raiz: Document = document): DiagnosticoPagina
       amostras: [...raiz.querySelectorAll('#main [data-id]')].slice(0, 8).map((el) => mascararDataId(el.getAttribute('data-id') ?? '')),
     },
     estruturaMensagem: estruturaDasMensagens(raiz),
+    caixaBusca: diagnosticarCaixaBusca(raiz),
+    linhasMensagem: diagnosticarLinhasMensagem(),
     classificacao: diagnosticarClassificacao(raiz),
   };
 }

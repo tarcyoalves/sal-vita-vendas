@@ -21,6 +21,50 @@ esta pasta.
 
 ---
 
+## 0.2. O que mudou na 0.2.2 (WhatsApp Web de 20/10/2026, dados reais do console)
+
+Nenhuma regra de proteção foi afrouxada: a extensão continua sem enviar nada sozinha (o teste
+`tests/sem-envio-automatico.test.ts` segue igual; só ganhou o rótulo `End icon button` na
+lista dos seletores do X de limpar a busca e a versão `0.2.2`).
+
+- **Caixa de busca.** Depois que a extensão escreve o nome, o `<input>` fica com
+  `role="textbox" data-tab="3"` e `aria-label=""` (vazio), então os seletores por "Pesquisar"
+  falhavam na 2ª operação (erro `seletor`). Novas alternativas, dentro de `#side`:
+  `input[role="textbox"][data-tab="3"]`, `input[role="textbox"]`, `input[type="text"]`.
+- **Limpar a busca.** O X do WhatsApp agora é `button[aria-label="End icon button"]`. Só é
+  clicado se estiver em `#side`, fora de `#pane-side` e de `#main`, fora de `footer`, **e** a
+  caixa de busca tiver texto. Continua sendo o único clique além da linha da lista. Sem ele,
+  o fallback limpa o `<input>` pelo valor (setter nativo + evento `input`; nada de `execCommand`).
+- **Envio sem `.message-in`/`.message-out`.** As mensagens são `#main [role="row"]`
+  virtualizadas, cada uma com um filho `data-testid="conv-msg-<ID>"`; não há classes de
+  direção nem ✓/✓✓. Uma mensagem conta como **sua e enviada** quando: (1) aparece um id
+  **novo** (fora da "foto" tirada antes de colar); (2) o texto dela (`selectable-text`) bate com
+  o texto colado, comparado sem diferença de espaço, caracteres invisíveis e variação de emoji;
+  (3) a caixa de mensagem ficou **vazia**; e (4) ela não é do contato (não é `.message-in`, e o
+  autor do `data-pre-plain-text` não é o título da conversa). `.message-out` e `true_…`
+  continuam valendo como sinais alternativos (formato antigo). O mesmo critério vale para o
+  observador, para a retomada (`ja_enviada`) e para os envios guardados
+  (`consultarPendencias`).
+- **Classificação individual x grupo sem in/out.** Como não dá para separar "eu" de "contato",
+  só vale o conjunto de autores dos `data-pre-plain-text` das linhas renderizadas:
+  **grupo** se há ícone de grupo/comunidade no cabeçalho, OU elemento de autor dentro de uma
+  linha de mensagem, OU mais de 2 autores distintos, OU 2 autores distintos e nenhum igual ao
+  título; **individual** se nada disso e (nenhum autor legível, OU ≤ 2 autores com ao menos um
+  igual ao título); qualquer outro caso (por exemplo, 1 autor diferente do título) →
+  `nao_confirmado`, sem colar. O elemento de autor só é procurado dentro das linhas de
+  mensagem (o `[data-testid="author"]` que o diagnóstico 0.2.1 achou provavelmente não era de
+  mensagem; o diagnóstico agora conta só os de dentro das linhas).
+- **Risco residual (leia).** Como a conversa é virtualizada, um **grupo sem ícone de grupo
+  no cabeçalho cujas linhas renderizadas não mostram nenhum autor** (por exemplo, só linhas
+  virtualizadas) pode parecer individual, e a extensão colaria o texto no grupo. Um grupo com
+  um único autor visível diferente do título dá `nao_confirmado`, não individual. A defesa que
+  sobra é a varredura, que já exclui grupos pela lista (ícone e prévia "Fulano: …"), e o fato
+  de que **você** é quem aperta Enter: confira o cabeçalho antes de enviar.
+- **Diagnóstico.** Mostra, sem texto de mensagem: da caixa de busca, `tag`, `role`,
+  `aria-label` (vazio ou não), `data-tab` e se tem texto (não o texto); das mensagens,
+  quantas têm `conv-msg`, quantas estão renderizadas por completo, os autores distintos (só as
+  3 primeiras letras) e quantos elementos de autor existem dentro das linhas.
+
 ## 0.1. O que mudou na 0.2.1
 
 - **Motivo do erro à vista.** Quando um contato vira problema, o painel mostra um alerta com o

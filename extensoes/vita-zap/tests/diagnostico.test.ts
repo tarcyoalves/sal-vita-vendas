@@ -57,6 +57,8 @@ describe('registro circular', () => {
         caixaMensagem: false,
         dataIds: { total: 0, amostras: [] },
         estruturaMensagem: [],
+        caixaBusca: null,
+        linhasMensagem: { convMsg: 0, renderizadas: 0, autores: [], elementosAutor: 0 },
         classificacao: { tipo: 'desconhecido', iconeGrupo: false, recebidas: 0, enviadas: 0, recebidasComAutor: 0, autoresDistintos: 0, autorIgualAoTitulo: null, elementoAutor: false },
       }),
     });
@@ -140,6 +142,8 @@ describe('campanha de 1 contato que falha (caso de campo)', () => {
                 caixaMensagem: true,
                 dataIds: { total: 2, amostras: ['true_*****1234@lid_X'] },
                 estruturaMensagem: ['attr:data-id'],
+                caixaBusca: null,
+                linhasMensagem: { convMsg: 0, renderizadas: 0, autores: [], elementosAutor: 0 },
                 classificacao: { tipo: 'desconhecido', iconeGrupo: false, recebidas: 0, enviadas: 0, recebidasComAutor: 0, autoresDistintos: 0, autorIgualAoTitulo: null, elementoAutor: false },
               },
             };

@@ -20,7 +20,7 @@ export interface EventoDiagnostico {
   versao: string;
   /** Contato atual (telefones mascarados) — só o item em andamento. */
   item: string | null;
-  pagina: { url: string; idioma: string; seletores: Record<string, string>; dataIds?: { total: number; amostras: string[] }; estruturaMensagem?: string[]; classificacao?: DiagnosticoPagina['classificacao'] } | null;
+  pagina: { url: string; idioma: string; seletores: Record<string, string>; dataIds?: { total: number; amostras: string[] }; estruturaMensagem?: string[]; caixaBusca?: DiagnosticoPagina['caixaBusca']; linhasMensagem?: DiagnosticoPagina['linhasMensagem']; classificacao?: DiagnosticoPagina['classificacao'] } | null;
 }
 
 export type NovoEvento = Omit<EventoDiagnostico, 'id' | 'quando' | 'versao'>;
@@ -51,6 +51,8 @@ export function resumirPagina(d: DiagnosticoPagina): NonNullable<EventoDiagnosti
     seletores,
     dataIds: { total: d.dataIds.total, amostras: d.dataIds.amostras.slice(0, 8).map((a) => a.slice(0, 120)) },
     estruturaMensagem: d.estruturaMensagem.slice(0, 40),
+    caixaBusca: d.caixaBusca ? { ...d.caixaBusca, ariaLabel: d.caixaBusca.ariaLabel === null ? null : limpar(d.caixaBusca.ariaLabel, 60) } : null,
+    linhasMensagem: { ...d.linhasMensagem, autores: d.linhasMensagem.autores.slice(0, 10).map((a) => a.slice(0, 3)) },
     classificacao: d.classificacao,
   };
 }
@@ -136,6 +138,8 @@ export function textoDiagnostico(eventos: readonly EventoDiagnostico[], versao: 
         linhas.push(`    #main [data-id]: ${e.pagina.dataIds.total}`);
         for (const a of e.pagina.dataIds.amostras) linhas.push(`      data-id: ${a}`);
       }
+      if (e.pagina.caixaBusca !== undefined) linhas.push(`    caixa de busca: ${e.pagina.caixaBusca ? JSON.stringify(e.pagina.caixaBusca) : 'não achada'}`);
+      if (e.pagina.linhasMensagem) linhas.push(`    linhas de mensagem: ${JSON.stringify(e.pagina.linhasMensagem)}`);
       if (e.pagina.classificacao) linhas.push(`    classificação: ${JSON.stringify(e.pagina.classificacao)}`);
       for (const x of e.pagina.estruturaMensagem ?? []) linhas.push(`    mensagem ${x}`);
     }

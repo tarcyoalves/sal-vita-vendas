@@ -62,3 +62,21 @@ export function sortearModelo(modelos: string[], aleatorio: () => number = Math.
 export function normalizarParaComparar(texto: string): string {
   return texto.replace(/\s+/g, ' ').trim();
 }
+
+/**
+ * Comparação do texto colado com o texto de uma mensagem lida do chat. Além dos espaços,
+ * ignora caracteres invisíveis (marcas bidi, largura zero) e o seletor de variação de emoji
+ * (U+FE0F/U+FE0E): o WhatsApp pode trocar "❤" por "❤️" ao renderizar o emoji como imagem.
+ */
+export function normalizarMensagem(texto: string): string {
+  return texto
+    .normalize('NFC')
+    .replace(/[​-‏‪-‮⁠﻿︎️]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function mensagensIguais(a: string, b: string): boolean {
+  const na = normalizarMensagem(a);
+  return na !== '' && na === normalizarMensagem(b);
+}

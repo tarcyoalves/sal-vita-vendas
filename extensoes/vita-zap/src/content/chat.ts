@@ -1,5 +1,6 @@
 // Leitura (só leitura) da conversa aberta: título, mensagens, tipo (individual/grupo) e JID.
 
+import { mensagensIguais } from '../shared/texto';
 import { esperar, limparMarcas, textoDoNo } from './dom';
 import { encontrar, encontrarTodos, SELETORES } from './selectors';
 
@@ -9,9 +10,9 @@ export type TipoConversa = 'individual' | 'grupo' | 'desconhecido';
 export interface MensagemLida {
   sua: boolean;
   recebida: boolean;
-  /** Autor do data-pre-plain-text ("[hh:mm, dd/mm/aaaa] Autor: "), ou null. */
+  /** Autor do data-pre-plain-text ("[hh:mm, dd/mm/aaaa] Autor: "), ou null (linha não renderizada). */
   autor: string | null;
-  /** Existe um elemento com o nome do autor dentro da mensagem recebida (só em grupo). */
+  /** Existe um elemento com o nome do autor dentro da linha da mensagem (só em grupo). */
   temElementoAutor: boolean;
 }
 
@@ -37,11 +38,18 @@ export function autorDoPrePlainText(valor: string): string | null {
  * Classifica a conversa aberta. Conservador: na dúvida → 'desconhecido' (não cola).
  *
  * Formato antigo: o data-id traz o JID ("true_5584...@c.us_ABC"); @g.us/@broadcast/@newsletter
- * = grupo, @c.us/@lid = individual. Formato atual: o data-id é só o id da mensagem, então vem
- * dos `sinais` do DOM: grupo se há ícone de grupo no cabeçalho, nome de autor dentro de
- * mensagem recebida, autores diferentes entre si ou diferentes do título; individual se nenhum
- * sinal de grupo, todo autor recebido é o título e existe ao menos uma mensagem. Sinal de grupo
- * vence sempre.
+ * = grupo, @c.us/@lid = individual.
+ *
+ * Formato atual (20/10/2026): o data-id é só o id da mensagem e NÃO há .message-in/.message-out,
+ * então não dá para separar "eu" de "contato". Vale só o conjunto de autores dos
+ * data-pre-plain-text das linhas renderizadas (a conversa é virtualizada):
+ *  - GRUPO: ícone de grupo/comunidade no cabeçalho; OU elemento de autor dentro de uma linha de
+ *    mensagem; OU mais de 2 autores distintos; OU 2 autores distintos e nenhum igual ao título.
+ *  - INDIVIDUAL: nenhum sinal de grupo e (nenhum autor legível; OU ≤ 2 autores com ao menos um
+ *    igual ao título).
+ *  - Qualquer outra coisa (ex.: 1 autor diferente do título) → desconhecido.
+ * Sinal de grupo vence sempre. Risco residual (README): grupo sem ícone cujas linhas renderizadas
+ * não mostram autor nenhum parece individual — a varredura já exclui grupos pela lista.
  */
 export function classificarConversa(dataIds: string[], sinais?: SinaisDom): TipoConversa {
   let individualPeloJid = false;
@@ -55,32 +63,42 @@ export function classificarConversa(dataIds: string[], sinais?: SinaisDom): Tipo
   if (!sinais) return individualPeloJid ? 'individual' : 'desconhecido';
 
   if (sinais.iconeGrupoNoCabecalho) return 'grupo';
-  const recebidas = sinais.mensagens.filter((m) => m.recebida);
-  if (recebidas.some((m) => m.temElementoAutor)) return 'grupo';
-  const autores = recebidas.flatMap((m) => (m.autor ? [normalizarAutor(m.autor)] : []));
-  if (new Set(autores).size > 1) return 'grupo';
+  if (sinais.mensagens.some((m) => m.temElementoAutor)) return 'grupo';
+  const autores = new Set(sinais.mensagens.flatMap((m) => (m.autor ? [normalizarAutor(m.autor)] : [])));
   const titulo = sinais.titulo ? normalizarAutor(sinais.titulo) : '';
-  if (titulo !== '' && autores.some((a) => a !== titulo)) return 'grupo';
+  const tituloEntreOsAutores = titulo !== '' && autores.has(titulo);
+  if (autores.size > 2) return 'grupo';
+  if (autores.size === 2 && !tituloEntreOsAutores) return 'grupo';
 
   if (individualPeloJid) return 'individual';
-  if (sinais.mensagens.filter((m) => m.sua || m.recebida).length === 0) return 'desconhecido';
-  // Recebidas sem nenhum autor legível (ou sem título para comparar): não dá para confirmar.
-  if (recebidas.length > 0 && (autores.length === 0 || titulo === '')) return 'desconhecido';
-  return 'individual';
+  if (sinais.mensagens.length === 0) return 'desconhecido';
+  if (autores.size === 0) return 'individual';
+  return tituloEntreOsAutores ? 'individual' : 'desconhecido';
+}
+
+/** Elemento com o data-pre-plain-text da mensagem (nela, dentro dela ou acima dela). */
+function elementoComAutor(el: HTMLElement): Element | null {
+  return el.matches('[data-pre-plain-text]') ? el : (el.querySelector('[data-pre-plain-text]') ?? el.closest('[data-pre-plain-text]'));
+}
+
+/** Autor (data-pre-plain-text) de uma mensagem, ou null se a linha não foi renderizada por completo. */
+export function autorDaMensagem(el: HTMLElement): string | null {
+  const comAutor = elementoComAutor(el);
+  return comAutor ? autorDoPrePlainText(comAutor.getAttribute('data-pre-plain-text') ?? '') : null;
+}
+
+/** Existe um elemento de nome de autor DENTRO da linha da mensagem (nunca no cabeçalho)? */
+export function temElementoDeAutor(el: HTMLElement): boolean {
+  return SELETORES.autorMensagem.some((s) => el.querySelector(s) !== null);
 }
 
 /** Lê os sinais do DOM da conversa aberta (só leitura). */
 export function lerSinaisDaConversa(): SinaisDom {
   const cabecalho = encontrar(document, 'painelConversa')?.querySelector('header') ?? null;
   const iconeGrupoNoCabecalho = cabecalho ? SELETORES.iconeGrupo.some((s) => cabecalho.querySelector(s) !== null) : false;
-  const mensagens = encontrarTodos(document, 'mensagem').map((el): MensagemLida => {
+  const mensagens = lerMensagens().map(({ el }): MensagemLida => {
     const sua = ehMensagemSua(el);
-    const recebidaSel = SELETORES.mensagemRecebida[0];
-    const recebida = !sua && (/^false_/.test(el.getAttribute('data-id') ?? '') || el.matches(recebidaSel) || el.closest(recebidaSel) != null || el.querySelector(recebidaSel) != null);
-    const comAutor = el.matches('[data-pre-plain-text]') ? el : (el.querySelector('[data-pre-plain-text]') ?? el.closest('[data-pre-plain-text]'));
-    const autor = comAutor ? autorDoPrePlainText(comAutor.getAttribute('data-pre-plain-text') ?? '') : null;
-    const temElementoAutor = recebida && SELETORES.autorMensagem.some((s) => el.querySelector(s) !== null);
-    return { sua, recebida, autor, temElementoAutor };
+    return { sua, recebida: !sua && ehMensagemRecebida(el), autor: autorDaMensagem(el), temElementoAutor: temElementoDeAutor(el) };
   });
   return { titulo: tituloAberto(), iconeGrupoNoCabecalho, mensagens };
 }
@@ -106,23 +124,96 @@ export function tituloAberto(): string | null {
   return limparMarcas(el.getAttribute('title') || el.textContent || '');
 }
 
-export function idsDasMensagens(): string[] {
-  return encontrarTodos(document, 'mensagem')
-    .map((el) => el.getAttribute('data-id') ?? '')
-    .filter(Boolean);
+const PREFIXO_MSG = 'conv-msg-';
+
+/**
+ * Id de uma mensagem: data-id (formato antigo, com ou sem true_/false_/JID) ou
+ * data-testid="conv-msg-<ID>" (formato de 20/10/2026), no próprio elemento ou dentro dele.
+ */
+export function idDaMensagem(el: HTMLElement): string {
+  const direto = el.getAttribute('data-id');
+  if (direto) return direto;
+  const testid = el.getAttribute('data-testid');
+  if (testid?.startsWith(PREFIXO_MSG)) return testid.slice(PREFIXO_MSG.length);
+  const interno = el.querySelector('[data-id]')?.getAttribute('data-id');
+  if (interno) return interno;
+  const filho = el.querySelector(`[data-testid^="${PREFIXO_MSG}"]`)?.getAttribute('data-testid');
+  return filho ? filho.slice(PREFIXO_MSG.length) : '';
 }
 
-/** Mensagem sua: ".message-out" (sinal principal hoje) ou data-id "true_…" (formato antigo). */
+export interface MensagemDom {
+  id: string;
+  /** A linha da mensagem ([role="row"] quando existe; senão o próprio elemento do id). */
+  el: HTMLElement;
+}
+
+/**
+ * Mensagens presentes no DOM agora, em ordem, sem repetição de id. A conversa é virtualizada:
+ * só algumas linhas estão renderizadas por completo (as demais só têm o id).
+ */
+export function lerMensagens(): MensagemDom[] {
+  const vistos = new Set<string>();
+  const linhas = new Set<HTMLElement>();
+  const saida: MensagemDom[] = [];
+  const linhaSel = SELETORES.linhaMensagem[0];
+  for (const achado of encontrarTodos(document, 'mensagem')) {
+    const el = achado.closest<HTMLElement>(linhaSel) ?? achado;
+    const id = idDaMensagem(el) || idDaMensagem(achado);
+    if (!id || vistos.has(id) || linhas.has(el)) continue;
+    vistos.add(id);
+    linhas.add(el);
+    saida.push({ id, el });
+  }
+  return saida;
+}
+
+export function idsDasMensagens(): string[] {
+  return lerMensagens().map((m) => m.id);
+}
+
+/** Mensagem sua pelo formato antigo: ".message-out" ou data-id "true_…". */
 export function ehMensagemSua(el: HTMLElement): boolean {
   const saida = SELETORES.mensagemSua[0];
   if (el.matches(saida) || el.closest(saida) != null || el.querySelector(saida) != null) return true;
-  return /^true_/.test(el.getAttribute('data-id') ?? '');
+  return /^true_/.test(idDaMensagem(el));
+}
+
+/** Mensagem recebida pelo formato antigo: ".message-in" ou data-id "false_…". */
+export function ehMensagemRecebida(el: HTMLElement): boolean {
+  const entrada = SELETORES.mensagemRecebida[0];
+  return /^false_/.test(idDaMensagem(el)) || el.matches(entrada) || el.closest(entrada) != null || el.querySelector(entrada) != null;
 }
 
 /** Texto de uma mensagem do chat (emoji incluído). */
 export function textoDaMensagem(el: HTMLElement): string {
   const textoEl = encontrar(el, 'textoMensagem');
   return limparMarcas(textoDoNo(textoEl ?? el));
+}
+
+/** Todos os textos da mensagem (cada .selectable-text; uma resposta citada traz o seu). */
+export function textosDaMensagem(el: HTMLElement): string[] {
+  const textos = [...el.querySelectorAll<HTMLElement>('.selectable-text')].map((t) => limparMarcas(textoDoNo(t))).filter((t) => t !== '');
+  return textos.length > 0 ? textos : [textoDaMensagem(el)].filter((t) => t !== '');
+}
+
+/** Texto da mensagem que bate com `textoColado` (normalizado, emoji incluído), ou null. */
+export function textoQueBate(el: HTMLElement, textoColado: string): string | null {
+  return textosDaMensagem(el).find((t) => mensagensIguais(t, textoColado)) ?? null;
+}
+
+/**
+ * Esta mensagem pode ser a que COLAMOS e o usuário enviou? Critério do formato sem in/out: o
+ * texto bate e ela não é do contato (nem .message-in/false_, nem tem como autor o título da
+ * conversa). Quem chama também exige id NOVO (fora da foto tirada antes de colar) e, no
+ * observador, a caixa de mensagem vazia.
+ */
+export function pareceEnvioNosso(el: HTMLElement, textoColado: string): boolean {
+  if (textoQueBate(el, textoColado) === null) return false;
+  if (ehMensagemRecebida(el)) return false;
+  const autor = autorDaMensagem(el);
+  const titulo = tituloAberto();
+  if (autor && titulo && normalizarAutor(autor) === normalizarAutor(titulo)) return false;
+  return true;
 }
 
 export interface LeituraConversa {

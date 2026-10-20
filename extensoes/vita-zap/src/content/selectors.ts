@@ -45,13 +45,19 @@ export const SELETORES = {
     'div[contenteditable="true"][data-tab="3"]',
     'input[role="textbox"][aria-label*="earch"]',
     'div[role="textbox"][data-testid="chat-list-search"]',
+    // WhatsApp Web de 20/10/2026: <input role="textbox" data-tab="3" aria-label=""> (aria-label VAZIO).
+    '#side input[role="textbox"][data-tab="3"]',
+    '#side input[role="textbox"]',
+    '#side input[type="text"]',
   ],
 
   /**
    * Botão X do próprio WhatsApp que limpa a busca (NÃO é o botão de enviar nem de cancelar
-   * mensagem). Procurado só na coluna da esquerda, fora da lista; veja `limparBuscaPeloBotao`.
+   * mensagem). Procurado só na coluna da esquerda, fora da lista e de #main, e só quando a
+   * caixa de busca tem texto; veja `limparBuscaPeloBotao`. "End icon button" é o rótulo que o
+   * WhatsApp de 20/10/2026 deu ao X da busca.
    */
-  limparBusca: ['button[aria-label*="Limpar"]', 'button[aria-label*="Clear search"]', '[data-icon="x-alt"]'],
+  limparBusca: ['button[aria-label*="Limpar"]', 'button[aria-label*="Clear search"]', '[data-icon="x-alt"]', 'button[aria-label="End icon button"]'],
 
   /** Painel da conversa aberta. */
   painelConversa: ['#main'],
@@ -70,9 +76,16 @@ export const SELETORES = {
   /**
    * Mensagens da conversa aberta. O data-id tem a forma "<true|false>_<jid>_<id>":
    * true = enviada por você; o jid termina em @c.us/@lid (individual), @g.us (grupo) ou
-   * @broadcast (transmissão).
+   * @broadcast (transmissão). No formato de 20/10/2026 o id vem de data-id ou de
+   * data-testid="conv-msg-<ID>" (sem true_/false_ nem JID).
    */
-  mensagem: ['#main [data-id]', '[data-testid="conversation-panel-messages"] [data-id]'],
+  mensagem: ['#main [data-id], #main [data-testid^="conv-msg-"]', '[data-testid="conversation-panel-messages"] [data-id]'],
+
+  /**
+   * Linha virtualizada da conversa (WhatsApp de 20/10/2026): '#main [role="row"]', com um filho
+   * data-testid="conv-msg-<ID>". Só as linhas renderizadas por completo têm texto e autor.
+   */
+  linhaMensagem: ['[role="row"]'],
 
   /** Mensagem sua: sinal PRINCIPAL no WhatsApp atual (o data-id novo não tem "true_"). Classe semântica, não gerada. */
   mensagemSua: ['.message-out'],

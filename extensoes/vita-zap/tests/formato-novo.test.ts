@@ -44,8 +44,24 @@ describe('classificarConversa — ids sem JID (formato atual)', () => {
     expect(classificarConversa(IDS_NOVOS, sinais({}))).toBe('desconhecido');
   });
 
-  it('desconhecido: recebidas sem autor legível não confirmam nada', () => {
-    expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: [null, null], enviadas: 1 }))).toBe('desconhecido');
+  it('individual: nenhum autor legível (linhas virtualizadas) e sem sinal de grupo — risco residual no README', () => {
+    expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: [null, null], enviadas: 1 }))).toBe('individual');
+  });
+
+  it('individual: 2 autores (eu e o contato), um deles igual ao título', () => {
+    expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Tarcyo', 'Sal Vita Hermes', 'Tarcyo'] }))).toBe('individual');
+  });
+
+  it('grupo: 2 autores distintos e nenhum igual ao título', () => {
+    expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Ana', 'Bia'], titulo: 'Equipe' }))).toBe('grupo');
+  });
+
+  it('grupo: mais de 2 autores distintos, mesmo com um igual ao título', () => {
+    expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Tarcyo', 'Sal Vita Hermes', 'Carla'] }))).toBe('grupo');
+  });
+
+  it('desconhecido: 1 autor diferente do título (pode ser eu ou outro membro)', () => {
+    expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Tarcyo'] }))).toBe('desconhecido');
   });
 
   it('grupo: ícone de grupo no cabeçalho', () => {
@@ -56,8 +72,8 @@ describe('classificarConversa — ids sem JID (formato atual)', () => {
     expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Ana', 'Bia'], titulo: 'Equipe' }))).toBe('grupo');
   });
 
-  it('grupo: autor recebido diferente do título', () => {
-    expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Ana'], titulo: 'Equipe' }))).toBe('grupo');
+  it('autor diferente do título sozinho não é nem grupo nem individual', () => {
+    expect(classificarConversa(IDS_NOVOS, sinais({ recebidas: ['Ana'], titulo: 'Equipe' }))).toBe('desconhecido');
   });
 
   it('grupo: elemento de nome de autor dentro de mensagem recebida', () => {
