@@ -65,10 +65,12 @@ const itemSchema = z.object({
   nome: z.string(),
   primeiroNome: z.string(),
   modelo: z.string(),
-  status: z.enum(['pendente', 'enviado', 'pulado', 'nao_cliente', 'problema', 'nao_enviar']),
+  status: z.enum(['pendente', 'enviado', 'pulado', 'nao_cliente', 'problema', 'nao_enviar', 'removido']),
   motivo: z.string().nullable(),
   codigo: z.string().nullable().optional(),
   atualizadoEm: z.string().nullable(),
+  textoPersonalizado: z.string().nullable().optional(),
+  origem: z.string().nullable().optional(),
 });
 
 const campanhaSchema = z.object({
@@ -155,6 +157,7 @@ const ROTULO_STATUS: Record<string, string> = {
   nao_cliente: 'não é cliente',
   problema: 'problema',
   nao_enviar: 'não enviar mais',
+  removido: 'removido',
 };
 
 /** Uma linha por contato de cada campanha. Não inclui telefone (a extensão não guarda). */

@@ -7,6 +7,7 @@ import { dentroDoHorario } from '../shared/politica';
 import type { DadosLocais } from './App';
 import { type EstadoExecutor, Executor } from './executor';
 import { BotoesDiagnostico } from './BotoesDiagnostico';
+import { FilaProximos } from './FilaProximos';
 import { pedir } from './whatsapp';
 
 interface Props {
@@ -126,6 +127,7 @@ export function Execucao({ db, registro, dados, campanhaId, aoEscolher, aoMudar 
           <li><b>{r.pulado}</b> pulados</li>
           <li><b>{r.problema}</b> problemas</li>
           <li><b>{r.nao_cliente + r.nao_enviar}</b> não enviar</li>
+          {r.removido > 0 && <li><b>{r.removido}</b> removidos</li>}
         </ul>
         <p className="info">
           Hoje: {estado.enviosHoje}
@@ -204,6 +206,8 @@ export function Execucao({ db, registro, dados, campanhaId, aoEscolher, aoMudar 
         )}
       </div>
 
+      <FilaProximos executor={executor} estado={estado} dados={dados} />
+
       {estado.alertaAutomatico && (
         <div className="alerta" role="alert">
           <h3>Modo automático desligado</h3>
@@ -250,16 +254,6 @@ export function Execucao({ db, registro, dados, campanhaId, aoEscolher, aoMudar 
         </div>
       )}
 
-      <details className="cartao">
-        <summary>Contatos da campanha ({c.itens.length})</summary>
-        <ul className="lista">
-          {c.itens.map((i) => (
-            <li key={i.chave}>
-              <b>{i.nome}</b> <small>— {i.status.replace('_', ' ')}{i.codigo ? ` [${i.codigo}]` : ''}{i.motivo ? ` (${i.motivo})` : ''}</small>
-            </li>
-          ))}
-        </ul>
-      </details>
     </section>
   );
 }

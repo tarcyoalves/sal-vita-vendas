@@ -98,7 +98,7 @@ export function Previa({ db, dados, aoAprovar }: Props) {
         modelos,
         status: 'pausada',
         motivoPausa: 'Aprovada. Clique em Iniciar quando estiver pronto.',
-        itens,
+        itens: itens.map((i) => ({ ...i, origem: motivoPorChave.get(i.chave) ?? i.origem ?? null })),
         problemasSeguidos: 0,
         ultimoEnvioEm: null,
         intervaloAtualSeg: null,

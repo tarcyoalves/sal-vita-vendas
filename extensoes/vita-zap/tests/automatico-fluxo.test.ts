@@ -540,3 +540,23 @@ describe('0.3.1 — conversa só com mensagens minhas e conferências antes de c
     expect(cliquesEnviar(t.w)).toBe(0);
   }, 60_000);
 });
+
+describe('fila editável no automático (0.3.3)', () => {
+  it('editar um contato enquanto outro está em contagem: o editado sai com o texto novo (token emitido com o texto lido no envio)', async () => {
+    const t = await montarFluxo(['Ana', 'Bia']);
+    void t.ex.iniciar();
+    await ate(() => t.ex.atual.fase === 'contagem', 30_000, 'contagem da Ana');
+    // Ana está travada; Bia (próxima) pode ser editada agora.
+    expect((await t.ex.editarItem('ana', { primeiroNome: 'Ana', texto: 'Texto trocado da Ana' })).ok).toBe(false);
+    expect(await t.ex.editarItem('bia', { primeiroNome: 'Bia', texto: 'Olá Bia, temos sal marinho novo' })).toEqual({ ok: true });
+    await ate(() => cliquesEnviar(t.w) === 2 && t.ex.atual.fase === 'concluida', 900_000, 'campanha concluída', 500);
+
+    const envios = t.pedidos.filter((p): p is Extract<PedidoConteudo, { tipo: 'enviarAutomatico' }> => p.tipo === 'enviarAutomatico');
+    expect(envios.map((p) => [p.nome, p.texto])).toEqual([
+      ['Ana', 'Oi Ana'],
+      ['Bia', 'Olá Bia, temos sal marinho novo'],
+    ]);
+    expect(t.w.mensagens.textContent).toContain('Olá Bia, temos sal marinho novo');
+    expect(t.w.mensagens.textContent).not.toContain('Oi Bia');
+  }, 60_000);
+});

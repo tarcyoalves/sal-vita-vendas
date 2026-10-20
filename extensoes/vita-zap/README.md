@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (fase 1, sem IA) — versão 0.3.1
+# Vita Zap — extensão do Chrome para o WhatsApp Web (fase 1, sem IA) — versão 0.3.3
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -91,6 +91,44 @@ campanha** com alerta; ao clicar **Retomar**, continua no automático.
 **Se uma mensagem for colada e depois o contato for trocado** (título mudou na contagem), a
 extensão não envia e marca o contato como problema; o texto colado pode ficar como rascunho
 naquela conversa — apague-o à mão.
+
+---
+
+## 0.3.3. Fila editável durante a execução (pedido do dono)
+
+Nenhuma regra de proteção do envio foi mexida (o teste `envio-so-no-automatico-autorizado` só
+mudou o número da versão). Na aba **Envio**, abaixo do status, aparece **Próximos (N)**: os contatos
+pendentes na ordem de execução, no mesmo formato da Prévia (nome, origem/última conversa, campo
+**Primeiro nome**, balão com o texto que será enviado, **Remover**). Vale no manual e no automático,
+com a campanha rodando ou pausada (Retomar segue a nova ordem).
+
+- **Editar:** o texto final de cada contato é uma caixa de texto (já com `{primeiroNome}`
+  resolvido). Mudar o primeiro nome atualiza o texto enquanto ele ainda é o do modelo. O botão
+  **Salvar** valida com as mesmas regras do texto da campanha (sem link, sem quebra de linha,
+  tamanho máximo, marcador `{primeiroNome}` só), mais "primeiro nome não vazio", e mostra a
+  mensagem de erro. Salvar grava na hora no IndexedDB (campo `textoPersonalizado` do item; texto
+  igual ao do modelo não vira override). O executor usa o texto do contato se houver override;
+  senão, o modelo sorteado com o primeiro nome.
+- **Remover:** o item vira `removido` ("removido por você"). Não é problema, não entra no freio
+  (problemas seguidos), não vira envio e não conta no teto. Em **Concluídos (N)** (recolhido) há
+  o motivo de cada item e **Desfazer remover** enquanto ele não foi executado.
+- **Reordenar:** **↑ / ↓** e **Enviar este a seguir** (vai para o topo). Só mexe nos pendentes
+  editáveis; concluídos e o item em andamento ficam onde estão, então nada passa na frente dele.
+- **Item em andamento travado:** o contato aberto/colado/em contagem/aguardando envio/
+  confirmando (e o que ficou colado com a campanha pausada, inclusive o registro no IndexedDB de
+  um painel reaberto) aparece no topo como **Em andamento** e não pode ser editado, removido
+  nem movido; só os botões de sempre (Pular, Cancelar, Já enviei). Isso garante que o texto
+  conferido, o token do automático e o detector de envio usam sempre o mesmo texto.
+- **Executor:** antes de abrir o próximo contato ele relê a fila (síncrono, logo antes de travar o
+  item). Edição, remoção ou reordenação feitas durante as esperas valem; no automático o token
+  continua sendo emitido com o texto do momento do envio (teste: editar a Bia enquanto a Ana está em
+  contagem, e a Bia sai com o texto novo).
+- **Origem:** a campanha guarda a linha da Prévia (`origem`) de cada contato; campanhas antigas
+  mostram "última conversa dd/mm/aaaa" pelo cadastro da varredura.
+- Backup/CSV: `removido` é um status válido; `textoPersonalizado` e `origem` fazem parte do backup.
+
+Não validado no WhatsApp de verdade: a interface do painel (Linha/FilaProximos) foi só
+typechecada e compilada; os testes cobrem a lógica (executor e IndexedDB).
 
 ---
 

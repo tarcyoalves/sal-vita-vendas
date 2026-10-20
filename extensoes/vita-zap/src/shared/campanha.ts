@@ -5,7 +5,7 @@ import { registrarProblema } from './politica';
 import { montarMensagem, sortearModelo, usaPrimeiroNome, validarModelo } from './texto';
 import { primeiroNome as extrairPrimeiroNome } from './nomes';
 
-export type StatusItem = 'pendente' | 'enviado' | 'pulado' | 'nao_cliente' | 'problema' | 'nao_enviar';
+export type StatusItem = 'pendente' | 'enviado' | 'pulado' | 'nao_cliente' | 'problema' | 'nao_enviar' | 'removido';
 export type StatusCampanha = 'rascunho' | 'em_execucao' | 'pausada' | 'concluida';
 
 export interface ItemCampanha {
@@ -19,6 +19,10 @@ export interface ItemCampanha {
   /** Código do erro (CodigoErro, ou 'manual') quando o item virou problema/pulado por erro. */
   codigo?: string | null;
   atualizadoEm: string | null;
+  /** 0.3.3: texto final deste contato, editado pelo usuário (null/ausente = texto do modelo). */
+  textoPersonalizado?: string | null;
+  /** 0.3.3: de onde veio o contato (ex.: 'contém CLIENTE; última conversa 10/10/2026'), para a fila. */
+  origem?: string | null;
 }
 
 export interface Campanha {
@@ -65,8 +69,78 @@ export function criarItens(
   return itens;
 }
 
+export function temTextoPersonalizado(item: ItemCampanha): boolean {
+  return item.textoPersonalizado != null && item.textoPersonalizado.trim() !== '';
+}
+
+/** Texto que será colado: o texto editado deste contato, se houver; senão o modelo sorteado. */
 export function textoDoItem(item: ItemCampanha): string {
-  return montarMensagem(item.modelo, item.primeiroNome);
+  return montarMensagem(temTextoPersonalizado(item) ? (item.textoPersonalizado as string) : item.modelo, item.primeiroNome);
+}
+
+export interface EdicaoItem {
+  primeiroNome: string;
+  texto: string;
+}
+
+export type ResultadoEdicao = { ok: true; item: ItemCampanha } | { ok: false; erros: string[] };
+
+/**
+ * Valida e aplica a edição de um contato pendente: primeiro nome não vazio e texto com as mesmas
+ * regras do texto da campanha (sem link, sem quebra de linha, tamanho máximo). Texto igual ao do
+ * modelo vira "sem override" (null).
+ */
+export function aplicarEdicao(item: ItemCampanha, e: EdicaoItem): ResultadoEdicao {
+  const primeiroNome = e.primeiroNome.trim();
+  const erros: string[] = [];
+  if (primeiroNome === '') erros.push('o primeiro nome não pode ficar vazio');
+  const texto = montarMensagem(e.texto, primeiroNome);
+  for (const m of validarModelo(texto)) erros.push(m);
+  if (erros.length > 0) return { ok: false, erros: [...new Set(erros)] };
+  const doModelo = montarMensagem(item.modelo, primeiroNome);
+  return { ok: true, item: { ...item, primeiroNome, textoPersonalizado: texto === doModelo ? null : texto } };
+}
+
+/**
+ * Contatos que ainda podem ser editados/removidos/reordenados: pendentes que não estão travados
+ * (o item em andamento, `travados`, nunca muda).
+ */
+export function editaveis(c: Pick<Campanha, 'itens'>, travados: ReadonlySet<string>): ItemCampanha[] {
+  return c.itens.filter((i) => i.status === 'pendente' && !travados.has(i.chave));
+}
+
+/** Remove da fila (status 'removido'): não conta como problema, nem envio, nem teto. */
+export function removerDaFila(c: Campanha, chave: string, agora: Date): Campanha {
+  const item = c.itens.find((i) => i.chave === chave);
+  if (!item || item.status !== 'pendente') return c;
+  return { ...c, itens: c.itens.map((i) => (i.chave === chave ? { ...i, status: 'removido' as const, motivo: 'removido por você', codigo: null, atualizadoEm: agora.toISOString() } : i)) };
+}
+
+/** Desfaz a remoção (só enquanto o item não foi executado: ainda está 'removido'). */
+export function desfazerRemocao(c: Campanha, chave: string): Campanha {
+  const item = c.itens.find((i) => i.chave === chave);
+  if (!item || item.status !== 'removido') return c;
+  return { ...c, itens: c.itens.map((i) => (i.chave === chave ? { ...i, status: 'pendente' as const, motivo: null, codigo: null, atualizadoEm: null } : i)) };
+}
+
+/**
+ * Reordena SÓ os pendentes editáveis: os demais itens (concluídos e o travado) ficam onde estão.
+ * `para`: 'cima' | 'baixo' (uma posição) ou 'topo' (vira o próximo).
+ */
+export function moverNaFila(c: Campanha, chave: string, para: 'cima' | 'baixo' | 'topo', travados: ReadonlySet<string>): Campanha {
+  const posicoes = c.itens.flatMap((i, n) => (i.status === 'pendente' && !travados.has(i.chave) ? [n] : []));
+  const fila = posicoes.map((n) => c.itens[n]);
+  const de = fila.findIndex((i) => i.chave === chave);
+  if (de < 0) return c;
+  const alvo = para === 'topo' ? 0 : para === 'cima' ? de - 1 : de + 1;
+  if (alvo < 0 || alvo >= fila.length || alvo === de) return c;
+  const [movido] = fila.splice(de, 1);
+  fila.splice(alvo, 0, movido);
+  const itens = [...c.itens];
+  posicoes.forEach((n, k) => {
+    itens[n] = fila[k];
+  });
+  return { ...c, itens };
 }
 
 /** Erros que impedem aprovar (lista vazia = pode aprovar). */
@@ -89,7 +163,7 @@ export function proximoPendente(c: Campanha): ItemCampanha | null {
 }
 
 export function resumo(c: Campanha): Record<StatusItem, number> {
-  const r: Record<StatusItem, number> = { pendente: 0, enviado: 0, pulado: 0, nao_cliente: 0, problema: 0, nao_enviar: 0 };
+  const r: Record<StatusItem, number> = { pendente: 0, enviado: 0, pulado: 0, nao_cliente: 0, problema: 0, nao_enviar: 0, removido: 0 };
   for (const i of c.itens) r[i.status] += 1;
   return r;
 }

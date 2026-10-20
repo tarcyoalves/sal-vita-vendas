@@ -22,6 +22,11 @@ import {
   terminouComProblemas,
   proximoPendente,
   textoDoItem,
+  aplicarEdicao,
+  desfazerRemocao,
+  moverNaFila,
+  removerDaFila,
+  type EdicaoItem,
 } from '../shared/campanha';
 import { diasSemRepetir, ultimoEnvioPorChave } from '../shared/filtros';
 import { diferencaDias, hojeNoFuso } from '../shared/datas';
@@ -339,6 +344,66 @@ export class Executor {
     if (await this.marcar(item, tipo, motivo, tipo === 'problema' ? 'manual' : null)) await this.avancar('usuario');
   }
 
+  // ── Fila editável (0.3.3) ──────────────────────────────────────────────────
+  // O item em andamento (itemAtual, ou o que ficou colado e aguarda decisão) é travado: não muda.
+  // Tudo é gravado no IndexedDB na hora e publicado de forma síncrona, para o executor ler sempre a versão nova.
+
+  /** Chaves que não podem ser alteradas agora (em andamento). */
+  chavesTravadas(): Set<string> {
+    const s = new Set<string>();
+    if (this.estado.itemAtual) s.add(this.estado.itemAtual.chave);
+    if (this.estado.emAndamento) s.add(this.estado.emAndamento.chave);
+    return s;
+  }
+
+  private async travadasComBanco(): Promise<Set<string>> {
+    const s = this.chavesTravadas();
+    const rec = await lerEmAndamento(this.deps.db, this.estado.campanha.id);
+    if (rec) s.add(rec.chave);
+    return s;
+  }
+
+  private async mudarFila(chave: string, mudar: (c: Campanha, travadas: ReadonlySet<string>) => Campanha | string[]): Promise<{ ok: true } | { ok: false; erros: string[] }> {
+    const travadasBanco = await this.travadasComBanco();
+    // Daqui até publicar é tudo síncrono: nenhum passo do executor se intromete.
+    const travadas = new Set([...travadasBanco, ...this.chavesTravadas()]);
+    const c = this.estado.campanha;
+    if (c.status === 'concluida') return { ok: false, erros: ['a campanha já terminou'] };
+    if (travadas.has(chave)) return { ok: false, erros: ['este contato está em andamento e não pode ser alterado'] };
+    const r = mudar(c, travadas);
+    if (Array.isArray(r)) return { ok: false, erros: r };
+    if (r === c) return { ok: false, erros: ['nada a alterar (o contato não está mais pendente ou já está nessa posição)'] };
+    this.publicar({ campanha: r });
+    await salvarCampanha(this.deps.db, r);
+    return { ok: true };
+  }
+
+  /** Salva o primeiro nome e o texto final de um contato pendente (valida como o texto da campanha). */
+  editarItem(chave: string, edicao: EdicaoItem): Promise<{ ok: true } | { ok: false; erros: string[] }> {
+    return this.mudarFila(chave, (c) => {
+      const item = c.itens.find((i) => i.chave === chave);
+      if (!item || item.status !== 'pendente') return c;
+      const r = aplicarEdicao(item, edicao);
+      if (!r.ok) return r.erros;
+      return { ...c, itens: c.itens.map((i) => (i.chave === chave ? r.item : i)) };
+    });
+  }
+
+  /** Remove da fila ('removido', "removido por você"): não é problema e não conta no teto. */
+  removerItem(chave: string): Promise<{ ok: true } | { ok: false; erros: string[] }> {
+    return this.mudarFila(chave, (c) => removerDaFila(c, chave, this.deps.agora()));
+  }
+
+  /** Desfaz a remoção enquanto o item não foi executado. */
+  async desfazerRemocaoItem(chave: string): Promise<{ ok: true } | { ok: false; erros: string[] }> {
+    return this.mudarFila(chave, (c) => desfazerRemocao(c, chave));
+  }
+
+  /** Reordena: 'cima'/'baixo' uma posição, 'topo' = "Enviar este a seguir". */
+  moverItem(chave: string, para: 'cima' | 'baixo' | 'topo'): Promise<{ ok: true } | { ok: false; erros: string[] }> {
+    return this.mudarFila(chave, (c, travadas) => moverNaFila(c, chave, para, travadas));
+  }
+
   // ── Registro ───────────────────────────────────────────────────────────────
 
   /** Registra o envio de `item` (idempotente), sorteia o intervalo e limpa o "em andamento". */
@@ -435,9 +500,10 @@ export class Executor {
     this.limparTimer();
     const { db } = this.deps;
     const agora = this.deps.agora();
-    let c = this.estado.campanha;
 
     const [envios, cfgManual, naoEnviar, estadoAuto] = await Promise.all([listarEnvios(db), lerConfig(db), listarNaoEnviar(db), lerAutomatico(db)]);
+    // 0.3.3: a fila pode ser editada pelo painel enquanto o executor espera; sempre parte da versão atual.
+    let c = this.estado.campanha;
     const auto = estadoAuto.ligado;
     // No automático o teto é no máximo 30 e o intervalo mínimo 90 s, qualquer que seja a política manual.
     const cfg = auto ? configAuto(cfgManual) : cfgManual;
@@ -473,6 +539,7 @@ export class Executor {
       this.ativo = false;
       await this.deps.pedir({ tipo: 'pararObservacao' });
       await limparEmAndamento(db, c.id);
+      c = this.estado.campanha;
       await this.gravar({ ...c, status: 'concluida', motivoPausa: null });
       const comProblemas = terminouComProblemas({ ...c, status: 'concluida' });
       this.publicar({
@@ -488,6 +555,15 @@ export class Executor {
     // Item que ficou em andamento (painel fechado/recarregado): ele vem primeiro e a conversa
     // é conferida contra a "foto" antes de qualquer colagem.
     let rec = await lerEmAndamento(db, c.id);
+    c = this.estado.campanha; // pode ter mudado (edição/remoção/reordenação) durante a leitura
+    if (!rec) {
+      const proximo = proximoPendente(c);
+      if (!proximo) {
+        await this.passo(origem);
+        return;
+      }
+      item = proximo;
+    }
     if (rec) {
       const dele = c.itens.find((i) => i.chave === rec?.chave && i.status === 'pendente');
       if (!dele) {
@@ -535,6 +611,16 @@ export class Executor {
       }
       if (!this.ativo) return;
     }
+
+    // 0.3.3: releitura SÍNCRONA da fila logo antes de travar o item: o que o usuário editou, removeu ou
+    // reordenou durante as esperas acima vale (o texto e o token saem com a versão atual do contato).
+    const chaveEscolhida = item.chave;
+    const fresco = this.estado.campanha.itens.find((i) => i.chave === chaveEscolhida);
+    if (!fresco || fresco.status !== 'pendente' || (!rec && proximoPendente(this.estado.campanha)?.chave !== chaveEscolhida)) {
+      await this.passo(origem);
+      return;
+    }
+    item = fresco;
 
     // O texto é revalidado AGORA (link, tamanho, quebra de linha), mesmo vindo de backup importado.
     const texto = textoDoItem(item);
