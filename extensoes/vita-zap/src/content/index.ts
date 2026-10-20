@@ -1,8 +1,10 @@
 // Content script do WhatsApp Web: recebe pedidos do painel lateral e responde.
-// Pedidos possíveis: verificar, varrer (só leitura), abrirEColar, limparCaixa, pararObservacao,
+// Pedidos possíveis: verificar, diagnosticar (só leitura), varrer (só leitura), abrirEColar, limparCaixa, pararObservacao,
 // cancelarAbertura, consultarPendencias, confirmarPendencias. Não existe pedido de envio.
 
 import type { EventoConteudo, PedidoConteudo, PendenciaEnvio, RespostaConteudo } from '../shared/mensagens';
+import { contextoValido, emitirSeguro, idDaExtensao, iniciarVigiaDeContexto } from './contexto';
+import { diagnosticarPagina } from './diagnostico';
 import { abrirEColar, cancelarAbertura, limparBuscaPeloBotao, limparCaixa, pararObservacao } from './execucao';
 import { assumirGeracao } from './geracao';
 import { ErroSeletor, ErroUsuarioDigitando } from './lista';
@@ -12,10 +14,28 @@ import { iniciarVigia, lerAvisoWhatsApp, novoEstadoVigia, pararVigia } from './v
 
 // Pode ser injetado de novo pelo painel (aba aberta antes da atualização): a geração mais nova
 // encerra o que a antiga deixou rodando, e os ouvintes antigos passam a ignorar os pedidos.
+let vigiaContexto: { parar: () => void } | null = null;
+let encerrado = false;
+
 const geracao = assumirGeracao(() => {
   pararObservacao();
   pararVigia();
+  vigiaContexto?.parar();
 });
+
+/** Contexto da extensão morreu (recarregada/desativada): desliga observer, timers e ouvinte, em silêncio. */
+function encerrar(): void {
+  if (encerrado) return;
+  encerrado = true;
+  try {
+    pararObservacao();
+    pararVigia();
+    vigiaContexto?.parar();
+    if (contextoValido()) chrome.runtime.onMessage.removeListener(ouvir);
+  } catch {
+    // silêncio: a página não pode ganhar erro por causa de uma extensão morta
+  }
+}
 
 let ocupado = false;
 const MAX_PENDENCIAS = 50;
@@ -26,10 +46,7 @@ function novoId(): string {
 
 /** Entrega um evento ao painel. Devolve false se não há painel ouvindo (fechado). */
 function emitir(evento: EventoConteudo): Promise<boolean> {
-  return chrome.runtime.sendMessage(evento).then(
-    () => true,
-    () => false,
-  );
+  return emitirSeguro(evento, encerrar);
 }
 
 /** Envio percebido: fica guardado até o painel confirmar (painel fechado ou recarregado não perde). */
@@ -64,6 +81,8 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
   switch (pedido.tipo) {
     case 'verificar':
       return verificar();
+    case 'diagnosticar':
+      return { ok: true, diagnostico: diagnosticarPagina(document) };
     case 'pararObservacao':
       pararObservacao();
       pararVigia();
@@ -104,10 +123,15 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
   }
 }
 
-chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo, remetente, responder: (r: RespostaConteudo) => void) => {
+function ouvir(mensagem: PedidoConteudo, remetente: { id?: string }, responder: (r: RespostaConteudo) => void): boolean {
   // Injeção antiga (a página recebeu content.js de novo): só a geração atual responde.
   if (!geracao.atual()) return false;
-  if (remetente.id !== chrome.runtime.id) return false;
+  const meuId = idDaExtensao();
+  if (meuId === null) {
+    encerrar();
+    return false;
+  }
+  if (remetente.id !== meuId) return false;
   const longo = mensagem.tipo === 'varrer' || mensagem.tipo === 'abrirEColar';
   if (longo && ocupado) {
     responder({ ok: false, codigo: 'ocupado', erro: 'Outra operação ainda está em andamento.' });
@@ -125,4 +149,13 @@ chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo, remetente, respo
       if (longo) ocupado = false;
     });
   return true; // resposta assíncrona
-});
+}
+
+if (contextoValido()) {
+  try {
+    chrome.runtime.onMessage.addListener(ouvir);
+    vigiaContexto = iniciarVigiaDeContexto(encerrar);
+  } catch {
+    encerrar();
+  }
+}

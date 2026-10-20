@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { abrirBanco, listarCampanhas, listarContatos, listarEnvios, listarNaoEnviar, type Banco } from '../shared/banco';
 import type { Campanha } from '../shared/campanha';
+import { RegistroDiagnostico } from '../shared/diagnostico';
 import type { ContatoVarrido } from '../shared/contatos';
 import type { Envio, NaoEnviar } from '../shared/exportar';
 import { Dados } from './Dados';
@@ -35,6 +36,19 @@ export function App() {
     abrirBanco().then(setDb, (e: unknown) => setErro(`Não abri o banco local: ${String(e)}`));
   }, []);
 
+  const registro = useMemo(() => {
+    if (!db) return null;
+    let versao = '?';
+    try {
+      versao = chrome.runtime.getManifest().version;
+    } catch {
+      // fora do Chrome (testes)
+    }
+    const r = new RegistroDiagnostico(db, versao);
+    void r.carregar().catch(() => undefined);
+    return r;
+  }, [db]);
+
   const recarregar = useCallback(async () => {
     if (!db) return;
     const [contatos, campanhas, envios, naoEnviar] = await Promise.all([
@@ -51,7 +65,7 @@ export function App() {
   }, [recarregar]);
 
   if (erro) return <div className="erro">{erro}</div>;
-  if (!db) return <div className="carregando">Carregando…</div>;
+  if (!db || !registro) return <div className="carregando">Carregando…</div>;
 
   return (
     <div className="app">
@@ -81,9 +95,9 @@ export function App() {
         )}
         {/* Sempre montada: trocar de aba não pode interromper uma campanha em andamento. */}
         <div hidden={aba !== 'execucao'}>
-          <Execucao db={db} dados={dados} campanhaId={campanhaAtiva} aoEscolher={setCampanhaAtiva} aoMudar={recarregar} />
+          <Execucao db={db} registro={registro} dados={dados} campanhaId={campanhaAtiva} aoEscolher={setCampanhaAtiva} aoMudar={recarregar} />
         </div>
-        {aba === 'dados' && <Dados db={db} dados={dados} aoMudar={recarregar} />}
+        {aba === 'dados' && <Dados db={db} registro={registro} dados={dados} aoMudar={recarregar} />}
       </main>
     </div>
   );

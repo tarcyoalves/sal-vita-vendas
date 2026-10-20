@@ -16,6 +16,8 @@ export interface ItemCampanha {
   modelo: string;
   status: StatusItem;
   motivo: string | null;
+  /** Código do erro (CodigoErro, ou 'manual') quando o item virou problema/pulado por erro. */
+  codigo?: string | null;
   atualizadoEm: string | null;
 }
 
@@ -96,10 +98,10 @@ export function resumo(c: Campanha): Record<StatusItem, number> {
  * Muda o status de um item. Só sai de "pendente": um item já enviado/pulado não muda mais
  * (garante uma mensagem por contato por campanha). Devolve a mesma campanha se nada mudou.
  */
-export function marcarItem(c: Campanha, chave: string, status: Exclude<StatusItem, 'pendente'>, agora: Date, motivo: string | null = null): Campanha {
+export function marcarItem(c: Campanha, chave: string, status: Exclude<StatusItem, 'pendente'>, agora: Date, motivo: string | null = null, codigo: string | null = null): Campanha {
   const item = c.itens.find((i) => i.chave === chave);
   if (!item || item.status !== 'pendente') return c;
-  const itens = c.itens.map((i) => (i.chave === chave ? { ...i, status, motivo, atualizadoEm: agora.toISOString() } : i));
+  const itens = c.itens.map((i) => (i.chave === chave ? { ...i, status, motivo, codigo, atualizadoEm: agora.toISOString() } : i));
   let problemasSeguidos = c.problemasSeguidos;
   let statusCampanha: StatusCampanha = c.status;
   let motivoPausa = c.motivoPausa;
@@ -118,4 +120,33 @@ export function marcarItem(c: Campanha, chave: string, status: Exclude<StatusIte
     return { ...novo, status: 'concluida', motivoPausa: null };
   }
   return novo;
+}
+
+/** Campanha terminada sem nenhum envio e com problemas: não é um "concluída" verde. */
+export function terminouComProblemas(c: Campanha): boolean {
+  const r = resumo(c);
+  return c.status === 'concluida' && r.enviado === 0 && r.problema > 0;
+}
+
+export interface GrupoMotivo {
+  codigo: string;
+  quantidade: number;
+  mensagem: string;
+}
+
+/** Itens que viraram problema (ou foram pulados por um erro com código), com o motivo. */
+export function itensComErro(c: Campanha): ItemCampanha[] {
+  return c.itens.filter((i) => i.status === 'problema' || (i.status === 'pulado' && i.codigo));
+}
+
+/** Motivos dos problemas agrupados por código (mensagem do primeiro caso de cada código). */
+export function motivosAgrupados(c: Campanha): GrupoMotivo[] {
+  const grupos = new Map<string, GrupoMotivo>();
+  for (const i of itensComErro(c)) {
+    const codigo = i.codigo ?? 'desconhecido';
+    const g = grupos.get(codigo);
+    if (g) g.quantidade += 1;
+    else grupos.set(codigo, { codigo, quantidade: 1, mensagem: i.motivo ?? 'sem detalhe registrado' });
+  }
+  return [...grupos.values()];
 }

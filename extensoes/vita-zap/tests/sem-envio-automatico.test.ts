@@ -162,11 +162,44 @@ describe('cliques permitidos na 0.2: só a linha da lista e o X de limpar a busc
 });
 
 describe('versão', () => {
-  it('manifest.json e package.json estão na mesma versão (0.2.0)', () => {
+  it('manifest.json e package.json estão na mesma versão (0.2.1)', () => {
     const manifesto = JSON.parse(readFileSync(join(RAIZ, 'public/manifest.json'), 'utf8')) as { version: string };
     const pacote = JSON.parse(readFileSync(join(RAIZ, 'package.json'), 'utf8')) as { version: string };
     expect(manifesto.version).toBe(pacote.version);
-    expect(pacote.version).toBe('0.2.0');
+    expect(pacote.version).toBe('0.2.1');
+  });
+});
+
+describe('diagnosticar é somente leitura', () => {
+  const PROIBIDO = /\.(click|focus|blur|submit|requestSubmit|dispatchEvent|scroll\w*|remove|append\w*|insert\w*|setAttribute|removeAttribute)\s*\(|execCommand|innerHTML\s*=|\.value\s*=|\.textContent\s*=|scrollTop\s*=|Event\(/;
+  const FUNCOES_DE_ESCRITA = /\b(escreverNoCampo|limparCampo|abrirLinhaDaLista|abrirEColar|limparCaixa|limparBuscaPeloBotao|buscar|cancelarAbertura|varrerLista)\b/;
+
+  it('content/diagnostico.ts só lê: nenhuma função de escrita/clique e nenhum import de dom/lista/execucao/abrir-conversa', () => {
+    const d = arquivos.find((a) => a.caminho === 'src/content/diagnostico.ts')?.codigo ?? '';
+    expect(d.length).toBeGreaterThan(100);
+    expect(d).not.toMatch(FUNCOES_DE_ESCRITA);
+    expect(d).not.toMatch(/from '\.\/(dom|lista|execucao|abrir-conversa|varredura|vigia)'/);
+    expect(d).not.toMatch(PROIBIDO);
+  });
+
+  it('chat.ts (leitura da conversa, usado pelo diagnóstico) também não escreve nem clica', () => {
+    const c = arquivos.find((a) => a.caminho === 'src/content/chat.ts')?.codigo ?? '';
+    expect(c).not.toMatch(/escreverNoCampo|limparCampo|abrirLinhaDaLista|execCommand|dispatchEvent|\.click\s*\(/);
+  });
+
+  it('o handler "diagnosticar" do content script só chama diagnosticarPagina', () => {
+    const idx = arquivos.find((a) => a.caminho === 'src/content/index.ts')?.codigo ?? '';
+    const m = /case 'diagnosticar':([\s\S]*?)case '/.exec(idx);
+    expect(m).not.toBeNull();
+    const corpo = m?.[1] ?? '';
+    expect(corpo).toContain('diagnosticarPagina(');
+    expect(corpo).not.toMatch(FUNCOES_DE_ESCRITA);
+    expect(corpo.match(/\w+\s*\(/g)).toEqual(['diagnosticarPagina(']);
+  });
+
+  it('o pedido diagnosticar existe no protocolo e continua sem pedido de envio', () => {
+    const msgs = arquivos.find((a) => a.caminho === 'src/shared/mensagens.ts')?.codigo ?? '';
+    expect(msgs).toMatch(/tipo: 'diagnosticar'/);
   });
 });
 

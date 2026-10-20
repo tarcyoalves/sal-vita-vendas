@@ -3,6 +3,7 @@
 // interpretação das datas acontecem no painel (shared/contatos.ts).
 
 import type { LinhaBruta } from '../shared/contatos';
+import { contextoValido } from './contexto';
 import { aleatorioEntre, ancestralRolavel, esperar } from './dom';
 import { lerLinhasVisiveis } from './extrair';
 import { buscar, ErroSeletor, exigir, linhasDaLista } from './lista';
@@ -40,6 +41,7 @@ export async function varrerLista(
   await esperar(600);
 
   for (let passo = 0; passo < MAX_PASSOS; passo += 1) {
+    if (!contextoValido()) break; // extensão recarregada: para de rolar a lista
     linhas = linhasDaLista();
     const { linhas: lidas, achouSecaoSemConversa } = lerLinhasVisiveis(linhas);
     for (const l of lidas) {

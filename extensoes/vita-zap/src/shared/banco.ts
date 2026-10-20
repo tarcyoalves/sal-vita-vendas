@@ -3,6 +3,7 @@
 
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { Campanha } from './campanha';
+import type { EventoDiagnostico } from './diagnostico';
 import type { ContatoVarrido } from './contatos';
 import type { Backup, Envio, NaoEnviar } from './exportar';
 import { normalizarConfig, type ConfigPolitica } from './politica';
@@ -15,6 +16,8 @@ interface EsquemaVitaZap extends DBSchema {
   config: { key: string; value: { id: 'politica'; valor: ConfigPolitica } };
   /** Item colado e esperando o Enter do usuário (sobrevive a fechar/recarregar o painel). */
   emAndamento: { key: string; value: EmAndamento };
+  /** Registro circular de diagnóstico (fora do backup). */
+  diagnostico: { key: string; value: EventoDiagnostico };
 }
 
 /** O item em andamento de uma campanha (no máximo um por campanha). */
@@ -31,7 +34,7 @@ export interface EmAndamento {
 }
 
 export const NOME_BANCO = 'vita-zap';
-const VERSAO_BANCO = 2;
+const VERSAO_BANCO = 3;
 
 export type Banco = IDBPDatabase<EsquemaVitaZap>;
 
@@ -48,6 +51,7 @@ export function abrirBanco(nome: string = NOME_BANCO): Promise<Banco> {
         db.createObjectStore('config', { keyPath: 'id' });
       }
       if (versaoAntiga < 2) db.createObjectStore('emAndamento', { keyPath: 'campanhaId' });
+      if (versaoAntiga < 3) db.createObjectStore('diagnostico', { keyPath: 'id' });
     },
   });
 }
@@ -150,6 +154,31 @@ export async function salvarConfig(db: Banco, cfg: ConfigPolitica): Promise<Conf
   const valor = normalizarConfig(cfg);
   await db.put('config', { id: 'politica', valor });
   return valor;
+}
+
+// ── Diagnóstico (registro circular; fora do backup) ─────────────────────────
+
+export function listarDiagnostico(db: Banco): Promise<EventoDiagnostico[]> {
+  return db.getAll('diagnostico');
+}
+
+/** Grava o evento e apaga os mais antigos além de `maximo`. */
+export async function salvarEventoDiagnostico(db: Banco, ev: EventoDiagnostico, maximo: number): Promise<void> {
+  const tx = db.transaction('diagnostico', 'readwrite');
+  await tx.store.put(ev);
+  const excesso = (await tx.store.count()) - maximo;
+  if (excesso > 0) {
+    let cursor = await tx.store.openCursor();
+    for (let i = 0; cursor && i < excesso; i += 1) {
+      await cursor.delete();
+      cursor = await cursor.continue();
+    }
+  }
+  await tx.done;
+}
+
+export async function apagarDiagnostico(db: Banco): Promise<void> {
+  await db.clear('diagnostico');
 }
 
 // ── Backup ───────────────────────────────────────────────────────────────────

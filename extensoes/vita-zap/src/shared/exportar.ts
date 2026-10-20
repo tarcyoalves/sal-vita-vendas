@@ -67,6 +67,7 @@ const itemSchema = z.object({
   modelo: z.string(),
   status: z.enum(['pendente', 'enviado', 'pulado', 'nao_cliente', 'problema', 'nao_enviar']),
   motivo: z.string().nullable(),
+  codigo: z.string().nullable().optional(),
   atualizadoEm: z.string().nullable(),
 });
 

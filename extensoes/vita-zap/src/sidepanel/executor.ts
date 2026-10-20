@@ -14,6 +14,7 @@ import {
   type Campanha,
   type ItemCampanha,
   marcarItem,
+  terminouComProblemas,
   proximoPendente,
   textoDoItem,
 } from '../shared/campanha';
@@ -31,6 +32,7 @@ import {
   registrarEnvio,
   salvarCampanha,
 } from '../shared/banco';
+import { type NovoEvento, resumirPagina, resumirResposta } from '../shared/diagnostico';
 import type { EventoConteudo, PedidoConteudo, PendenciaEnvio, RespostaConteudo } from '../shared/mensagens';
 import { contarEnviosHoje, podeAbrirProximo, sortearIntervaloSeg, ultimoEnvioParaIntervalo } from '../shared/politica';
 import { normalizarParaComparar, validarModelo } from '../shared/texto';
@@ -42,6 +44,8 @@ export interface DependenciasExecutor {
   aleatorio: () => number;
   /** Agenda `fn` para daqui a `ms`; devolve a função que cancela. */
   agendar: (fn: () => void, ms: number) => () => void;
+  /** Registro de diagnóstico (opcional). Nunca recebe texto de mensagem. */
+  diagnostico?: { registrar: (e: NovoEvento) => void };
 }
 
 export type FaseExecucao = 'parada' | 'abrindo' | 'aguardando_envio' | 'intervalo' | 'proximo_pronto' | 'concluida';
@@ -63,6 +67,8 @@ export interface EstadoExecutor {
   enviosHoje: number;
   tetoDiario: number;
   emAndamento: ItemEmAndamento | null;
+  /** Erro geral (não de um contato) que pausou a campanha, com o código — para o alerta do painel. */
+  erroGeral: { nome: string; codigo: string; mensagem: string } | null;
 }
 
 export type AcaoManual = 'pulado' | 'nao_cliente' | 'problema' | 'nao_enviar';
@@ -92,6 +98,7 @@ export class Executor {
       enviosHoje: 0,
       tetoDiario: 0,
       emAndamento: null,
+      erroGeral: null,
     };
   }
 
@@ -113,6 +120,26 @@ export class Executor {
   private async gravar(c: Campanha): Promise<void> {
     await salvarCampanha(this.deps.db, c);
     this.publicar({ campanha: c });
+  }
+
+  /** Chama o content script e deixa o rastro no diagnóstico (só o tipo do pedido e o resumo da resposta). */
+  private async pedirRegistrando(pedido: PedidoConteudo, trazerParaFrente = false, nome: string | null = null): Promise<RespostaConteudo> {
+    const r = await this.deps.pedir(pedido, trazerParaFrente);
+    this.deps.diagnostico?.registrar({ fase: this.estado.fase, pedido: pedido.tipo, resposta: resumirResposta(r), item: nome, pagina: null });
+    return r;
+  }
+
+  /** No momento do erro: pergunta ao content script (só leitura) quais seletores batem e registra. */
+  private async registrarRetratoDaPagina(nome: string): Promise<void> {
+    if (!this.deps.diagnostico) return;
+    const r = await this.deps.pedir({ tipo: 'diagnosticar' }).catch((): RespostaConteudo => ({ ok: false, codigo: 'interno', erro: 'sem resposta' }));
+    this.deps.diagnostico.registrar({
+      fase: this.estado.fase,
+      pedido: 'diagnosticar',
+      resposta: resumirResposta(r),
+      item: nome,
+      pagina: r.ok && r.diagnostico ? resumirPagina(r.diagnostico) : null,
+    });
   }
 
   private limparTimer(): void {
@@ -174,7 +201,7 @@ export class Executor {
     if (this.ativo || this.estado.campanha.status === 'concluida') return;
     this.ativo = true;
     await this.gravar({ ...this.estado.campanha, status: 'em_execucao', motivoPausa: null, problemasSeguidos: 0 });
-    this.publicar({ mensagem: null });
+    this.publicar({ mensagem: null, erroGeral: null });
     const aviso = await this.sincronizarPendencias();
     if (aviso) {
       await this.pausar(aviso);
@@ -263,8 +290,8 @@ export class Executor {
   async acao(tipo: AcaoManual, motivo: string | null = null): Promise<void> {
     const item = this.estado.itemAtual;
     if (!item || this.estado.fase !== 'aguardando_envio') return;
-    await this.deps.pedir({ tipo: 'limparCaixa', texto: textoDoItem(item) });
-    if (await this.marcar(item, tipo, motivo)) await this.avancar('usuario');
+    await this.pedirRegistrando({ tipo: 'limparCaixa', texto: textoDoItem(item) }, false, item.nome);
+    if (await this.marcar(item, tipo, motivo, tipo === 'problema' ? 'manual' : null)) await this.avancar('usuario');
   }
 
   // ── Registro ───────────────────────────────────────────────────────────────
@@ -296,7 +323,7 @@ export class Executor {
   }
 
   /** Marca o item. Devolve false se o freio parou a campanha. */
-  private async marcar(item: ItemCampanha, tipo: AcaoManual, motivo: string | null): Promise<boolean> {
+  private async marcar(item: ItemCampanha, tipo: AcaoManual, motivo: string | null, codigo: string | null = null): Promise<boolean> {
     const agora = this.deps.agora();
     if (tipo === 'nao_cliente' || tipo === 'nao_enviar') {
       await marcarNaoEnviar(this.deps.db, {
@@ -306,7 +333,7 @@ export class Executor {
         motivo: tipo === 'nao_cliente' ? 'não é cliente' : 'não enviar mais',
       });
     }
-    const c = marcarItem(this.estado.campanha, item.chave, tipo, agora, motivo);
+    const c = marcarItem(this.estado.campanha, item.chave, tipo, agora, motivo, codigo);
     await limparEmAndamento(this.deps.db, c.id);
     await this.gravar(c);
     this.publicar({ itemAtual: null, emAndamento: null });
@@ -379,7 +406,14 @@ export class Executor {
       await this.deps.pedir({ tipo: 'pararObservacao' });
       await limparEmAndamento(db, c.id);
       await this.gravar({ ...c, status: 'concluida', motivoPausa: null });
-      this.publicar({ fase: 'concluida', itemAtual: null, liberaEm: null, emAndamento: null, mensagem: 'Campanha concluída.' });
+      const comProblemas = terminouComProblemas({ ...c, status: 'concluida' });
+      this.publicar({
+        fase: 'concluida',
+        itemAtual: null,
+        liberaEm: null,
+        emAndamento: null,
+        mensagem: comProblemas ? 'Campanha concluída com problemas: nenhuma mensagem foi enviada. Veja os motivos abaixo.' : 'Campanha concluída.',
+      });
       return;
     }
 
@@ -421,12 +455,12 @@ export class Executor {
     const texto = textoDoItem(item);
     const errosTexto = validarModelo(texto);
     if (errosTexto.length > 0) {
-      if (await this.marcar(item, 'problema', `texto recusado: ${errosTexto.join('; ')}`)) await this.passo(origem);
+      if (await this.marcar(item, 'problema', `texto recusado: ${errosTexto.join('; ')}`, 'texto_invalido')) await this.passo(origem);
       return;
     }
 
     this.publicar({ fase: 'abrindo', itemAtual: item, liberaEm: null, mensagem: null });
-    const r = await this.deps.pedir({ tipo: 'abrirEColar', nome: item.nome, texto, ...(rec ? { fotoAntes: rec.foto } : {}) }, true);
+    const r = await this.pedirRegistrando({ tipo: 'abrirEColar', nome: item.nome, texto, ...(rec ? { fotoAntes: rec.foto } : {}) }, true, item.nome);
 
     if (!this.ativo) {
       // Pausado enquanto abria. Se o texto chegou a ser colado, guarda o registro (a retomada
@@ -463,12 +497,13 @@ export class Executor {
       await this.pausar(r.erro);
       return;
     }
+    await this.registrarRetratoDaPagina(item.nome);
     if (ERROS_GERAIS.has(r.codigo)) {
-      this.publicar({ itemAtual: null });
+      this.publicar({ itemAtual: null, erroGeral: { nome: item.nome, codigo: r.codigo, mensagem: r.erro } });
       await this.pausar(r.erro);
       return;
     }
-    if (await this.marcar(item, 'problema', r.erro)) await this.passo(origem);
+    if (await this.marcar(item, 'problema', r.erro, r.codigo)) await this.passo(origem);
   }
 
   private async guardarEmAndamento(item: ItemCampanha, texto: string, r: Extract<RespostaConteudo, { ok: true }>): Promise<void> {

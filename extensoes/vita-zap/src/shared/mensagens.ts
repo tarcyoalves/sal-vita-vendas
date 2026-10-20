@@ -12,6 +12,8 @@ export type PedidoConteudo =
   | { tipo: 'abrirEColar'; nome: string; texto: string; fotoAntes?: string[] }
   | { tipo: 'limparCaixa'; texto: string }
   | { tipo: 'pararObservacao' }
+  /** Somente leitura: quais seletores batem e contagens na página (nunca clica nem escreve). */
+  | { tipo: 'diagnosticar' }
   /** Pausa durante "abrindo": o content script desiste e limpa a caixa se já tiver colado. */
   | { tipo: 'cancelarAbertura' }
   /** Envios detectados enquanto o painel estava fechado (e aviso do WhatsApp ainda visível). */
@@ -45,9 +47,34 @@ export interface PendenciaEnvio {
   detectadoEm: string; // ISO
 }
 
+/** Resultado de um seletor: qual alternativa casou (null = nenhuma) e quantos elementos. */
+export interface SeletorDiagnosticado {
+  chave: string;
+  casou: string | null;
+  quantidade: number;
+}
+
+/** Retrato SOMENTE LEITURA da página do WhatsApp Web (sem nomes, sem textos de mensagem). */
+export interface DiagnosticoPagina {
+  url: string;
+  idioma: string;
+  seletores: SeletorDiagnosticado[];
+  linhasNaLista: number;
+  conversaAberta: boolean;
+  tituloCabecalho: boolean;
+  caixaMensagem: boolean;
+  /** Quantos '#main [data-id]' existem e até 8 amostras MASCARADAS (dígitos viram *, menos os 4 últimos de cada bloco). */
+  dataIds: { total: number; amostras: string[] };
+  /** Atributos (só os nomes) e seletores presentes nas linhas de mensagem, p.ex. "attr:data-pre-plain-text". */
+  estruturaMensagem: string[];
+  /** Resultado da classificação da conversa aberta e os sinais usados (sem nomes). */
+  classificacao: { tipo: string; iconeGrupo: boolean; recebidas: number; enviadas: number; recebidasComAutor: number; autoresDistintos: number; autorIgualAoTitulo: boolean | null; elementoAutor: boolean };
+}
+
 export type RespostaConteudo =
   | {
       ok: true;
+      diagnostico?: DiagnosticoPagina;
       linhas?: LinhaBruta[];
       avisos?: string[];
       /** abrirEColar: data-id das mensagens ANTES de colar (a "foto"). */

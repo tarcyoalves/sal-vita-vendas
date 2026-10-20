@@ -74,8 +74,14 @@ export const SELETORES = {
    */
   mensagem: ['#main [data-id]', '[data-testid="conversation-panel-messages"] [data-id]'],
 
-  /** Sinal secundário de mensagem sua (além do data-id "true_"). Classe semântica, não gerada. */
+  /** Mensagem sua: sinal PRINCIPAL no WhatsApp atual (o data-id novo não tem "true_"). Classe semântica, não gerada. */
   mensagemSua: ['.message-out'],
+
+  /** Mensagem recebida. */
+  mensagemRecebida: ['.message-in'],
+
+  /** Nome do autor mostrado dentro de uma mensagem recebida (só aparece em grupo). */
+  autorMensagem: ['[data-testid="author"]', '[data-testid="msg-author"]'],
 
   /** Relógio de "ainda não saiu" dentro de uma mensagem sua. */
   relogioPendente: ['[data-icon="msg-time"]'],

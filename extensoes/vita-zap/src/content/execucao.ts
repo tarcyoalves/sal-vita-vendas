@@ -9,6 +9,7 @@ import { normalizarParaComparar, validarModelo } from '../shared/texto';
 import { limparBuscaPeloX, abrirLinhaDaLista } from './abrir-conversa';
 import {
   classificarConversa,
+  classificarConversaAberta,
   ehMensagemSua,
   idsDasMensagens,
   jidDosIds,
@@ -150,7 +151,7 @@ export function compararComFoto(foto: string[]): { estado: 'nova'; texto: string
 function conferirConversa(nome: string, jidEsperado: string | null, exigirCaixaVazia: boolean): RespostaConteudo | null {
   if (tituloAberto() !== nome) return erro('cabecalho', `A conversa aberta deixou de ser "${nome}".`);
   const ids = idsDasMensagens();
-  const tipo = classificarConversa(ids);
+  const tipo = classificarConversaAberta(ids);
   if (tipo === 'grupo') return erro('grupo', `"${nome}" é grupo, comunidade ou lista de transmissão.`);
   if (tipo !== 'individual') return erro('nao_confirmado', `Não consegui confirmar que "${nome}" é conversa individual.`);
   if (jidDosIds(ids) !== jidEsperado) return erro('cabecalho', `A conversa de "${nome}" mudou enquanto eu preparava o texto.`);

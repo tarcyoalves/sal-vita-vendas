@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
 import { desmarcarNaoEnviar, exportarTudo, importarTudo, lerConfig, salvarConfig, type Banco } from '../shared/banco';
 import { INTERVALO_MIN_SEG, TETO_DIARIO_MAXIMO } from '../shared/constantes';
+import { type RegistroDiagnostico, resumirPagina, resumirResposta } from '../shared/diagnostico';
+import type { DiagnosticoPagina } from '../shared/mensagens';
 import { csvDasCampanhas, lerBackup } from '../shared/exportar';
 import { CONFIG_PADRAO, type ConfigPolitica } from '../shared/politica';
 import type { DadosLocais } from './App';
+import { BotoesDiagnostico } from './BotoesDiagnostico';
+import { pedir } from './whatsapp';
 
 interface Props {
   db: Banco;
+  registro: RegistroDiagnostico;
   dados: DadosLocais;
   aoMudar: () => Promise<void>;
 }
@@ -24,12 +29,30 @@ function carimbo(): string {
   return new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
 }
 
-export function Dados({ db, dados, aoMudar }: Props) {
+export function Dados({ db, registro, dados, aoMudar }: Props) {
   const [cfg, setCfg] = useState<ConfigPolitica>(CONFIG_PADRAO);
   const [msgCfg, setMsgCfg] = useState<string | null>(null);
   const [arquivo, setArquivo] = useState<Arquivo | null>(null);
   const [modoImport, setModoImport] = useState<'mesclar' | 'substituir'>('mesclar');
   const [msgImport, setMsgImport] = useState<string | null>(null);
+
+  const [teste, setTeste] = useState<{ pagina: DiagnosticoPagina } | { erro: string } | null>(null);
+  const [testando, setTestando] = useState(false);
+
+  async function testarPagina() {
+    setTestando(true);
+    setTeste(null);
+    const r = await pedir({ tipo: 'diagnosticar' });
+    registro.registrar({
+      fase: 'teste_manual',
+      pedido: 'diagnosticar',
+      resposta: resumirResposta(r),
+      item: null,
+      pagina: r.ok && r.diagnostico ? resumirPagina(r.diagnostico) : null,
+    });
+    setTeste(r.ok && r.diagnostico ? { pagina: r.diagnostico } : { erro: r.ok ? 'O WhatsApp Web não devolveu o diagnóstico (recarregue a aba com F5).' : r.erro });
+    setTestando(false);
+  }
 
   useEffect(() => {
     void lerConfig(db).then(setCfg);
@@ -136,6 +159,60 @@ export function Dados({ db, dados, aoMudar }: Props) {
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="cartao">
+        <h3>Diagnóstico</h3>
+        <p className="ajuda">
+          Se algo der errado, copie o diagnóstico e mande para quem cuida da extensão. Ele não tem o texto das mensagens e mascara telefones.
+        </p>
+        <BotoesDiagnostico registro={registro} />
+        <div className="botoes">
+          <button type="button" disabled={testando} onClick={() => void testarPagina()}>
+            {testando ? 'Testando…' : 'Testar página do WhatsApp'}
+          </button>
+        </div>
+        {teste && 'erro' in teste && <p className="aviso">{teste.erro}</p>}
+        {teste && 'pagina' in teste && (
+          <>
+            <p className="info">
+              {teste.pagina.url} · idioma "{teste.pagina.idioma}" · linhas na lista: {teste.pagina.linhasNaLista} · conversa aberta:{' '}
+              {teste.pagina.conversaAberta ? 'sim' : 'não'} · título do cabeçalho: {teste.pagina.tituloCabecalho ? 'sim' : 'não'} · caixa de
+              mensagem: {teste.pagina.caixaMensagem ? 'sim' : 'não'} · mensagens (data-id): {teste.pagina.dataIds.total}
+            </p>
+            <table className="tabela">
+              <thead>
+                <tr>
+                  <th>Seletor</th>
+                  <th>Alternativa que casou</th>
+                  <th>Qtd.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teste.pagina.seletores.map((s) => (
+                  <tr key={s.chave} className={s.casou ? '' : 'sem-casar'}>
+                    <td>{s.chave}</td>
+                    <td>
+                      <code>{s.casou ?? 'nenhuma'}</code>
+                    </td>
+                    <td>{s.quantidade}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="ajuda">Seletores de conversa aberta só batem com uma conversa aberta no WhatsApp.</p>
+            <p className="info">
+              Conversa aberta classificada como <b>{teste.pagina.classificacao.tipo}</b> · recebidas: {teste.pagina.classificacao.recebidas} · suas:{' '}
+              {teste.pagina.classificacao.enviadas} · ícone de grupo: {teste.pagina.classificacao.iconeGrupo ? 'sim' : 'não'} · autores distintos:{' '}
+              {teste.pagina.classificacao.autoresDistintos}
+            </p>
+            {teste.pagina.dataIds.amostras.length > 0 && (
+              <p className="ajuda">
+                Amostras de data-id (mascaradas): <code>{teste.pagina.dataIds.amostras.join(' · ')}</code>
+              </p>
+            )}
+          </>
+        )}
       </div>
 
       <div className="cartao">

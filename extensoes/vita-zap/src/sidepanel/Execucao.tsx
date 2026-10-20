@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Banco } from '../shared/banco';
-import { resumo, textoDoItem } from '../shared/campanha';
+import { itensComErro, motivosAgrupados, resumo, terminouComProblemas, textoDoItem } from '../shared/campanha';
+import type { RegistroDiagnostico } from '../shared/diagnostico';
 import { ehEventoConteudo } from '../shared/mensagens';
 import { dentroDoHorario } from '../shared/politica';
 import type { DadosLocais } from './App';
 import { type EstadoExecutor, Executor } from './executor';
+import { BotoesDiagnostico } from './BotoesDiagnostico';
 import { pedir } from './whatsapp';
 
 interface Props {
   db: Banco;
+  registro: RegistroDiagnostico;
   dados: DadosLocais;
   campanhaId: string | null;
   aoEscolher: (id: string) => void;
@@ -24,7 +27,7 @@ const ROTULO_FASE: Record<EstadoExecutor['fase'], string> = {
   concluida: 'Concluída',
 };
 
-export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) {
+export function Execucao({ db, registro, dados, campanhaId, aoEscolher, aoMudar }: Props) {
   const campanhas = dados.campanhas;
   const idEscolhido = campanhaId ?? campanhas.find((c) => c.status !== 'concluida')?.id ?? campanhas[0]?.id ?? null;
   const campanhaInicial = campanhas.find((c) => c.id === idEscolhido) ?? null;
@@ -37,6 +40,7 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
             {
               db,
               pedir,
+              diagnostico: registro,
               agora: () => new Date(),
               aleatorio: Math.random,
               agendar: (fn, ms) => {
@@ -48,7 +52,7 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
           )
         : null,
     // Recria só ao trocar de campanha (o executor mantém o próprio estado depois de criado).
-    [db, idEscolhido],
+    [db, registro, idEscolhido],
   );
   const [estado, setEstado] = useState<EstadoExecutor | null>(null);
   const [agora, setAgora] = useState(Date.now());
@@ -93,6 +97,9 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
   const horario = dentroDoHorario(new Date());
   const faltaSeg = estado.liberaEm ? Math.max(0, Math.ceil((estado.liberaEm - agora) / 1000)) : null;
   const item = estado.itemAtual;
+  const comProblemas = terminouComProblemas(c);
+  const erros = itensComErro(c);
+  const erroGeral = estado.erroGeral;
   const podeAgir = estado.fase === 'aguardando_envio' && item != null;
   const emAndamento = !rodando ? estado.emAndamento : null;
   const podeJaEnviei = podeAgir || emAndamento != null;
@@ -124,10 +131,10 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
         </p>
       </div>
 
-      <div className={`cartao estado-${estado.fase}`}>
-        <h3>{ROTULO_FASE[estado.fase]}</h3>
+      <div className={`cartao estado-${comProblemas ? 'concluida_problemas' : estado.fase}`}>
+        <h3>{comProblemas ? 'Concluída com problemas' : ROTULO_FASE[estado.fase]}</h3>
         {estado.fase === 'intervalo' && faltaSeg != null && <p className="contagem">Próximo em {faltaSeg} s</p>}
-        {estado.mensagem && <p className={estado.fase === 'concluida' ? 'info' : 'aviso'}>{estado.mensagem}</p>}
+        {estado.mensagem && <p className={estado.fase === 'concluida' && !comProblemas ? 'info' : 'aviso'}>{estado.mensagem}</p>}
         {item && (
           <>
             <p>
@@ -185,12 +192,43 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
         )}
       </div>
 
+      {(erros.length > 0 || erroGeral) && (
+        <div className="alerta" role="alert">
+          <h3>{erros.length + (erroGeral ? 1 : 0) === 1 ? 'Deu problema com 1 contato' : 'Deu problema com contatos'}</h3>
+          {comProblemas && (
+            <ul className="lista">
+              {motivosAgrupados(c).map((g) => (
+                <li key={g.codigo}>
+                  <b>{g.quantidade}×</b> <code>{g.codigo}</code> — {g.mensagem}
+                </li>
+              ))}
+            </ul>
+          )}
+          {erroGeral && (
+            <p>
+              <b>{erroGeral.nome}</b> · <code>{erroGeral.codigo}</code>
+              <br />
+              {erroGeral.mensagem}
+            </p>
+          )}
+          {erros.map((i) => (
+            <p key={i.chave}>
+              <b>{i.nome}</b> · <code>{i.codigo ?? 'sem código'}</code>
+              <br />
+              {i.motivo ?? 'sem detalhe registrado'}
+            </p>
+          ))}
+          <p className="ajuda">Se não souber o motivo, copie o diagnóstico e mande para quem cuida da extensão.</p>
+          <BotoesDiagnostico registro={registro} />
+        </div>
+      )}
+
       <details className="cartao">
         <summary>Contatos da campanha ({c.itens.length})</summary>
         <ul className="lista">
           {c.itens.map((i) => (
             <li key={i.chave}>
-              <b>{i.nome}</b> <small>— {i.status.replace('_', ' ')}{i.motivo ? ` (${i.motivo})` : ''}</small>
+              <b>{i.nome}</b> <small>— {i.status.replace('_', ' ')}{i.codigo ? ` [${i.codigo}]` : ''}{i.motivo ? ` (${i.motivo})` : ''}</small>
             </li>
           ))}
         </ul>

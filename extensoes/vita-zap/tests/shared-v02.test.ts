@@ -133,7 +133,7 @@ describe('A2 — banco versão 2 (item em andamento)', () => {
     expect(await lerEmAndamento(db, 'c2')).toBeDefined();
   });
 
-  it('um banco criado pela 0.1 (versão 1) sobe para a versão 2 sem perder dados', async () => {
+  it('um banco criado pela 0.1 (versão 1) sobe para a versão atual sem perder dados', async () => {
     const nome = `v1-${Date.now()}-b`;
     const antigo = await openDB(nome, 1, {
       upgrade(db) {
@@ -150,8 +150,8 @@ describe('A2 — banco versão 2 (item em andamento)', () => {
     antigo.close();
 
     const db = await abrirBanco(nome);
-    expect(db.version).toBe(2);
-    expect([...db.objectStoreNames].sort()).toEqual(['campanhas', 'config', 'contatos', 'emAndamento', 'envios', 'naoEnviar']);
+    expect(db.version).toBe(3);
+    expect([...db.objectStoreNames].sort()).toEqual(['campanhas', 'config', 'contatos', 'diagnostico', 'emAndamento', 'envios', 'naoEnviar']);
     expect(await db.get('contatos', 'ana')).toMatchObject({ nome: 'Ana' });
     await salvarContatos(db, []); // continua utilizável
   });

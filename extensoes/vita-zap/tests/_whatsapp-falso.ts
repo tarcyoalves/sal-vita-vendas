@@ -10,6 +10,20 @@ export interface ContatoFalso {
   previa?: string;
   data?: string;
   grupoPeloIcone?: boolean;
+  /**
+   * 'novo' = WhatsApp Web atual: data-id é só o id da mensagem (sem true_/false_ nem JID),
+   * a direção vem de .message-in/.message-out e o autor de data-pre-plain-text.
+   * Padrão 'antigo' (data-id com JID).
+   */
+  formato?: 'antigo' | 'novo';
+  /** Formato novo: autores (data-pre-plain-text) das mensagens recebidas. Padrão: [nome]. */
+  autores?: string[];
+  /** Formato novo: ícone de grupo no cabeçalho da conversa aberta. */
+  iconeGrupoNoCabecalho?: boolean;
+  /** Formato novo: elemento com o nome do autor dentro da mensagem recebida. */
+  autorEmElemento?: boolean;
+  /** Formato novo: só mensagens suas (nenhuma recebida). */
+  semRecebidas?: boolean;
 }
 
 export interface OpcoesFalso {
@@ -68,11 +82,25 @@ export function montarWhatsAppFalso(contatos: ContatoFalso[], opcoes: OpcoesFals
 
   // Histórico por conversa: reabrir a conversa mostra o que já estava lá (inclusive o que o usuário enviou).
   const historico = new Map<string, string[]>();
+  const novo = (c: ContatoFalso | null) => c?.formato === 'novo';
+  function msgNovaHtml(id: string, texto: string, direcao: 'in' | 'out', autor: string | null, comElementoAutor = false): string {
+    const prePlain = autor == null ? '' : ` data-pre-plain-text="[10:00, 19/10/2026] ${autor}: "`;
+    const elAutor = comElementoAutor && autor ? `<span data-testid="author">${autor}</span>` : '';
+    return `<div data-id="${id}"><div class="message-${direcao}">${elAutor}<div class="copyable-text"${prePlain}><span class="selectable-text"><span>${html(texto)}</span></span></div></div></div>`;
+  }
   function msgHtml(id: string, texto: string, classe = ''): string {
     return `<div data-id="${id}" class="${classe}"><span class="selectable-text"><span>${html(texto)}</span></span></div>`;
   }
   function renderMensagens(c: ContatoFalso): void {
-    if (!historico.has(c.jid)) historico.set(c.jid, [1, 2].map((i) => msgHtml(`false_${c.jid}_M${i}`, `Mensagem ${i}`)));
+    if (!historico.has(c.jid)) {
+      if (novo(c)) {
+        const autores = c.autores ?? [c.nome];
+        const recebidas = c.semRecebidas ? [] : [1, 2].map((i) => msgNovaHtml(`3A00${i}${c.jid.replace(/\D/g, '')}`, `Mensagem ${i}`, 'in', autores[(i - 1) % autores.length], c.autorEmElemento));
+        historico.set(c.jid, recebidas);
+      } else {
+        historico.set(c.jid, [1, 2].map((i) => msgHtml(`false_${c.jid}_M${i}`, `Mensagem ${i}`)));
+      }
+    }
     mensagens.innerHTML = (historico.get(c.jid) ?? []).join('');
   }
 
@@ -81,6 +109,8 @@ export function montarWhatsAppFalso(contatos: ContatoFalso[], opcoes: OpcoesFals
     aberto = c;
     cabecalho.setAttribute('title', c.nome);
     cabecalho.textContent = c.nome;
+    document.querySelector('#main header [data-icon]')?.remove();
+    if (c.iconeGrupoNoCabecalho) document.querySelector('#main header')?.insertAdjacentHTML('beforeend', '<span data-icon="default-group"></span>');
     if (opcoes.mensagensAntigasPorMs && anterior == null) {
       mensagens.innerHTML = `<div data-id="false_antigo@c.us_Z1"><span class="selectable-text"><span>antiga</span></span></div>`;
       setTimeout(() => aberto === c && renderMensagens(c), opcoes.mensagensAntigasPorMs);
@@ -138,8 +168,8 @@ export function montarWhatsAppFalso(contatos: ContatoFalso[], opcoes: OpcoesFals
       caixa.innerHTML = '';
       contador += 1;
       const jid = aberto?.jid ?? 'x@c.us';
-      const id = comoClasse ? `3EB0${contador}` : `true_${jid}_N${contador}`;
-      const bloco = msgHtml(id, texto, comoClasse ? 'message-out' : '');
+      const id = comoClasse || novo(aberto) ? `3EB0${contador}` : `true_${jid}_N${contador}`;
+      const bloco = novo(aberto) ? msgNovaHtml(id, texto, 'out', null) : msgHtml(id, texto, comoClasse ? 'message-out' : '');
       historico.set(jid, [...(historico.get(jid) ?? []), bloco]);
       mensagens.insertAdjacentHTML('beforeend', bloco);
     },

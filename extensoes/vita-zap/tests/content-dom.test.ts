@@ -310,7 +310,7 @@ describe('I2 — alternativas de seletor por data-testid estável', () => {
     for (const s of todos) {
       expect(s, s).not.toMatch(/\.(_[A-Za-z0-9]{2,}|x[a-z0-9]{6,})\b/);
       const classes = [...s.matchAll(/\.([A-Za-z][\w-]*)/g)].map((m) => m[1]);
-      for (const c of classes) expect(['selectable-text', 'copyable-text', 'message-out'], s).toContain(c);
+      for (const c of classes) expect(['selectable-text', 'copyable-text', 'message-out', 'message-in'], s).toContain(c);
     }
   });
 });

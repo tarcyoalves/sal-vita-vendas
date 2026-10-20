@@ -269,3 +269,54 @@ button.pequeno {
 .carregando {
   padding: 16px;
 }
+
+.estado-concluida_problemas {
+  border-color: var(--aviso);
+  border-width: 2px;
+}
+
+.estado-concluida_problemas h3 {
+  color: var(--aviso);
+}
+
+.alerta {
+  border: 2px solid var(--erro);
+  background: var(--aviso-fundo);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+
+.alerta h3 {
+  margin: 0 0 6px;
+  color: var(--erro);
+}
+
+a.botao {
+  display: inline-block;
+  padding: 6px 10px;
+  border: 1px solid var(--borda);
+  border-radius: 6px;
+  color: var(--texto);
+  text-decoration: none;
+  background: var(--cartao);
+}
+
+.tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.tabela th,
+.tabela td {
+  border-bottom: 1px solid var(--borda);
+  padding: 3px 4px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.tabela tr.sem-casar td {
+  color: var(--erro);
+}

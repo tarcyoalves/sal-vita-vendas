@@ -21,6 +21,27 @@ esta pasta.
 
 ---
 
+## 0.1. O que mudou na 0.2.1
+
+- **Motivo do erro à vista.** Quando um contato vira problema, o painel mostra um alerta com o
+  nome, o código do erro (`nao_confirmado`, `nao_encontrado`…) e a mensagem, sem abrir nada.
+- **"Concluída com problemas".** Campanha que termina sem nenhum envio e com problemas não
+  fica mais verde: o status é de aviso e traz o resumo dos motivos agrupados.
+- **Diagnóstico.** Registro dos últimos 200 eventos (horário, fase, pedido, resposta, versão,
+  URL/idioma do WhatsApp e quais seletores bateram no erro). **Copiar diagnóstico** e **Baixar
+  diagnóstico (.txt)** na aba Dados e no alerta. Não inclui o texto das mensagens nem nomes de
+  outros contatos; telefones são mascarados.
+- **Testar página do WhatsApp** (aba Dados): pedido `diagnosticar`, somente leitura, que
+  mostra em tabela qual alternativa de cada seletor casou e as contagens da página.
+- **WhatsApp Web atual.** O `data-id` das mensagens agora é só o id (sem `true_`/`false_` nem
+  JID). Mensagem sua = `.message-out` (o `true_` antigo continua valendo). Conversa individual
+  x grupo é decidida por sinais do DOM, de forma conservadora: ícone de grupo no cabeçalho,
+  nome de autor dentro de mensagem recebida ou autores (`data-pre-plain-text`) diferentes entre
+  si ou do título = grupo; individual só se nenhum sinal de grupo, todo autor recebido é o
+  título e há ao menos uma mensagem. Na dúvida: `nao_confirmado` (não cola).
+- **Extensão recarregada.** Um content script órfão (contexto invalidado) para vigia,
+  observers e timers em silêncio, sem erro no console da página.
+
 ## 0. O que mudou na 0.2.0
 
 Versão de correção (manifest e `package.json` em 0.2.0). Nenhuma regra de proteção foi
@@ -303,6 +324,8 @@ extensoes/vita-zap/
 │   │   ├── extrair.ts                 leitura de uma linha da lista (puro)
 │   │   ├── varredura.ts               rolagem com pausas, só leitura
 │   │   ├── execucao.ts                abrir + colar + observar envio
+│   │   ├── contexto.ts                contexto invalidado: vigia + chamadas seguras
+│   │   ├── diagnostico.ts             pedido `diagnosticar` (somente leitura)
 │   │   ├── abrir-conversa.ts          únicos cliques simulados (linha da lista; X de limpar busca)
 │   │   ├── chat.ts                    título, mensagens, tipo/JID da conversa aberta
 │   │   ├── vigia.ts                   avisos do WhatsApp (desconexão, restrição, relógio)
@@ -321,6 +344,25 @@ extensoes/vita-zap/
 │   └── sidepanel/                     React: Varredura, Prévia, Envio, Dados + executor.ts
 └── tests/                             vitest (npm test)
 ```
+
+## 10. Se der problema
+
+1. **Abra o alerta.** Na aba **3. Envio**, o bloco vermelho "Deu problema…" mostra o contato, o
+   código do erro e a mensagem. Muitas vezes isso já explica (ex.: `nao_encontrado` = o nome não
+   apareceu na busca; `grupo` = a conversa é um grupo).
+2. **Copiar diagnóstico.** No alerta (ou na aba **Dados**), clique em *Copiar diagnóstico* e
+   cole na conversa com quem cuida da extensão; se a cópia falhar, use *Baixar diagnóstico
+   (.txt)*. Não leva o texto das mensagens e mascara telefones.
+3. **Testar página.** Na aba **Dados**, com o WhatsApp Web aberto (e, de preferência, uma
+   conversa aberta), clique em *Testar página do WhatsApp*: a tabela mostra quais seletores
+   ainda batem. Linhas em vermelho ("nenhuma") indicam que o WhatsApp mudou o HTML. Só leitura:
+   não clica nem escreve nada.
+4. **Desative outras extensões de WhatsApp.** Em `chrome://extensions`, desative extensões que
+   mexem no WhatsApp Web (CRMs, disparadores, tradutores…): elas podem interferir na página e
+   até gerar erros no console (como `Cannot read properties of undefined (reading
+   'sendMessage')`, que vem do content script **delas**, não do Vita Zap). Depois recarregue a
+   aba do WhatsApp com F5.
+
 
 ## 9. Fase 2 (IA) — preparado, não implementado
 
