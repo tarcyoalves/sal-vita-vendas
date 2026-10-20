@@ -206,12 +206,16 @@ describe('upsertPedido / importLocal / cache antigo não escrevem nem limpam cam
     expect(Object.keys(r).sort()).toEqual(['comissaoComercialProtegida', 'numeroCte', 'numeroNfe', 'smbiMovsaiId']);
   });
   it('o `set` do upsertPedido não lista nenhum campo empresarial (então um save da tela nunca os limpa)', () => {
-    const fonte = readFileSync('server/routers/faturamento.ts', 'utf8');
-    const ini = fonte.indexOf('.onConflictDoUpdate({\n          target: fatOrders.id,');
-    const fim = fonte.indexOf('.returning();', ini);
+    // O `set` agora mora em server/lib/pedidoUpsert.ts (montarSetUpsertPedido); o router só o repassa.
+    const fonte = readFileSync('server/lib/pedidoUpsert.ts', 'utf8');
+    const ini = fonte.indexOf('const set: SetPedido = {');
+    const fim = fonte.indexOf('};', ini);
     expect(ini).toBeGreaterThan(0);
     const bloco = fonte.slice(ini, fim);
     for (const campo of SMBI_CAMPOS_EMPRESA) expect(bloco).not.toContain(campo);
+    const router = readFileSync('server/routers/faturamento.ts', 'utf8');
+    expect(router).toMatch(/montarSetUpsertPedido\(values/);
+    expect(router).toMatch(/onConflictDoUpdate\(\{ target: fatOrders\.id, set \}\)/);
   });
 });
 
