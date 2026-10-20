@@ -56,6 +56,13 @@ describe('condicaoPorTexto — prazos digitados à mão', () => {
     expect(condicaoPorTexto('60/30')).toBeNull();
   });
 
+  it('reconhece a nova condição 171 (15/30/45/60/75/90 DIAS)', () => {
+    expect(condicaoPorTexto('15/30/45/60/75/90')?.cod).toBe('171');
+    expect(condicaoPorTexto('15/30/45/60/75/90 DIAS')?.cod).toBe('171');
+    expect(condicaoPorTexto('15 / 30 / 45 / 60 / 75 / 90 dias')?.cod).toBe('171');
+    expect(condicaoPorTexto('15/30/45/60/75/90')?.parcelas).toBe(6);
+  });
+
   it('toda descrição do catálogo casa consigo mesma e com o próprio código', () => {
     for (const c of SMBI_CONDICOES_PAGAMENTO) {
       expect(condicaoPorTexto(c.descricao)?.cod).toBe(c.cod);
