@@ -1,13 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Vita Zap",
-  "version": "0.1.1",
-  "description": "Copiloto comercial no WhatsApp Web. Você sempre aperta o Enter: a extensão nunca envia sozinha.",
+  "version": "0.4.0",
+  "description": "CRM dentro do WhatsApp Web: abas de triagem, lembretes de follow-up, notas, etiquetas e respostas rápidas. Você sempre aperta o Enter: a extensão nunca envia sozinha.",
   "minimum_chrome_version": "116",
   "permissions": [
     "sidePanel",
     "scripting",
-    "storage"
+    "storage",
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
     "https://web.whatsapp.com/*"
@@ -20,7 +22,10 @@
     "default_path": "sidepanel.html"
   },
   "action": {
-    "default_title": "Abrir o Vita Zap"
+    "default_title": "Abrir o Vita Zap",
+    "default_icon": {
+      "128": "icon-128.png"
+    }
   },
   "content_scripts": [
     {
@@ -32,5 +37,8 @@
       ],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "icons": {
+    "128": "icon-128.png"
+  }
 }

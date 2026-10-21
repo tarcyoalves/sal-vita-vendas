@@ -10,12 +10,29 @@ export interface ChromeFalso {
   ouvintes: Set<Ouvinte>;
   gravacoes: number;
   chrome: unknown;
+  alarmes: Map<string, { name: string; scheduledTime: number }>;
+  notificacoes: Map<string, Record<string, unknown>>;
+  selo: { texto: string; cor: string | null };
+  abas: Array<{ id: number; windowId: number; active: boolean; url: string }>;
+  abasCriadas: string[];
+  abasAtivadas: number[];
 }
 
 export function instalarChromeFalso(inicial: Record<string, unknown> = {}): ChromeFalso {
   const dados = new Map<string, unknown>(Object.entries(inicial).map(([k, v]) => [k, copia(v)]));
   const ouvintes = new Set<Ouvinte>();
-  const estado: ChromeFalso = { dados, ouvintes, gravacoes: 0, chrome: null };
+  const estado: ChromeFalso = {
+    dados,
+    ouvintes,
+    gravacoes: 0,
+    chrome: null,
+    alarmes: new Map(),
+    notificacoes: new Map(),
+    selo: { texto: '', cor: null },
+    abas: [],
+    abasCriadas: [],
+    abasAtivadas: [],
+  };
 
   const local = {
     async get(chaves?: string | string[] | null): Promise<Record<string, unknown>> {
@@ -46,7 +63,47 @@ export function instalarChromeFalso(inicial: Record<string, unknown> = {}): Chro
         removeListener: (f: Ouvinte) => ouvintes.delete(f),
       },
     },
-    runtime: { id: 'teste', sendMessage: () => Promise.resolve(), onMessage: { addListener: () => undefined } },
+    runtime: { id: 'teste', sendMessage: () => Promise.resolve(), onMessage: { addListener: () => undefined }, getURL: (p: string) => `chrome-extension://teste/${p}` },
+    alarms: {
+      async create(name: string, info: { when: number }) {
+        estado.alarmes.set(name, { name, scheduledTime: info.when });
+      },
+      async getAll() {
+        return [...estado.alarmes.values()];
+      },
+      async clear(name: string) {
+        return estado.alarmes.delete(name);
+      },
+    },
+    notifications: {
+      async create(id: string, opcoes: Record<string, unknown>) {
+        estado.notificacoes.set(id, opcoes);
+        return id;
+      },
+      async clear(id: string) {
+        return estado.notificacoes.delete(id);
+      },
+    },
+    action: {
+      async setBadgeText(d: { text: string }) {
+        estado.selo.texto = d.text;
+      },
+      async setBadgeBackgroundColor(d: { color: string }) {
+        estado.selo.cor = d.color;
+      },
+    },
+    tabs: {
+      async query() {
+        return estado.abas;
+      },
+      async update(id: number) {
+        estado.abasAtivadas.push(id);
+      },
+      async create(d: { url: string }) {
+        estado.abasCriadas.push(d.url);
+      },
+    },
+    windows: { async update() {} },
   };
   (globalThis as unknown as { chrome: unknown }).chrome = estado.chrome;
   return estado;

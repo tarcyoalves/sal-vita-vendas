@@ -3,17 +3,23 @@
 //
 // Nada aqui envia mensagem: botões nossos só filtram, anotam e colam rascunho.
 
-import { classificar, contar, diagnosticoDaLeitura, idadeDaUltima, passaNoFiltro, atualizarConversa, type FiltroLista } from '../../shared/crm-regras';
+import { chaveDaConversa, classificar, contar, diagnosticoDaLeitura, idadeDaUltima, passaNoFiltro, atualizarConversa, type FiltroLista } from '../../shared/crm-regras';
 import { contarVencidos } from '../../shared/crm-lembretes';
 import { garantirContato } from '../../shared/crm-store';
 import type { AbaId, Conversa } from '../../shared/crm-tipos';
 import { textoDoCampo } from '../dom';
 import { lerLinhaCrm } from '../extrair';
 import { linhasDaLista } from '../lista';
+import { nomeDaConversaAberta } from '../execucao';
+import { esperarAte } from '../dom';
 import { encontrar, encontrarTodos } from '../selectors';
+import { consumirAcaoPendente, abrirConversaComRascunho } from './acao-pendente';
 import { Barra } from './barra';
+import { Cabecalho } from './cabecalho';
 import { Estado } from './estado';
 import { aplicarFiltroNaLista } from './filtro-lista';
+import { abrirCentral, abrirPainelNovoLembrete, type ContextoLembretes } from './painel-lembrete';
+import { fecharPopover, popoverAbertoEm } from './popover';
 import { anotarLinha, removerSelo } from './linha-extra';
 import { rolarELer } from './rolagem';
 import { avisarUmaVez } from './ui';
@@ -55,8 +61,9 @@ function emArquivadas(): boolean {
 export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   const agoraFn = op.agora ?? (() => new Date());
   const estado = new Estado();
-  await estado.iniciar();
+  await estado.iniciar(() => void consumirAcaoPendente());
   const barra = new Barra();
+  const cabecalho = new Cabecalho();
 
   let lendoLista = false;
   let pararLeitura = false;
@@ -64,6 +71,27 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   let primeiroPedido = 0;
   let encerrado = false;
   const inicio = Date.now();
+
+  const ctxLembretes: ContextoLembretes = { estado, agora: agoraFn, abrirConversa: (nome, rascunho) => void abrirConversaComRascunho(nome, rascunho) };
+
+  /** Mantém os botões do cabeçalho da conversa aberta (e fecha o painel se a conversa mudou). */
+  function atualizarCabecalho(agora: Date): void {
+    const nome = nomeDaConversaAberta();
+    const header = encontrar(document, 'cabecalhoConversa');
+    if (!header || !nome) {
+      cabecalho.remover();
+      return;
+    }
+    const chave = chaveDaConversa(nome);
+    if (cabecalho.chaveAtual && cabecalho.chaveAtual !== chave) fecharPopover();
+    const dados = estado.dados;
+    const pendentes = dados.lembretes.filter((l) => l.chave === chave && l.status !== 'concluido');
+    cabecalho.atualizar(
+      header,
+      { nome, chave, lembretes: pendentes.length, anotacoes: 0, vencido: pendentes.some((l) => l.venceEm <= agora.getTime()) },
+      { abrirLembrete: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirPainelNovoLembrete(ancora, ctxLembretes, nome, chave)) },
+    );
+  }
 
   const filtroAtual = (): FiltroLista => {
     const c = estado.dados.config;
@@ -152,6 +180,8 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
         );
       }
 
+      atualizarCabecalho(agora);
+
       barra.render(
         {
           aba: filtro.aba,
@@ -167,7 +197,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
           escolherAba: (id) => mudarConfig({ aba: id }),
           escolherDias: (dias) => mudarConfig({ diasSemResposta: dias }),
           abrirEtiquetas: () => undefined,
-          abrirLembretes: () => undefined,
+          abrirLembretes: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirCentral(ancora, ctxLembretes)),
           lerLista: () => void lerListaToda(),
         },
       );
@@ -214,6 +244,8 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   const removerOuvinte = estado.ouvir(() => agendar());
   const periodico = op.periodicoMs === 0 ? null : setInterval(ciclo, op.periodicoMs ?? 30_000);
   ciclo();
+  // Pedido pendente (clique na notificação com o WhatsApp Web ainda carregando): espera a lista e executa.
+  void esperarAte(() => encontrar(document, 'painelLateral'), 60_000, 500).then((lista) => (lista && !encerrado ? consumirAcaoPendente() : undefined));
 
   return {
     estado,
@@ -225,6 +257,8 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       if (timer) clearTimeout(timer);
       if (periodico) clearInterval(periodico);
       barra.remover();
+      cabecalho.remover();
+      fecharPopover();
       estado.encerrar();
     },
   };

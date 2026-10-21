@@ -96,9 +96,19 @@ function observarEnvio(nome: string, textoColado: string, antes: Set<string>, ao
 
 // ── Abrir e colar ────────────────────────────────────────────────────────────
 
-export async function abrirEColar(nome: string, texto: string, aoDetectarEnvio: (texto: string, confere: boolean) => void): Promise<RespostaConteudo> {
-  pararObservacao();
+/** Nome da conversa aberta agora (cabeçalho), ou null. */
+export function nomeDaConversaAberta(): string | null {
+  return tituloAberto();
+}
+
+/**
+ * Abre a conversa de `nome` pela busca da lista (exatamente uma linha com esse nome e com
+ * conversa) e confere o cabeçalho. Devolve null quando abriu; senão, o erro.
+ * Com `usarSeJaAberta`, se a conversa já está aberta nem mexe na busca.
+ */
+async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promise<RespostaConteudo | null> {
   exigir(encontrar(document, 'painelLateral'), 'lista de conversas');
+  if (usarSeJaAberta && tituloAberto() === nome) return null;
 
   // 1. Achar a conversa pela busca: exatamente uma linha com este nome e com conversa.
   await buscar(nome);
@@ -118,6 +128,13 @@ export async function abrirEColar(nome: string, texto: string, aoDetectarEnvio: 
     if (!encontrar(document, 'painelConversa')) return erro('seletor', 'Painel da conversa não encontrado (seletor #main).');
     return erro('cabecalho', `A conversa aberta não é "${nome}".`);
   }
+  return null;
+}
+
+export async function abrirEColar(nome: string, texto: string, aoDetectarEnvio: (texto: string, confere: boolean) => void): Promise<RespostaConteudo> {
+  pararObservacao();
+  const falha = await abrirConversaPorNome(nome);
+  if (falha) return falha;
 
   // 3. Só conversa individual.
   const ids = await esperarAte(() => {
@@ -158,5 +175,29 @@ export function limparCaixa(texto: string): RespostaConteudo {
     return { ok: true, avisos: ['o texto da caixa foi editado; deixei como está'] };
   }
   limparCampo(caixa);
+  return { ok: true };
+}
+
+/**
+ * Lembrete de follow-up: abre a conversa e COLA o rascunho na caixa (se houver). Para aí:
+ * o usuário confere e aperta Enter. Não observa nem registra envio. Não sobrescreve texto
+ * que o usuário já tenha na caixa.
+ */
+export async function abrirEPrepararRascunho(nome: string, rascunho: string | null): Promise<RespostaConteudo> {
+  const jaAberta = tituloAberto() === nome;
+  const falha = await abrirConversaPorNome(nome, true);
+  if (falha) return falha;
+  if (!jaAberta) await buscar(''); // limpa a busca que usamos para achar a conversa
+  if (!rascunho || rascunho.trim() === '') return { ok: true };
+  const caixa = await esperarAte(() => encontrar(document, 'caixaMensagem'), 4000);
+  if (!caixa) return erro('seletor', 'Caixa de mensagem não encontrada.');
+  if (textoDoCampo(caixa).trim() !== '') return erro('caixa_ocupada', `A conversa de "${nome}" já tem um rascunho na caixa. Não mexi nele.`);
+  escreverNoCampo(caixa, rascunho);
+  await esperar(300);
+  if (normalizarParaComparar(textoDoCampo(caixa)) !== normalizarParaComparar(rascunho)) {
+    limparCampo(caixa);
+    return erro('colar_falhou', 'O texto não ficou na caixa de mensagem.');
+  }
+  caixa.focus();
   return { ok: true };
 }

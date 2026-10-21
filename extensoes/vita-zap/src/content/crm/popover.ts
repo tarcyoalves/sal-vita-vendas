@@ -97,3 +97,12 @@ export function abrirPopover(op: OpcoesPopover): PopoverAberto {
   };
   return { corpo, fechar: fecharPopover, reposicionar };
 }
+
+/** Aviso curto no rodapé da tela (some sozinho). */
+export function mostrarAviso(texto: string, tipo: 'info' | 'erro' = 'info'): void {
+  const o = garantirOverlay();
+  sincronizarTema(o.host);
+  const el = h('div', { class: `toast${tipo === 'erro' ? ' erro' : ''}`, role: 'status' }, texto);
+  o.conteudo.append(el);
+  setTimeout(() => el.remove(), tipo === 'erro' ? 9000 : 6000);
+}

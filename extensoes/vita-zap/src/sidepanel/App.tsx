@@ -3,12 +3,14 @@ import { abrirBanco, listarCampanhas, listarContatos, listarEnvios, listarNaoEnv
 import type { Campanha } from '../shared/campanha';
 import type { ContatoVarrido } from '../shared/contatos';
 import type { Envio, NaoEnviar } from '../shared/exportar';
+import { useCrm } from './crm';
 import { Dados } from './Dados';
 import { Execucao } from './Execucao';
+import { Lembretes } from './Lembretes';
 import { Previa } from './Previa';
 import { Varredura } from './Varredura';
 
-type Aba = 'varredura' | 'previa' | 'execucao' | 'dados';
+type Aba = 'lembretes' | 'varredura' | 'previa' | 'execucao' | 'dados';
 
 export interface DadosLocais {
   contatos: ContatoVarrido[];
@@ -18,6 +20,7 @@ export interface DadosLocais {
 }
 
 const ABAS: Array<{ id: Aba; rotulo: string }> = [
+  { id: 'lembretes', rotulo: 'Lembretes' },
   { id: 'varredura', rotulo: '1. Varredura' },
   { id: 'previa', rotulo: '2. Prévia' },
   { id: 'execucao', rotulo: '3. Envio' },
@@ -27,7 +30,8 @@ const ABAS: Array<{ id: Aba; rotulo: string }> = [
 export function App() {
   const [db, setDb] = useState<Banco | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [aba, setAba] = useState<Aba>('varredura');
+  const [aba, setAba] = useState<Aba>('lembretes');
+  const crm = useCrm();
   const [dados, setDados] = useState<DadosLocais>({ contatos: [], campanhas: [], envios: [], naoEnviar: [] });
   const [campanhaAtiva, setCampanhaAtiva] = useState<string | null>(null);
 
@@ -57,7 +61,7 @@ export function App() {
     <div className="app">
       <header className="topo">
         <strong>Vita Zap</strong>
-        <span className="selo">fase 1 · você aperta o Enter</span>
+        <span className="selo">CRM · você aperta o Enter</span>
       </header>
       <nav className="abas">
         {ABAS.map((a) => (
@@ -67,6 +71,7 @@ export function App() {
         ))}
       </nav>
       <main>
+        {aba === 'lembretes' && <Lembretes crm={crm} />}
         {aba === 'varredura' && <Varredura db={db} dados={dados} aoMudar={recarregar} aoContinuar={() => setAba('previa')} />}
         {aba === 'previa' && (
           <Previa

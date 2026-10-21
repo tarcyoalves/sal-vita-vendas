@@ -79,4 +79,7 @@ textarea.campo { resize: vertical; min-height: 60px; }
 .cor.sel { border-color: var(--texto); }
 .msg { margin-top: 6px; font-size: 12px; color: var(--perigo); }
 .ok { color: var(--verde); }
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); max-width: min(80vw, 520px); padding: 10px 16px; border-radius: 10px; background: #111b21; color: #e9edef;
+  box-shadow: var(--sombra); pointer-events: auto; font-size: 13px; z-index: 5; }
+.toast.erro { background: #8c1d18; color: #fff; }
 `;

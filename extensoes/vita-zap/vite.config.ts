@@ -7,6 +7,8 @@ import { resolve } from 'node:path';
 
 export default defineConfig({
   plugins: [react()],
+  // A extensão é independente do CRM: não herda o postcss/tailwind da raiz do repositório.
+  css: { postcss: { plugins: [] } },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
