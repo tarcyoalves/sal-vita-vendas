@@ -269,3 +269,47 @@ button.pequeno {
 .carregando {
   padding: 16px;
 }
+
+/* CRM: lembretes e clientes */
+.etq {
+  display: inline-block;
+  padding: 0 8px;
+  margin: 0 4px 2px 0;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.cliente-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.filtros {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.filtros label:first-child {
+  grid-column: 1 / -1;
+}
+
+.suave {
+  color: var(--suave);
+  font-size: 12px;
+}
+
+.vencido {
+  color: var(--erro);
+  font-weight: 600;
+}
+
+.abas button {
+  min-width: 0;
+  padding: 6px 4px;
+  font-size: 13px;
+}

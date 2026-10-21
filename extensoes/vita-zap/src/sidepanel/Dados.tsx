@@ -4,11 +4,14 @@ import { INTERVALO_MIN_SEG, TETO_DIARIO_MAXIMO } from '../shared/constantes';
 import { csvDasCampanhas, lerBackup } from '../shared/exportar';
 import { CONFIG_PADRAO, type ConfigPolitica } from '../shared/politica';
 import type { DadosLocais } from './App';
+import { CrmBackup } from './CrmBackup';
+import type { CrmPainel } from './crm';
 
 interface Props {
   db: Banco;
   dados: DadosLocais;
   aoMudar: () => Promise<void>;
+  crm: CrmPainel;
 }
 
 interface Arquivo {
@@ -24,7 +27,7 @@ function carimbo(): string {
   return new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
 }
 
-export function Dados({ db, dados, aoMudar }: Props) {
+export function Dados({ db, dados, aoMudar, crm }: Props) {
   const [cfg, setCfg] = useState<ConfigPolitica>(CONFIG_PADRAO);
   const [msgCfg, setMsgCfg] = useState<string | null>(null);
   const [arquivo, setArquivo] = useState<Arquivo | null>(null);
@@ -75,6 +78,8 @@ export function Dados({ db, dados, aoMudar }: Props) {
 
   return (
     <section>
+      <CrmBackup crm={crm} />
+
       <div className="cartao">
         <h3>Política</h3>
         <label>
