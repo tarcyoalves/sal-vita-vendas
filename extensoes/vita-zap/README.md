@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.5: CRM + integração com o CRM Lembretes + campanhas "uma tecla", sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.5.1: CRM + integração com o CRM Lembretes + campanhas "uma tecla", sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -173,8 +173,8 @@ as ações que estão esperando a internet e as que o CRM recusou. O endereço d
   `ativo` e `Email Confirmado` são do CRM e não mudam aqui) e **Marcar convertido** (valor do pedido
   opcional).
 
-**Lembretes do CRM** (a cada 5 minutos, `chrome.alarms`, `tasks.reminders`: de ontem até 7 dias): entram
-na central (Vencidos / Hoje / Próximos), no selo do ícone e nos alarmes, junto com os lembretes locais.
+**Lembretes do CRM** (`tasks.reminders`: de ontem até 7 dias; buscados só por uso, ver "Consumo do banco"
+abaixo, e guardados em cache): entram na central (Vencidos / Hoje / Próximos), no selo do ícone e nos alarmes, junto com os lembretes locais.
 Cada lembrete avisa **uma vez** (a chave é a task + o horário; se o horário mudar no CRM, avisa de novo).
 Os que já estavam vencidos há mais de 15 minutos quando aparecem pela primeira vez entram como vencidos,
 **sem** notificação (para não despejar dezenas de avisos ao entrar). **Clicar** na notificação (ou em
@@ -183,11 +183,28 @@ texto, nada é enviado). Concluir/Excluir um lembrete do CRM só o esconde na ex
 são recorrentes); **Adiar** muda a data no CRM.
 
 **Sem internet, ou sessão caída:** a ação (contato, reagendar, etiqueta, convertido) vai para uma **fila
-local** e a faixa já mostra o resultado esperado com o aviso "guardada". A fila é reenviada na próxima
-sincronização (5 min), ao entrar de novo ou em "Reenviar agora", sempre na ordem; a mesma linha de
+local** e a faixa já mostra o resultado esperado com o aviso "guardada". A fila é reenviada quando você
+faz outra ação, ao entrar de novo, em "Atualizar do CRM" ou em "Reenviar agora" (nunca por timer), sempre na ordem; a mesma linha de
 contato nunca é duplicada. O que o CRM recusar de vez (lead apagado, sem permissão) sai da fila e aparece
 em Dados com o resumo, para você refazer. O texto que você digitou **não se perde**: em erro de validação
 ele continua no campo. A fila é de cada usuário (não é enviada com a sessão de outro).
+
+**Consumo do banco: só consulta quando você usa.** O banco do CRM é um Neon no plano grátis: o compute
+suspende depois de ~5 minutos sem consultas e as horas de compute por mês são limitadas, então qualquer consulta
+periódica o manteria ligado o dia todo. Por isso, **desde a v0.5.1 a extensão não consulta o CRM por timer nem ao
+acordar** (o alarme `vzcrm-sync` de 5 min da v0.5.0 foi removido e é limpo na atualização). O CRM só é consultado
+(1) no **login**; (2) ao **abrir o painel lateral** e (3) quando a **aba do WhatsApp Web carrega**, para os
+lembretes, no máximo **1 vez por hora** (a hora da última busca bem-sucedida fica no `chrome.storage`, então
+vale mesmo com o service worker dormindo); (4) no botão **Atualizar do CRM** (central de lembretes, painel e
+WhatsApp, com o texto "atualizado há X min"), que ignora esse intervalo; (5) ao **abrir uma conversa** cujo
+lead não está em cache há mais de **30 minutos** (abrir a mesma conversa de novo antes disso não consulta nada;
+o ciclo de 30 s da página e as mudanças da tela só redesenham, nunca fazem rede); e (6) nas **ações que você
+faz** (registrar contato, reagendar, etiquetas, convertido, vincular, criar lead, adiar lembrete), que atualizam
+o cache com a resposta da própria ação. As notificações continuam saindo na hora certa: são `chrome.alarms`
+**locais**, criados a partir da lista em cache, sem ir ao servidor. Para auditar, abra o console do service
+worker (`chrome://extensions` → Vita Zap → service worker) e veja as linhas `[Vita Zap] CRM consulta ... | motivo: ...`.
+Estimativa para um vendedor: ~40 conversas e 10 aberturas do painel por dia dão cerca de 60 a 90 consultas por dia (~50 de lead, até ~9 de lembretes e 1 a 2 por ação)
+(contra ~290 só dos lembretes por timer na v0.5.0, sem contar o lead), todas disparadas por uso e nenhuma com o computador parado.
 
 **Erros que a extensão explica:** senha errada; muitas tentativas (429); sem conexão; sessão expirada ou
 **IP não liberado** (o CRM trata IP restrito como "não logado": a mensagem cita as duas causas); servidor
@@ -340,7 +357,7 @@ número salvo como "CLIENTE TESTE").
 - [ ] Abrir uma conversa cujo telefone existe como lead: a faixa mostra status, etiquetas, lembrete e nota.
 - [ ] Registrar contato: a linha `[data hora] texto` aparece nas notas do lead **no CRM** (abrir o lead no site).
 - [ ] Reagendar, etiquetas e Marcar convertido refletem no CRM.
-- [ ] Desligar o Wi-Fi, registrar contato: aviso "guardada"; religar: a nota chega ao CRM sozinha em até 5 min.
+- [ ] Desligar o Wi-Fi, registrar contato: aviso "guardada"; religar: a nota chega ao CRM na próxima ação sua ou em "Atualizar do CRM" (não há timer).
 - [ ] Lembrete do CRM para daqui a 3 minutos: **uma** notificação; clicar abre a conversa pelo telefone **sem enviar**.
 - [ ] Sair: a faixa some e o selo/central voltam a mostrar só os lembretes locais.
 

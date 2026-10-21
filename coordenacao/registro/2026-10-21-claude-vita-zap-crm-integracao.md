@@ -183,3 +183,21 @@ FB_CAPI_TOKEN=x WA_API_KEY=y npm test
 # extensão
 cd extensoes/vita-zap && npm install && npm test && npm run build
 ```
+
+## Nota (v0.5.1): consumo do banco, "consulta só por uso, com teto"
+
+O banco do CRM é Neon no plano grátis (compute suspende após ~5 min sem consultas; horas por mês limitadas).
+A v0.5.0 mantinha o banco ligado: alarme `vzcrm-sync` a cada 5 min, `tasks.reminders` a cada despertar do
+service worker e o lead da conversa a cada ~60 s. Mudanças (só em `extensoes/vita-zap`, nada no servidor):
+
+- Removido o alarme `vzcrm-sync` (limpo com `chrome.alarms.clear` no `onInstalled`) e a busca em `iniciarCrm()`.
+- Lembretes: só no login, ao abrir o painel lateral, quando a aba do WhatsApp Web carrega (no máximo 1 busca por hora,
+  guardada em `vz.crm.lembretes.em`, sobrevive ao service worker dormir) e no botão "Atualizar do CRM" (ignora o mínimo;
+  também reenvia a fila). Notificações: alarmes locais a partir do cache, como antes.
+- Lead da conversa: só ao abrir a conversa, com cache de 30 min por contato (inclusive "não achei"/"vários",
+  `vz.crm.buscas`). O ciclo de 30 s e o MutationObserver não fazem rede. Ações do usuário atualizam o cache com a
+  resposta da própria mutation. Fila offline: só reenvia por ação do usuário, login ou "Atualizar do CRM".
+- Toda chamada ao CRM é logada em `console.debug` com o motivo. Testes: `tests/crm-consumo.test.ts` e
+  `tests/crm-consumo-conteudo.test.ts` (relógio falso: 8 h sem ação = zero rede; 50 despertares = no máximo 1 busca).
+- Mudança de contrato: `leadDoContato(ref, { forcar? })` e `sincronizarLembretes(motivo?)` ganharam parâmetros
+  opcionais; os testes antigos que dependiam de reconsulta a cada chamada passaram a usar `forcar`.
