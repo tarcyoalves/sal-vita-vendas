@@ -251,6 +251,8 @@ const PROD_ORIGINS = [
   'https://premium.salvitarn.com.br',
   ...(process.env.ALLOWED_ORIGIN  ? [process.env.ALLOWED_ORIGIN]  : []),
   ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : []),
+  // Extensão Vita Zap (ID fixo em shared/extensao.ts; EXTENSION_ORIGINS sobrescreve). Só origens exatas.
+  ...origensDeExtensao(process.env.EXTENSION_ORIGINS),
 ];
 const IS_PROD = process.env.NODE_ENV === 'production';
 const ALLOWED_ORIGINS = IS_PROD
@@ -353,6 +355,7 @@ import { safeErrorMessage } from '../server/lib/safeError';
 import { handleResendWebhook, verifySvixSignature } from '../server/routers/resendWebhook';
 import { isForbiddenBatch, emailFromTrpcBody } from '../server/lib/trpcBatchGuard';
 import { csrfRejection } from '../server/lib/csrfGuard';
+import { origensDeExtensao } from '../shared/extensao';
 import { STORE_URL } from '../server/lib/storeUrl';
 import { decidirTransicaoPagamento, idPagamentoMpValido, pagamentoAprovadoDuplicado, estornoPertenceAoPedido, motivoValorDivergente } from '../server/lib/paymentTransition';
 

@@ -8,6 +8,7 @@ import { tasks, sellers, users, taskDeletionLogs } from '../db/schema';
 import { runTriggerNow, cancelAllEnrollments } from '../email/automations';
 import { normalizeBrPhone, phoneOfTask } from '../../shared/phone';
 import { searchTerms, SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../shared/searchText';
+import { findForWhatsappInput, FIND_WHATSAPP_LIMITE, phoneVariants, trechoDasNotas } from '../lib/whatsappLead';
 import { validarDocumentoDaTarefa } from '../lib/taskDocumento';
 import { isNewContact } from '../lib/taskNotes';
 import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento, deduplicarNoArquivo, janelaLembretes } from '../lib/taskImport';
@@ -115,6 +116,38 @@ export const tasksRouter = router({
     const filter = await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
     return db.select(listColumns).from(tasks).where(filter).orderBy(tasks.createdAt);
   }),
+
+  // Extensão Vita Zap: acha o lead pelo telefone (dígitos normalizados) e/ou por parte do título.
+  // MESMO filtro de dono do list/update (admin vê tudo; atendente só as próprias). Devolve só o que
+  // a faixa do lead precisa, com as notas truncadas nos últimos caracteres.
+  findForWhatsapp: protectedProcedure
+    .input(findForWhatsappInput)
+    .query(async ({ input, ctx }) => {
+      const conds: SQL<unknown>[] = [];
+      const variantes = phoneVariants(input.phone);
+      if (variantes.length > 0) {
+        conds.push(sql`regexp_replace(coalesce(${tasks.phone}, ''), '[^0-9]', '', 'g') IN (${sql.join(variantes.map((v) => sql`${v}`), sql`, `)})`);
+      }
+      if (input.q) {
+        const termos = searchTerms(input.q, 4).filter((t) => t.length >= 2);
+        const dobrado = sql`lower(translate(${tasks.title}, ${SQL_ACENTOS}, ${SQL_SEM_ACENTOS}))`;
+        if (termos.length > 0) conds.push(and(...termos.map((t) => sql`position(${t} in ${dobrado}) > 0`))!);
+        const digitos = input.q.replace(/D/g, '');
+        if (digitos.length >= 4) conds.push(sql`position(${digitos} in regexp_replace(coalesce(${tasks.phone}, ''), '[^0-9]', '', 'g')) > 0`);
+      }
+      if (conds.length === 0) return [];
+      const busca = or(...conds)!;
+      const where = ctx.user.role === 'admin'
+        ? busca
+        : and(await userTaskFilter(ctx.user.id, ctx.user.name ?? ''), busca);
+      const rows = await db.select({
+        id: tasks.id, title: tasks.title, phone: tasks.phone, tags: tasks.tags,
+        reminderDate: tasks.reminderDate, reminderEnabled: tasks.reminderEnabled, status: tasks.status,
+        lastContactedAt: tasks.lastContactedAt, contactCount: tasks.contactCount, convertedAt: tasks.convertedAt,
+        notes: tasks.notes,
+      }).from(tasks).where(where).orderBy(desc(tasks.updatedAt)).limit(FIND_WHATSAPP_LIMITE);
+      return rows.map(({ notes, ...r }) => ({ ...r, notes: trechoDasNotas(notes) }));
+    }),
 
   getById: protectedProcedure
     .input(z.object({ id: z.number() }))
@@ -769,6 +802,8 @@ export const tasksRouter = router({
       // Truncated: only used for short notification bodies, no need for the full text.
       notes: sql<string | null>`substring(${tasks.notes}, 1, 300)`,
       assignedTo: tasks.assignedTo,
+      // Telefone: a extensão Vita Zap abre a conversa do WhatsApp por ele ao clicar no lembrete.
+      phone: tasks.phone,
     };
     if (ctx.user.role === 'admin') {
       return db.select(reminderFields).from(tasks)

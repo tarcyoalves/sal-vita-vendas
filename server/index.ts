@@ -8,6 +8,7 @@ import { appRouter } from './routers';
 import { createContext } from './trpc';
 import { getClientIp } from './lib/clientIp';
 import { ensureTablesExist } from './db/migrate';
+import { origensDeExtensao } from '../shared/extensao';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -18,6 +19,7 @@ ensureTablesExist();
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
   : ['http://localhost:5173', 'http://localhost:4173'];
+allowedOrigins.push(...origensDeExtensao(process.env.EXTENSION_ORIGINS));
 
 // ── Security headers ────────────────────────────────────────────────────────
 app.use(helmet({
