@@ -1,32 +1,40 @@
 import { useMemo, useState } from 'react';
 import { salvarCampanha, type Banco } from '../shared/banco';
 import { type Campanha, criarItens, type ItemCampanha, novoId, textoDoItem, validarParaAprovar } from '../shared/campanha';
-import { DIAS_SEM_REPETIR, MARCADOR_PRIMEIRO_NOME, MAX_VARIACOES } from '../shared/constantes';
+import { DIAS_SEM_REPETIR, MARCADOR_PRIMEIRO_NOME, MARCADOR_SAUDACAO, MAX_VARIACOES } from '../shared/constantes';
 import { formatarDataBr, lerDataIso } from '../shared/datas';
 import { aplicarFiltros, type Filtros, ultimoEnvioPorChave } from '../shared/filtros';
 import { separarTermos } from '../shared/nomes';
 import { validarModelos } from '../shared/texto';
+import type { Ajustes } from '../shared/ajustes';
 import type { DadosLocais } from './App';
 import { lerPreferencia, salvarPreferencia } from './preferencias';
 
 interface Props {
   db: Banco;
   dados: DadosLocais;
+  ajustes: Ajustes;
   aoAprovar: (campanhaId: string) => Promise<void>;
 }
 
 const TEXTO_EXEMPLO = `Boa tarde, ${MARCADOR_PRIMEIRO_NOME}, tudo bem? Como estão de sal por aí?`;
 
-export function Previa({ db, dados, aoAprovar }: Props) {
+function preencherVariacoes(v: string[]): string[] {
+  return Array.from({ length: MAX_VARIACOES }, (_, i) => v[i] ?? '');
+}
+
+export function Previa({ db, dados, ajustes, aoAprovar }: Props) {
+  const modeloPadrao = ajustes.texto.modelos.find((m) => m.id === ajustes.texto.modeloPadraoId) ?? null;
+  const [modeloEscolhido, setModeloEscolhido] = useState(modeloPadrao?.id ?? '');
   const hojeBr = new Date().toLocaleDateString('pt-BR');
   const [nome, setNome] = useState(`Campanha ${hojeBr}`);
-  const [contem, setContem] = useState(() => lerPreferencia('termo', 'CLIENTE'));
-  const [naoContem, setNaoContem] = useState('');
+  const [contem, setContem] = useState(() => lerPreferencia('termo', ajustes.filtros.termo));
+  const [naoContem, setNaoContem] = useState(ajustes.filtros.naoContem);
   const [antesDe, setAntesDe] = useState('');
   const [depoisDe, setDepoisDe] = useState('');
-  const [dias, setDias] = useState(DIAS_SEM_REPETIR);
-  const [base, setBase] = useState(() => lerPreferencia('textoBase', TEXTO_EXEMPLO));
-  const [variacoes, setVariacoes] = useState<string[]>(() => Array.from({ length: MAX_VARIACOES }, () => ''));
+  const [dias, setDias] = useState(Math.max(DIAS_SEM_REPETIR, ajustes.filtros.excluirContatadosHaDias));
+  const [base, setBase] = useState(() => modeloPadrao?.texto ?? lerPreferencia('textoBase', TEXTO_EXEMPLO));
+  const [variacoes, setVariacoes] = useState<string[]>(() => preencherVariacoes(modeloPadrao?.variacoes ?? []));
   const [itens, setItens] = useState<ItemCampanha[] | null>(null);
   const [assinaturaPrevia, setAssinaturaPrevia] = useState('');
   const [errosAprovacao, setErrosAprovacao] = useState<string[]>([]);
@@ -54,7 +62,7 @@ export function Previa({ db, dados, aoAprovar }: Props) {
   );
   const motivoPorChave = useMemo(() => new Map(avaliados.map((a) => [a.contato.chave, a.decisao.motivo])), [avaliados]);
 
-  const { modelos, erros: errosTexto } = validarModelos(base, variacoes);
+  const { modelos, erros: errosTexto } = validarModelos(base, variacoes, { tamanhoMax: ajustes.texto.tamanhoMax });
   const assinatura = JSON.stringify({ filtros, modelos });
   const desatualizada = itens != null && assinatura !== assinaturaPrevia;
 
@@ -154,8 +162,32 @@ export function Previa({ db, dados, aoAprovar }: Props) {
       <div className="cartao">
         <h3>Texto</h3>
         <p className="ajuda">
-          Use {MARCADOR_PRIMEIRO_NOME} para o primeiro nome. Sem link na primeira mensagem. Cada contato recebe um dos textos, sorteado.
+          Use {MARCADOR_PRIMEIRO_NOME} para o primeiro nome e {MARCADOR_SAUDACAO} para Bom dia / Boa tarde / Boa noite (pela hora do envio). Sem
+          link na primeira mensagem. Cada contato recebe um dos textos, sorteado. Máximo de {ajustes.texto.tamanhoMax} caracteres (Ajustes).
         </p>
+        {ajustes.texto.modelos.length > 0 && (
+          <label>
+            Modelo salvo (Ajustes)
+            <select
+              value={modeloEscolhido}
+              onChange={(e) => {
+                const m = ajustes.texto.modelos.find((x) => x.id === e.target.value);
+                setModeloEscolhido(e.target.value);
+                if (m) {
+                  setBase(m.texto);
+                  setVariacoes(preencherVariacoes(m.variacoes));
+                }
+              }}
+            >
+              <option value="">(texto livre)</option>
+              {ajustes.texto.modelos.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           Texto base
           <textarea rows={3} value={base} onChange={(e) => setBase(e.target.value)} />

@@ -13,6 +13,9 @@ export const TETO_DIARIO_PADRAO = 30;
 /** Máximo absoluto: nenhuma configuração passa disso. */
 export const TETO_DIARIO_MAXIMO = 60;
 
+/** Máximo absoluto no modo automático (0.4.0: a tela de Ajustes pode subir o teto do automático até aqui). */
+export const TETO_AUTO_MAXIMO = 60;
+
 /** Intervalo entre um envio e a abertura do próximo contato, em segundos (ritmo de pessoa). */
 export const INTERVALO_MIN_SEG = 60;
 export const INTERVALO_MAX_SEG = 120;
@@ -28,6 +31,10 @@ export const MAX_VARIACOES = 3;
 
 /** Primeira mensagem curta. */
 export const TAMANHO_MAX_TEXTO = 500;
+
+// Desde a 0.4.0 os valores abaixo (e os do AUTO) são os PADRÕES do painel "Ajustes" (src/shared/ajustes.ts),
+// que é a fonte única lida pela política e pelo executor. Os LIMITES ABSOLUTOS ficam em `LIMITES`
+// (ajustes.ts): a tela nunca deixa passar deles.
 
 // ── Modo automático (0.3.0, opcional) ───────────────────────────────────────
 // ⚠️ Envio automático pelo WhatsApp Web VIOLA os Termos do WhatsApp e pode bloquear o número de
@@ -65,6 +72,9 @@ export const AUTO = {
 
 /** Placeholder do primeiro nome no texto. */
 export const MARCADOR_PRIMEIRO_NOME = '{primeiroNome}';
+
+/** Placeholder da saudação por horário (bom dia / boa tarde / boa noite), 0.4.0. */
+export const MARCADOR_SAUDACAO = '{saudacao}';
 
 /**
  * Horário permitido (hora local de Fortaleza). `fim` é exclusivo: 18 significa até 17:59.

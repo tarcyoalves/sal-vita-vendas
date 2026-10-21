@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { desmarcarNaoEnviar, exportarTudo, importarTudo, lerAutomatico, lerConfig, lerMeuNome, salvarAutomatico, salvarConfig, salvarMeuNome, type Banco } from '../shared/banco';
+import { desmarcarNaoEnviar, exportarTudo, importarTudo, lerAutomatico, lerConfig, lerMeuNome, salvarAutomatico, salvarMeuNome, salvarNumeroAntigo, type Banco } from '../shared/banco';
 import { aceiteValido, AVISO_RISCO_AUTOMATICO, desligarAutomatico, type EstadoAutomatico, ligarAutomatico } from '../shared/automatico';
-import { AUTO, INTERVALO_MIN_SEG, PALAVRA_ACEITE_AUTOMATICO, TETO_DIARIO_MAXIMO } from '../shared/constantes';
+import { type Ajustes, ritmoAuto } from '../shared/ajustes';
+import { PALAVRA_ACEITE_AUTOMATICO } from '../shared/constantes';
 import { type RegistroDiagnostico, resumirPagina, resumirResposta } from '../shared/diagnostico';
 import type { DiagnosticoPagina } from '../shared/mensagens';
 import { csvDasCampanhas, lerBackup } from '../shared/exportar';
-import { CONFIG_PADRAO, type ConfigPolitica } from '../shared/politica';
 import type { DadosLocais } from './App';
 import { BotoesDiagnostico } from './BotoesDiagnostico';
 import { pedir } from './whatsapp';
@@ -15,6 +15,7 @@ interface Props {
   registro: RegistroDiagnostico;
   dados: DadosLocais;
   automatico: EstadoAutomatico;
+  ajustes: Ajustes;
   aoMudar: () => Promise<void>;
 }
 
@@ -31,10 +32,10 @@ function carimbo(): string {
   return new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
 }
 
-export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
+export function Dados({ db, registro, dados, automatico, ajustes, aoMudar }: Props) {
   const [aceitouRisco, setAceitouRisco] = useState(false);
   const [palavra, setPalavra] = useState('');
-  const [cfg, setCfg] = useState<ConfigPolitica>(CONFIG_PADRAO);
+  const [numeroAntigo, setNumeroAntigo] = useState(false);
   const [msgCfg, setMsgCfg] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState('');
   const [msgMeuNome, setMsgMeuNome] = useState<string | null>(null);
@@ -61,7 +62,7 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
   }
 
   useEffect(() => {
-    void lerConfig(db).then(setCfg);
+    void lerConfig(db).then((c) => setNumeroAntigo(c.numeroComMaisDe30Dias));
     void lerMeuNome(db).then(setMeuNome);
   }, [db]);
 
@@ -69,14 +70,10 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
     if (arquivo) URL.revokeObjectURL(arquivo.url);
   }, [arquivo]);
 
-  async function gravarConfig() {
-    const salvo = await salvarConfig(db, cfg);
-    setCfg(salvo);
-    setMsgCfg(
-      salvo.tetoDiario !== cfg.tetoDiario || salvo.intervaloMinSeg !== cfg.intervaloMinSeg || salvo.intervaloMaxSeg !== cfg.intervaloMaxSeg
-        ? 'Salvo, ajustado aos limites de segurança.'
-        : 'Salvo.',
-    );
+  async function gravarNumeroAntigo(confirmado: boolean) {
+    setNumeroAntigo(confirmado);
+    await salvarNumeroAntigo(db, confirmado);
+    setMsgCfg('Salvo.');
   }
 
   async function gravarMeuNome() {
@@ -118,7 +115,7 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
     }
     if (modoImport === 'substituir' && !window.confirm('Substituir TODOS os dados locais por este backup?')) return;
     await importarTudo(db, r.backup, modoImport);
-    setCfg(await lerConfig(db));
+    setNumeroAntigo((await lerConfig(db)).numeroComMaisDe30Dias);
     await aoMudar();
     setMsgImport(`Importado: ${r.backup.campanhas.length} campanhas, ${r.backup.envios.length} envios, ${r.backup.naoEnviar.length} "não enviar".`);
   }
@@ -126,39 +123,12 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
   return (
     <section>
       <div className="cartao">
-        <h3>Política</h3>
-        <label>
-          Teto diário de mensagens (máximo {TETO_DIARIO_MAXIMO})
-          <input
-            type="number"
-            min={1}
-            max={TETO_DIARIO_MAXIMO}
-            value={cfg.tetoDiario}
-            onChange={(e) => setCfg({ ...cfg, tetoDiario: Number(e.target.value) })}
-          />
-        </label>
-        <div className="linha2">
-          <label>
-            Intervalo mínimo (s, ≥ {INTERVALO_MIN_SEG})
-            <input type="number" min={INTERVALO_MIN_SEG} value={cfg.intervaloMinSeg} onChange={(e) => setCfg({ ...cfg, intervaloMinSeg: Number(e.target.value) })} />
-          </label>
-          <label>
-            Intervalo máximo (s)
-            <input type="number" value={cfg.intervaloMaxSeg} onChange={(e) => setCfg({ ...cfg, intervaloMaxSeg: Number(e.target.value) })} />
-          </label>
-        </div>
+        <h3>Número de WhatsApp</h3>
         <label className="check">
-          <input
-            type="checkbox"
-            checked={cfg.numeroComMaisDe30Dias}
-            onChange={(e) => setCfg({ ...cfg, numeroComMaisDe30Dias: e.target.checked })}
-          />
+          <input type="checkbox" checked={numeroAntigo} onChange={(e) => void gravarNumeroAntigo(e.target.checked)} />
           Este número de WhatsApp tem mais de 30 dias de uso (número novo não roda campanha)
         </label>
-        <p className="ajuda">Horário fixo: seg–sex 8h–18h, sáb 8h–12h (Fortaleza). Freio: 3 problemas seguidos pausam (conferências que falham antes de colar viram "pulado (revisar)" e não contam).</p>
-        <button type="button" onClick={() => void gravarConfig()}>
-          Salvar política
-        </button>
+        <p className="ajuda">Teto diário, intervalos, horários e freio agora ficam na aba <b>Ajustes</b>.</p>
         {msgCfg && <p className="info">{msgCfg}</p>}
       </div>
 
@@ -184,12 +154,7 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
           ⚠️ O envio automático pelo WhatsApp Web viola os Termos do WhatsApp e pode bloquear seu número de forma permanente. Use só com clientes que já
           conversam com você, em volume baixo. O modo padrão (você aperta Enter) continua disponível e é o mais seguro.
         </p>
-        <p className="ajuda">
-          Limites no automático: no máximo {AUTO.tetoDiario} mensagens por dia; intervalo aleatório de {AUTO.intervaloMinSeg} a {AUTO.intervaloMaxSeg} s;
-          pausa longa de {AUTO.pausaLongaMinSeg / 60} a {AUTO.pausaLongaMaxSeg / 60} min a cada {AUTO.enviosAtePausaLonga} envios; só seg–sex 8h–18h e sáb
-          8h–12h (Fortaleza); contagem de {AUTO.contagemSeg} s com Cancelar antes de cada envio; {AUTO.problemasParaDesligar} problemas seguidos ou qualquer
-          aviso do WhatsApp pausam a campanha (o automático continua ligado; clique em Retomar).
-        </p>
+        <ResumoLimitesAuto ajustes={ajustes} />
         {automatico.ligado ? (
           <>
             <p className="aviso">
@@ -350,5 +315,19 @@ export function Dados({ db, registro, dados, automatico, aoMudar }: Props) {
         {msgImport && <p className="info">{msgImport}</p>}
       </div>
     </section>
+  );
+}
+
+function ResumoLimitesAuto({ ajustes }: { ajustes: Ajustes }) {
+  const r = ritmoAuto(ajustes);
+  const dias = ajustes.horarios.filter((j) => j.ligado).length;
+  return (
+    <p className="ajuda">
+      Limites no automático (editáveis na aba Ajustes): no máximo {ajustes.limites.tetoAuto} mensagens por dia; intervalo aleatório de {r.intervaloMinSeg} a{' '}
+      {r.intervaloMaxSeg} s;{' '}
+      {r.pausaLonga ? `pausa longa de ${r.pausaMinSeg / 60} a ${r.pausaMaxSeg / 60} min a cada ${r.aCadaEnvios} envios` : 'sem pausa longa'}; {dias} dia(s) da semana com
+      horário permitido (Fortaleza); contagem de {ajustes.ritmo.contagemSeg} s com Cancelar antes de cada envio; {ajustes.freio.problemasAuto} problemas seguidos ou
+      aviso do WhatsApp pausam a campanha (o automático continua ligado; clique em Retomar). Os limites absolutos de segurança não podem ser ultrapassados.
+    </p>
   );
 }

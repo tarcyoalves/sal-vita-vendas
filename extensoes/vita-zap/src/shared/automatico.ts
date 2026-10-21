@@ -5,6 +5,7 @@
 // (decisão escrita do dono). O padrão da extensão continua sendo o modo manual (uma tecla).
 
 import { AUTO, PALAVRA_ACEITE_AUTOMATICO } from './constantes';
+import { type Ajustes, AJUSTES_PADRAO, ritmoAuto } from './ajustes';
 import { type ConfigPolitica, normalizarConfig } from './politica';
 
 export interface EstadoAutomatico {
@@ -56,19 +57,22 @@ export function configAuto(cfg: ConfigPolitica): ConfigPolitica {
 }
 
 /**
- * Espera depois de um envio no automático. A cada `enviosAtePausaLonga` envios seguidos vem a
- * pausa longa (10–20 min) e a contagem recomeça.
+ * Espera depois de um envio no automático. Com a pausa longa ligada, a cada `aCadaEnvios` envios
+ * seguidos vem a pausa longa e a contagem recomeça. Sem `ajustes` valem os padrões
+ * (90–180 s; 10–20 min a cada 10 envios); com `ajustes` valem os do painel (0.4.0).
  */
 export function sortearEspera(
   enviosSeguidosAntes: number,
   aleatorio: () => number = Math.random,
+  ajustes: Ajustes = AJUSTES_PADRAO,
 ): { segundos: number; pausaLonga: boolean; enviosSeguidos: number } {
+  const r = ritmoAuto(ajustes);
   const n = enviosSeguidosAntes + 1;
   const entre = (min: number, max: number): number => min + Math.floor(aleatorio() * (max - min + 1));
-  if (n >= AUTO.enviosAtePausaLonga) {
-    return { segundos: entre(AUTO.pausaLongaMinSeg, AUTO.pausaLongaMaxSeg), pausaLonga: true, enviosSeguidos: 0 };
+  if (r.pausaLonga && n >= r.aCadaEnvios) {
+    return { segundos: entre(r.pausaMinSeg, r.pausaMaxSeg), pausaLonga: true, enviosSeguidos: 0 };
   }
-  return { segundos: entre(AUTO.intervaloMinSeg, AUTO.intervaloMaxSeg), pausaLonga: false, enviosSeguidos: n };
+  return { segundos: entre(r.intervaloMinSeg, r.intervaloMaxSeg), pausaLonga: false, enviosSeguidos: n };
 }
 
 // ── Token de autorização de envio ────────────────────────────────────────────

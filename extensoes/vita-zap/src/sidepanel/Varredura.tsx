@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { limparContatos, salvarContatos, type Banco } from '../shared/banco';
 import { linhasParaContatos } from '../shared/contatos';
 import { ehEventoConteudo } from '../shared/mensagens';
+import type { Ajustes } from '../shared/ajustes';
 import type { DadosLocais } from './App';
 import { lerPreferencia, salvarPreferencia } from './preferencias';
 import { pedir } from './whatsapp';
@@ -9,12 +10,13 @@ import { pedir } from './whatsapp';
 interface Props {
   db: Banco;
   dados: DadosLocais;
+  ajustes: Ajustes;
   aoMudar: () => Promise<void>;
   aoContinuar: () => void;
 }
 
-export function Varredura({ db, dados, aoMudar, aoContinuar }: Props) {
-  const [termo, setTermo] = useState(() => lerPreferencia('termo', 'CLIENTE'));
+export function Varredura({ db, dados, ajustes, aoMudar, aoContinuar }: Props) {
+  const [termo, setTermo] = useState(() => lerPreferencia('termo', ajustes.filtros.termo));
   const [rodando, setRodando] = useState(false);
   const [progresso, setProgresso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);

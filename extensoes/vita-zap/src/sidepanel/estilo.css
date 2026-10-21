@@ -367,3 +367,21 @@ a.botao {
   font-weight: 700;
   text-transform: uppercase;
 }
+
+/* ── Ajustes (0.4.0) ─────────────────────────────────────────────────────── */
+.campo { margin: 0.6rem 0; }
+.campo.com-erro input, li.com-erro input { border-color: #c0392b; }
+.campo .padrao, small.padrao { font-size: 0.78rem; opacity: 0.8; margin: 0.15rem 0; }
+.perfis { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.4rem 0; }
+.lista-simples { margin: 0.4rem 0; padding-left: 1.1rem; font-size: 0.85rem; }
+.lista-simples.horarios { list-style: none; padding-left: 0; }
+.lista-simples.horarios li { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; padding: 0.35rem 0; border-bottom: 1px solid rgba(128, 128, 128, 0.25); }
+.lista-simples.horarios input[type='number'] { width: 4.5rem; }
+.modelo { border: 1px solid rgba(128, 128, 128, 0.35); border-radius: 8px; padding: 0.5rem; margin: 0.5rem 0; }
+.risco-nivel { margin: 0.35rem 0; padding: 0.35rem 0.5rem; border-radius: 6px; border-left: 4px solid #888; }
+.risco-baixo { border-left-color: #2e8b57; }
+.risco-medio { border-left-color: #d4a017; }
+.risco-alto { border-left-color: #c0392b; }
+.barra-salvar { position: sticky; bottom: 0; display: flex; gap: 0.5rem; align-items: center; justify-content: flex-end; padding: 0.5rem; background: var(--cartao); border-top: 1px solid rgba(128, 128, 128, 0.35); }
+.barra-salvar span { margin-right: auto; font-size: 0.85rem; }
+.barra-salvar.pendente span { color: #c0392b; font-weight: 600; }

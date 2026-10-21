@@ -1,6 +1,7 @@
 // Backup em JSON (exportar/importar) e relatório CSV.
 
 import { z } from 'zod';
+import { type Ajustes, ajustesSchema } from './ajustes';
 import type { Campanha } from './campanha';
 import type { ContatoVarrido } from './contatos';
 import type { ConfigPolitica } from './politica';
@@ -34,6 +35,8 @@ export interface Backup {
   envios: Envio[];
   naoEnviar: NaoEnviar[];
   config: ConfigPolitica | null;
+  /** Ajustes (0.4.0). Ausente em backups antigos: o importador mantém os ajustes atuais. */
+  ajustes?: Ajustes | null;
 }
 
 const iso = z.string().min(1);
@@ -117,6 +120,7 @@ const backupSchema = z.object({
   envios: z.array(envioSchema),
   naoEnviar: z.array(naoEnviarSchema),
   config: configSchema.nullable(),
+  ajustes: ajustesSchema.nullable().optional(),
 });
 
 export function lerBackup(texto: string): { ok: true; backup: Backup } | { ok: false; erro: string } {

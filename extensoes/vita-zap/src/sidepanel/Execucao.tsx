@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { Ajustes } from '../shared/ajustes';
 import type { Banco } from '../shared/banco';
 import { itensComErro, motivosAgrupados, resumo, terminouComProblemas, textoDoItem } from '../shared/campanha';
 import type { RegistroDiagnostico } from '../shared/diagnostico';
@@ -14,6 +15,7 @@ interface Props {
   db: Banco;
   registro: RegistroDiagnostico;
   dados: DadosLocais;
+  ajustes: Ajustes;
   campanhaId: string | null;
   aoEscolher: (id: string) => void;
   aoMudar: () => Promise<void>;
@@ -30,7 +32,7 @@ const ROTULO_FASE: Record<EstadoExecutor['fase'], string> = {
   concluida: 'Concluída',
 };
 
-export function Execucao({ db, registro, dados, campanhaId, aoEscolher, aoMudar }: Props) {
+export function Execucao({ db, registro, dados, ajustes, campanhaId, aoEscolher, aoMudar }: Props) {
   const campanhas = dados.campanhas;
   const idEscolhido = campanhaId ?? campanhas.find((c) => c.status !== 'concluida')?.id ?? campanhas[0]?.id ?? null;
   const campanhaInicial = campanhas.find((c) => c.id === idEscolhido) ?? null;
@@ -97,7 +99,7 @@ export function Execucao({ db, registro, dados, campanhaId, aoEscolher, aoMudar 
   const c = estado.campanha;
   const r = resumo(c);
   const rodando = estado.fase !== 'parada' && estado.fase !== 'concluida';
-  const horario = dentroDoHorario(new Date());
+  const horario = dentroDoHorario(new Date(), ajustes.horarios);
   const faltaSeg = estado.liberaEm ? Math.max(0, Math.ceil((estado.liberaEm - agora) / 1000)) : null;
   const item = estado.itemAtual;
   const comProblemas = terminouComProblemas(c);

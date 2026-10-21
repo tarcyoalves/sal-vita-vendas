@@ -7,6 +7,7 @@ import type { EventoDiagnostico } from './diagnostico';
 import type { ContatoVarrido } from './contatos';
 import type { Backup, Envio, NaoEnviar } from './exportar';
 import { ESTADO_AUTOMATICO_PADRAO, type EstadoAutomatico } from './automatico';
+import { type Ajustes, ajustesDeLegado, configManual, normalizarAjustes, validarAjustes, type ErroAjuste, limitarAjustes } from './ajustes';
 import { normalizarConfig, type ConfigPolitica } from './politica';
 
 interface EsquemaVitaZap extends DBSchema {
@@ -14,7 +15,7 @@ interface EsquemaVitaZap extends DBSchema {
   campanhas: { key: string; value: Campanha };
   envios: { key: string; value: Envio; indexes: { porChave: string; porCampanha: string } };
   naoEnviar: { key: string; value: NaoEnviar };
-  config: { key: string; value: { id: 'politica'; valor: ConfigPolitica } | { id: 'meuNomeWhatsApp'; valor: string } };
+  config: { key: string; value: { id: 'politica'; valor: ConfigPolitica } | { id: 'meuNomeWhatsApp'; valor: string } | { id: 'ajustes'; valor: Ajustes } };
   /** Item colado e esperando o Enter do usuário (sobrevive a fechar/recarregar o painel). */
   emAndamento: { key: string; value: EmAndamento };
   /** Registro circular de diagnóstico (fora do backup). */
@@ -149,9 +150,38 @@ export function listarNaoEnviar(db: Banco): Promise<NaoEnviar[]> {
 
 // ── Configuração ─────────────────────────────────────────────────────────────
 
-export async function lerConfig(db: Banco): Promise<ConfigPolitica> {
+/** Registro da política da 0.3.x (teto, intervalo e a confirmação de número com mais de 30 dias). */
+async function lerPoliticaLegada(db: Banco): Promise<ConfigPolitica> {
   const r = await db.get('config', 'politica');
   return normalizarConfig(r?.id === 'politica' ? r.valor : null);
+}
+
+/**
+ * Ajustes (0.4.0), fonte única do ritmo, limites, horários, freio, filtros e textos. Quem nunca salvou
+ * Ajustes recebe os valores da política antiga (migração sem mudar o comportamento da 0.3.x).
+ */
+export async function lerAjustes(db: Banco): Promise<Ajustes> {
+  const r = await db.get('config', 'ajustes');
+  if (r?.id === 'ajustes') return normalizarAjustes(r.valor);
+  return ajustesDeLegado(await lerPoliticaLegada(db));
+}
+
+/** Salva só se tudo estiver válido; devolve os erros (campo + mensagem) sem gravar nada se não estiver. */
+export async function salvarAjustes(db: Banco, a: Ajustes): Promise<{ ok: true; ajustes: Ajustes } | { ok: false; erros: ErroAjuste[] }> {
+  const erros = validarAjustes(a);
+  if (erros.length > 0) return { ok: false, erros };
+  const valor = limitarAjustes(a);
+  await db.put('config', { id: 'ajustes', valor });
+  return { ok: true, ajustes: valor };
+}
+
+/**
+ * Política do modo manual (teto, intervalo) a partir dos Ajustes + a confirmação de número com mais
+ * de 30 dias. O executor e a política leem daqui.
+ */
+export async function lerConfig(db: Banco): Promise<ConfigPolitica> {
+  const [legado, ajustes] = await Promise.all([lerPoliticaLegada(db), lerAjustes(db)]);
+  return configManual(ajustes, legado.numeroComMaisDe30Dias);
 }
 
 /** Meu nome no WhatsApp (autor das minhas mensagens), aprendido ou digitado na aba Dados. */
@@ -167,10 +197,20 @@ export async function salvarMeuNome(db: Banco, nome: string): Promise<string> {
   return valor;
 }
 
+/**
+ * Grava a política da 0.3.x. Desde a 0.4.0 teto e intervalo vêm dos Ajustes quando eles já foram salvos;
+ * aqui o que sempre vale é `numeroComMaisDe30Dias`.
+ */
 export async function salvarConfig(db: Banco, cfg: ConfigPolitica): Promise<ConfigPolitica> {
   const valor = normalizarConfig(cfg);
   await db.put('config', { id: 'politica', valor });
   return valor;
+}
+
+/** Só a confirmação "número com mais de 30 dias" (não mexe em teto/intervalo). */
+export async function salvarNumeroAntigo(db: Banco, confirmado: boolean): Promise<void> {
+  const atual = await lerPoliticaLegada(db);
+  await db.put('config', { id: 'politica', valor: { ...atual, numeroComMaisDe30Dias: confirmado } });
 }
 
 // ── Modo automático (0.3.0) ──────────────────────────────────────────────────
@@ -221,6 +261,7 @@ export async function exportarTudo(db: Banco, agora: Date = new Date()): Promise
     envios: await db.getAll('envios'),
     naoEnviar: await db.getAll('naoEnviar'),
     config: r?.id === 'politica' ? r.valor : null,
+    ajustes: await lerAjustes(db),
   };
 }
 
@@ -240,5 +281,7 @@ export async function importarTudo(db: Banco, b: Backup, modo: 'mesclar' | 'subs
   for (const e of b.envios) ops.push(tx.objectStore('envios').put(e));
   for (const n of b.naoEnviar) ops.push(tx.objectStore('naoEnviar').put(n));
   if (b.config) ops.push(tx.objectStore('config').put({ id: 'politica', valor: normalizarConfig(b.config) }));
+  // Ajustes do backup entram sempre dentro dos limites absolutos. Importar nunca liga o automático.
+  if (b.ajustes) ops.push(tx.objectStore('config').put({ id: 'ajustes', valor: normalizarAjustes(b.ajustes) }));
   await Promise.all([...ops, tx.done]);
 }

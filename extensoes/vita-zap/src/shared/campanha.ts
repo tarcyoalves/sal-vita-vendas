@@ -2,7 +2,7 @@
 
 import type { Filtros } from './filtros';
 import { registrarProblema } from './politica';
-import { montarMensagem, sortearModelo, usaPrimeiroNome, validarModelo } from './texto';
+import { montarMensagem, type OpcoesTexto, sortearModelo, usaPrimeiroNome, validarModelo } from './texto';
 import { primeiroNome as extrairPrimeiroNome } from './nomes';
 
 export type StatusItem = 'pendente' | 'enviado' | 'pulado' | 'nao_cliente' | 'problema' | 'nao_enviar' | 'removido';
@@ -75,7 +75,12 @@ export function temTextoPersonalizado(item: ItemCampanha): boolean {
 
 /** Texto que será colado: o texto editado deste contato, se houver; senão o modelo sorteado. */
 export function textoDoItem(item: ItemCampanha): string {
-  return montarMensagem(temTextoPersonalizado(item) ? (item.textoPersonalizado as string) : item.modelo, item.primeiroNome);
+  return textoDoItemEm(item, new Date());
+}
+
+/** Igual a `textoDoItem`, com o relógio do chamador (a saudação {saudacao} depende da hora). */
+export function textoDoItemEm(item: ItemCampanha, agora: Date): string {
+  return montarMensagem(temTextoPersonalizado(item) ? (item.textoPersonalizado as string) : item.modelo, item.primeiroNome, agora);
 }
 
 export interface EdicaoItem {
@@ -90,12 +95,12 @@ export type ResultadoEdicao = { ok: true; item: ItemCampanha } | { ok: false; er
  * regras do texto da campanha (sem link, sem quebra de linha, tamanho máximo). Texto igual ao do
  * modelo vira "sem override" (null).
  */
-export function aplicarEdicao(item: ItemCampanha, e: EdicaoItem): ResultadoEdicao {
+export function aplicarEdicao(item: ItemCampanha, e: EdicaoItem, opcoes: OpcoesTexto = {}): ResultadoEdicao {
   const primeiroNome = e.primeiroNome.trim();
   const erros: string[] = [];
   if (primeiroNome === '') erros.push('o primeiro nome não pode ficar vazio');
   const texto = montarMensagem(e.texto, primeiroNome);
-  for (const m of validarModelo(texto)) erros.push(m);
+  for (const m of validarModelo(texto, opcoes)) erros.push(m);
   if (erros.length > 0) return { ok: false, erros: [...new Set(erros)] };
   const doModelo = montarMensagem(item.modelo, primeiroNome);
   return { ok: true, item: { ...item, primeiroNome, textoPersonalizado: texto === doModelo ? null : texto } };
@@ -172,7 +177,15 @@ export function resumo(c: Campanha): Record<StatusItem, number> {
  * Muda o status de um item. Só sai de "pendente": um item já enviado/pulado não muda mais
  * (garante uma mensagem por contato por campanha). Devolve a mesma campanha se nada mudou.
  */
-export function marcarItem(c: Campanha, chave: string, status: Exclude<StatusItem, 'pendente'>, agora: Date, motivo: string | null = null, codigo: string | null = null): Campanha {
+export function marcarItem(
+  c: Campanha,
+  chave: string,
+  status: Exclude<StatusItem, 'pendente'>,
+  agora: Date,
+  motivo: string | null = null,
+  codigo: string | null = null,
+  limiteProblemas?: number,
+): Campanha {
   const item = c.itens.find((i) => i.chave === chave);
   if (!item || item.status !== 'pendente') return c;
   const itens = c.itens.map((i) => (i.chave === chave ? { ...i, status, motivo, codigo, atualizadoEm: agora.toISOString() } : i));
@@ -180,7 +193,7 @@ export function marcarItem(c: Campanha, chave: string, status: Exclude<StatusIte
   let statusCampanha: StatusCampanha = c.status;
   let motivoPausa = c.motivoPausa;
   if (status === 'problema') {
-    const r = registrarProblema(problemasSeguidos);
+    const r = registrarProblema(problemasSeguidos, limiteProblemas);
     problemasSeguidos = r.problemasSeguidos;
     if (r.pausar) {
       statusCampanha = 'pausada';

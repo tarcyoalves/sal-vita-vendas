@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (fase 1, sem IA) — versão 0.3.3
+# Vita Zap — extensão do Chrome para o WhatsApp Web (fase 1, sem IA) — versão 0.4.0
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -91,6 +91,72 @@ campanha** com alerta; ao clicar **Retomar**, continua no automático.
 **Se uma mensagem for colada e depois o contato for trocado** (título mudou na contagem), a
 extensão não envia e marca o contato como problema; o texto colado pode ficar como rascunho
 naquela conversa — apague-o à mão.
+
+---
+
+## 0.4.0. Aba Ajustes: painel configurável e editável (pedido do dono)
+
+"Quero um painel que eu mesmo possa montar tudo; você deixa preenchido, porém que eu possa editar."
+Nova aba **Ajustes** (entre Envio e Dados). Tudo já vem preenchido com os valores de sempre
+(= perfil **Cauteloso**), em cartões. Cada campo tem rótulo, unidade, ajuda, **Padrão: …** visível,
+o limite permitido ao lado e **Restaurar padrão** (por campo e por grupo) + **Restaurar tudo**.
+**Salvar** é explícito, só habilita com tudo válido, e a barra de baixo mostra **Alterações não
+salvas**. Os ajustes valem a partir do próximo contato.
+
+**Nada de segurança do envio mudou.** A tela só escolhe ritmo e limites: não liga o modo automático
+(isso continua só na aba Dados, com o aceite), não toca no token, nas conferências, em "só no
+automático autorizado" nem em "sem Enter simulado". O teste `envio-so-no-automatico-autorizado`
+só mudou o número da versão, e há um teste novo garantindo que `Ajustes.tsx`/`ajustes.ts` não
+referenciam o estado do automático nem o envio.
+
+| Grupo | O que se edita (padrão) |
+|---|---|
+| 1. Ritmo | intervalo manual mín/máx (60–120 s) e automático mín/máx (90–180 s); pausa longa ligada/desligada, a cada N envios (10), duração mín/máx (10–20 min); contagem antes do envio automático (8 s) |
+| 2. Limites | teto diário manual (30) e automático (30), **máximo permitido 60 nos dois**; rampa de volume opcional (desligada; dia 1–7 / 8–14 / depois), cortando o teto nos primeiros dias a partir do 1º envio registrado |
+| 3. Horários | uma linha por dia da semana: ligado, início, fim (seg–sex 8–18h, sáb 8–12h, domingo desligado). Fuso fixo America/Fortaleza; só entre 6h e 22h |
+| 4. Freio | problemas seguidos para pausar: manual (3) e automático (2); pausar em aviso do WhatsApp (ligado, recomendado); espera quando você está digitando (15 s) |
+| 5. Filtros padrão | termo de busca / "nome contém" (CLIENTE), "nome NÃO contém", excluir recém-contatados (14 dias, piso fixo 14). São os valores iniciais da Varredura e da Prévia |
+| 6. Texto | tamanho máximo (500, nunca acima); lista de **modelos salvos** (nome, texto base, até 3 variações, um pode ser o padrão da Prévia, que também tem um seletor); variáveis `{primeiroNome}` e **`{saudacao}`** (Bom dia até 11:59, Boa tarde até 17:59, Boa noite; horário de Fortaleza). **Fixos, não editáveis:** bloqueio de link e de quebra de linha |
+
+**Perfis (um clique, depois ajuste campo a campo; só ritmo e tetos):** *Cauteloso* = valores de
+sempre; *Equilibrado* = 60–120 s, pausa longa de 5–10 min a cada 15, teto 30; *Rápido* = 45–90 s,
+sem pausa longa, teto 30. O cartão mostra o perfil atual (ou "Personalizado") e um **indicador de
+risco** (baixo/médio/alto) por modo, calculado por regra simples e explicada na tela: pontos por
+intervalo médio curto, por teto diário alto, por pausa longa desligada/rara, por não pausar em aviso
+e por freio frouxo. **É uma comparação entre configurações, não uma previsão: "baixo" não é
+"seguro" e nada garante que o número não será bloqueado.**
+
+**Limites absolutos embutidos (`LIMITES` em `src/shared/ajustes.ts`)** — a tela recusa e a leitura do
+banco/backup corta: intervalo ≥ 30 s; teto ≤ 60 (manual) e ≤ 60 (automático, novo `TETO_AUTO_MAXIMO`);
+contagem do automático ≥ 5 s; horários entre 6h e 22h; recém-contatados ≥ 14 dias; texto ≤ 500;
+problemas seguidos 1–10; pausa longa 1–120 min a cada 3–100 envios. min ≤ max sempre.
+
+**Pausar em aviso do WhatsApp (decisão de projeto a confirmar):** o ajuste controla só o aviso visto
+*enquanto o painel espera* (evento do vigia). Antes de abrir a conversa e antes de enviar, aviso na
+tela continua bloqueando, e isso é fixo.
+
+**Fonte única.** `src/shared/ajustes.ts` guarda esquema (zod), padrões, limites, perfis, validação,
+risco e os valores efetivos (`configEfetiva`, `ritmoAuto`, `configManual`). A política
+(`podeAbrirProximo`, `dentroDoHorario`, `registrarProblema`, `sortearIntervaloSeg`), a espera do
+automático (`sortearEspera`) e o `Executor` leem daí; as constantes viraram só padrões. Sem o
+argumento de ajustes, as funções antigas continuam se comportando como na 0.3.x (por isso os testes
+antigos passaram sem mudar expectativas). Persistência: IndexedDB, store `config`, registro
+`ajustes`. **Migração:** quem veio da 0.3.x e nunca salvou Ajustes recebe os padrões com o teto e o
+intervalo que já tinha (o automático herda como antes: teto ≤ 30, 90–180 s no mínimo). **Backup:**
+`ajustes` entra na exportação (campo novo opcional, `versao` do backup continua 1; backup antigo
+importa normalmente) e, ao importar, é validado por zod e cortado nos limites absolutos; importar
+nunca liga o automático. "Meu nome" e o estado do automático seguem fora do backup. Na aba Dados, a
+confirmação "número com mais de 30 dias" continua lá (registro `politica`); teto e intervalo saíram
+de lá e vivem em Ajustes.
+
+**`{saudacao}` e a conferência.** O executor monta o texto com o relógio dele e guarda o texto
+exatamente colado por contato; limpar a caixa, conferir e o token usam esse mesmo texto, então a
+saudação não muda entre colar e enviar (a virada do meio-dia não quebra a conferência).
+
+Testes: `tests/ajustes.test.ts` (padrões = comportamento atual, limites absolutos, validação,
+restaurar, perfis, risco, horários/freio/teto/rampa/pausa longa na política, saudação, migração,
+persistência, import/export, executor lendo os ajustes). Não validado no Chrome de verdade: a
+interface (Ajustes.tsx, seletor de modelo na Prévia) foi só typechecada e compilada.
 
 ---
 
@@ -365,10 +431,12 @@ item que ficou em andamento. Se a mensagem já saiu, clique em *Já enviei*; sen
 
 Tudo fica **só neste navegador** (IndexedDB da extensão): contatos varridos, campanhas,
 envios e a lista "Não enviar mais". A extensão **não guarda telefone**. Na aba **Dados**:
-exportar backup (JSON), importar (mesclar ou substituir) e exportar campanhas em CSV
+exportar backup (JSON, agora com os Ajustes), importar (mesclar ou substituir) e exportar campanhas em CSV
 (separador `;`, abre no Excel em português).
 
 ## 4. Política de proteção (embutida)
+
+> Desde a 0.4.0 os valores abaixo são os **padrões** da aba Ajustes (editáveis dentro dos limites absolutos da seção 0.4.0).
 
 | Regra | Valor | Onde |
 |---|---|---|

@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { abrirBanco, lerAutomatico, listarCampanhas, listarContatos, listarEnvios, listarNaoEnviar, type Banco } from '../shared/banco';
+import { abrirBanco, lerAjustes, lerAutomatico, listarCampanhas, listarContatos, listarEnvios, listarNaoEnviar, type Banco } from '../shared/banco';
+import { AJUSTES_PADRAO, type Ajustes as TipoAjustes } from '../shared/ajustes';
 import { ESTADO_AUTOMATICO_PADRAO, type EstadoAutomatico } from '../shared/automatico';
 import type { Campanha } from '../shared/campanha';
 import { RegistroDiagnostico } from '../shared/diagnostico';
 import type { ContatoVarrido } from '../shared/contatos';
 import type { Envio, NaoEnviar } from '../shared/exportar';
+import { Ajustes } from './Ajustes';
 import { Dados } from './Dados';
 import { Execucao } from './Execucao';
 import { Previa } from './Previa';
 import { Varredura } from './Varredura';
 
-type Aba = 'varredura' | 'previa' | 'execucao' | 'dados';
+type Aba = 'varredura' | 'previa' | 'execucao' | 'ajustes' | 'dados';
 
 export interface DadosLocais {
   contatos: ContatoVarrido[];
@@ -23,6 +25,7 @@ const ABAS: Array<{ id: Aba; rotulo: string }> = [
   { id: 'varredura', rotulo: '1. Varredura' },
   { id: 'previa', rotulo: '2. Prévia' },
   { id: 'execucao', rotulo: '3. Envio' },
+  { id: 'ajustes', rotulo: 'Ajustes' },
   { id: 'dados', rotulo: 'Dados' },
 ];
 
@@ -33,6 +36,7 @@ export function App() {
   const [dados, setDados] = useState<DadosLocais>({ contatos: [], campanhas: [], envios: [], naoEnviar: [] });
   const [campanhaAtiva, setCampanhaAtiva] = useState<string | null>(null);
   const [automatico, setAutomatico] = useState<EstadoAutomatico>(ESTADO_AUTOMATICO_PADRAO);
+  const [ajustes, setAjustes] = useState<TipoAjustes>(AJUSTES_PADRAO);
 
   useEffect(() => {
     abrirBanco().then(setDb, (e: unknown) => setErro(`Não abri o banco local: ${String(e)}`));
@@ -61,6 +65,7 @@ export function App() {
     ]);
     setDados({ contatos, campanhas, envios, naoEnviar });
     setAutomatico(await lerAutomatico(db));
+    setAjustes(await lerAjustes(db));
   }, [db]);
 
   // O freio pode desligar o automático sozinho: o selo do topo acompanha o banco.
@@ -95,11 +100,12 @@ export function App() {
         ))}
       </nav>
       <main>
-        {aba === 'varredura' && <Varredura db={db} dados={dados} aoMudar={recarregar} aoContinuar={() => setAba('previa')} />}
+        {aba === 'varredura' && <Varredura db={db} dados={dados} ajustes={ajustes} aoMudar={recarregar} aoContinuar={() => setAba('previa')} />}
         {aba === 'previa' && (
           <Previa
             db={db}
             dados={dados}
+            ajustes={ajustes}
             aoAprovar={async (id) => {
               await recarregar();
               setCampanhaAtiva(id);
@@ -109,9 +115,10 @@ export function App() {
         )}
         {/* Sempre montada: trocar de aba não pode interromper uma campanha em andamento. */}
         <div hidden={aba !== 'execucao'}>
-          <Execucao db={db} registro={registro} dados={dados} campanhaId={campanhaAtiva} aoEscolher={setCampanhaAtiva} aoMudar={recarregar} />
+          <Execucao db={db} registro={registro} dados={dados} ajustes={ajustes} campanhaId={campanhaAtiva} aoEscolher={setCampanhaAtiva} aoMudar={recarregar} />
         </div>
-        {aba === 'dados' && <Dados db={db} registro={registro} dados={dados} automatico={automatico} aoMudar={recarregar} />}
+        {aba === 'ajustes' && <Ajustes db={db} ajustes={ajustes} aoMudar={recarregar} />}
+        {aba === 'dados' && <Dados db={db} registro={registro} dados={dados} automatico={automatico} ajustes={ajustes} aoMudar={recarregar} />}
       </main>
     </div>
   );

@@ -238,11 +238,11 @@ describe('envioAutomatico.ts: uma função, autorizada, importada só pelo handl
 });
 
 describe('versão', () => {
-  it('manifest.json e package.json estão na mesma versão (0.3.3)', () => {
+  it('manifest.json e package.json estão na mesma versão (0.4.0)', () => {
     const manifesto = JSON.parse(readFileSync(join(RAIZ, 'public/manifest.json'), 'utf8')) as { version: string };
     const pacote = JSON.parse(readFileSync(join(RAIZ, 'package.json'), 'utf8')) as { version: string };
     expect(manifesto.version).toBe(pacote.version);
-    expect(pacote.version).toBe('0.3.3');
+    expect(pacote.version).toBe('0.4.0');
   });
 });
 

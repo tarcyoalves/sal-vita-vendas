@@ -21,7 +21,7 @@ import {
   marcarItem,
   terminouComProblemas,
   proximoPendente,
-  textoDoItem,
+  textoDoItemEm,
   aplicarEdicao,
   desfazerRemocao,
   moverNaFila,
@@ -33,6 +33,7 @@ import { diferencaDias, hojeNoFuso } from '../shared/datas';
 import {
   type Banco,
   gravarEmAndamento,
+  lerAjustes,
   lerConfig,
   lerEmAndamento,
   lerAutomatico,
@@ -46,11 +47,12 @@ import {
   salvarCampanha,
   salvarMeuNome,
 } from '../shared/banco';
-import { configAuto, emitirToken, sortearEspera } from '../shared/automatico';
+import { configEfetiva, configManual } from '../shared/ajustes';
+import { emitirToken, sortearEspera } from '../shared/automatico';
 import { AUTO } from '../shared/constantes';
 import { type NovoEvento, resumirPagina, resumirResposta } from '../shared/diagnostico';
 import type { EventoConteudo, PedidoConteudo, PendenciaEnvio, RespostaConteudo } from '../shared/mensagens';
-import { contarEnviosHoje, podeAbrirProximo, sortearIntervaloSeg, ultimoEnvioParaIntervalo } from '../shared/politica';
+import { contarEnviosHoje, PISO_AJUSTES, podeAbrirProximo, sortearIntervaloSeg, ultimoEnvioParaIntervalo } from '../shared/politica';
 import { normalizarParaComparar, validarModelo } from '../shared/texto';
 
 export interface DependenciasExecutor {
@@ -119,6 +121,8 @@ export class Executor {
   private ativo = false;
   private avancando = false;
   private seqToken = 0;
+  /** Texto exato colado por contato (com a saudação da hora da colagem), para conferir/limpar com o mesmo texto. */
+  private readonly textosColados = new Map<string, { assinatura: string; texto: string }>();
 
   constructor(private readonly deps: DependenciasExecutor, campanha: Campanha) {
     this.estado = {
@@ -186,6 +190,20 @@ export class Executor {
     this.cancelarTimer = null;
   }
 
+  private assinaturaDoTexto(item: ItemCampanha): string {
+    return JSON.stringify([item.textoPersonalizado ?? null, item.modelo, item.primeiroNome]);
+  }
+
+  /**
+   * Texto do contato AGORA. Se já foi colado nesta sessão (e o contato não mudou), devolve exatamente o que
+   * foi colado: {saudacao} não pode mudar entre colar, conferir e limpar a caixa.
+   */
+  private textoDe(item: ItemCampanha): string {
+    const guardado = this.textosColados.get(item.chave);
+    if (guardado && guardado.assinatura === this.assinaturaDoTexto(item)) return guardado.texto;
+    return textoDoItemEm(item, this.deps.agora());
+  }
+
   // ── Painel reaberto ────────────────────────────────────────────────────────
 
   /**
@@ -227,7 +245,7 @@ export class Executor {
     const item = c.itens.find((i) => {
       if (i.status !== 'pendente' || i.nome !== p.nome) return false;
       if (rec && rec.chave === i.chave) return true;
-      return normalizarParaComparar(p.texto) === normalizarParaComparar(textoDoItem(i));
+      return normalizarParaComparar(p.texto) === normalizarParaComparar(this.textoDe(i));
     });
     if (!item) return false;
     await this.registrarEnviado(item, { enviadoEm: p.detectadoEm, textoConfere: p.textoConfere, jid: p.jid, motivo: null });
@@ -261,7 +279,7 @@ export class Executor {
     if (emFluxoAuto) await this.deps.pedir({ tipo: 'modoAutomatico', ligado: false });
     // Pausa durante "abrindo": o content script desiste e limpa a caixa se já tiver colado.
     if (fase === 'abrindo') await this.deps.pedir({ tipo: 'cancelarAbertura' });
-    if (colado && fase !== 'confirmando') await this.deps.pedir({ tipo: 'limparCaixa', texto: textoDoItem(colado) });
+    if (colado && fase !== 'confirmando') await this.deps.pedir({ tipo: 'limparCaixa', texto: this.textoDe(colado) });
     await this.deps.pedir({ tipo: 'pararObservacao' });
     const c = this.estado.campanha;
     if (c.status !== 'concluida') await this.gravar({ ...c, status: 'pausada', motivoPausa: motivo });
@@ -271,7 +289,7 @@ export class Executor {
       itemAtual: null,
       liberaEm: null,
       // O texto foi tirado da caixa, mas o registro fica: se o usuário apertou Enter no meio, a retomada percebe.
-      emAndamento: colado ? { chave: colado.chave, nome: colado.nome, texto: textoDoItem(colado) } : this.estado.emAndamento,
+      emAndamento: colado ? { chave: colado.chave, nome: colado.nome, texto: this.textoDe(colado) } : this.estado.emAndamento,
     });
   }
 
@@ -284,6 +302,13 @@ export class Executor {
   /** Evento do content script. */
   async aoReceberEvento(ev: EventoConteudo): Promise<void> {
     if (ev.tipo === 'vitaZap:aviso') {
+      // Ajuste "pausar em aviso do WhatsApp" (ligado por padrão). Desligado, o aviso visto ENQUANTO se espera só
+      // é mostrado; as conferências antes de abrir a conversa e antes de enviar (que recusam o envio com aviso
+      // na tela) continuam obrigatórias.
+      if (this.ativo && !(await lerAjustes(this.deps.db)).freio.pausarEmAviso) {
+        this.publicar({ mensagem: ev.texto });
+        return;
+      }
       if (this.ativo) {
         if ((await lerAutomatico(this.deps.db)).ligado) await this.freioAutomatico(ev.texto);
         else await this.pausar(ev.texto);
@@ -340,7 +365,7 @@ export class Executor {
   async acao(tipo: AcaoManual, motivo: string | null = null): Promise<void> {
     const item = this.estado.itemAtual;
     if (!item || this.estado.fase !== 'aguardando_envio') return;
-    await this.pedirRegistrando({ tipo: 'limparCaixa', texto: textoDoItem(item) }, false, item.nome);
+    await this.pedirRegistrando({ tipo: 'limparCaixa', texto: this.textoDe(item) }, false, item.nome);
     if (await this.marcar(item, tipo, motivo, tipo === 'problema' ? 'manual' : null)) await this.avancar('usuario');
   }
 
@@ -422,12 +447,13 @@ export class Executor {
     });
     const motivo = dados.motivo ?? (dados.textoConfere ? null : 'texto enviado foi editado');
     const marcada = marcarItem(c, item.chave, 'enviado', new Date(dados.enviadoEm), motivo);
-    const cfg = await lerConfig(this.deps.db);
+    const ajustes = await lerAjustes(this.deps.db);
+    const cfg = configManual(ajustes, true);
     const auto = await lerAutomatico(this.deps.db);
-    let intervaloSeg = sortearIntervaloSeg(cfg, this.deps.aleatorio);
+    let intervaloSeg = sortearIntervaloSeg(cfg, this.deps.aleatorio, PISO_AJUSTES);
     if (auto.ligado) {
-      // Automático: 90–180 s e, a cada 10 envios seguidos, pausa longa de 10–20 min.
-      const espera = sortearEspera(auto.enviosSeguidos, this.deps.aleatorio);
+      // Automático: intervalo do painel (padrão 90–180 s) e, a cada N envios seguidos (padrão 10), pausa longa.
+      const espera = sortearEspera(auto.enviosSeguidos, this.deps.aleatorio, ajustes);
       intervaloSeg = espera.segundos;
       await salvarAutomatico(this.deps.db, { ...auto, enviosSeguidos: espera.enviosSeguidos });
       if (espera.pausaLonga) this.etapa('pausa_longa', item.nome, { ok: true });
@@ -452,12 +478,13 @@ export class Executor {
         motivo: tipo === 'nao_cliente' ? 'não é cliente' : 'não enviar mais',
       });
     }
-    const c = marcarItem(this.estado.campanha, item.chave, tipo, agora, motivo, codigo);
+    const ajustes = await lerAjustes(this.deps.db);
+    const c = marcarItem(this.estado.campanha, item.chave, tipo, agora, motivo, codigo, ajustes.freio.problemasManual);
     await limparEmAndamento(this.deps.db, c.id);
     await this.gravar(c);
     this.publicar({ itemAtual: null, emAndamento: null });
-    if (tipo === 'problema' && c.status !== 'pausada' && this.ativo && (await lerAutomatico(this.deps.db)).ligado && c.problemasSeguidos >= AUTO.problemasParaDesligar) {
-      // Freio do automático: 2 problemas seguidos desligam o automático e voltam ao manual.
+    if (tipo === 'problema' && c.status !== 'pausada' && this.ativo && (await lerAutomatico(this.deps.db)).ligado && c.problemasSeguidos >= ajustes.freio.problemasAuto) {
+      // Freio do automático: N problemas seguidos (padrão 2) pausam a campanha.
       await this.freioAutomatico(`${c.problemasSeguidos} problemas seguidos`);
       return false;
     }
@@ -501,12 +528,13 @@ export class Executor {
     const { db } = this.deps;
     const agora = this.deps.agora();
 
-    const [envios, cfgManual, naoEnviar, estadoAuto] = await Promise.all([listarEnvios(db), lerConfig(db), listarNaoEnviar(db), lerAutomatico(db)]);
+    const [envios, cfgManual, naoEnviar, estadoAuto, ajustes] = await Promise.all([listarEnvios(db), lerConfig(db), listarNaoEnviar(db), lerAutomatico(db), lerAjustes(db)]);
     // 0.3.3: a fila pode ser editada pelo painel enquanto o executor espera; sempre parte da versão atual.
     let c = this.estado.campanha;
     const auto = estadoAuto.ligado;
-    // No automático o teto é no máximo 30 e o intervalo mínimo 90 s, qualquer que seja a política manual.
-    const cfg = auto ? configAuto(cfgManual) : cfgManual;
+    // Política efetiva do modo (0.4.0): teto e intervalo do painel Ajustes (manual ou automático), teto cortado
+    // pela rampa quando ligada e sempre pelos limites absolutos.
+    const cfg = configEfetiva(ajustes, cfgManual.numeroComMaisDe30Dias, auto, envios, agora);
     const enviosHoje = contarEnviosHoje(envios, agora);
     this.publicar({ enviosHoje, tetoDiario: cfg.tetoDiario, automatico: auto });
 
@@ -579,14 +607,15 @@ export class Executor {
       { enviosHoje, ...ultimoEnvioParaIntervalo(envios, c), problemasSeguidos: c.problemasSeguidos },
       cfg,
       agora,
+      ajustes,
     );
     if (!v.pode) {
       if (v.tipo === 'intervalo') {
-        const pausaLonga = auto && (c.intervaloAtualSeg ?? 0) > AUTO.intervaloMaxSeg;
+        const pausaLonga = auto && ajustes.ritmo.pausaLonga.ligada && (c.intervaloAtualSeg ?? 0) > ajustes.ritmo.auto.maxSeg;
         this.publicar({
           fase: 'intervalo',
           liberaEm: agora.getTime() + v.esperarMs,
-          mensagem: pausaLonga ? 'Pausa longa (a cada 10 envios) antes do próximo contato.' : null,
+          mensagem: pausaLonga ? `Pausa longa (a cada ${ajustes.ritmo.pausaLonga.aCadaEnvios} envios) antes do próximo contato.` : null,
         });
         if (auto) this.etapa(pausaLonga ? 'pausa_longa_aguardando' : 'intervalo', null, { ok: true });
         this.cancelarTimer = this.deps.agendar(() => this.liberarProximo(), v.esperarMs);
@@ -623,13 +652,14 @@ export class Executor {
     item = fresco;
 
     // O texto é revalidado AGORA (link, tamanho, quebra de linha), mesmo vindo de backup importado.
-    const texto = textoDoItem(item);
-    const errosTexto = validarModelo(texto);
+    const texto = textoDoItemEm(item, agora);
+    const errosTexto = validarModelo(texto, { tamanhoMax: ajustes.texto.tamanhoMax });
     if (errosTexto.length > 0) {
       if (await this.marcar(item, 'problema', `texto recusado: ${errosTexto.join('; ')}`, 'texto_invalido')) await this.passo(origem);
       return;
     }
 
+    this.textosColados.set(item.chave, { assinatura: this.assinaturaDoTexto(item), texto });
     this.publicar({ fase: 'abrindo', itemAtual: item, liberaEm: null, mensagem: null });
     const meuNomeGuardado = await lerMeuNome(db);
     const r = await this.pedirRegistrando(
@@ -653,7 +683,7 @@ export class Executor {
     if (r.ok) {
       await this.guardarEmAndamento(item, texto, r);
       if (auto) {
-        await this.iniciarContagem(item, texto, r.jid ?? null);
+        await this.iniciarContagem(item, texto, r.jid ?? null, ajustes.ritmo.contagemSeg);
         return;
       }
       this.publicar({ fase: 'aguardando_envio', itemAtual: item, mensagem: null, emAndamento: null });
@@ -673,8 +703,9 @@ export class Executor {
     if (r.codigo === 'usuario_digitando' && auto) {
       // (b) Automático: não mexe em nada enquanto o usuário digita; tenta de novo em 15 s.
       this.etapa('usuario_digitando', item.nome, { ok: true });
-      this.publicar({ fase: 'intervalo', itemAtual: null, liberaEm: this.deps.agora().getTime() + AUTO.novaTentativaDigitandoMs, mensagem: r.erro });
-      this.cancelarTimer = this.deps.agendar(() => this.liberarProximo(), AUTO.novaTentativaDigitandoMs);
+      const esperaMs = ajustes.freio.esperaDigitandoSeg * 1000;
+      this.publicar({ fase: 'intervalo', itemAtual: null, liberaEm: this.deps.agora().getTime() + esperaMs, mensagem: r.erro });
+      this.cancelarTimer = this.deps.agendar(() => this.liberarProximo(), esperaMs);
       return;
     }
     if (r.codigo === 'usuario_digitando') {
@@ -718,8 +749,8 @@ export class Executor {
   }
 
   /** (e) Texto colado: abre a contagem regressiva visível (com Cancelar) e agenda a conclusão. */
-  private async iniciarContagem(item: ItemCampanha, texto: string, jid: string | null): Promise<void> {
-    const ms = AUTO.contagemSeg * 1000;
+  private async iniciarContagem(item: ItemCampanha, texto: string, jid: string | null, contagemSeg: number): Promise<void> {
+    const ms = contagemSeg * 1000;
     this.publicar({ fase: 'contagem', itemAtual: item, liberaEm: this.deps.agora().getTime() + ms, mensagem: null, emAndamento: null });
     this.etapa('contagem_iniciada', item.nome, { ok: true });
     this.cancelarTimer = this.deps.agendar(() => void this.concluirContagem(item, texto, jid), ms);
