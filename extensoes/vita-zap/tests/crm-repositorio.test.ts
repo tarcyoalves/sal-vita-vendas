@@ -2,8 +2,8 @@
 // sem duplicar (mesmo id e horário), clique que abre a conversa pelo telefone, e a ponte por mensagem.
 // `fetch` falso (tests/ajuda/crm-falso.ts) e chrome falso: sem rede, sem conta real.
 
-import { beforeEach, describe, expect, it } from 'vitest';
-import { ALARME_SYNC_CRM, aoAlarmeSync, garantirAlarmeSync } from '../src/background/crm-sync';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ALARME_SYNC_ANTIGO, iniciarCrm, limparAlarmeSyncAntigo } from '../src/background/crm-sync';
 import { aoAlarme, aoClicarNotificacao, sincronizar, usarRepositorio } from '../src/background/lembretes';
 import { urlDaConversaPorTelefone } from '../src/shared/crm-acoes';
 import { agruparLembretes, contarVencidos } from '../src/shared/crm-lembretes';
@@ -190,30 +190,25 @@ describe('clique na notificação: abre a conversa pelo telefone, não envia nad
   });
 });
 
-describe('alarme de sincronização (5 min) e mensagens do service worker', () => {
-  it('cria o alarme periódico uma vez só; no alarme, sincroniza (e sem login não faz nada)', async () => {
-    const alarmes = new Map<string, unknown>();
+describe('sem alarme de sincronização e mensagens do service worker', () => {
+  it('limpa o alarme periódico antigo (vzcrm-sync) e o service worker não consulta o CRM ao iniciar', async () => {
+    const limpos: string[] = [];
     (c.chrome as { alarms: Record<string, unknown> }).alarms = {
-      async get(n: string) {
-        return alarmes.get(n);
-      },
-      async create(n: string, info: unknown) {
-        alarmes.set(n, info);
+      async clear(n: string) {
+        limpos.push(n);
+        return true;
       },
     };
-    await garantirAlarmeSync();
-    expect(alarmes.get(ALARME_SYNC_CRM)).toMatchObject({ periodInMinutes: 5 });
-    alarmes.set(ALARME_SYNC_CRM, 'marca');
-    await garantirAlarmeSync();
-    expect(alarmes.get(ALARME_SYNC_CRM)).toBe('marca'); // não recriou
+    await limparAlarmeSyncAntigo();
+    expect(limpos).toEqual([ALARME_SYNC_ANTIGO]);
+    expect(ALARME_SYNC_ANTIGO).toBe('vzcrm-sync');
 
-    await aoAlarmeSync(ALARME_SYNC_CRM, servico);
-    expect(crm.requisicoes).toHaveLength(0);
     await entrar();
-    const antes = crm.chamadas('tasks.reminders').length;
-    await aoAlarmeSync(ALARME_SYNC_CRM, servico);
-    await aoAlarmeSync('vz:outro', servico);
-    expect(crm.chamadas('tasks.reminders').length).toBe(antes + 1);
+    const antes = crm.requisicoes.length;
+    vi.stubGlobal('fetch', crm.fetch);
+    iniciarCrm(local, () => undefined); // o service worker acordou: nenhuma chamada ao CRM
+    vi.unstubAllGlobals();
+    expect(crm.requisicoes.length).toBe(antes);
   });
 
   it('o content script/painel falam com o serviço por mensagem; mensagem de fora ou desconhecida é ignorada', async () => {

@@ -4,9 +4,10 @@
 // Os dados passam sempre pelo repositório (estado.fazer).
 
 import { acharContato, lembretesDoContato } from '../../shared/crm-contatos';
-import { agruparLembretes, formatarVencimento, lerDataHoraLocal, paraInputDataHora, prazoRapido, PRAZOS_RAPIDOS, type PrazoRapido } from '../../shared/crm-lembretes';
+import { agruparLembretes, formatarVencimento, lerDataHoraLocal, paraInputDataHora, prazoRapido, PRAZOS_RAPIDOS, textoAtualizadoHa, type PrazoRapido } from '../../shared/crm-lembretes';
 import type { Lembrete, RefContato } from '../../shared/crm-tipos';
 import { ehLembreteCrm } from '../../shared/crm-remoto';
+import { ehLeadsCRM } from '../../shared/leads';
 import type { Estado } from './estado';
 import { abrirPopover, fecharPopover, mostrarAviso } from './popover';
 import { h } from './ui';
@@ -134,6 +135,38 @@ export function abrirCentral(ancora: HTMLElement, ctx: ContextoLembretes): void 
     pop.reposicionar();
   };
 
+  /** "Atualizar do CRM" (ignora o mínimo de 60 min) + "atualizado há X min"; só com login no CRM. */
+  const rodape = (): HTMLElement | null => {
+    const leads = ehLeadsCRM(ctx.estado.repo) ? ctx.estado.repo : null;
+    if (!leads) return null;
+    const texto = h('span', { class: 'dica' }, '');
+    const botao = h('button', { class: 'btn', type: 'button' }, 'Atualizar do CRM');
+    const caixa = h('div', { class: 'linha2' }, botao, texto);
+    caixa.hidden = true;
+    const mostrarIdade = (): void =>
+      void leads.conta().then(
+        (c) => {
+          caixa.hidden = !c.usuario;
+          texto.textContent = textoAtualizadoHa(c.sincronizadoEm, ctx.agora().getTime());
+        },
+        () => undefined,
+      );
+    botao.addEventListener('click', () => {
+      botao.disabled = true;
+      texto.textContent = 'Atualizando…';
+      void leads
+        .sincronizarLembretes('botao')
+        .then(
+          (r) => (r.ok ? undefined : void (texto.textContent = r.erro.mensagem)),
+          () => void (texto.textContent = 'Não consegui falar com a extensão.'),
+        )
+        .then(() => ctx.estado.recarregar())
+        .then(() => depois());
+    });
+    mostrarIdade();
+    return caixa;
+  };
+
   const render = (): void => {
     const agora = ctx.agora();
     const g = agruparLembretes(ctx.estado.dados.lembretes, agora);
@@ -164,6 +197,7 @@ export function abrirCentral(ancora: HTMLElement, ctx: ContextoLembretes): void 
       ...(total === 0
         ? [h('div', { class: 'vazio' }, 'Nenhum lembrete. Use o botão do relógio no cabeçalho de uma conversa.')]
         : [...secao('Vencidos', g.vencidos, true), ...secao('Hoje', g.hoje), ...secao('Próximos', g.proximos)]),
+      ...[rodape()].filter((x): x is HTMLElement => x !== null),
     );
   };
   render();

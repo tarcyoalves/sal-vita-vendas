@@ -33,7 +33,7 @@ export function ContaCrm({ crm }: { crm: CrmPainel }) {
   }, [crm.repo]);
 
   useEffect(() => {
-    void carregar().then(() => crm.repo.verificarSessao().catch(() => undefined)).then(() => carregar());
+    void carregar(); // sem consulta ao CRM aqui: a sessão é conferida pelas ações do usuário
     return crm.repo.aoMudar(() => void carregar());
   }, [crm.repo, carregar]);
 
@@ -119,7 +119,8 @@ export function ContaCrm({ crm }: { crm: CrmPainel }) {
           </p>
           <p className="ajuda">
             {conta.baseUrl}
-            {conta.sincronizadoEm ? ` · lembretes do CRM atualizados em ${hora(conta.sincronizadoEm)} (a cada 5 min)` : ' · lembretes ainda não sincronizados'}
+            {conta.sincronizadoEm ? ` · lembretes do CRM atualizados às ${hora(conta.sincronizadoEm)}` : ' · lembretes ainda não sincronizados'}
+            {' '}O CRM só é consultado quando você usa (abrir o painel, abrir uma conversa ou "Atualizar do CRM").
           </p>
           {conta.pendentes > 0 && (
             <p className="aviso-pendente">
@@ -150,12 +151,12 @@ export function ContaCrm({ crm }: { crm: CrmPainel }) {
               disabled={ocupado}
               onClick={() =>
                 void executar(async () => {
-                  const r = await crm.repo.sincronizarLembretes();
+                  const r = await crm.repo.sincronizarLembretes('botao');
                   setMsg(r.ok ? { erro: false, texto: `${r.quantidade} lembrete(s) do CRM na janela de ontem até +7 dias.` } : { erro: true, texto: r.erro.mensagem });
                 })
               }
             >
-              Sincronizar lembretes agora
+              Atualizar do CRM
             </button>
             <button type="button" disabled={ocupado} onClick={() => void executar(async () => void setConta(await crm.repo.sair()))}>
               Sair

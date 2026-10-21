@@ -145,10 +145,11 @@ describe('faixa do lead', () => {
     await iniciar(true);
     await vi.waitFor(() => expect(textoFaixa()).toContain('Lead: Padaria da Ana'));
     crm.logado = false; // o cookie expirou no servidor
-    // qualquer mudança no CRM local (aqui, um lembrete) faz a página buscar o lead de novo
-    await repo.criarLembrete({ ref: { nome: 'Ana Souza' }, venceEm: AGORA.getTime() + 3_600_000 }, AGORA);
-    await vi.waitFor(() => expect(textoFaixa()).toContain('Sessão não reconhecida'));
-    expect(textoFaixa()).toContain('entre de novo');
+    // a página não consulta o CRM sozinha: a sessão caída aparece quando o usuário faz uma ação
+    botao(faixa()!, 'Registrar contato').click();
+    (overlay().querySelector('textarea') as HTMLTextAreaElement).value = 'Pediu desconto';
+    botao(overlay(), 'Registrar no CRM').click();
+    await vi.waitFor(() => expect(overlay().textContent).toContain('Sessão não reconhecida'));
     expect((await servico.conta()).usuario).toBeNull();
   });
 });

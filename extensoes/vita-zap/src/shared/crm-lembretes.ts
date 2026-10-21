@@ -22,6 +22,15 @@ export const PRAZOS_RAPIDOS: ReadonlyArray<{ id: PrazoRapido; rotulo: string }> 
 ];
 
 /** Os prazos rápidos caem sempre às 9h (de Fortaleza) do dia escolhido. */
+/** "atualizado há 12 min" (para o botão Atualizar do CRM). `em` = instante da última busca bem-sucedida. */
+export function textoAtualizadoHa(em: number | null, agora: number): string {
+  if (em == null) return 'ainda não atualizado';
+  const min = Math.max(0, Math.floor((agora - em) / 60_000));
+  if (min < 1) return 'atualizado agora há pouco';
+  if (min < 120) return `atualizado há ${min} min`;
+  return `atualizado há ${Math.floor(min / 60)} h`;
+}
+
 export function prazoRapido(id: PrazoRapido, agora: Date): number {
   const dias = id === 'amanha9h' ? 1 : id === '3dias' ? 3 : 7;
   return instanteNoFuso(somarDias(hojeNoFuso(agora), dias), 9, 0);

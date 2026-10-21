@@ -135,8 +135,8 @@ describe('lead da conversa (tasks.findForWhatsapp)', () => {
     expect(r).toMatchObject({ tipo: 'lead', desatualizado: false, lead: { id: 1, titulo: 'Padaria da Ana', etiquetas: ['quente'] } });
     expect(crm.chamadas('tasks.findForWhatsapp')).toHaveLength(1);
     expect(crm.chamadas('tasks.findForWhatsapp')[0].entrada).toEqual({ phone: '5584999990000' });
-    // 2ª vez, mesmo sem telefone na referência: pelo vínculo do nome
-    const de = await servico.leadDoContato({ nome: 'Ana Souza' });
+    // 2ª vez, mesmo sem telefone na referência: pelo vínculo do nome (forçado: sem ele o cache de 30 min responderia)
+    const de = await servico.leadDoContato({ nome: 'Ana Souza' }, { forcar: true });
     expect(de).toMatchObject({ tipo: 'lead', lead: { id: 1 } });
     expect(crm.chamadas('tasks.findForWhatsapp')).toHaveLength(1);
     expect(crm.chamadas('tasks.getById')).toHaveLength(1);
@@ -192,7 +192,7 @@ describe('lead da conversa (tasks.findForWhatsapp)', () => {
     await conectado();
     await servico.leadDoContato(ANA);
     crm.semRede = true;
-    const r = await servico.leadDoContato(ANA);
+    const r = await servico.leadDoContato(ANA, { forcar: true });
     expect(r).toMatchObject({ tipo: 'lead', desatualizado: true, aviso: { tipo: 'rede' }, lead: { id: 1 } });
   });
 });
@@ -281,8 +281,10 @@ describe('fila local sem rede (nada digitado se perde)', () => {
     if (r.ok) expect(r.lead.notas).toContain('[21/10/2026 14:30] Fechou 20 sacos');
     expect((await servico.conta()).pendentes).toBe(1);
     // a faixa do lead mostra o lead com a ação já aplicada
-    const durante = await servico.leadDoContato(ANA);
+    const durante = await servico.leadDoContato(ANA, { forcar: true });
     expect(durante).toMatchObject({ tipo: 'lead', desatualizado: true, pendentes: 1 });
+    // sem forçar, o lead em cache (menos de 30 min) já vem com a ação aplicada, sem ir ao CRM
+    expect(await servico.leadDoContato(ANA)).toMatchObject({ tipo: 'lead', desatualizado: false, pendentes: 1 });
     // a rede continua fora: reenvio não perde nada
     expect(await servico.reenviarFila()).toEqual({ enviados: 0, restantes: 1 });
     expect(crm.tasks[0].notes).toBe('Pediu tabela.');
@@ -361,17 +363,16 @@ describe('fila local sem rede (nada digitado se perde)', () => {
 });
 
 describe('lembretes do CRM (tasks.reminders)', () => {
-  it('sincroniza para o cache e só regrava quando a lista muda', async () => {
+  it('sincroniza para o cache e grava a hora da última busca bem-sucedida', async () => {
     crm.tasks[0].reminderDate = new Date(AGORA + 2 * 3_600_000);
     await conectado();
     const r = await servico.sincronizarLembretes();
     expect(r).toEqual({ ok: true, quantidade: 1 });
-    const antes = arm.gravacoes.filter((c) => c === 'vz.crm.lembretes').length;
-    await servico.sincronizarLembretes();
-    expect(arm.gravacoes.filter((c) => c === 'vz.crm.lembretes').length).toBe(antes);
+    expect(arm.dados.get('vz.crm.lembretes')).toMatchObject({ em: AGORA });
+    agora += 5 * 60_000;
     crm.tasks[0].reminderDate = new Date(AGORA + 3 * 3_600_000);
     await servico.sincronizarLembretes();
-    expect(arm.gravacoes.filter((c) => c === 'vz.crm.lembretes').length).toBe(antes + 1);
+    expect(arm.dados.get('vz.crm.lembretes')).toMatchObject({ em: AGORA + 5 * 60_000 });
   });
 
   it('sem login não consulta o CRM; erro de rede mantém o cache anterior', async () => {

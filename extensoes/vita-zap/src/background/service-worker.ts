@@ -4,7 +4,7 @@
 // A lógica da campanha roda no painel (que precisa estar aberto): fechar o painel pausa tudo,
 // o que é o comportamento seguro.
 
-import { iniciarCrm } from './crm-sync';
+import { iniciarCrm, limparAlarmeSyncAntigo } from './crm-sync';
 import { aoAlarme, aoClicarNotificacao, sincronizar } from './lembretes';
 import { RepositorioLocal, repositorioPadrao, usarServicoCrm } from '../shared/repositorio-local';
 
@@ -17,6 +17,7 @@ function abrirPainelAoClicarNoIcone(): void {
 
 chrome.runtime.onInstalled.addListener(() => {
   abrirPainelAoClicarNoIcone();
+  void limparAlarmeSyncAntigo().catch(() => undefined); // até a 0.5.0 havia um alarme de 5 min que mantinha o banco do CRM ligado
   void sincronizar().catch(() => undefined);
 });
 

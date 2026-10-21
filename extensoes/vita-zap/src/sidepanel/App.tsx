@@ -37,6 +37,11 @@ export function App() {
   const [dados, setDados] = useState<DadosLocais>({ contatos: [], campanhas: [], envios: [], naoEnviar: [] });
   const [campanhaAtiva, setCampanhaAtiva] = useState<string | null>(null);
 
+  // Abriu o painel: busca os lembretes do CRM (no máximo 1 por hora; sem login não consulta nada).
+  useEffect(() => {
+    void crm.repo.sincronizarLembretes('painel').catch(() => undefined);
+  }, [crm.repo]);
+
   useEffect(() => {
     abrirBanco().then(setDb, (e: unknown) => setErro(`Não abri o banco local: ${String(e)}`));
   }, []);

@@ -80,7 +80,8 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   // Lead do CRM Lembretes (só existe com login; sem login a faixa não aparece e tudo segue local).
   const leads: LeadsCRM | null = ehLeadsCRM(repo) ? repo : null;
   const faixa = new FaixaLead();
-  const leadCache: { chave: string; estado: EstadoLead | null; em: number; buscando: boolean } = { chave: '', estado: null, em: 0, buscando: false };
+  // `em` = quando a conversa pediu o lead ao service worker (quem decide se vai ao CRM é o ServicoCrm: cache de 30 min por contato).
+  const leadCache: { chave: string; estado: EstadoLead | null; em: number } = { chave: '', estado: null, em: 0 };
   const botaoRespostas = new BotaoRespostas({ estado, nomeDaConversa: nomeDaConversaAberta, caixa: () => encontrar(document, 'caixaMensagem') });
 
   let lendoLista = false;
@@ -99,7 +100,6 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
 
   function buscarLead(ref: RefContato, chave: string): void {
     if (!leads) return;
-    leadCache.buscando = true;
     leadCache.em = Date.now();
     leads
       .leadDoContato(ref)
@@ -113,12 +113,15 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
         },
       )
       .finally(() => {
-        leadCache.buscando = false;
         if (!encerrado) ciclo();
       });
   }
 
-  /** Faixa do lead do CRM: busca ao abrir a conversa (e a cada minuto) e redesenha com o que há em cache. */
+  /**
+   * Faixa do lead do CRM: pede o lead UMA vez ao abrir a conversa (o ciclo de 30 s e o MutationObserver só
+   * redesenham com o que já está em memória, nunca fazem rede). Sem login, confere de novo a cada 20 s (sem rede)
+   * para a faixa aparecer logo depois do login.
+   */
   function atualizarFaixa(header: HTMLElement | null, ref: RefContato | null, agora: Date): void {
     if (!leads) return;
     if (!header || !ref) {
@@ -126,8 +129,12 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       return;
     }
     const chave = `${chaveDaConversa(ref.nome)}|${ref.telefone ?? ''}`;
-    if (leadCache.chave !== chave) Object.assign(leadCache, { chave, estado: null, em: 0 });
-    if (!leadCache.buscando && Date.now() - leadCache.em > 60_000) buscarLead(ref, chave);
+    if (leadCache.chave !== chave) {
+      Object.assign(leadCache, { chave, estado: null, em: 0 });
+      buscarLead(ref, chave);
+    } else if (leadCache.estado?.tipo === 'sem-login' && Date.now() - leadCache.em > 20_000) {
+      buscarLead(ref, chave);
+    }
     const sobre = (abrir: (a: HTMLElement) => void) => (a: HTMLElement) => (popoverAbertoEm(a) ? fecharPopover() : abrir(a));
     const ctxLead: ContextoLead = {
       leads,
@@ -137,10 +144,8 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
         leadCache.estado = { tipo: 'lead', lead, desatualizado: false, pendentes: pendente ? atual + 1 : 0 };
         ciclo();
       },
-      recarregar: () => {
-        leadCache.em = 0;
-        ciclo();
-      },
+      // A ação do usuário já devolveu o lead atualizado (aplicar): não há nova consulta.
+      recarregar: () => ciclo(),
     };
     const lead = leadCache.estado?.tipo === 'lead' ? leadCache.estado.lead : null;
     const acoes: AcoesFaixa = {
@@ -350,12 +355,11 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   window.addEventListener('resize', ciclo);
 
   observador.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
-  const removerOuvinte = estado.ouvir(() => {
-    leadCache.em = 0; // login, sincronização ou ação em outra parte: busca o lead de novo
-    agendar();
-  });
+  const removerOuvinte = estado.ouvir(() => agendar()); // só redesenha: mudança em outra parte não gera consulta ao CRM
   const periodico = op.periodicoMs === 0 ? null : setInterval(ciclo, op.periodicoMs ?? 30_000);
   ciclo();
+  // A aba do WhatsApp Web carregou: busca os lembretes do CRM (no máximo 1 por hora; sem login não faz nada).
+  if (leads) void leads.sincronizarLembretes('aba-whatsapp').catch(() => undefined);
   // Pedido pendente (clique na notificação com o WhatsApp Web ainda carregando): espera a lista e executa.
   void esperarAte(() => encontrar(document, 'painelLateral'), 60_000, 500).then((lista) => (lista && !encerrado ? consumirAcaoPendente(repo) : undefined));
 

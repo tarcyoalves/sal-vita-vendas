@@ -54,6 +54,9 @@ export type ResultadoLead = { ok: true; lead: LeadCrm } | { ok: false; erro: Err
 /** `pendente`: sem rede, ficou na fila local e será reenviado. `guardado`: deu erro, mas o texto foi guardado na fila. */
 export type ResultadoAcao = { ok: true; lead: LeadCrm; pendente: boolean } | { ok: false; erro: ErroCrm; guardado: boolean };
 
+/** Por que os lembretes estão sendo buscados: `login` e `botao` ignoram o mínimo de 60 min; `painel` e `aba-whatsapp` o respeitam. */
+export type MotivoSync = 'login' | 'painel' | 'aba-whatsapp' | 'botao';
+
 export interface LeadsCRM {
   conta(): Promise<EstadoConta>;
   /** Muda o endereço do CRM (derruba a sessão: o cookie é de outro servidor). */
@@ -63,7 +66,8 @@ export interface LeadsCRM {
   verificarSessao(): Promise<ResultadoConta>;
   sair(): Promise<EstadoConta>;
 
-  leadDoContato(ref: RefContato): Promise<EstadoLead>;
+  /** Só consulta o CRM se o cache do contato tem mais de 30 min (ou com `forcar`). */
+  leadDoContato(ref: RefContato, opcoes?: { forcar?: boolean }): Promise<EstadoLead>;
   procurarLeads(q: string): Promise<ResultadoBusca>;
   vincularLead(ref: RefContato, taskId: number): Promise<ResultadoLead>;
   desvincularLead(ref: RefContato): Promise<void>;
@@ -76,8 +80,8 @@ export interface LeadsCRM {
   /** Adia o lembrete de uma task do CRM (central: "Adiar"). */
   reagendarTask(taskId: number, em: number): Promise<{ ok: true } | { ok: false; erro: ErroCrm }>;
 
-  /** Busca tasks.reminders e atualiza o cache que a central e os alarmes usam. */
-  sincronizarLembretes(): Promise<{ ok: true; quantidade: number } | { ok: false; erro: ErroCrm }>;
+  /** Busca tasks.reminders e atualiza o cache que a central e os alarmes usam (sem motivo = botão "Atualizar do CRM"). */
+  sincronizarLembretes(motivo?: MotivoSync): Promise<{ ok: true; quantidade: number } | { ok: false; erro: ErroCrm }>;
   reenviarFila(): Promise<{ enviados: number; restantes: number }>;
 }
 

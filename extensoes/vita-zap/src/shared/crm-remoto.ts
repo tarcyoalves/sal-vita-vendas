@@ -51,7 +51,9 @@ export const CHAVES_CRM = {
   /** ações esperando a rede voltar. */
   fila: 'vz.crm.fila',
   falhas: 'vz.crm.falhas',
-  /** tasks.reminders da última sincronização. */
+  /** "não achei" / "vários" por contato, com a hora da busca (não repete a consulta por 30 min). */
+  buscas: 'vz.crm.buscas',
+  /** tasks.reminders da última sincronização (`em` = última busca bem-sucedida). */
   lembretes: 'vz.crm.lembretes',
   /** ids de lembrete do CRM já notificados (dedupe). */
   avisados: 'vz.crm.avisados',

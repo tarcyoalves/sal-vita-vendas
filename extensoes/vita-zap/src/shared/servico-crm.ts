@@ -6,8 +6,13 @@
 // - Nada aqui envia mensagem de WhatsApp.
 // - Sem login a extensão segue 100% local (modo misto); com login o lead vem do CRM e o que está em
 //   chrome.storage é só cache (vz.crm.*).
-// - Rede fora do ar: a ação do usuário entra numa fila local e é reenviada (alarme de 5 min, login,
-//   próxima ação). Nada digitado é perdido; o que o CRM recusar de vez vai para "falhas" com o resumo.
+// - Rede fora do ar: a ação do usuário entra numa fila local e é reenviada (login, "Atualizar do CRM",
+//   próxima ação do usuário). Nada digitado é perdido; o que o CRM recusar de vez vai para "falhas".
+// - CONSUMO DO BANCO (Neon grátis suspende sem consultas e tem horas de compute limitadas): o CRM só é
+//   consultado por uso, com teto. Nada aqui roda por timer. Lembretes: no login, ao abrir o painel ou a
+//   aba do WhatsApp (no máximo 1 busca por hora) e no botão "Atualizar do CRM". Lead da conversa: só ao
+//   abrir a conversa e se o cache do contato tem mais de 30 min. Cada chamada ao CRM é registrada em
+//   console.debug com o motivo, para auditar.
 
 import { URL_CRM_PADRAO } from './constantes';
 import { instanteNoFuso } from './crm-lembretes';
@@ -31,12 +36,17 @@ import {
 import type { RefContato } from './crm-tipos';
 import { hojeNoFuso, somarDias } from './datas';
 import { novoId } from './id';
-import type { ArmazemChaves, EstadoConta, EstadoLead, FalhaFila, LeadsCRM, ResultadoAcao, ResultadoBusca, ResultadoConta, ResultadoLead } from './leads';
+import type { ArmazemChaves, EstadoConta, EstadoLead, FalhaFila, LeadsCRM, MotivoSync, ResultadoAcao, ResultadoBusca, ResultadoConta, ResultadoLead } from './leads';
 import { normalizarTelefone } from './telefone';
 
 const MAX_FILA = 200;
 const MAX_FALHAS = 20;
 const MAX_CACHE_LEADS = 200;
+/** Intervalo mínimo entre buscas de lembretes disparadas por abrir o painel / a aba do WhatsApp. */
+export const MINIMO_LEMBRETES_MS = 60 * 60_000;
+/** Quanto tempo o lead guardado vale ao abrir a conversa, antes de consultar o CRM de novo. */
+export const VALIDADE_LEAD_MS = 30 * 60_000;
+const MAX_BUSCAS = 200;
 /** Etiquetas que o próprio CRM gerencia (conversão e e-mail confirmado): a extensão não mexe. */
 const ETIQUETAS_RESERVADAS = ['ativo', 'Email Confirmado'];
 
@@ -64,6 +74,19 @@ interface CacheLead {
   lead: LeadCrm;
   em: number;
 }
+
+/** Resultado de "não achei"/"vários" guardado por contato (para abrir a mesma conversa não consultar de novo). */
+interface BuscaGuardada {
+  em: number;
+  estado: { tipo: 'nao-encontrado'; semTelefone: false } | { tipo: 'varios'; candidatos: LeadCrm[] };
+}
+
+const ROTULO_SYNC: Record<MotivoSync, string> = {
+  login: 'login',
+  painel: 'painel lateral aberto',
+  'aba-whatsapp': 'aba do WhatsApp Web carregou',
+  botao: 'botão Atualizar do CRM',
+};
 
 type Chamada<T> = { ok: true; valor: T } | { ok: false; erro: ErroCrm };
 
@@ -99,6 +122,8 @@ export function calcularEtiquetas(atuais: string[], adicionar: string[], remover
 export class ServicoCrm implements LeadsCRM {
   private cadeia: Promise<unknown> = Promise.resolve();
   private readonly cliente: ClienteTrpc;
+  /** Por que a operação em andamento foi pedida (as operações são em série, então um campo basta). */
+  private motivo = '';
 
   constructor(
     private readonly arm: ArmazemChaves,
@@ -111,10 +136,29 @@ export class ServicoCrm implements LeadsCRM {
   // ── Infraestrutura ─────────────────────────────────────────────────────────
 
   /** Uma operação de cada vez (as chamadas chegam de vários contextos da extensão). */
-  private exclusivo<T>(fn: () => Promise<T>): Promise<T> {
-    const t = this.cadeia.then(fn, fn);
+  private exclusivo<T>(motivo: string, fn: () => Promise<T>): Promise<T> {
+    const rodar = (): Promise<T> => {
+      this.motivo = motivo;
+      return fn();
+    };
+    const t = this.cadeia.then(rodar, rodar);
     this.cadeia = t.catch(() => undefined);
     return t;
+  }
+
+  /** Toda chamada ao CRM passa por aqui: fica registrada com o motivo (auditoria do consumo do banco). */
+  private consultar<T>(caminho: string, entrada?: unknown): Promise<T> {
+    console.debug(`[Vita Zap] CRM consulta ${caminho} | motivo: ${this.motivo}`);
+    return this.cliente.consultar<T>(caminho, entrada);
+  }
+
+  private alterar<T>(caminho: string, entrada?: unknown): Promise<T> {
+    console.debug(`[Vita Zap] CRM alteração ${caminho} | motivo: ${this.motivo}`);
+    return this.cliente.alterar<T>(caminho, entrada);
+  }
+
+  private semConsulta(porque: string): void {
+    console.debug(`[Vita Zap] CRM sem consulta (${porque}) | motivo: ${this.motivo}`);
   }
 
   private async ler<T>(chave: string, padrao: T): Promise<T> {
@@ -174,7 +218,7 @@ export class ServicoCrm implements LeadsCRM {
   }
 
   definirUrl(url: string): Promise<ResultadoConta> {
-    return this.exclusivo(async () => {
+    return this.exclusivo('trocar endereço do CRM', async () => {
       const base = normalizarBaseUrl(url);
       if (!base) return this.resultadoConta({ ok: false, erro: erroValidacao('Endereço inválido. Use https://... (ou http://localhost).') });
       const c = await this.lerConta();
@@ -188,12 +232,12 @@ export class ServicoCrm implements LeadsCRM {
   }
 
   entrar(email: string, senha: string): Promise<ResultadoConta> {
-    return this.exclusivo(async () => {
+    return this.exclusivo('login', async () => {
       const e = email.trim();
       if (!e || !senha) return this.resultadoConta({ ok: false, erro: erroValidacao('Informe o e-mail e a senha.') });
       const r = await this.chamar(async () => {
-        await this.cliente.alterar('auth.login', { email: e, password: senha });
-        return this.cliente.consultar<unknown>('auth.me');
+        await this.alterar('auth.login', { email: e, password: senha });
+        return this.consultar<unknown>('auth.me');
       });
       if (!r.ok) return this.resultadoConta(r);
       const c = await this.lerConta();
@@ -214,10 +258,10 @@ export class ServicoCrm implements LeadsCRM {
   }
 
   verificarSessao(): Promise<ResultadoConta> {
-    return this.exclusivo(async () => {
+    return this.exclusivo('verificar sessão (pedido do usuário)', async () => {
       const c = await this.lerConta();
       if (!c.usuario) return this.resultadoConta(c.erro ? { ok: false, erro: c.erro } : { ok: true });
-      const r = await this.chamar(() => this.cliente.consultar<unknown>('auth.me'));
+      const r = await this.chamar(() => this.consultar<unknown>('auth.me'));
       if (!r.ok) return this.resultadoConta(r);
       const u = usuarioDe(r.valor);
       if (!u) {
@@ -231,9 +275,9 @@ export class ServicoCrm implements LeadsCRM {
   }
 
   sair(): Promise<EstadoConta> {
-    return this.exclusivo(async () => {
+    return this.exclusivo('logout', async () => {
       const c = await this.lerConta();
-      if (c.usuario) await this.chamar(() => this.cliente.alterar('auth.logout'));
+      if (c.usuario) await this.chamar(() => this.alterar('auth.logout'));
       // Some o cache do usuário (leads, lembretes). Ficam vínculos e a fila (do usuário certo, para quando ele voltar).
       await this.arm.limparChaves('vz.crm.', [CHAVES_CRM.conta, CHAVES_CRM.vinculos, CHAVES_CRM.fila, CHAVES_CRM.falhas]);
       await this.gravarConta({ baseUrl: c.baseUrl, usuario: null });
@@ -253,10 +297,11 @@ export class ServicoCrm implements LeadsCRM {
     const v = await this.ler<Record<string, number>>(CHAVES_CRM.vinculos, {});
     for (const k of chavesDoVinculo(ref)) v[k] = taskId;
     await this.arm.gravarChave(CHAVES_CRM.vinculos, v);
+    await this.guardarBusca(ref, null); // o "não achei" de antes não vale mais
   }
 
   async desvincularLead(ref: RefContato): Promise<void> {
-    await this.exclusivo(async () => {
+    await this.exclusivo('desvincular lead', async () => {
       const v = await this.ler<Record<string, number>>(CHAVES_CRM.vinculos, {});
       const alvo = await this.taskDoVinculo(ref);
       for (const k of Object.keys(v)) if (v[k] === alvo) delete v[k];
@@ -274,8 +319,35 @@ export class ServicoCrm implements LeadsCRM {
     await this.arm.gravarChave(CHAVES_CRM.leads, c);
   }
 
+  private async entradaDoCache(taskId: number): Promise<CacheLead | null> {
+    return (await this.ler<Record<string, CacheLead>>(CHAVES_CRM.leads, {}))[String(taskId)] ?? null;
+  }
+
   private async doCache(taskId: number): Promise<LeadCrm | null> {
-    return (await this.ler<Record<string, CacheLead>>(CHAVES_CRM.leads, {}))[String(taskId)]?.lead ?? null;
+    return (await this.entradaDoCache(taskId))?.lead ?? null;
+  }
+
+  private async buscaRecente(ref: RefContato): Promise<BuscaGuardada | null> {
+    const m = await this.ler<Record<string, BuscaGuardada>>(CHAVES_CRM.buscas, {});
+    const agora = this.relogio();
+    for (const k of chavesDoVinculo(ref)) {
+      const b = m[k];
+      if (b && agora >= b.em && agora - b.em < VALIDADE_LEAD_MS) return b;
+    }
+    return null;
+  }
+
+  private async guardarBusca(ref: RefContato, estado: BuscaGuardada['estado'] | null): Promise<void> {
+    const m = await this.ler<Record<string, BuscaGuardada>>(CHAVES_CRM.buscas, {});
+    const chaves = chavesDoVinculo(ref);
+    if (estado === null && !chaves.some((k) => k in m)) return;
+    for (const k of chaves) {
+      if (estado) m[k] = { em: this.relogio(), estado };
+      else delete m[k];
+    }
+    const ks = Object.keys(m);
+    if (ks.length > MAX_BUSCAS) for (const k of ks.sort((a, b) => m[a].em - m[b].em).slice(0, ks.length - MAX_BUSCAS)) delete m[k];
+    await this.arm.gravarChave(CHAVES_CRM.buscas, m);
   }
 
   private async filaDe(taskId: number, usuarioId: number): Promise<ItemFila[]> {
@@ -284,8 +356,8 @@ export class ServicoCrm implements LeadsCRM {
 
   // ── Lead da conversa ───────────────────────────────────────────────────────
 
-  leadDoContato(ref: RefContato): Promise<EstadoLead> {
-    return this.exclusivo(async () => {
+  leadDoContato(ref: RefContato, opcoes: { forcar?: boolean } = {}): Promise<EstadoLead> {
+    return this.exclusivo(opcoes.forcar ? 'ler lead (forçado)' : 'abrir conversa', async () => {
       const c = await this.lerConta();
       if (!c.usuario) return { tipo: 'sem-login', ...(c.erro ? { erro: c.erro } : {}) } as EstadoLead;
       const uid = c.usuario.id;
@@ -297,7 +369,13 @@ export class ServicoCrm implements LeadsCRM {
 
       const taskId = await this.taskDoVinculo(ref);
       if (taskId != null) {
-        const r = await this.chamar(() => this.cliente.consultar<unknown>('tasks.getById', { id: taskId }));
+        // Teto de consumo: lead visto há menos de 30 min vem do cache local, sem ir ao CRM.
+        const guardado = opcoes.forcar ? null : await this.entradaDoCache(taskId);
+        if (guardado && this.relogio() >= guardado.em && this.relogio() - guardado.em < VALIDADE_LEAD_MS) {
+          this.semConsulta('lead em cache com menos de 30 min');
+          return mostrar(guardado.lead, false);
+        }
+        const r = await this.chamar(() => this.consultar<unknown>('tasks.getById', { id: taskId }));
         if (r.ok) {
           const lead = leadDeTask(r.valor);
           if (lead) {
@@ -314,11 +392,22 @@ export class ServicoCrm implements LeadsCRM {
 
       const tel = normalizarTelefone(ref.telefone);
       if (!tel) return { tipo: 'nao-encontrado', semTelefone: true };
-      const r = await this.chamar(() => this.cliente.consultar<unknown[]>('tasks.findForWhatsapp', { phone: tel }));
+      const recente = opcoes.forcar ? null : await this.buscaRecente(ref);
+      if (recente) {
+        this.semConsulta('resultado da busca com menos de 30 min');
+        return recente.estado;
+      }
+      const r = await this.chamar(() => this.consultar<unknown[]>('tasks.findForWhatsapp', { phone: tel }));
       if (!r.ok) return { tipo: 'erro', erro: r.erro };
       const leads = (Array.isArray(r.valor) ? r.valor : []).map(leadDeTask).filter((l): l is LeadCrm => l != null);
-      if (leads.length === 0) return { tipo: 'nao-encontrado', semTelefone: false };
-      if (leads.length > 1) return { tipo: 'varios', candidatos: leads };
+      if (leads.length === 0) {
+        await this.guardarBusca(ref, { tipo: 'nao-encontrado', semTelefone: false });
+        return { tipo: 'nao-encontrado', semTelefone: false };
+      }
+      if (leads.length > 1) {
+        await this.guardarBusca(ref, { tipo: 'varios', candidatos: leads });
+        return { tipo: 'varios', candidatos: leads };
+      }
       await this.gravarVinculo(ref, leads[0].id);
       await this.guardarNoCache(leads[0]);
       return mostrar(leads[0], false);
@@ -332,18 +421,18 @@ export class ServicoCrm implements LeadsCRM {
   }
 
   procurarLeads(q: string): Promise<ResultadoBusca> {
-    return this.exclusivo(async () => {
+    return this.exclusivo('busca digitada pelo usuário', async () => {
       const texto = q.trim();
       if (texto.length < 2) return { ok: false, erro: erroValidacao('Digite pelo menos 2 letras.') } as ResultadoBusca;
-      const r = await this.chamar(() => this.cliente.consultar<unknown[]>('tasks.findForWhatsapp', { q: texto.slice(0, 100) }));
+      const r = await this.chamar(() => this.consultar<unknown[]>('tasks.findForWhatsapp', { q: texto.slice(0, 100) }));
       if (!r.ok) return { ok: false, erro: r.erro };
       return { ok: true, leads: (Array.isArray(r.valor) ? r.valor : []).map(leadDeTask).filter((l): l is LeadCrm => l != null) };
     });
   }
 
   vincularLead(ref: RefContato, taskId: number): Promise<ResultadoLead> {
-    return this.exclusivo(async () => {
-      const r = await this.chamar(() => this.cliente.consultar<unknown>('tasks.getById', { id: taskId }));
+    return this.exclusivo('vincular lead (ação do usuário)', async () => {
+      const r = await this.chamar(() => this.consultar<unknown>('tasks.getById', { id: taskId }));
       if (!r.ok) return { ok: false, erro: r.erro };
       const lead = leadDeTask(r.valor);
       if (!lead) return { ok: false, erro: { tipo: 'servidor', mensagem: 'Resposta inesperada do CRM.' } };
@@ -354,20 +443,20 @@ export class ServicoCrm implements LeadsCRM {
   }
 
   criarLead(ref: RefContato, nome: string, telefone: string): Promise<ResultadoLead> {
-    return this.exclusivo(async () => {
+    return this.exclusivo('criar lead (ação do usuário)', async () => {
       const titulo = nome.replace(/\s+/g, ' ').trim().slice(0, 500);
       const tel = normalizarTelefone(telefone);
       if (!titulo) return { ok: false, erro: erroValidacao('Informe o nome do lead.') } as ResultadoLead;
       if (!tel) return { ok: false, erro: erroValidacao('Informe o telefone com DDD (ex.: 84 99999-0000).') } as ResultadoLead;
       // Já existe um lead com esse telefone? Usa o existente em vez de duplicar.
-      const antes = await this.chamar(() => this.cliente.consultar<unknown[]>('tasks.findForWhatsapp', { phone: tel }));
+      const antes = await this.chamar(() => this.consultar<unknown[]>('tasks.findForWhatsapp', { phone: tel }));
       if (!antes.ok) return { ok: false, erro: antes.erro };
       const achado = (Array.isArray(antes.valor) ? antes.valor : []).map(leadDeTask).find((l): l is LeadCrm => l != null);
       let lead = achado ?? null;
       if (!lead) {
         // O CRM exige data de lembrete: amanhã às 9h (Fortaleza), para o lead novo não ficar esquecido.
         const amanha9h = instanteNoFuso(somarDias(hojeNoFuso(new Date(this.relogio())), 1), 9, 0);
-        const r = await this.chamar(() => this.cliente.alterar<unknown>('tasks.create', { title: titulo, phone: tel, reminderDate: new Date(amanha9h), reminderEnabled: true }));
+        const r = await this.chamar(() => this.alterar<unknown>('tasks.create', { title: titulo, phone: tel, reminderDate: new Date(amanha9h), reminderEnabled: true }));
         if (!r.ok) return { ok: false, erro: r.erro };
         lead = leadDeTask(r.valor);
         if (!lead) return { ok: false, erro: { tipo: 'servidor', mensagem: 'Resposta inesperada do CRM.' } };
@@ -383,7 +472,7 @@ export class ServicoCrm implements LeadsCRM {
 
   /** Aplica a ação no CRM. Sempre parte do estado ATUAL da task (notas e etiquetas lidas de novo). */
   private async aplicarRemoto(taskId: number, op: OpFila): Promise<LeadCrm> {
-    const ler = async (): Promise<Record<string, unknown>> => ((await this.cliente.consultar<unknown>('tasks.getById', { id: taskId })) ?? {}) as Record<string, unknown>;
+    const ler = async (): Promise<Record<string, unknown>> => ((await this.consultar<unknown>('tasks.getById', { id: taskId })) ?? {}) as Record<string, unknown>;
     const comoLead = (bruto: unknown): LeadCrm => {
       const l = leadDeTask(bruto);
       if (!l) throw new ErroDoCrm({ tipo: 'servidor', mensagem: 'Resposta inesperada do CRM.' });
@@ -393,17 +482,17 @@ export class ServicoCrm implements LeadsCRM {
       const atual = await ler();
       const notas = typeof atual.notes === 'string' ? atual.notes : '';
       if (notas.includes(op.linha)) return comoLead(atual); // reenvio de algo que já chegou: não duplica a linha
-      return comoLead(await this.cliente.alterar<unknown>('tasks.update', { id: taskId, notes: anexarNota(notas, op.linha) }));
+      return comoLead(await this.alterar<unknown>('tasks.update', { id: taskId, notes: anexarNota(notas, op.linha) }));
     }
     if (op.tipo === 'reagendar') {
-      return comoLead(await this.cliente.alterar<unknown>('tasks.update', { id: taskId, reminderDate: new Date(op.em), reminderEnabled: true }));
+      return comoLead(await this.alterar<unknown>('tasks.update', { id: taskId, reminderDate: new Date(op.em), reminderEnabled: true }));
     }
     if (op.tipo === 'etiquetas') {
       const atual = await ler();
       const tags = Array.isArray(atual.tags) ? atual.tags.filter((t): t is string => typeof t === 'string') : [];
-      return comoLead(await this.cliente.alterar<unknown>('tasks.update', { id: taskId, tags: calcularEtiquetas(tags, op.adicionar, op.remover) }));
+      return comoLead(await this.alterar<unknown>('tasks.update', { id: taskId, tags: calcularEtiquetas(tags, op.adicionar, op.remover) }));
     }
-    return comoLead(await this.cliente.alterar<unknown>('tasks.toggleConverted', { id: taskId, converted: true, ...(op.valor !== undefined ? { orderValue: op.valor } : {}) }));
+    return comoLead(await this.alterar<unknown>('tasks.toggleConverted', { id: taskId, converted: true, ...(op.valor !== undefined ? { orderValue: op.valor } : {}) }));
   }
 
   private async enfileirar(usuarioId: number, taskId: number, op: OpFila): Promise<boolean> {
@@ -436,8 +525,7 @@ export class ServicoCrm implements LeadsCRM {
     }
     if (r.erro.tipo === 'rede') {
       const cabe = await this.enfileirar(uid, taskId, op);
-      const lead = otimista();
-      if (cabe) await this.guardarNoCache(lead);
+      const lead = otimista(); // só para mostrar: o cache fica como estava (a fila é aplicada por cima ao ler)
       return cabe ? { ok: true, lead, pendente: true } : { ok: false, erro: r.erro, guardado: false };
     }
     if (r.erro.tipo === 'nao-autenticado' || r.erro.tipo === 'ip') {
@@ -453,7 +541,7 @@ export class ServicoCrm implements LeadsCRM {
   }
 
   registrarContatoNoLead(ref: RefContato, texto: string): Promise<ResultadoAcao> {
-    return this.exclusivo(async () => {
+    return this.exclusivo('registrar contato (ação do usuário)', async () => {
       const t = texto.replace(/\s+/g, ' ').trim();
       if (!t) return { ok: false, erro: erroValidacao('Escreva o que foi combinado com o cliente.'), guardado: false } as ResultadoAcao;
       if (t.length > LIMITE_TEXTO_CONTATO) return { ok: false, erro: erroValidacao(`Texto longo demais (máximo ${LIMITE_TEXTO_CONTATO} caracteres).`), guardado: false } as ResultadoAcao;
@@ -464,7 +552,7 @@ export class ServicoCrm implements LeadsCRM {
   }
 
   reagendar(ref: RefContato, em: number): Promise<ResultadoAcao> {
-    return this.exclusivo(async () => {
+    return this.exclusivo('reagendar (ação do usuário)', async () => {
       if (!Number.isFinite(em) || em <= this.relogio()) return { ok: false, erro: erroValidacao('Escolha uma data futura.'), guardado: false } as ResultadoAcao;
       const taskId = await this.daTask(ref);
       if (typeof taskId !== 'number') return taskId;
@@ -473,7 +561,7 @@ export class ServicoCrm implements LeadsCRM {
   }
 
   alterarEtiquetas(ref: RefContato, mudanca: { adicionar?: string[]; remover?: string[] }): Promise<ResultadoAcao> {
-    return this.exclusivo(async () => {
+    return this.exclusivo('etiquetas (ação do usuário)', async () => {
       const limpa = (l?: string[]) => [...new Set((l ?? []).map((t) => t.trim().slice(0, 40)).filter(Boolean))];
       const adicionar = limpa(mudanca.adicionar);
       const remover = limpa(mudanca.remover);
@@ -488,7 +576,7 @@ export class ServicoCrm implements LeadsCRM {
   }
 
   marcarConvertido(ref: RefContato, valor?: number): Promise<ResultadoAcao> {
-    return this.exclusivo(async () => {
+    return this.exclusivo('marcar convertido (ação do usuário)', async () => {
       if (valor !== undefined && (!Number.isFinite(valor) || valor < 0 || valor > 999999.99)) {
         return { ok: false, erro: erroValidacao('Valor inválido (de 0 a 999.999,99).'), guardado: false } as ResultadoAcao;
       }
@@ -499,7 +587,7 @@ export class ServicoCrm implements LeadsCRM {
   }
 
   reagendarTask(taskId: number, em: number): Promise<{ ok: true } | { ok: false; erro: ErroCrm }> {
-    return this.exclusivo(async () => {
+    return this.exclusivo('adiar lembrete (ação do usuário)', async () => {
       const r = await this.executar(taskId, { tipo: 'reagendar', em });
       if (!r.ok) return { ok: false as const, erro: r.erro };
       await this.sincronizarInterno();
@@ -537,7 +625,7 @@ export class ServicoCrm implements LeadsCRM {
   }
 
   reenviarFila(): Promise<{ enviados: number; restantes: number }> {
-    return this.exclusivo(() => this.reenviarInterno());
+    return this.exclusivo('reenviar fila (pedido do usuário)', () => this.reenviarInterno());
   }
 
   // ── Lembretes do CRM ───────────────────────────────────────────────────────
@@ -545,7 +633,7 @@ export class ServicoCrm implements LeadsCRM {
   private async sincronizarInterno(): Promise<{ ok: true; quantidade: number } | { ok: false; erro: ErroCrm }> {
     const c = await this.lerConta();
     if (!c.usuario) return { ok: true, quantidade: 0 };
-    const r = await this.chamar(() => this.cliente.consultar<unknown[]>('tasks.reminders'));
+    const r = await this.chamar(() => this.consultar<unknown[]>('tasks.reminders'));
     if (!r.ok) return { ok: false, erro: r.erro };
     const agora = this.relogio();
     const itens: LembreteCrm[] = (Array.isArray(r.valor) ? r.valor : []).map(lembreteDeTask).filter((l): l is LembreteCrm => l != null);
@@ -559,18 +647,31 @@ export class ServicoCrm implements LeadsCRM {
     for (const mapa of [avisados, dispensados]) for (const id of Object.keys(mapa)) if (agora - mapa[id] > MANTER_AVISADOS_MS) delete mapa[id];
     await this.gravarSeDiferente(CHAVES_CRM.avisados, avisados);
     await this.gravarSeDiferente(CHAVES_CRM.dispensados, dispensados);
-    // Só regrava se a lista mudou (ou passou 30 min): cada gravação acorda a central e os alarmes.
-    const antes = await this.ler<{ em: number; itens: LembreteCrm[] } | null>(CHAVES_CRM.lembretes, null);
-    if (!antes || agora - antes.em > 30 * 60_000 || JSON.stringify(antes.itens) !== JSON.stringify(itens)) {
-      await this.arm.gravarChave(CHAVES_CRM.lembretes, { em: agora, itens });
-    }
+    // Sempre grava: `em` é o instante da última busca bem-sucedida (base do mínimo de 60 min e do "atualizado há X min").
+    await this.arm.gravarChave(CHAVES_CRM.lembretes, { em: agora, itens });
     return { ok: true, quantidade: itens.length };
   }
 
-  sincronizarLembretes(): Promise<{ ok: true; quantidade: number } | { ok: false; erro: ErroCrm }> {
-    return this.exclusivo(async () => {
+  /**
+   * Busca os lembretes do CRM. `login` e `botao` (Atualizar do CRM) sempre consultam; `painel` e `aba-whatsapp`
+   * respeitam o mínimo de 60 min desde a última busca BEM-SUCEDIDA (guardada no storage: sobrevive ao service
+   * worker dormir). Só nos dois primeiros a fila offline também é reenviada.
+   */
+  sincronizarLembretes(motivo: MotivoSync = 'botao'): Promise<{ ok: true; quantidade: number } | { ok: false; erro: ErroCrm }> {
+    return this.exclusivo(`lembretes: ${ROTULO_SYNC[motivo] ?? 'pedido do usuário'}`, async () => {
+      const c = await this.lerConta();
+      if (!c.usuario) return { ok: true as const, quantidade: 0 };
+      const forcar = motivo === 'login' || motivo === 'botao' || !(motivo in ROTULO_SYNC);
+      if (!forcar) {
+        const antes = await this.ler<{ em: number; itens: LembreteCrm[] } | null>(CHAVES_CRM.lembretes, null);
+        const idade = antes ? this.relogio() - antes.em : -1;
+        if (antes && idade >= 0 && idade < MINIMO_LEMBRETES_MS) {
+          this.semConsulta('lembretes buscados há menos de 60 min');
+          return { ok: true as const, quantidade: antes.itens.length };
+        }
+      }
       const r = await this.sincronizarInterno();
-      if (r.ok) await this.reenviarInterno(); // a rede voltou: aproveita para esvaziar a fila
+      if (r.ok && forcar) await this.reenviarInterno(); // pedido do usuário: aproveita para esvaziar a fila
       return r;
     });
   }
