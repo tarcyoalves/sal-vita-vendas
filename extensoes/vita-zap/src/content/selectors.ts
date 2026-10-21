@@ -61,6 +61,44 @@ export const SELETORES = {
 
   /** Texto de uma mensagem. */
   textoMensagem: ['span.selectable-text', '.copyable-text span[dir]'],
+
+  // ── CRM (barra de abas, lembretes, notas, respostas rápidas) ─────────────────
+
+  /**
+   * Ícones de status (entrega/leitura/relógio) que a linha da lista mostra SÓ quando a última
+   * mensagem foi minha. Qualquer um que exista na linha conta como "última mensagem é minha".
+   */
+  iconeMinhaMensagem: [
+    '[data-icon="msg-check"]',
+    '[data-icon="msg-dblcheck"]',
+    '[data-icon="msg-dblcheck-ack"]',
+    '[data-icon="msg-time"]',
+    '[data-icon="status-check"]',
+    '[data-icon="status-dblcheck"]',
+    '[data-icon="status-time"]',
+    '[data-icon*="check"]',
+  ],
+
+  /** Selo de "não lida" da linha (o número dentro dele é a quantidade). */
+  seloNaoLida: ['span[aria-label*="não lida"]', 'span[aria-label*="nao lida"]', 'span[aria-label*="unread"]'],
+
+  /** Linha-atalho "Arquivadas" no topo da lista: não é uma conversa. */
+  linhaArquivadas: ['[data-icon="archived"]', '[data-icon="archive"]', '[data-icon="archived-chat"]'],
+
+  /** Algum elemento da linha com o id da conversa (ex.: 5584999990000@c.us, ...@g.us), se o WhatsApp expuser. */
+  idDaLinha: ['[data-id*="@"]'],
+
+  /** Textos do cabeçalho da coluna esquerda (para saber se a visão "Arquivadas" está aberta). */
+  cabecalhoColunaEsquerda: ['#side header', '#side [role="heading"]'],
+
+  /** Cabeçalho da conversa aberta (onde entram os botões Lembrete e Cliente). */
+  cabecalhoConversa: ['#main header'],
+
+  /** Rodapé da conversa aberta (a caixa de digitação mora aqui). */
+  rodapeConversa: ['#main footer'],
+
+  /** Indica o tema escuro do WhatsApp (classe "dark" no body/html). */
+  temaEscuro: ['body.dark', 'html.dark', '.dark #app', '[data-theme="dark"]'],
 } as const;
 
 export type ChaveSeletor = keyof typeof SELETORES;
@@ -72,6 +110,11 @@ export function encontrar(raiz: ParentNode, chave: ChaveSeletor): HTMLElement | 
     if (el) return el;
   }
   return null;
+}
+
+/** Verdadeiro se QUALQUER alternativa bate com algum elemento. */
+export function existeAlgum(raiz: ParentNode, chave: ChaveSeletor): boolean {
+  return SELETORES[chave].some((s) => raiz.querySelector(s) != null);
 }
 
 /** Todos os elementos da primeira alternativa que tiver algum resultado. */

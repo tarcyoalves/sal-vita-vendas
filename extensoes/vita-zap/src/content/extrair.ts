@@ -4,7 +4,8 @@ import type { LinhaBruta } from '../shared/contatos';
 import { pareceRotuloData } from '../shared/datas';
 import { normalizarTexto } from '../shared/nomes';
 import { limparMarcas } from './dom';
-import { encontrar, SECOES_SEM_CONVERSA } from './selectors';
+import { chaveDaConversa, telefoneDoNome, type LeituraConversa } from '../shared/crm-regras';
+import { encontrar, existeAlgum, SECOES_SEM_CONVERSA } from './selectors';
 
 export type LeituraLinha =
   | { tipo: 'conversa'; linha: LinhaBruta }
@@ -81,4 +82,66 @@ export function lerConversasVisiveis(elementos: HTMLElement[]): {
 export function lerLinhasVisiveis(elementos: HTMLElement[]): { linhas: LinhaBruta[]; achouSecaoSemConversa: boolean } {
   const r = lerConversasVisiveis(elementos);
   return { linhas: r.conversas.map((c) => c.linha), achouSecaoSemConversa: r.achouSecaoSemConversa };
+}
+
+// ── Leitura para o CRM (só leitura) ──────────────────────────────────────────
+
+export interface LeituraCrm extends LeituraConversa {
+  chave: string;
+  /** A prévia mostra "digitando…"/"gravando áudio…": não é uma mensagem, não mexe no estado. */
+  digitando: boolean;
+}
+
+function idDaLinha(el: HTMLElement): string {
+  const dono = encontrar(el, 'idDaLinha');
+  const direto = el.getAttribute('data-id');
+  return (direto && direto.includes('@') ? direto : dono?.getAttribute('data-id')) ?? '';
+}
+
+/** Texto mais longo da linha que não é o nome, a data nem o selo de não lida: a prévia da última mensagem. */
+function previaDaLinha(el: HTMLElement, titulo: HTMLElement, rotuloData: string | null, selo: HTMLElement | null): string {
+  let melhor = '';
+  for (const f of el.querySelectorAll<HTMLElement>('*')) {
+    if (f.children.length > 0) continue;
+    if (titulo.contains(f) || f.contains(titulo) || selo?.contains(f)) continue;
+    const texto = limparMarcas(f.textContent ?? '');
+    if (!texto || texto === rotuloData) continue;
+    if (texto.length > melhor.length) melhor = texto;
+  }
+  return melhor.slice(0, 200);
+}
+
+/**
+ * Lê uma linha da lista como conversa do CRM. Devolve null para o que não é conversa
+ * (cabeçalho de seção, linha "Arquivadas", linha sem nome).
+ */
+export function lerLinhaCrm(el: HTMLElement): LeituraCrm | null {
+  const titulo = encontrar(el, 'tituloLinha');
+  if (!titulo) return null;
+  if (existeAlgum(el, 'linhaArquivadas')) return null;
+  const nome = limparMarcas(titulo.getAttribute('title') || titulo.textContent || '');
+  if (nome === '') return null;
+  const rotuloData = rotuloDataDaLinha(el, titulo);
+  const selo = encontrar(el, 'seloNaoLida');
+  const naoLida = selo != null;
+  const digitos = selo ? /\d+/.exec(selo.textContent ?? '') : null;
+  const naoLidas = naoLida ? Math.max(1, digitos ? Number(digitos[0]) : 1) : 0;
+  const previa = previaDaLinha(el, titulo, rotuloData, selo);
+  const id = idDaLinha(el);
+  const telefoneDoId = /^(?:true_|false_)?(\d{8,15})@c\.us/.exec(id)?.[1];
+  const grupo = encontrar(el, 'iconeGrupo') != null || /@g\.us/.test(id);
+  const digitando = /^(digitando|gravando|typing|recording)/i.test(previa);
+  return {
+    chave: chaveDaConversa(nome),
+    nome,
+    telefone: telefoneDoId ?? telefoneDoNome(nome),
+    rotuloData,
+    previa,
+    // Sem prévia não dá para saber; com prévia, o ícone de entrega só existe nas mensagens minhas.
+    ultimaDeMim: naoLida ? false : previa === '' ? null : existeAlgum(el, 'iconeMinhaMensagem'),
+    naoLida,
+    naoLidas,
+    grupo,
+    digitando,
+  };
 }

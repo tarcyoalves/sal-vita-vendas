@@ -5,6 +5,8 @@
 import type { EventoConteudo, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
 import { abrirEColar, limparCaixa, pararObservacao } from './execucao';
 import { ErroSeletor } from './lista';
+import { iniciarCrm } from './crm';
+import { avisarUmaVez } from './crm/ui';
 import { encontrar } from './selectors';
 import { varrerLista } from './varredura';
 
@@ -80,3 +82,6 @@ if (!jaCarregado) chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo
     });
   return true; // resposta assíncrona
 });
+
+// CRM dentro do WhatsApp Web (barra de abas, lembretes, notas...). Falha em silêncio.
+if (!jaCarregado) iniciarCrm().catch((e: unknown) => avisarUmaVez('crm', 'Não consegui iniciar o CRM.', e));
