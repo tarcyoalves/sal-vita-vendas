@@ -1,6 +1,7 @@
 // Executa o pedido "abrir a conversa e colar o rascunho" (clique na notificação, central de
 // lembretes). Só abre a conversa e COLA o texto; quem envia é o usuário.
 
+import { urlDaConversaPorTelefone } from '../../shared/crm-acoes';
 import { renderizarModelo } from '../../shared/crm-modelos';
 import type { RepositorioContatos } from '../../shared/repositorio';
 import { abrirEPrepararRascunho } from '../execucao';
@@ -9,6 +10,17 @@ import { mostrarAviso } from './popover';
 import { avisarUmaVez } from './ui';
 
 let ocupado = false;
+
+/**
+ * Lembrete do CRM Lembretes: abre a conversa do telefone (o WhatsApp Web abre o chat de /send?phone=...).
+ * Recarrega a página do WhatsApp Web. Não envia nada e não preenche texto.
+ */
+export function abrirConversaPorTelefoneNaPagina(telefone: string): boolean {
+  const url = urlDaConversaPorTelefone(telefone);
+  if (!url) return false;
+  window.location.assign(url);
+  return true;
+}
 
 /** Abre a conversa de `nome` e cola o rascunho (com {nome}/{primeiro_nome} resolvidos). */
 export async function abrirConversaComRascunho(nome: string, rascunho?: string): Promise<boolean> {

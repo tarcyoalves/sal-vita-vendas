@@ -79,6 +79,14 @@ textarea.campo { resize: vertical; min-height: 60px; }
 .cor.sel { border-color: var(--texto); }
 .msg { margin-top: 6px; font-size: 12px; color: var(--perigo); }
 .ok { color: var(--verde); }
+.faixa { display: flex; flex-direction: column; gap: 4px; padding: 6px 12px; background: var(--fundo2); border-bottom: 1px solid var(--borda); }
+.faixa-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.faixa-titulo { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.faixa-nota { color: var(--suave); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.faixa .btn { padding: 3px 10px; font-size: 12px; }
+.tag.neutra { background: var(--fundo); color: var(--texto); border: 1px solid var(--borda); }
+.tag.ok { background: var(--verde); }
+.aviso-mini { padding: 1px 8px; border-radius: 10px; background: var(--aviso-fundo); color: var(--aviso); font-size: 11px; }
 .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); max-width: min(80vw, 520px); padding: 10px 16px; border-radius: 10px; background: #111b21; color: #e9edef;
   box-shadow: var(--sombra); pointer-events: auto; font-size: 13px; z-index: 5; }
 .toast.erro { background: #8c1d18; color: #fff; }

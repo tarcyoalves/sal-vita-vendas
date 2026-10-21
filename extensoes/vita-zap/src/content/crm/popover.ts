@@ -62,6 +62,7 @@ export function abrirPopover(op: OpcoesPopover): PopoverAberto {
   o.conteudo.append(el);
 
   const reposicionar = (): void => {
+    if (!op.ancora.isConnected) return; // a faixa/botão foi redesenhado: fica onde está
     const r = op.ancora.getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;

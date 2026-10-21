@@ -6,6 +6,7 @@
 import { acharContato, lembretesDoContato } from '../../shared/crm-contatos';
 import { agruparLembretes, formatarVencimento, lerDataHoraLocal, paraInputDataHora, prazoRapido, PRAZOS_RAPIDOS, type PrazoRapido } from '../../shared/crm-lembretes';
 import type { Lembrete, RefContato } from '../../shared/crm-tipos';
+import { ehLembreteCrm } from '../../shared/crm-remoto';
 import type { Estado } from './estado';
 import { abrirPopover, fecharPopover, mostrarAviso } from './popover';
 import { h } from './ui';
@@ -13,7 +14,8 @@ import { h } from './ui';
 export interface ContextoLembretes {
   estado: Estado;
   agora: () => Date;
-  abrirConversa: (pedido: { nome: string; telefone?: string; rascunho?: string }) => void;
+  /** `remoto`: lembrete que veio do CRM Lembretes (abre a conversa pelo telefone). */
+  abrirConversa: (pedido: { nome: string; telefone?: string; rascunho?: string; remoto?: boolean }) => void;
 }
 
 function trecho(t: string, max = 80): string {
@@ -150,7 +152,7 @@ export function abrirCentral(ancora: HTMLElement, ctx: ContextoLembretes): void 
             l.rascunho ? h('div', { class: 'dica' }, trecho(l.rascunho)) : null,
           ),
           h('div', { class: 'linha2' },
-            h('button', { class: 'btn pri', type: 'button', onclick: () => { fecharPopover(); ctx.abrirConversa({ nome: l.nome, telefone: l.telefone, rascunho: l.rascunho }); } }, 'Abrir'),
+            h('button', { class: 'btn pri', type: 'button', onclick: () => { fecharPopover(); ctx.abrirConversa({ nome: l.nome, telefone: l.telefone, rascunho: l.rascunho, remoto: ehLembreteCrm(l.id) }); } }, 'Abrir'),
             h('button', { class: 'btn', type: 'button', onclick: () => void concluir(ctx, l.id).then(depois) }, 'Concluir'),
             h('button', { class: 'btn', type: 'button', title: 'Adiar para amanhã às 9h', onclick: () => void adiar(ctx, l.id, prazoRapido('amanha9h', ctx.agora())).then(depois) }, 'Adiar'),
           ),

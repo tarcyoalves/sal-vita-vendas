@@ -17,7 +17,10 @@ import { nomeDaConversaAberta } from '../execucao';
 import { refDaConversaAberta } from './conversa-aberta';
 import { esperarAte } from '../dom';
 import { encontrar, encontrarTodos } from '../selectors';
-import { consumirAcaoPendente, abrirConversaComRascunho } from './acao-pendente';
+import { abrirConversaComRascunho, abrirConversaPorTelefoneNaPagina, consumirAcaoPendente } from './acao-pendente';
+import { FaixaLead, type AcoesFaixa } from './faixa-lead';
+import { abrirConverter, abrirCriarLead, abrirEtiquetas, abrirReagendar, abrirRegistrarContato, abrirVincular, type ContextoLead } from './painel-lead';
+import { ehLeadsCRM, type EstadoLead, type LeadsCRM } from '../../shared/leads';
 import { Barra } from './barra';
 import { Cabecalho } from './cabecalho';
 import { Estado } from './estado';
@@ -74,6 +77,10 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   await estado.iniciar(() => void consumirAcaoPendente(repo));
   const barra = new Barra();
   const cabecalho = new Cabecalho();
+  // Lead do CRM Lembretes (só existe com login; sem login a faixa não aparece e tudo segue local).
+  const leads: LeadsCRM | null = ehLeadsCRM(repo) ? repo : null;
+  const faixa = new FaixaLead();
+  const leadCache: { chave: string; estado: EstadoLead | null; em: number; buscando: boolean } = { chave: '', estado: null, em: 0, buscando: false };
   const botaoRespostas = new BotaoRespostas({ estado, nomeDaConversa: nomeDaConversaAberta, caixa: () => encontrar(document, 'caixaMensagem') });
 
   let lendoLista = false;
@@ -83,7 +90,70 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   let encerrado = false;
   const inicio = Date.now();
 
-  const ctxLembretes: ContextoLembretes = { estado, agora: agoraFn, abrirConversa: ({ nome, rascunho }) => void abrirConversaComRascunho(nome, rascunho) };
+  const ctxLembretes: ContextoLembretes = { estado, agora: agoraFn, abrirConversa: ({ nome, telefone, rascunho, remoto }) => {
+      // Lembrete do CRM: pelo telefone (o nome do lead nem sempre é o salvo no WhatsApp). Os locais seguem por nome.
+      if (remoto && telefone && abrirConversaPorTelefoneNaPagina(telefone)) return;
+      void abrirConversaComRascunho(nome, rascunho);
+    },
+  };
+
+  function buscarLead(ref: RefContato, chave: string): void {
+    if (!leads) return;
+    leadCache.buscando = true;
+    leadCache.em = Date.now();
+    leads
+      .leadDoContato(ref)
+      .then(
+        (e) => {
+          if (leadCache.chave === chave) leadCache.estado = e;
+        },
+        (e: unknown) => {
+          if (leadCache.chave === chave) leadCache.estado = { tipo: 'erro', erro: { tipo: 'rede', mensagem: e instanceof Error && e.message ? e.message : 'A extensão não respondeu.' } };
+          avisarUmaVez('lead', 'Não consegui consultar o lead no CRM.', e);
+        },
+      )
+      .finally(() => {
+        leadCache.buscando = false;
+        if (!encerrado) ciclo();
+      });
+  }
+
+  /** Faixa do lead do CRM: busca ao abrir a conversa (e a cada minuto) e redesenha com o que há em cache. */
+  function atualizarFaixa(header: HTMLElement | null, ref: RefContato | null, agora: Date): void {
+    if (!leads) return;
+    if (!header || !ref) {
+      faixa.remover();
+      return;
+    }
+    const chave = `${chaveDaConversa(ref.nome)}|${ref.telefone ?? ''}`;
+    if (leadCache.chave !== chave) Object.assign(leadCache, { chave, estado: null, em: 0 });
+    if (!leadCache.buscando && Date.now() - leadCache.em > 60_000) buscarLead(ref, chave);
+    const sobre = (abrir: (a: HTMLElement) => void) => (a: HTMLElement) => (popoverAbertoEm(a) ? fecharPopover() : abrir(a));
+    const ctxLead: ContextoLead = {
+      leads,
+      agora: agoraFn,
+      aplicar: (lead, pendente) => {
+        const atual = leadCache.estado?.tipo === 'lead' ? leadCache.estado.pendentes : 0;
+        leadCache.estado = { tipo: 'lead', lead, desatualizado: false, pendentes: pendente ? atual + 1 : 0 };
+        ciclo();
+      },
+      recarregar: () => {
+        leadCache.em = 0;
+        ciclo();
+      },
+    };
+    const lead = leadCache.estado?.tipo === 'lead' ? leadCache.estado.lead : null;
+    const acoes: AcoesFaixa = {
+      registrarContato: sobre((a) => abrirRegistrarContato(a, ctxLead, ref)),
+      reagendar: sobre((a) => lead && abrirReagendar(a, ctxLead, ref, lead)),
+      etiquetas: sobre((a) => lead && abrirEtiquetas(a, ctxLead, ref, lead)),
+      converter: sobre((a) => abrirConverter(a, ctxLead, ref)),
+      vincular: sobre((a) => abrirVincular(a, ctxLead, ref)),
+      criar: sobre((a) => abrirCriarLead(a, ctxLead, ref)),
+      escolher: sobre((a) => abrirVincular(a, ctxLead, ref, leadCache.estado?.tipo === 'varios' ? leadCache.estado.candidatos : [])),
+    };
+    faixa.atualizar(header, leadCache.estado, agora, acoes);
+  }
 
   /** Mantém os botões do cabeçalho da conversa aberta (e fecha o painel se a conversa mudou). */
   function atualizarCabecalho(agora: Date, indice: ReturnType<typeof criarIndice>): void {
@@ -91,8 +161,10 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
     const header = encontrar(document, 'cabecalhoConversa');
     if (!header || !ref) {
       cabecalho.remover();
+      atualizarFaixa(null, null, agora);
       return;
     }
+    atualizarFaixa(header, ref, agora);
     const contato = acharNoIndice(indice, ref);
     // Qual conversa está aberta (para fechar o painel ao trocar de conversa): a chave da lista, que
     // não muda quando o contato passa a existir (ao salvar a primeira nota, por exemplo).
@@ -278,7 +350,10 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   window.addEventListener('resize', ciclo);
 
   observador.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
-  const removerOuvinte = estado.ouvir(() => agendar());
+  const removerOuvinte = estado.ouvir(() => {
+    leadCache.em = 0; // login, sincronização ou ação em outra parte: busca o lead de novo
+    agendar();
+  });
   const periodico = op.periodicoMs === 0 ? null : setInterval(ciclo, op.periodicoMs ?? 30_000);
   ciclo();
   // Pedido pendente (clique na notificação com o WhatsApp Web ainda carregando): espera a lista e executa.
@@ -295,6 +370,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       if (periodico) clearInterval(periodico);
       barra.remover();
       cabecalho.remover();
+      faixa.remover();
       botaoRespostas.remover();
       document.removeEventListener('input', aoDigitar, true);
       window.removeEventListener('resize', ciclo);
