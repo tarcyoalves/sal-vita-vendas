@@ -4,8 +4,12 @@
 // A lógica da campanha roda no painel (que precisa estar aberto): fechar o painel pausa tudo,
 // o que é o comportamento seguro.
 
+import { iniciarCrm } from './crm-sync';
 import { aoAlarme, aoClicarNotificacao, sincronizar } from './lembretes';
-import { repositorioPadrao } from '../shared/repositorio-local';
+import { RepositorioLocal, repositorioPadrao, usarServicoCrm } from '../shared/repositorio-local';
+
+// O serviço do CRM Lembretes (rede, fila, sincronização) precisa estar registrado ANTES de qualquer repositorioPadrao().
+iniciarCrm(new RepositorioLocal(), usarServicoCrm);
 
 function abrirPainelAoClicarNoIcone(): void {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => undefined);

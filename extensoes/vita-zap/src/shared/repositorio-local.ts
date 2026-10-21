@@ -27,6 +27,10 @@ import { adiarLembrete, criarLembrete as opCriarLembrete, type ResultadoLembrete
 import { excluirResposta as opExcluirResposta, MODELOS_INICIAIS, salvarResposta as opSalvarResposta } from './crm-modelos';
 import { CHAVE_ACAO_PENDENTE, CHAVES, COLECOES, CONFIG_PADRAO, dadosVazios, ehAcaoPendente, novoId, sanearDados, type Colecao } from './crm-store';
 import type { AcaoPendente, ConfigCrm, Contato, Conversa, DadosCrm, Etiqueta, Fase, Lembrete, RefContato } from './crm-tipos';
+import { PREFIXO_CHAVES_CRM } from './crm-remoto';
+import { criarProxyLeads } from './crm-transporte';
+import type { ArmazemChaves, LeadsCRM } from './leads';
+import { criarRepositorioCRM, type RepositorioComCrm } from './repositorio-crm';
 import type { DestinoVinculo, EventoRepositorio, ItemVisto, ModoImportacao, RepositorioContatos, ResultadoImportar } from './repositorio';
 
 const VALIDADE_ABERTURA_MS = 15 * 60_000;
@@ -36,7 +40,7 @@ export const COLECOES_DE_ANOTACAO: Colecao[] = COLECOES.filter((c) => c !== 'con
 
 type Ouvinte = (e: EventoRepositorio) => void;
 
-export class RepositorioLocal implements RepositorioContatos {
+export class RepositorioLocal implements RepositorioContatos, ArmazemChaves {
   private fila: Promise<unknown> = Promise.resolve();
   private readonly ouvintes = new Set<Ouvinte>();
   private pararStorage: (() => void) | null = null;
@@ -86,6 +90,8 @@ export class RepositorioLocal implements RepositorioContatos {
       const ouvinte = (mudancas: Record<string, chrome.storage.StorageChange>, area: string): void => {
         if (area !== 'local') return;
         const colecoes = COLECOES.filter((c) => CHAVES[c] in mudancas);
+        // Mudou algo da integração com o CRM (lembretes em cache, avisados, conta...): quem lista lembretes relê.
+        if (Object.keys(mudancas).some((k) => k.startsWith(PREFIXO_CHAVES_CRM)) && !colecoes.includes('lembretes')) colecoes.push('lembretes');
         const abertura = CHAVE_ACAO_PENDENTE in mudancas && mudancas[CHAVE_ACAO_PENDENTE].newValue !== undefined;
         if (colecoes.length > 0 || abertura) this.emitir({ colecoes, abertura });
       };
@@ -99,6 +105,24 @@ export class RepositorioLocal implements RepositorioContatos {
         this.pararStorage = null;
       }
     };
+  }
+
+  // ── Chaves da integração com o CRM (vz.crm.*): cache, vínculos, fila ──────
+
+  async lerChave<T>(chave: string): Promise<T | undefined> {
+    return (await chrome.storage.local.get(chave))[chave] as T | undefined;
+  }
+
+  async gravarChave(chave: string, valor: unknown): Promise<void> {
+    await chrome.storage.local.set({ [chave]: valor });
+  }
+
+  async limparChaves(prefixo: string, manter: readonly string[]): Promise<void> {
+    const todas = Object.keys(await chrome.storage.local.get(null));
+    const apagar = todas.filter((k) => k.startsWith(prefixo) && !manter.includes(k));
+    if (apagar.length > 0) await chrome.storage.local.remove(apagar);
+    // remove() não avisa os ouvintes desta página: avisa quem lista lembretes.
+    if (apagar.length > 0) this.emitir({ colecoes: ['lembretes'], abertura: false });
   }
 
   // ── Leitura ────────────────────────────────────────────────────────────────
@@ -312,15 +336,26 @@ export class RepositorioLocal implements RepositorioContatos {
   }
 }
 
-let padrao: RepositorioContatos | null = null;
+let padrao: RepositorioComCrm | null = null;
+let servicoCrm: LeadsCRM | null = null;
 
-/** Repositório usado pela extensão (um por contexto: página, painel, service worker). */
-export function repositorioPadrao(): RepositorioContatos {
-  padrao ??= new RepositorioLocal();
+/**
+ * O service worker registra aqui o ServicoCrm real (com rede). As outras partes da extensão (WhatsApp Web,
+ * painel) usam um proxy que o chama por mensagem. Só o RepositorioLocal toca em chrome.storage.
+ */
+export function usarServicoCrm(s: LeadsCRM | null): void {
+  servicoCrm = s;
+  padrao = null;
+}
+
+/** Repositório usado pela extensão (um por contexto: página, painel, service worker): dados locais + lembretes e leads do CRM. */
+export function repositorioPadrao(): RepositorioComCrm {
+  padrao ??= criarRepositorioCRM(new RepositorioLocal(), servicoCrm ?? criarProxyLeads());
   return padrao;
 }
 
 /** Só para testes: descarta o repositório padrão (e os ouvintes dele) para o próximo teste começar limpo. */
 export function reiniciarRepositorioPadrao(): void {
   padrao = null;
+  servicoCrm = null;
 }

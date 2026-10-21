@@ -13,10 +13,10 @@
     "notifications"
   ],
   "host_permissions": [
-    "https://web.whatsapp.com/*",
-    "https://lembretes.salvitarn.com.br/*"
+    "https://web.whatsapp.com/*"
   ],
   "optional_host_permissions": [
+    "https://lembretes.salvitarn.com.br/*",
     "https://*/*",
     "http://localhost/*"
   ],

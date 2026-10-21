@@ -2,7 +2,8 @@
 // com a contagem de vencidos no ícone. Nada aqui envia mensagem: o clique na notificação só pede
 // ao content script para abrir a conversa e colar o rascunho.
 
-import { abrirConversaNoWhatsApp } from '../shared/crm-acoes';
+import { abrirConversaNoWhatsApp, abrirConversaPorTelefone } from '../shared/crm-acoes';
+import { ehLembreteCrm } from '../shared/crm-remoto';
 import { agendaDeAlarmes, contarVencidos, idDoAlarme, PREFIXO_ALARME } from '../shared/crm-lembretes';
 import type { Lembrete } from '../shared/crm-tipos';
 import type { RepositorioContatos } from '../shared/repositorio';
@@ -78,5 +79,7 @@ export async function aoClicarNotificacao(notificacaoId: string): Promise<void> 
   const l = (await lerLembretes()).find((x) => x.id === id);
   await chrome.notifications.clear(notificacaoId);
   if (!l) return;
+  // Lembrete do CRM Lembretes: abre a conversa pelo telefone (o nome do lead pode não ser o do WhatsApp). Não envia nada.
+  if (ehLembreteCrm(l.id) && l.telefone && (await abrirConversaPorTelefone(l.telefone))) return;
   await abrirConversaNoWhatsApp(dados(), { nome: l.nome, telefone: l.telefone, rascunho: l.rascunho, lembreteId: l.id });
 }
