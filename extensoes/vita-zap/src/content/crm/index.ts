@@ -5,12 +5,16 @@
 
 import { chaveDaConversa, classificar, contar, diagnosticoDaLeitura, idadeDaUltima, passaNoFiltro, atualizarConversa, type FiltroLista } from '../../shared/crm-regras';
 import { contarVencidos } from '../../shared/crm-lembretes';
-import { dispensarConversa, reativarConversa } from '../../shared/crm-contatos';
-import type { AbaId, Conversa } from '../../shared/crm-tipos';
+import { acharNoIndice, criarIndice, lembretesDoContato } from '../../shared/crm-contatos';
+import { instanteDaUltima } from '../../shared/crm-clientes';
+import { repositorioPadrao } from '../../shared/repositorio-local';
+import type { ItemVisto, RepositorioContatos } from '../../shared/repositorio';
+import type { AbaId, Conversa, RefContato } from '../../shared/crm-tipos';
 import { textoDoCampo } from '../dom';
 import { lerLinhaCrm } from '../extrair';
 import { linhasDaLista } from '../lista';
 import { nomeDaConversaAberta } from '../execucao';
+import { refDaConversaAberta } from './conversa-aberta';
 import { esperarAte } from '../dom';
 import { encontrar, encontrarTodos } from '../selectors';
 import { consumirAcaoPendente, abrirConversaComRascunho } from './acao-pendente';
@@ -33,6 +37,8 @@ export interface OpcoesCrm {
   debounceMs?: number;
   /** Intervalo da releitura periódica (tempos decorridos, lembretes vencidos). 0 desliga. */
   periodicoMs?: number;
+  /** Onde ficam os dados (padrão: chrome.storage.local via RepositorioLocal). */
+  repositorio?: RepositorioContatos;
 }
 
 export interface ControladorCrm {
@@ -63,8 +69,9 @@ function emArquivadas(): boolean {
 
 export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   const agoraFn = op.agora ?? (() => new Date());
-  const estado = new Estado();
-  await estado.iniciar(() => void consumirAcaoPendente());
+  const repo = op.repositorio ?? repositorioPadrao();
+  const estado = new Estado(repo);
+  await estado.iniciar(() => void consumirAcaoPendente(repo));
   const barra = new Barra();
   const cabecalho = new Cabecalho();
   const botaoRespostas = new BotaoRespostas({ estado, nomeDaConversa: nomeDaConversaAberta, caixa: () => encontrar(document, 'caixaMensagem') });
@@ -76,26 +83,30 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   let encerrado = false;
   const inicio = Date.now();
 
-  const ctxLembretes: ContextoLembretes = { estado, agora: agoraFn, abrirConversa: (nome, rascunho) => void abrirConversaComRascunho(nome, rascunho) };
+  const ctxLembretes: ContextoLembretes = { estado, agora: agoraFn, abrirConversa: ({ nome, rascunho }) => void abrirConversaComRascunho(nome, rascunho) };
 
   /** Mantém os botões do cabeçalho da conversa aberta (e fecha o painel se a conversa mudou). */
-  function atualizarCabecalho(agora: Date): void {
-    const nome = nomeDaConversaAberta();
+  function atualizarCabecalho(agora: Date, indice: ReturnType<typeof criarIndice>): void {
+    const ref = refDaConversaAberta();
     const header = encontrar(document, 'cabecalhoConversa');
-    if (!header || !nome) {
+    if (!header || !ref) {
       cabecalho.remover();
       return;
     }
-    const chave = chaveDaConversa(nome);
-    if (cabecalho.chaveAtual && cabecalho.chaveAtual !== chave) fecharPopover();
-    const dados = estado.dados;
-    const pendentes = dados.lembretes.filter((l) => l.chave === chave && l.status !== 'concluido');
+    const contato = acharNoIndice(indice, ref);
+    // Qual conversa está aberta (para fechar o painel ao trocar de conversa): a chave da lista, que
+    // não muda quando o contato passa a existir (ao salvar a primeira nota, por exemplo).
+    const identidade = chaveDaConversa(ref.nome);
+    if (cabecalho.chaveAtual && cabecalho.chaveAtual !== identidade) fecharPopover();
+    // Telefone lido do HTML que o contato ainda não tinha: guarda (e junta duplicados pelo telefone).
+    if (contato && ref.telefone && !contato.telefone) void estado.fazer((r) => r.registrarVistos([{ ref }]));
+    const pendentes = contato ? lembretesDoContato(estado.dados, contato.id) : [];
     cabecalho.atualizar(
       header,
-      { nome, chave, lembretes: pendentes.length, anotacoes: dados.contatos[chave]?.notas.length ?? 0, vencido: pendentes.some((l) => l.venceEm <= agora.getTime()) },
+      { nome: ref.nome, chave: identidade, lembretes: pendentes.length, anotacoes: contato?.notas.length ?? 0, vencido: pendentes.some((l) => l.venceEm <= agora.getTime()) },
       {
-        abrirLembrete: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirPainelNovoLembrete(ancora, ctxLembretes, nome, chave)),
-        abrirCliente: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirPainelCliente(ancora, { estado, agora: agoraFn, dispensar, reativar }, nome, chave)),
+        abrirLembrete: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirPainelNovoLembrete(ancora, ctxLembretes, ref)),
+        abrirCliente: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirPainelCliente(ancora, { estado, agora: agoraFn }, ref)),
       },
     );
   }
@@ -107,27 +118,21 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
 
   function mudarConfig(parcial: Partial<{ aba: AbaId; diasSemResposta: number | null; filtroEtiquetas: string[] }>): void {
     estado.dados.config = { ...estado.dados.config, ...parcial };
-    estado.mudou('config');
+    void estado.repo.salvarConfig(estado.dados.config).catch((e: unknown) => avisarUmaVez('config', 'Não consegui gravar o filtro.', e));
     ciclo();
   }
 
-  function dispensar(chave: string): void {
-    if (dispensarConversa(estado.dados, chave, agoraFn().getTime())) estado.mudou('contatos');
-    void estado.salvarAgora();
-    ciclo();
-  }
-
-  function reativar(chave: string): void {
-    reativarConversa(estado.dados, chave, agoraFn().getTime());
-    estado.mudou('contatos');
-    void estado.salvarAgora();
-    ciclo();
+  function dispensar(conversa: Conversa): void {
+    const ref: RefContato = { nome: conversa.nome, telefone: conversa.telefone };
+    void estado.fazer((r) => r.dispensar(ref, conversa.ass)).then(() => ciclo());
   }
 
   /** Atualiza as conversas guardadas com o que a lista mostra agora. */
   function lerEstado(elementos: HTMLElement[], arquivadas: boolean): void {
     const agora = agoraFn();
     let mudou = false;
+    const indice = criarIndice(estado.dados);
+    const vistos: ItemVisto[] = [];
     for (const el of elementos) {
       const leitura = lerLinhaCrm(el);
       if (!leitura || leitura.digitando) continue;
@@ -136,8 +141,14 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       if (anterior && JSON.stringify({ ...anterior, vistaEm: 0 }) === JSON.stringify({ ...nova, vistaEm: 0 }) && agora.getTime() - anterior.vistaEm < 6 * 3_600_000) continue;
       estado.dados.conversas[leitura.chave] = nova;
       mudou = true;
+      // Contato que o usuário já anotou: guarda o telefone aprendido e o instante da última mensagem.
+      const ref = { nome: nova.nome, telefone: nova.telefone };
+      const contato = acharNoIndice(indice, ref);
+      const instante = instanteDaUltima(nova);
+      if (contato && ((nova.telefone && !contato.telefone) || instante > (contato.ultimoContatoEm ?? 0))) vistos.push({ ref, ultimoContatoEm: instante });
     }
-    if (mudou) estado.mudouSilencioso('conversas');
+    if (mudou) estado.conversasMudaram();
+    if (vistos.length > 0) void estado.fazer((r) => r.registrarVistos(vistos)).catch((e: unknown) => avisarUmaVez('vistos', 'Não consegui gravar o último contato.', e));
   }
 
   function ciclo(): void {
@@ -162,6 +173,8 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       }
 
       const dados = estado.dados;
+      const indice = criarIndice(dados);
+      const contatoDe = (c: Conversa) => acharNoIndice(indice, { nome: c.nome, telefone: c.telefone });
       const conversas = Object.values(dados.conversas);
       const filtro = filtroAtual();
       const filtroLigado = !busca && !arquivadas && !lendoLista && (filtro.aba !== 'todas' || filtro.etiquetas.length > 0);
@@ -171,7 +184,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
         return { el, conversa: l ? dados.conversas[l.chave] : undefined };
       });
       aplicarFiltroNaLista(
-        leituras.map(({ el, conversa }) => ({ el, mostrar: !filtroLigado || !conversa || passaNoFiltro(conversa, dados.contatos[conversa.chave], filtro, agora) })),
+        leituras.map(({ el, conversa }) => ({ el, mostrar: !filtroLigado || !conversa || passaNoFiltro(conversa, contatoDe(conversa), filtro, agora) })),
         filtroLigado,
       );
       for (const { el, conversa } of leituras) {
@@ -179,22 +192,21 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
           removerSelo(el);
           continue;
         }
-        const contato = dados.contatos[conversa.chave];
-        const k = classificar(conversa, contato);
+        const k = classificar(conversa, contatoDe(conversa));
         anotarLinha(
           el,
-          { idade: idadeDaUltima(conversa, agora).texto, aoDispensar: filtro.aba === 'precisa' && k.precisa ? () => dispensar(conversa.chave) : undefined },
+          { idade: idadeDaUltima(conversa, agora).texto, aoDispensar: filtro.aba === 'precisa' && k.precisa ? () => dispensar(conversa) : undefined },
           `${conversa.chave}|${conversa.ass}`,
         );
       }
 
-      atualizarCabecalho(agora);
+      atualizarCabecalho(agora, indice);
       botaoRespostas.posicionar(encontrar(document, 'caixaMensagem'));
 
       barra.render(
         {
           aba: filtro.aba,
-          contagens: contar(conversas, dados.contatos),
+          contagens: contar(conversas, contatoDe),
           dias: filtro.diasSemResposta,
           etiquetasMarcadas: filtro.etiquetas.length,
           vencidos: contarVencidos(dados.lembretes, agora),
@@ -270,7 +282,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   const periodico = op.periodicoMs === 0 ? null : setInterval(ciclo, op.periodicoMs ?? 30_000);
   ciclo();
   // Pedido pendente (clique na notificação com o WhatsApp Web ainda carregando): espera a lista e executa.
-  void esperarAte(() => encontrar(document, 'painelLateral'), 60_000, 500).then((lista) => (lista && !encerrado ? consumirAcaoPendente() : undefined));
+  void esperarAte(() => encontrar(document, 'painelLateral'), 60_000, 500).then((lista) => (lista && !encerrado ? consumirAcaoPendente(repo) : undefined));
 
   return {
     estado,

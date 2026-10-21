@@ -2,14 +2,12 @@
 // lembretes). Só abre a conversa e COLA o texto; quem envia é o usuário.
 
 import { renderizarModelo } from '../../shared/crm-modelos';
-import { CHAVE_ACAO_PENDENTE, ehAcaoPendente } from '../../shared/crm-store';
+import type { RepositorioContatos } from '../../shared/repositorio';
 import { abrirEPrepararRascunho } from '../execucao';
 import { ErroSeletor } from '../lista';
 import { mostrarAviso } from './popover';
 import { avisarUmaVez } from './ui';
 
-const VALIDADE_MS = 15 * 60_000;
-let ultimoTs = 0;
 let ocupado = false;
 
 /** Abre a conversa de `nome` e cola o rascunho (com {nome}/{primeiro_nome} resolvidos). */
@@ -37,20 +35,14 @@ export async function abrirConversaComRascunho(nome: string, rascunho?: string):
   }
 }
 
-/** Lê o pedido gravado pelo service worker/painel (se houver e for recente) e o executa uma vez. */
-export async function consumirAcaoPendente(): Promise<void> {
-  let bruto: unknown;
+/** Pega o pedido pendente (gravado pelo service worker/painel; só vale se for recente) e o executa uma vez. */
+export async function consumirAcaoPendente(repo: RepositorioContatos): Promise<void> {
+  let pedido;
   try {
-    bruto = (await chrome.storage.local.get(CHAVE_ACAO_PENDENTE))[CHAVE_ACAO_PENDENTE];
+    pedido = await repo.consumirAbertura();
   } catch {
     return;
   }
-  if (!ehAcaoPendente(bruto)) return;
-  if (bruto.ts <= ultimoTs || Date.now() - bruto.ts > VALIDADE_MS) {
-    await chrome.storage.local.remove(CHAVE_ACAO_PENDENTE).catch(() => undefined);
-    return;
-  }
-  ultimoTs = bruto.ts;
-  await chrome.storage.local.remove(CHAVE_ACAO_PENDENTE).catch(() => undefined);
-  await abrirConversaComRascunho(bruto.nome, bruto.rascunho);
+  if (!pedido) return;
+  await abrirConversaComRascunho(pedido.nome, pedido.rascunho);
 }

@@ -4,7 +4,6 @@
 
 import { useMemo, useState } from 'react';
 import { abrirConversaNoWhatsApp } from '../shared/crm-acoes';
-import { excluirEtiqueta, renomearEtiqueta } from '../shared/crm-contatos';
 import { montarClientes, ORDENS, type OrdemClientes } from '../shared/crm-clientes';
 import { formatarVencimento } from '../shared/crm-lembretes';
 import { CORES_ETIQUETA, corDaFase, FASES, rotuloDaFase, type Fase } from '../shared/crm-tipos';
@@ -31,7 +30,7 @@ function GerenciarEtiquetas({ crm }: { crm: CrmPainel }) {
                 <select
                   aria-label={`Cor da etiqueta ${e.nome}`}
                   value={e.cor}
-                  onChange={(ev) => void crm.alterar(['etiquetas'], (d) => void renomearEtiqueta(d, e.id, e.nome, ev.target.value))}
+                  onChange={(ev) => void crm.fazer((r) => r.renomearEtiqueta(e.id, e.nome, ev.target.value))}
                 >
                   {CORES_ETIQUETA.map((c) => (
                     <option key={c} value={c} style={{ background: c, color: '#fff' }}>
@@ -45,7 +44,7 @@ function GerenciarEtiquetas({ crm }: { crm: CrmPainel }) {
                   onClick={() => {
                     const novo = window.prompt('Novo nome da etiqueta:', e.nome);
                     if (novo == null) return;
-                    void crm.alterar(['etiquetas'], (d) => setErro(renomearEtiqueta(d, e.id, novo, e.cor)));
+                    void crm.fazer((r) => r.renomearEtiqueta(e.id, novo, e.cor)).then(setErro);
                   }}
                 >
                   Renomear
@@ -54,7 +53,7 @@ function GerenciarEtiquetas({ crm }: { crm: CrmPainel }) {
                   type="button"
                   className="pequeno perigo"
                   onClick={() => {
-                    if (window.confirm(`Excluir a etiqueta "${e.nome}"? Ela sai de todos os contatos.`)) void crm.alterar(['etiquetas', 'contatos', 'config'], (d) => excluirEtiqueta(d, e.id));
+                    if (window.confirm(`Excluir a etiqueta "${e.nome}"? Ela sai de todos os contatos.`)) void crm.fazer((r) => r.excluirEtiqueta(e.id));
                   }}
                 >
                   Excluir
@@ -87,10 +86,10 @@ export function Clientes({ crm }: { crm: CrmPainel }) {
   const dados = crm.dados;
   const vistas = Object.keys(dados.conversas).length;
 
-  async function abrir(nome: string) {
+  async function abrir(nome: string, telefone?: string) {
     setMsg(null);
     try {
-      await abrirConversaNoWhatsApp(nome);
+      await abrirConversaNoWhatsApp(crm.repo, { nome, telefone });
     } catch {
       setMsg('Não consegui falar com a aba do WhatsApp Web. Abra web.whatsapp.com e recarregue a aba (F5).');
     }
@@ -153,10 +152,10 @@ export function Clientes({ crm }: { crm: CrmPainel }) {
       ) : (
         <ul className="lista" style={{ maxHeight: 'none' }}>
           {linhas.slice(0, limite).map((c) => (
-            <li key={c.chave}>
+            <li key={c.id}>
               <div className="cliente-topo">
                 <b>{c.nome}</b>
-                <button type="button" className="pequeno primario" onClick={() => void abrir(c.nome)}>
+                <button type="button" className="pequeno primario" onClick={() => void abrir(c.nome, c.telefone)}>
                   Abrir
                 </button>
               </div>

@@ -1,7 +1,12 @@
-// Armazenamento do CRM: SÓ chrome.storage.local, uma chave por coleção. Sem servidor, sem login.
-// Também: exportar/importar JSON (aba Dados do painel).
+// Formato dos dados do CRM no armazenamento: chaves, valores padrão e sanitização (o que vem do
+// storage ou de um arquivo importado só entra se tiver forma válida). Quem LÊ e GRAVA é o
+// repositório (repositorio-local.ts): este arquivo não acessa o storage.
 
+import { normalizarTelefone } from './telefone';
 import { CORES_ETIQUETA, ehFase, type AbaId, type AcaoPendente, type ConfigCrm, type Contato, type Conversa, type DadosCrm, type Etiqueta, type Lembrete, type Nota, type RespostaRapida } from './crm-tipos';
+import { novoId } from './id';
+
+export { novoId };
 
 export const CHAVES = {
   contatos: 'vz.contatos',
@@ -14,64 +19,15 @@ export const CHAVES = {
 
 export type Colecao = keyof typeof CHAVES;
 
-/** Pedido gravado pelo service worker/painel e consumido pelo content script (abrir conversa + colar rascunho). */
+/** Pedido "abrir a conversa e colar o rascunho", gravado pelo service worker/painel e consumido pelo content script. */
 export const CHAVE_ACAO_PENDENTE = 'vz.acaoPendente';
 
 export const CONFIG_PADRAO: ConfigCrm = { aba: 'todas', diasSemResposta: null, filtroEtiquetas: [] };
 
-const COLECOES = Object.keys(CHAVES) as Colecao[];
+export const COLECOES = Object.keys(CHAVES) as Colecao[];
 
 export function dadosVazios(): DadosCrm {
   return { contatos: {}, conversas: {}, etiquetas: [], lembretes: [], respostas: [], config: { ...CONFIG_PADRAO } };
-}
-
-export function novoId(): string {
-  const c = globalThis.crypto as Crypto | undefined;
-  if (c?.randomUUID) return c.randomUUID();
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
-}
-
-// ── chrome.storage.local ─────────────────────────────────────────────────────
-
-export async function carregarDados(): Promise<DadosCrm> {
-  const bruto = (await chrome.storage.local.get(Object.values(CHAVES))) as Record<string, unknown>;
-  const d = dadosVazios();
-  const lido = {
-    contatos: bruto[CHAVES.contatos],
-    conversas: bruto[CHAVES.conversas],
-    etiquetas: bruto[CHAVES.etiquetas],
-    lembretes: bruto[CHAVES.lembretes],
-    respostas: bruto[CHAVES.respostas],
-    config: bruto[CHAVES.config],
-  };
-  const san = sanearDados(lido);
-  return { ...d, ...san, config: { ...CONFIG_PADRAO, ...san.config } };
-}
-
-export async function gravar<K extends Colecao>(colecao: K, valor: DadosCrm[K]): Promise<void> {
-  await chrome.storage.local.set({ [CHAVES[colecao]]: valor });
-}
-
-export async function gravarVarias(dados: Partial<DadosCrm>): Promise<void> {
-  const obj: Record<string, unknown> = {};
-  for (const c of COLECOES) if (dados[c] !== undefined) obj[CHAVES[c]] = dados[c];
-  await chrome.storage.local.set(obj);
-}
-
-/** Avisa quando outra parte da extensão (painel, service worker) mudou uma coleção. */
-export function observarMudancas(cb: (colecoes: Colecao[], mudancas: Record<string, chrome.storage.StorageChange>) => void): () => void {
-  const ouvinte = (mudancas: Record<string, chrome.storage.StorageChange>, area: string): void => {
-    if (area !== 'local') return;
-    const tocadas = COLECOES.filter((c) => CHAVES[c] in mudancas);
-    if (tocadas.length > 0 || CHAVE_ACAO_PENDENTE in mudancas) cb(tocadas, mudancas);
-  };
-  chrome.storage.onChanged.addListener(ouvinte);
-  return () => chrome.storage.onChanged.removeListener(ouvinte);
-}
-
-export async function pedirAberturaDeConversa(nome: string, rascunho?: string, lembreteId?: string): Promise<void> {
-  const acao: AcaoPendente = { tipo: 'abrirConversa', nome, rascunho, lembreteId, ts: Date.now() };
-  await chrome.storage.local.set({ [CHAVE_ACAO_PENDENTE]: acao });
 }
 
 export function ehAcaoPendente(v: unknown): v is AcaoPendente {
@@ -99,15 +55,20 @@ function sanearNota(v: unknown): Nota | null {
 
 function sanearContato(v: unknown): Contato | null {
   const o = obj(v);
-  const chave = str(o?.chave, 200);
+  const id = str(o?.id, 80);
   const nome = str(o?.nome, 300);
-  if (!o || !chave || nome == null) return null;
+  if (!o || !id || nome == null) return null;
   const agora = Date.now();
   const notas = (Array.isArray(o.notas) ? o.notas : []).map(sanearNota).filter((n): n is Nota => n != null);
   const etiquetas = (Array.isArray(o.etiquetas) ? o.etiquetas : []).filter((e): e is string => typeof e === 'string');
-  const c: Contato = { chave, nome, etiquetas, notas, criadoEm: num(o.criadoEm) ?? agora, atualizadoEm: num(o.atualizadoEm) ?? agora };
-  const telefone = str(o.telefone, 40);
+  const aliases = (Array.isArray(o.aliases) ? o.aliases : []).filter((a): a is string => typeof a === 'string' && a !== '').slice(0, 50);
+  const c: Contato = { id, nome, aliases, etiquetas, notas, criadoEm: num(o.criadoEm) ?? agora, atualizadoEm: num(o.atualizadoEm) ?? agora };
+  const telefone = normalizarTelefone(str(o.telefone, 40));
   if (telefone) c.telefone = telefone;
+  const ultimo = num(o.ultimoContatoEm);
+  if (ultimo != null) c.ultimoContatoEm = ultimo;
+  const convertido = num(o.convertidoEm);
+  if (convertido != null) c.convertidoEm = convertido;
   if (ehFase(o.fase)) c.fase = o.fase;
   const ass = str(o.dispensadaAss, 2000);
   if (ass != null) {
@@ -139,7 +100,7 @@ function sanearConversa(v: unknown): Conversa | null {
     desdeEm: num(o.desdeEm) ?? Date.now(),
     vistaEm: num(o.vistaEm) ?? Date.now(),
   };
-  const telefone = str(o.telefone, 40);
+  const telefone = normalizarTelefone(str(o.telefone, 40));
   if (telefone) c.telefone = telefone;
   return c;
 }
@@ -156,14 +117,16 @@ function sanearEtiqueta(v: unknown): Etiqueta | null {
 function sanearLembrete(v: unknown): Lembrete | null {
   const o = obj(v);
   const id = str(o?.id, 80);
-  const chave = str(o?.chave, 200);
+  const contatoId = str(o?.contatoId, 80);
   const nome = str(o?.nome, 300);
   const venceEm = num(o?.venceEm);
-  if (!o || !id || !chave || nome == null || venceEm == null) return null;
+  if (!o || !id || !contatoId || nome == null || venceEm == null) return null;
   const status = o.status === 'disparado' || o.status === 'concluido' ? o.status : 'pendente';
-  const l: Lembrete = { id, chave, nome, venceEm, criadoEm: num(o.criadoEm) ?? Date.now(), status };
+  const l: Lembrete = { id, contatoId, nome, venceEm, criadoEm: num(o.criadoEm) ?? Date.now(), status };
   const rascunho = str(o.rascunho);
   if (rascunho) l.rascunho = rascunho;
+  const telefone = normalizarTelefone(str(o.telefone, 40));
+  if (telefone) l.telefone = telefone;
   const disparadoEm = num(o.disparadoEm);
   if (disparadoEm != null) l.disparadoEm = disparadoEm;
   return l;
@@ -188,13 +151,13 @@ function sanearConfig(v: unknown): ConfigCrm {
   };
 }
 
-function mapa<T extends { chave: string }>(v: unknown, san: (x: unknown) => T | null): Record<string, T> {
+function mapa<T>(v: unknown, san: (x: unknown) => T | null, chaveDe: (x: T) => string): Record<string, T> {
   const o = obj(v);
   const r: Record<string, T> = {};
   if (!o) return r;
   for (const item of Object.values(o)) {
     const s = san(item);
-    if (s) r[s.chave] = s;
+    if (s) r[chaveDe(s)] = s;
   }
   return r;
 }
@@ -206,8 +169,8 @@ function lista<T>(v: unknown, san: (x: unknown) => T | null): T[] {
 /** Aceita qualquer coisa e devolve só o que tem forma válida. */
 export function sanearDados(bruto: Partial<Record<Colecao, unknown>>): Partial<DadosCrm> {
   const r: Partial<DadosCrm> = {};
-  if (bruto.contatos !== undefined) r.contatos = mapa(bruto.contatos, sanearContato);
-  if (bruto.conversas !== undefined) r.conversas = mapa(bruto.conversas, sanearConversa);
+  if (bruto.contatos !== undefined) r.contatos = mapa(bruto.contatos, sanearContato, (c) => c.id);
+  if (bruto.conversas !== undefined) r.conversas = mapa(bruto.conversas, sanearConversa, (c) => c.chave);
   if (bruto.etiquetas !== undefined) r.etiquetas = lista(bruto.etiquetas, sanearEtiqueta);
   if (bruto.lembretes !== undefined) r.lembretes = lista(bruto.lembretes, sanearLembrete);
   if (bruto.respostas !== undefined) r.respostas = lista(bruto.respostas, sanearResposta);
@@ -215,110 +178,3 @@ export function sanearDados(bruto: Partial<Record<Colecao, unknown>>): Partial<D
   return r;
 }
 
-// ── Contatos ─────────────────────────────────────────────────────────────────
-
-/** Contato da chave (cria vazio se não existir). Mexe no objeto `dados` em memória. */
-export function garantirContato(dados: DadosCrm, chave: string, nome: string, agora = Date.now()): Contato {
-  const atual = dados.contatos[chave];
-  if (atual) return atual;
-  const conversa = dados.conversas[chave];
-  const novo: Contato = { chave, nome, telefone: conversa?.telefone, etiquetas: [], notas: [], criadoEm: agora, atualizadoEm: agora };
-  dados.contatos[chave] = novo;
-  return novo;
-}
-
-// ── Exportar / importar (JSON) ───────────────────────────────────────────────
-
-export const VERSAO_EXPORTACAO = 1;
-
-/** Exporta o que o usuário criou (conversas lidas da lista são derivadas e ficam de fora). */
-export function exportarJson(dados: DadosCrm, agora: Date = new Date()): string {
-  return JSON.stringify(
-    {
-      app: 'vita-zap-crm',
-      versao: VERSAO_EXPORTACAO,
-      exportadoEm: agora.toISOString(),
-      contatos: dados.contatos,
-      etiquetas: dados.etiquetas,
-      lembretes: dados.lembretes,
-      respostas: dados.respostas,
-    },
-    null,
-    2,
-  );
-}
-
-export interface ResumoImportacao {
-  contatos: number;
-  etiquetas: number;
-  lembretes: number;
-  respostas: number;
-}
-
-export type ResultadoImportacao = { ok: true; dados: Partial<DadosCrm>; resumo: ResumoImportacao } | { ok: false; erro: string };
-
-export function lerImportacao(texto: string): ResultadoImportacao {
-  let bruto: unknown;
-  try {
-    bruto = JSON.parse(texto);
-  } catch {
-    return { ok: false, erro: 'O arquivo não é um JSON válido.' };
-  }
-  const o = obj(bruto);
-  if (!o || o.app !== 'vita-zap-crm') return { ok: false, erro: 'Este arquivo não é uma exportação do CRM do Vita Zap.' };
-  if (typeof o.versao === 'number' && o.versao > VERSAO_EXPORTACAO) return { ok: false, erro: 'Exportação de uma versão mais nova da extensão. Atualize o Vita Zap.' };
-  const dados = sanearDados({ contatos: o.contatos ?? {}, etiquetas: o.etiquetas ?? [], lembretes: o.lembretes ?? [], respostas: o.respostas ?? [] });
-  return {
-    ok: true,
-    dados,
-    resumo: {
-      contatos: Object.keys(dados.contatos ?? {}).length,
-      etiquetas: dados.etiquetas?.length ?? 0,
-      lembretes: dados.lembretes?.length ?? 0,
-      respostas: dados.respostas?.length ?? 0,
-    },
-  };
-}
-
-function mesclarPorId<T extends { id: string }>(atual: T[], novos: T[]): T[] {
-  const mapaAtual = new Map(atual.map((x) => [x.id, x]));
-  for (const n of novos) if (!mapaAtual.has(n.id)) mapaAtual.set(n.id, n);
-  return [...mapaAtual.values()];
-}
-
-/** Mescla: o que já existe vence; entra só o que falta (contato novo, nota nova, etiqueta nova...). */
-export function mesclarDados(atual: DadosCrm, importado: Partial<DadosCrm>): DadosCrm {
-  const contatos: Record<string, Contato> = { ...atual.contatos };
-  for (const [k, c] of Object.entries(importado.contatos ?? {})) {
-    const existente = contatos[k];
-    if (!existente) {
-      contatos[k] = c;
-      continue;
-    }
-    contatos[k] = {
-      ...existente,
-      fase: existente.fase ?? c.fase,
-      etiquetas: [...new Set([...existente.etiquetas, ...c.etiquetas])],
-      notas: mesclarPorId(existente.notas, c.notas),
-      telefone: existente.telefone ?? c.telefone,
-    };
-  }
-  return {
-    ...atual,
-    contatos,
-    etiquetas: mesclarPorId(atual.etiquetas, importado.etiquetas ?? []),
-    lembretes: mesclarPorId(atual.lembretes, importado.lembretes ?? []),
-    respostas: mesclarPorId(atual.respostas, importado.respostas ?? []),
-  };
-}
-
-/** Substitui o que o usuário criou pelo conteúdo importado (as conversas lidas ficam). */
-export function substituirDados(atual: DadosCrm, importado: Partial<DadosCrm>): DadosCrm {
-  return {
-    ...atual,
-    contatos: importado.contatos ?? {},
-    etiquetas: importado.etiquetas ?? [],
-    lembretes: importado.lembretes ?? [],
-    respostas: importado.respostas ?? [],
-  };
-}

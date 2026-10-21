@@ -1,6 +1,7 @@
 // Lista "Clientes" do painel lateral: contatos com fase, etiquetas, última interação e próximo
 // lembrete; busca e ordenação por "mais tempo sem contato". Lógica pura.
 
+import { acharNoIndice, criarIndice } from './crm-contatos';
 import { instanteNoFuso } from './crm-lembretes';
 import { idadeDaUltima } from './crm-regras';
 import { normalizarTexto } from './nomes';
@@ -16,7 +17,10 @@ export const ORDENS: ReadonlyArray<{ id: OrdemClientes; rotulo: string }> = [
 ];
 
 export interface LinhaCliente {
-  chave: string;
+  /** Id do contato; para quem só foi visto na lista (sem anotações), a chave da conversa. */
+  id: string;
+  /** Há registro do contato (com id interno)? */
+  temContato: boolean;
   nome: string;
   telefone?: string;
   fase?: Fase;
@@ -53,10 +57,11 @@ export function instanteDaUltima(c: Pick<Conversa, 'dataMsg' | 'hora' | 'desdeEm
   return c.desdeEm;
 }
 
-function proximoLembreteDe(lembretes: Lembrete[], chave: string): Lembrete | null {
+function proximoLembreteDe(lembretes: Lembrete[], contatoId: string | undefined): Lembrete | null {
   let melhor: Lembrete | null = null;
+  if (!contatoId) return null;
   for (const l of lembretes) {
-    if (l.chave !== chave || l.status === 'concluido') continue;
+    if (l.contatoId !== contatoId || l.status === 'concluido') continue;
     if (!melhor || l.venceEm < melhor.venceEm) melhor = l;
   }
   return melhor;
@@ -64,19 +69,33 @@ function proximoLembreteDe(lembretes: Lembrete[], chave: string): Lembrete | nul
 
 export function temDadosDoUsuario(c: Contato | undefined, lembretes: Lembrete[]): boolean {
   if (!c) return false;
-  return c.fase != null || c.etiquetas.length > 0 || c.notas.length > 0 || lembretes.some((l) => l.chave === c.chave && l.status !== 'concluido');
+  return c.fase != null || c.etiquetas.length > 0 || c.notas.length > 0 || lembretes.some((l) => l.contatoId === c.id && l.status !== 'concluido');
 }
 
 /** Todos os contatos conhecidos (com dados do usuário e/ou vistos na lista), já filtrados e ordenados. */
 export function montarClientes(dados: DadosCrm, agora: Date, op: OpcoesClientes = {}): LinhaCliente[] {
-  const chaves = new Set<string>([...Object.keys(dados.contatos), ...Object.keys(dados.conversas)]);
+  const ind = criarIndice(dados);
+  // Une cada conversa lida da lista ao contato dela (por telefone ou nome); a mais recente vence.
+  const conversaDoContato = new Map<string, Conversa>();
+  const soConversas: Conversa[] = [];
+  for (const conv of Object.values(dados.conversas)) {
+    const c = acharNoIndice(ind, { nome: conv.nome, telefone: conv.telefone });
+    if (!c) {
+      soConversas.push(conv);
+      continue;
+    }
+    const atual = conversaDoContato.get(c.id);
+    if (!atual || conv.vistaEm > atual.vistaEm) conversaDoContato.set(c.id, conv);
+  }
   const etiquetasPorId = new Map(dados.etiquetas.map((e) => [e.id, e]));
   const q = normalizarTexto(op.busca ?? '');
   const linhas: LinhaCliente[] = [];
+  const candidatos: Array<{ contato?: Contato; conversa?: Conversa }> = [
+    ...Object.values(dados.contatos).map((contato) => ({ contato, conversa: conversaDoContato.get(contato.id) })),
+    ...soConversas.map((conversa) => ({ conversa })),
+  ];
 
-  for (const chave of chaves) {
-    const contato = dados.contatos[chave];
-    const conversa = dados.conversas[chave];
+  for (const { contato, conversa } of candidatos) {
     if (conversa?.grupo && !op.incluirGrupos) continue;
     if (op.soComDados && !temDadosDoUsuario(contato, dados.lembretes)) continue;
     const etiquetas = (contato?.etiquetas ?? []).map((id) => etiquetasPorId.get(id)).filter((e): e is Etiqueta => e != null);
@@ -85,17 +104,18 @@ export function montarClientes(dados: DadosCrm, agora: Date, op: OpcoesClientes 
 
     const idade = conversa ? idadeDaUltima(conversa, agora) : null;
     const linha: LinhaCliente = {
-      chave,
-      nome: contato?.nome ?? conversa?.nome ?? chave,
+      id: contato?.id ?? conversa?.chave ?? '',
+      temContato: contato != null,
+      nome: contato?.nome ?? conversa?.nome ?? '',
       telefone: contato?.telefone ?? conversa?.telefone,
       fase: contato?.fase,
       etiquetas,
       notas: contato?.notas.length ?? 0,
-      ultimaInteracaoEm: conversa ? instanteDaUltima(conversa) : null,
+      ultimaInteracaoEm: conversa ? instanteDaUltima(conversa) : (contato?.ultimoContatoEm ?? null),
       ultimaInteracaoTexto: idade?.texto ?? '',
       dias: idade?.dias ?? null,
       precisaResposta: conversa != null && !conversa.grupo && !conversa.arquivada && conversa.ultimaDeMim === false && !(contato?.dispensadaAss != null && contato.dispensadaAss === conversa.ass),
-      proximoLembrete: proximoLembreteDe(dados.lembretes, chave),
+      proximoLembrete: proximoLembreteDe(dados.lembretes, contato?.id),
       grupo: conversa?.grupo === true,
     };
 

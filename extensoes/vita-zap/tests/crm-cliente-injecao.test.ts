@@ -6,8 +6,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { iniciarCrm, type ControladorCrm } from '../src/content/crm';
 import { limparAvisos } from '../src/content/crm/ui';
-import type { Contato, Etiqueta } from '../src/shared/crm-tipos';
+import type { Etiqueta } from '../src/shared/crm-tipos';
 import { instalarChromeFalso, type ChromeFalso } from './ajuda/chrome-falso';
+import { contato, gravadoPorNome, porId } from './ajuda/fabrica';
 import { montarWhatsApp, nomesVisiveis, type LinhaFalsa } from './ajuda/whatsapp-falso';
 
 const AGORA = new Date('2026-10-21T15:00:00Z');
@@ -34,7 +35,7 @@ function botao(raiz: ParentNode, texto: string): HTMLButtonElement {
 }
 
 const abrirPainelCliente = () => (sombra('vita-zap-cabecalho').querySelector('[title^="Cliente"]') as HTMLButtonElement).click();
-const contatos = () => chrome.dados.get('vz.contatos') as Record<string, Contato> | undefined;
+const ana = () => gravadoPorNome(chrome, 'Ana Souza');
 
 async function iniciar(): Promise<ControladorCrm> {
   ctrl = await iniciarCrm({ agora: () => AGORA, periodicoMs: 0 });
@@ -57,11 +58,11 @@ describe('painel do cliente no cabeçalho', () => {
     await iniciar();
     abrirPainelCliente();
     botao(popover(), 'Negociando').click();
-    await vi.waitFor(() => expect(contatos()?.['ana souza']?.fase).toBe('negociando'));
+    await vi.waitFor(() => expect(ana()?.fase).toBe('negociando'));
     botao(popover(), 'Fechado').click();
-    await vi.waitFor(() => expect(contatos()?.['ana souza']?.fase).toBe('fechado'));
+    await vi.waitFor(() => expect(ana()?.fase).toBe('fechado'));
     botao(popover(), 'Fechado').click(); // de novo: tira a fase
-    await vi.waitFor(() => expect(contatos()?.['ana souza']?.fase).toBeUndefined());
+    await vi.waitFor(() => expect(ana()?.fase).toBeUndefined());
   });
 
   it('cria etiqueta com cor, aplica ao contato e recusa nome repetido', async () => {
@@ -75,7 +76,7 @@ describe('painel do cliente no cabeçalho', () => {
     await vi.waitFor(() => expect(chrome.dados.get('vz.etiquetas')).toBeDefined());
     const [e] = chrome.dados.get('vz.etiquetas') as Etiqueta[];
     expect(e).toMatchObject({ nome: 'Cliente fiel', cor: '#8e24aa' });
-    expect(contatos()?.['ana souza']?.etiquetas).toEqual([e.id]);
+    expect(ana()?.etiquetas).toEqual([e.id]);
     // a etiqueta aparece como chip colorido (marcada)
     const chip = botao(popover(), 'Cliente fiel');
     expect(chip.getAttribute('aria-pressed')).toBe('true');
@@ -84,7 +85,7 @@ describe('painel do cliente no cabeçalho', () => {
     botao(popover(), 'Nova').click();
     (popover().querySelector('input') as HTMLInputElement).value = 'cliente FIEL';
     botao(popover(), 'Criar e aplicar').click();
-    expect(popover().textContent).toContain('Já existe uma etiqueta');
+    await vi.waitFor(() => expect(popover().textContent).toContain('Já existe uma etiqueta'));
     expect((chrome.dados.get('vz.etiquetas') as Etiqueta[]).length).toBe(1);
   });
 
@@ -94,7 +95,7 @@ describe('painel do cliente no cabeçalho', () => {
     const campo = popover().querySelector('textarea') as HTMLTextAreaElement;
     campo.value = 'Quer 200 sacos para dia 30';
     botao(popover(), 'Salvar nota').click();
-    await vi.waitFor(() => expect(contatos()?.['ana souza']?.notas).toHaveLength(1));
+    await vi.waitFor(() => expect(ana()?.notas).toHaveLength(1));
     expect(popover().textContent).toContain('Quer 200 sacos para dia 30');
     expect(campo.value).toBe('');
 
@@ -102,25 +103,25 @@ describe('painel do cliente no cabeçalho', () => {
     const edicao = popover().querySelectorAll('textarea')[1] as HTMLTextAreaElement;
     edicao.value = 'Quer 300 sacos para dia 30';
     botao(popover(), 'Salvar').click();
-    await vi.waitFor(() => expect(contatos()?.['ana souza']?.notas[0].texto).toBe('Quer 300 sacos para dia 30'));
+    await vi.waitFor(() => expect(ana()?.notas[0].texto).toBe('Quer 300 sacos para dia 30'));
     expect(popover().textContent).toContain('(editada)');
 
     botao(popover(), 'Excluir').click(); // pede confirmação
-    expect(contatos()?.['ana souza']?.notas).toHaveLength(1);
+    expect(ana()?.notas).toHaveLength(1);
     botao(popover(), 'Confirmar').click();
-    await vi.waitFor(() => expect(contatos()?.['ana souza']?.notas).toHaveLength(0));
+    await vi.waitFor(() => expect(ana()?.notas).toHaveLength(0));
   });
 
   it('nota vazia é recusada', async () => {
     await iniciar();
     abrirPainelCliente();
     botao(popover(), 'Salvar nota').click();
-    expect(popover().textContent).toContain('Escreva a nota');
-    expect(contatos()).toBeUndefined();
+    await vi.waitFor(() => expect(popover().textContent).toContain('Escreva a nota'));
+    expect(chrome.dados.get('vz.contatos')).toBeUndefined(); // nota recusada não cria contato
   });
 
   it('o botão mostra o número de notas', async () => {
-    chrome = instalarChromeFalso({ 'vz.contatos': { 'ana souza': { chave: 'ana souza', nome: 'Ana Souza', etiquetas: [], notas: [{ id: 'n', texto: 'x', criadaEm: 1 }, { id: 'm', texto: 'y', criadaEm: 2 }], criadoEm: 1, atualizadoEm: 1 } } });
+    chrome = instalarChromeFalso({ 'vz.contatos': porId(contato('Ana Souza', { notas: [{ id: 'n', texto: 'x', criadaEm: 1 }, { id: 'm', texto: 'y', criadaEm: 2 }] })) });
     montarWhatsApp(LINHAS, 'Ana Souza');
     await iniciar();
     expect(sombra('vita-zap-cabecalho').querySelector('[title^="Cliente"] .selo')?.textContent).toBe('2');
@@ -132,24 +133,22 @@ describe('painel do cliente no cabeçalho', () => {
     expect(precisa()).toBe(2);
     abrirPainelCliente();
     botao(popover(), 'Dispensar: não preciso responder').click();
+    await vi.waitFor(() => expect(popover().textContent).toContain('Voltar para a lista'));
     c.ciclo();
     expect(precisa()).toBe(1);
     botao(popover(), 'Voltar para a lista').click();
+    await vi.waitFor(() => expect(popover().textContent).toContain('Dispensar: não preciso responder'));
     c.ciclo();
     expect(precisa()).toBe(2);
   });
 });
 
 describe('chip "Etiquetas" filtra a lista', () => {
-  const contato = (nome: string, extra: Partial<Contato>): Contato => ({ chave: nome.toLowerCase(), nome, etiquetas: [], notas: [], criadoEm: 1, atualizadoEm: 1, ...extra });
 
   beforeEach(() => {
     chrome = instalarChromeFalso({
       'vz.etiquetas': [{ id: 'e1', nome: 'Quente', cor: '#c62828' }, { id: 'e2', nome: 'Cliente fiel', cor: '#8e24aa' }],
-      'vz.contatos': {
-        'ana souza': contato('Ana Souza', { etiquetas: ['e1'] }),
-        'bruno lima': contato('Bruno Lima', { etiquetas: ['e2'], fase: 'negociando' }),
-      },
+      'vz.contatos': porId(contato('Ana Souza', { etiquetas: ['e1'] }), contato('Bruno Lima', { etiquetas: ['e2'], fase: 'negociando' })),
     });
     montarWhatsApp(LINHAS, null);
   });

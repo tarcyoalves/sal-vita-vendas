@@ -2,7 +2,7 @@
 // O texto renderizado só é COLADO na caixa de mensagem; quem envia é sempre o usuário.
 
 import { normalizarTexto, primeiroNome } from './nomes';
-import { novoId } from './crm-store';
+import { novoId } from './id';
 import type { DadosCrm, RespostaRapida } from './crm-tipos';
 
 export const VARIAVEIS = ['{nome}', '{primeiro_nome}'] as const;
@@ -68,8 +68,8 @@ export function consultaDeAtalho(textoDaCaixa: string): string | null {
   return m ? m[1] : null;
 }
 
-export const MODELOS_INICIAIS: ReadonlyArray<Omit<RespostaRapida, 'id'>> = [
-  { titulo: 'Saudação', atalho: 'oi', texto: 'Olá, {primeiro_nome}! Tudo bem? Como posso ajudar?' },
+export const MODELOS_INICIAIS: ReadonlyArray<RespostaRapida> = [
+  { id: 'inicial-saudacao', titulo: 'Saudação', atalho: 'oi', texto: 'Olá, {primeiro_nome}! Tudo bem? Como posso ajudar?' },
 ];
 
 export function validarResposta(r: { titulo: string; atalho: string; texto: string }, existentes: RespostaRapida[], idAtual?: string): string | null {

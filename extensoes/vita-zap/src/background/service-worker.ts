@@ -5,7 +5,7 @@
 // o que é o comportamento seguro.
 
 import { aoAlarme, aoClicarNotificacao, sincronizar } from './lembretes';
-import { CHAVES } from '../shared/crm-store';
+import { repositorioPadrao } from '../shared/repositorio-local';
 
 function abrirPainelAoClicarNoIcone(): void {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => undefined);
@@ -22,8 +22,8 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 // Lembrete criado, concluído, adiado ou apagado (no WhatsApp ou no painel): refaz os alarmes e o selo.
-chrome.storage.onChanged.addListener((mudancas, area) => {
-  if (area === 'local' && CHAVES.lembretes in mudancas) void sincronizar().catch(() => undefined);
+repositorioPadrao().aoMudar((e) => {
+  if (e.colecoes.includes('lembretes')) void sincronizar().catch(() => undefined);
 });
 
 chrome.alarms.onAlarm.addListener((alarme) => {

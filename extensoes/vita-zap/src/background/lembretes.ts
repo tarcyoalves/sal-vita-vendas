@@ -4,14 +4,21 @@
 
 import { abrirConversaNoWhatsApp } from '../shared/crm-acoes';
 import { agendaDeAlarmes, contarVencidos, idDoAlarme, PREFIXO_ALARME } from '../shared/crm-lembretes';
-import { CHAVES, sanearDados } from '../shared/crm-store';
 import type { Lembrete } from '../shared/crm-tipos';
+import type { RepositorioContatos } from '../shared/repositorio';
+import { repositorioPadrao } from '../shared/repositorio-local';
 
 const PREFIXO_NOTIFICACAO = 'vz-';
 
+/** Repositório usado pelo service worker (os testes trocam por um fake). */
+let repo: RepositorioContatos | null = null;
+export function usarRepositorio(r: RepositorioContatos | null): void {
+  repo = r;
+}
+const dados = (): RepositorioContatos => (repo ??= repositorioPadrao());
+
 async function lerLembretes(): Promise<Lembrete[]> {
-  const bruto = await chrome.storage.local.get(CHAVES.lembretes);
-  return sanearDados({ lembretes: bruto[CHAVES.lembretes] }).lembretes ?? [];
+  return dados().listarLembretes();
 }
 
 /** Selo vermelho no ícone com o número de lembretes vencidos (vazio quando não há). */
@@ -49,12 +56,9 @@ function trecho(texto: string, max = 90): string {
 export async function aoAlarme(nome: string, agora: Date = new Date()): Promise<void> {
   const id = idDoAlarme(nome);
   if (!id) return;
-  const lista = await lerLembretes();
-  const l = lista.find((x) => x.id === id);
+  const l = (await lerLembretes()).find((x) => x.id === id);
   if (!l || l.status !== 'pendente') return;
-  l.status = 'disparado';
-  l.disparadoEm = agora.getTime();
-  await chrome.storage.local.set({ [CHAVES.lembretes]: lista });
+  await dados().atualizarLembrete(l.id, { status: 'disparado', disparadoEm: agora.getTime() });
   await chrome.notifications.create(`${PREFIXO_NOTIFICACAO}${l.id}`, {
     type: 'basic',
     iconUrl: chrome.runtime.getURL('icon-128.png'),
@@ -74,5 +78,5 @@ export async function aoClicarNotificacao(notificacaoId: string): Promise<void> 
   const l = (await lerLembretes()).find((x) => x.id === id);
   await chrome.notifications.clear(notificacaoId);
   if (!l) return;
-  await abrirConversaNoWhatsApp(l.nome, l.rascunho, l.id);
+  await abrirConversaNoWhatsApp(dados(), { nome: l.nome, telefone: l.telefone, rascunho: l.rascunho, lembreteId: l.id });
 }

@@ -39,7 +39,7 @@ export function lerDataHoraLocal(texto: string): number | null {
 export type ResultadoLembrete = { ok: true; lembrete: Lembrete } | { ok: false; erro: string };
 
 export function criarLembrete(
-  entrada: { chave: string; nome: string; venceEm: number | null; rascunho?: string },
+  entrada: { contatoId: string; nome: string; telefone?: string; venceEm: number | null; rascunho?: string },
   agora: Date,
   id: string,
 ): ResultadoLembrete {
@@ -50,8 +50,9 @@ export function criarLembrete(
     ok: true,
     lembrete: {
       id,
-      chave: entrada.chave,
+      contatoId: entrada.contatoId,
       nome: entrada.nome,
+      ...(entrada.telefone ? { telefone: entrada.telefone } : {}),
       venceEm: entrada.venceEm,
       criadoEm: agora.getTime(),
       status: 'pendente',

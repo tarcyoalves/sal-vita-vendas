@@ -5,6 +5,7 @@ import { pareceRotuloData } from '../shared/datas';
 import { normalizarTexto } from '../shared/nomes';
 import { limparMarcas } from './dom';
 import { chaveDaConversa, telefoneDoNome, type LeituraConversa } from '../shared/crm-regras';
+import { telefoneDoJid } from '../shared/telefone';
 import { encontrar, existeAlgum, SECOES_SEM_CONVERSA } from './selectors';
 
 export type LeituraLinha =
@@ -128,7 +129,7 @@ export function lerLinhaCrm(el: HTMLElement): LeituraCrm | null {
   const naoLidas = naoLida ? Math.max(1, digitos ? Number(digitos[0]) : 1) : 0;
   const previa = previaDaLinha(el, titulo, rotuloData, selo);
   const id = idDaLinha(el);
-  const telefoneDoId = /^(?:true_|false_)?(\d{8,15})@c\.us/.exec(id)?.[1];
+  const telefoneDoId = telefoneDoJid(id);
   const grupo = encontrar(el, 'iconeGrupo') != null || /@g\.us/.test(id);
   const digitando = /^(digitando|gravando|typing|recording)/i.test(previa);
   return {

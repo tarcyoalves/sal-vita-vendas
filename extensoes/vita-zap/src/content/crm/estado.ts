@@ -1,47 +1,41 @@
-// Estado do CRM em memória no content script, espelhado em chrome.storage.local.
-// Gravação com debounce (a lista de conversas muda o tempo todo) e leitura das mudanças feitas
-// por outras partes da extensão (painel lateral, service worker).
+// Estado do CRM em memória no content script. Toda leitura/gravação passa pelo repositório
+// (RepositorioContatos): a UI nunca fala com chrome.storage.
+//
+// `dados` é uma cópia local para desenhar sem esperar (a lista do WhatsApp muda o tempo todo).
+// Mudanças feitas pela UI vão pelo repositório (`fazer`), que regrava e devolve o estado novo;
+// mudanças de fora (painel lateral, service worker) chegam por `repo.aoMudar`.
 
-import { MODELOS_INICIAIS } from '../../shared/crm-modelos';
-import { carregarDados, CHAVES, dadosVazios, gravar, novoId, observarMudancas, sanearDados, type Colecao } from '../../shared/crm-store';
+import { COLECOES, dadosVazios, type Colecao } from '../../shared/crm-store';
 import type { DadosCrm } from '../../shared/crm-tipos';
+import type { RepositorioContatos } from '../../shared/repositorio';
 
 const ATRASO_GRAVACAO_MS = 800;
 const MAX_CONVERSAS = 4000;
 const MANTER_CONVERSAS = 3000;
 
+/** Coleções que a UI edita (as conversas lidas da lista só o content script escreve). */
+const COLECOES_EDITAVEIS: Colecao[] = COLECOES.filter((c) => c !== 'conversas');
+
 export class Estado {
   dados: DadosCrm = dadosVazios();
-  private sujas = new Set<Colecao>();
+  private conversasSujas = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private ouvintes = new Set<() => void>();
+  private readonly ouvintes = new Set<() => void>();
   private parar: (() => void) | null = null;
 
-  async iniciar(aoAcaoPendente?: () => void): Promise<void> {
-    this.dados = await carregarDados();
-    // Primeira vez: um modelo de exemplo, para o menu de respostas rápidas não abrir vazio.
-    if (!(CHAVES.respostas in (await chrome.storage.local.get(CHAVES.respostas)))) {
-      this.dados.respostas = MODELOS_INICIAIS.map((m) => ({ ...m, id: novoId() }));
-      this.mudouSilencioso('respostas');
-    }
-    this.parar = observarMudancas((colecoes, mudancas) => {
-      let mudou = false;
-      for (const c of colecoes) {
-        if (c === 'conversas') continue; // só o content script escreve; o painel apenas lê
-        const novo = sanearDados({ [c]: mudancas[CHAVES[c]]?.newValue ?? undefined })[c];
-        if (novo === undefined) continue;
-        if (JSON.stringify(novo) !== JSON.stringify(this.dados[c])) {
-          (this.dados as unknown as Record<string, unknown>)[c] = novo;
-          mudou = true;
-        }
-      }
-      if (mudou) this.avisar();
-      if (aoAcaoPendente && 'vz.acaoPendente' in mudancas) aoAcaoPendente();
+  constructor(readonly repo: RepositorioContatos) {}
+
+  async iniciar(aoAbertura?: () => void): Promise<void> {
+    this.dados = await this.repo.carregar();
+    this.parar = this.repo.aoMudar((e) => {
+      if (e.colecoes.some((c) => c !== 'conversas')) void this.recarregar();
+      if (e.abertura) aoAbertura?.();
     });
   }
 
   encerrar(): void {
     this.parar?.();
+    this.parar = null;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
   }
@@ -55,39 +49,50 @@ export class Estado {
     for (const f of this.ouvintes) f();
   }
 
-  /** Marca coleções como alteradas: grava com debounce e avisa a interface. */
-  mudou(...colecoes: Colecao[]): void {
-    for (const c of colecoes) this.sujas.add(c);
-    if (this.timer == null) this.timer = setTimeout(() => void this.salvarAgora(), ATRASO_GRAVACAO_MS);
-    this.avisar();
+  /** Relê as coleções editáveis do repositório e avisa a interface se algo mudou. */
+  async recarregar(): Promise<void> {
+    const novo = await this.repo.carregar(COLECOES_EDITAVEIS);
+    let mudou = false;
+    for (const c of COLECOES_EDITAVEIS) {
+      if (JSON.stringify(novo[c]) !== JSON.stringify(this.dados[c])) {
+        (this.dados as unknown as Record<string, unknown>)[c] = novo[c];
+        mudou = true;
+      }
+    }
+    if (mudou) this.avisar();
   }
 
-  /** Só grava (sem avisar a interface): usado pela leitura da lista, que já re-renderiza sozinha. */
-  mudouSilencioso(...colecoes: Colecao[]): void {
-    for (const c of colecoes) this.sujas.add(c);
+  /** Executa uma operação no repositório e atualiza o estado local com o resultado. */
+  async fazer<T>(op: (repo: RepositorioContatos) => Promise<T>): Promise<T> {
+    const r = await op(this.repo);
+    await this.recarregar();
+    return r;
+  }
+
+  /** As conversas lidas da lista mudaram: grava com debounce (sem avisar a interface, que já redesenha sozinha). */
+  conversasMudaram(): void {
+    this.conversasSujas = true;
     if (this.timer == null) this.timer = setTimeout(() => void this.salvarAgora(), ATRASO_GRAVACAO_MS);
   }
 
   async salvarAgora(): Promise<void> {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    const pendentes = [...this.sujas];
-    this.sujas.clear();
-    if (pendentes.includes('conversas')) this.podarConversas();
-    for (const c of pendentes) {
-      try {
-        await gravar(c, this.dados[c] as never);
-      } catch (e) {
-        console.warn('[Vita Zap] não consegui gravar', c, e);
-      }
+    if (!this.conversasSujas) return;
+    this.conversasSujas = false;
+    this.podarConversas();
+    try {
+      await this.repo.salvarConversas(this.dados.conversas);
+    } catch (e) {
+      console.warn('[Vita Zap] não consegui gravar as conversas', e);
     }
   }
 
-  /** Mantém a coleção de conversas limitada: descarta as vistas há mais tempo e sem dados do usuário. */
+  /** Mantém as conversas lidas limitadas: descarta as vistas há mais tempo. */
   private podarConversas(): void {
     const todas = Object.values(this.dados.conversas);
     if (todas.length <= MAX_CONVERSAS) return;
-    const ordem = todas.filter((c) => !this.dados.contatos[c.chave]).sort((a, b) => a.vistaEm - b.vistaEm);
+    const ordem = [...todas].sort((a, b) => a.vistaEm - b.vistaEm);
     for (const c of ordem.slice(0, todas.length - MANTER_CONVERSAS)) delete this.dados.conversas[c.chave];
   }
 }

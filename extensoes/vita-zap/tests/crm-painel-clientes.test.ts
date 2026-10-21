@@ -11,6 +11,7 @@ import { Clientes } from '../src/sidepanel/Clientes';
 import { Lembretes } from '../src/sidepanel/Lembretes';
 import { useCrm } from '../src/sidepanel/crm';
 import { instalarChromeFalso, type ChromeFalso } from './ajuda/chrome-falso';
+import { contato, porId } from './ajuda/fabrica';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -47,11 +48,11 @@ beforeEach(() => {
     'vz.etiquetas': [{ id: 'e1', nome: 'Quente', cor: '#c62828' }],
     'vz.conversas': { ana: conv('Ana', '2026-10-20'), bruno: conv('Bruno', '2026-09-01') },
     'vz.contatos': {
-      ana: { chave: 'ana', nome: 'Ana', fase: 'negociando', etiquetas: ['e1'], notas: [], criadoEm: 1, atualizadoEm: 1 },
+      ...porId(contato('Ana', { fase: 'negociando', etiquetas: ['e1'] }), contato('Bruno')),
     },
     'vz.lembretes': [
-      { id: 'v', chave: 'ana', nome: 'Ana', venceEm: Date.now() - 3_600_000, criadoEm: 1, status: 'disparado', rascunho: 'Oi Ana!' },
-      { id: 'p', chave: 'bruno', nome: 'Bruno', venceEm: instanteNoFuso('2099-01-01', 9), criadoEm: 1, status: 'pendente' },
+      { id: 'v', contatoId: 'id-ana', nome: 'Ana', venceEm: Date.now() - 3_600_000, criadoEm: 1, status: 'disparado', rascunho: 'Oi Ana!' },
+      { id: 'p', contatoId: 'id-bruno', nome: 'Bruno', venceEm: instanteNoFuso('2099-01-01', 9), criadoEm: 1, status: 'pendente' },
     ],
   });
   (chrome.chrome as { tabs: { query: () => Promise<unknown[]> } }).tabs.query = async () => [{ id: 3, windowId: 1, active: true }];

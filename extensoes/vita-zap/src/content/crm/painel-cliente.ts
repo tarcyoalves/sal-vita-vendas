@@ -1,9 +1,10 @@
 // Painel do cliente (botão de etiqueta no cabeçalho da conversa): fase do funil, etiquetas com
-// cor e notas. Também o chip "Etiquetas" da barra: filtro da lista por etiqueta/fase.
+// cor, notas, telefone/vínculo. Também o chip "Etiquetas" da barra: filtro da lista.
+// Os dados passam sempre pelo repositório (estado.fazer); aqui não há acesso direto ao storage.
 
-import { alternarEtiqueta, adicionarNota, criarEtiqueta, definirFase, editarNota, excluirNota, opcoesDeFiltro } from '../../shared/crm-contatos';
-import { classificar, estaDispensada } from '../../shared/crm-regras';
-import { CORES_ETIQUETA, FASES, type Contato } from '../../shared/crm-tipos';
+import { acharContato, opcoesDeFiltro } from '../../shared/crm-contatos';
+import { chaveDaConversa, classificar, estaDispensada } from '../../shared/crm-regras';
+import { CORES_ETIQUETA, FASES, type Contato, type RefContato } from '../../shared/crm-tipos';
 import type { Estado } from './estado';
 import { abrirPopover } from './popover';
 import { h, icone } from './ui';
@@ -11,37 +12,40 @@ import { h, icone } from './ui';
 export interface ContextoCliente {
   estado: Estado;
   agora: () => Date;
-  dispensar: (chave: string) => void;
-  reativar: (chave: string) => void;
 }
 
 function dataCurta(ms: number): string {
   return new Date(ms).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Fortaleza' });
 }
 
-export function abrirPainelCliente(ancora: HTMLElement, ctx: ContextoCliente, nome: string, chave: string): void {
-  const pop = abrirPopover({ ancora, titulo: nome, largura: 360 });
+export function abrirPainelCliente(ancora: HTMLElement, ctx: ContextoCliente, ref: RefContato): void {
+  const pop = abrirPopover({ ancora, titulo: ref.nome, largura: 360 });
   const dados = () => ctx.estado.dados;
-  const contato = (): Contato | undefined => dados().contatos[chave];
+  const contato = (): Contato | undefined => acharContato(dados(), ref);
+  /** Referência com o id interno, assim que o contato existe (o nome pode mudar; o id não). */
+  const refAtual = (): RefContato => ({ ...ref, contatoId: contato()?.id });
 
   const secDispensa = h('div', {});
   const secFase = h('div', { class: 'linha2' });
   const secEtiquetas = h('div', {});
   const secNotas = h('div', {});
+  const secTelefone = h('div', {});
   const msgNota = h('div', { class: 'msg' });
   const campoNota = h('textarea', { class: 'campo', rows: 3, placeholder: 'Preço combinado, prazo, objeção, o que o cliente pediu...', 'aria-label': 'Nova nota' });
   let editando: string | null = null;
   let confirmandoExclusao: string | null = null;
   let criandoEtiqueta = false;
 
-  const gravarContatos = (...colecoes: Array<'contatos' | 'etiquetas'>): void => {
-    ctx.estado.mudou(...colecoes);
-    void ctx.estado.salvarAgora();
+  // Depois de cada gravação o estado local já foi atualizado (estado.fazer): só redesenhar.
+  const redesenhar = (...partes: Array<() => void>): void => {
+    for (const p of partes) p();
+    renderBadge();
+    pop.reposicionar();
   };
 
   // ── Dispensar de "Precisa de resposta" ──
   const renderDispensa = (): void => {
-    const conversa = dados().conversas[chave];
+    const conversa = dados().conversas[chaveDaConversa(ref.nome)];
     if (!conversa || conversa.grupo || conversa.arquivada) {
       secDispensa.replaceChildren();
       return;
@@ -49,11 +53,11 @@ export function abrirPainelCliente(ancora: HTMLElement, ctx: ContextoCliente, no
     const c = contato();
     if (c && estaDispensada(conversa, c)) {
       secDispensa.replaceChildren(
-        h('div', { class: 'linha2' }, h('span', { class: 'dica' }, 'Dispensada de "Precisa de resposta" até chegar mensagem nova.'), h('button', { class: 'btn', type: 'button', onclick: () => { ctx.reativar(chave); renderDispensa(); } }, 'Voltar para a lista')),
+        h('div', { class: 'linha2' }, h('span', { class: 'dica' }, 'Dispensada de "Precisa de resposta" até chegar mensagem nova.'), h('button', { class: 'btn', type: 'button', onclick: () => void ctx.estado.fazer((r) => r.reativar(refAtual())).then(() => redesenhar(renderDispensa)) }, 'Voltar para a lista')),
       );
     } else if (classificar(conversa, c).precisa) {
       secDispensa.replaceChildren(
-        h('div', { class: 'linha2' }, h('button', { class: 'btn', type: 'button', title: 'Some de "Precisa de resposta" até chegar mensagem nova', onclick: () => { ctx.dispensar(chave); renderDispensa(); } }, 'Dispensar: não preciso responder')),
+        h('div', { class: 'linha2' }, h('button', { class: 'btn', type: 'button', title: 'Some de "Precisa de resposta" até chegar mensagem nova', onclick: () => void ctx.estado.fazer((r) => r.dispensar(refAtual(), conversa.ass)).then(() => redesenhar(renderDispensa)) }, 'Dispensar: não preciso responder')),
       );
     } else secDispensa.replaceChildren();
   };
@@ -70,11 +74,7 @@ export function abrirPainelCliente(ancora: HTMLElement, ctx: ContextoCliente, no
             type: 'button',
             style: atual === f.id ? `background:${f.cor}` : `background:var(--fundo2);color:var(--texto);border:1px solid ${f.cor}`,
             'aria-pressed': atual === f.id ? 'true' : 'false',
-            onclick: () => {
-              definirFase(dados(), chave, nome, atual === f.id ? null : f.id, ctx.agora().getTime());
-              gravarContatos('contatos');
-              renderFase();
-            },
+            onclick: () => void ctx.estado.fazer((r) => r.definirFase(refAtual(), atual === f.id ? null : f.id)).then(() => redesenhar(renderFase)),
           },
           f.rotulo,
         ),
@@ -111,50 +111,46 @@ export function abrirPainelCliente(ancora: HTMLElement, ctx: ContextoCliente, no
               type: 'button',
               style: marcadas.has(e.id) ? `background:${e.cor}` : `border-color:${e.cor}`,
               'aria-pressed': marcadas.has(e.id) ? 'true' : 'false',
-              onclick: () => {
-                alternarEtiqueta(dados(), chave, nome, e.id, ctx.agora().getTime());
-                gravarContatos('contatos');
-                renderEtiquetas();
-                renderBadge();
-              },
+              onclick: () => void ctx.estado.fazer((r) => r.alternarEtiqueta(refAtual(), e.id)).then(() => redesenhar(renderEtiquetas)),
             },
             e.nome,
           ),
         ),
-        h('button', { class: 'btn', type: 'button', onclick: () => { criandoEtiqueta = !criandoEtiqueta; renderEtiquetas(); pop.reposicionar(); } }, icone('mais', 12), ' Nova'),
+        h('button', { class: 'btn', type: 'button', onclick: () => { criandoEtiqueta = !criandoEtiqueta; redesenhar(renderEtiquetas); } }, icone('mais', 12), ' Nova'),
       ),
       ...(criandoEtiqueta
-        ? [h(
-            'div',
-            {},
-            nomeNova,
-            paleta,
+        ? [
             h(
               'div',
-              { class: 'linha2' },
+              {},
+              nomeNova,
+              paleta,
               h(
-                'button',
-                {
-                  class: 'btn pri',
-                  type: 'button',
-                  onclick: () => {
-                    const r = criarEtiqueta(dados(), nomeNova.value, corNova);
-                    if ('erro' in r) {
-                      msg.textContent = r.erro;
-                      return;
-                    }
-                    alternarEtiqueta(dados(), chave, nome, r.etiqueta.id, ctx.agora().getTime());
-                    criandoEtiqueta = false;
-                    gravarContatos('etiquetas', 'contatos');
-                    renderEtiquetas();
-                    pop.reposicionar();
+                'div',
+                { class: 'linha2' },
+                h(
+                  'button',
+                  {
+                    class: 'btn pri',
+                    type: 'button',
+                    onclick: () =>
+                      void (async () => {
+                        const r = await ctx.estado.fazer((repo) => repo.criarEtiqueta(nomeNova.value, corNova));
+                        if ('erro' in r) {
+                          msg.textContent = r.erro;
+                          return;
+                        }
+                        await ctx.estado.fazer((repo) => repo.alternarEtiqueta(refAtual(), r.etiqueta.id));
+                        criandoEtiqueta = false;
+                        redesenhar(renderEtiquetas);
+                      })(),
                   },
-                },
-                'Criar e aplicar',
+                  'Criar e aplicar',
+                ),
               ),
+              msg,
             ),
-            msg,
-          )]
+          ]
         : []),
     );
   };
@@ -179,15 +175,13 @@ export function abrirPainelCliente(ancora: HTMLElement, ctx: ContextoCliente, no
               h(
                 'div',
                 { class: 'linha2' },
-                h('button', { class: 'btn pri', type: 'button', onclick: () => {
-                  const e = editarNota(dados(), chave, n.id, campo.value, ctx.agora().getTime());
+                h('button', { class: 'btn pri', type: 'button', onclick: () => void (async () => {
+                  const e = await ctx.estado.fazer((r) => r.editarNota(refAtual(), n.id, campo.value));
                   if (e) { erro.textContent = e; return; }
                   editando = null;
-                  gravarContatos('contatos');
-                  renderNotas();
-                  pop.reposicionar();
-                } }, 'Salvar'),
-                h('button', { class: 'btn', type: 'button', onclick: () => { editando = null; renderNotas(); pop.reposicionar(); } }, 'Cancelar'),
+                  redesenhar(renderNotas);
+                })() }, 'Salvar'),
+                h('button', { class: 'btn', type: 'button', onclick: () => { editando = null; redesenhar(renderNotas); } }, 'Cancelar'),
               ),
             ),
           );
@@ -199,25 +193,57 @@ export function abrirPainelCliente(ancora: HTMLElement, ctx: ContextoCliente, no
           h(
             'div',
             { class: 'linha2' },
-            h('button', { class: 'btn', type: 'button', onclick: () => { editando = n.id; confirmandoExclusao = null; renderNotas(); pop.reposicionar(); } }, 'Editar'),
+            h('button', { class: 'btn', type: 'button', onclick: () => { editando = n.id; confirmandoExclusao = null; redesenhar(renderNotas); } }, 'Editar'),
             confirmandoExclusao === n.id
-              ? h('button', { class: 'btn perigo', type: 'button', onclick: () => { excluirNota(dados(), chave, n.id, ctx.agora().getTime()); confirmandoExclusao = null; gravarContatos('contatos'); renderNotas(); renderBadge(); pop.reposicionar(); } }, 'Confirmar')
-              : h('button', { class: 'btn perigo', type: 'button', onclick: () => { confirmandoExclusao = n.id; renderNotas(); } }, 'Excluir'),
+              ? h('button', { class: 'btn perigo', type: 'button', onclick: () => void ctx.estado.fazer((r) => r.excluirNota(refAtual(), n.id)).then(() => { confirmandoExclusao = null; redesenhar(renderNotas); }) }, 'Confirmar')
+              : h('button', { class: 'btn perigo', type: 'button', onclick: () => { confirmandoExclusao = n.id; redesenhar(renderNotas); } }, 'Excluir'),
           ),
         );
       }),
     );
   };
 
-  const salvarNota = (): void => {
-    const e = adicionarNota(dados(), chave, nome, campoNota.value, ctx.agora().getTime());
+  const salvarNota = async (): Promise<void> => {
+    const e = await ctx.estado.fazer((r) => r.adicionarNota(refAtual(), campoNota.value));
     msgNota.textContent = e ?? '';
     if (e) return;
     campoNota.value = '';
-    gravarContatos('contatos');
-    renderNotas();
-    renderBadge();
-    pop.reposicionar();
+    redesenhar(renderNotas);
+  };
+
+  // ── Telefone e vínculo ──
+  const renderTelefone = (): void => {
+    const c = contato();
+    const campo = h('input', { class: 'campo', placeholder: 'DDD + número (ex.: 84 99999-0000)', value: c?.telefone ? `+${c.telefone}` : '', 'aria-label': 'Telefone do contato' });
+    const msg = h('div', { class: 'msg' });
+    secTelefone.replaceChildren(
+      campo,
+      h(
+        'div',
+        { class: 'linha2' },
+        h(
+          'button',
+          {
+            class: 'btn',
+            type: 'button',
+            title: 'Guarda o telefone (só dígitos, com 55). Se já houver outro contato com ele, os dois viram um só.',
+            onclick: () =>
+              void (async () => {
+                const base = await ctx.estado.fazer((r) => r.registrarContato(refAtual()));
+                const r = await ctx.estado.fazer((repo) => repo.vincular(base.id, { telefone: campo.value }));
+                if (!r.ok) {
+                  msg.textContent = r.erro;
+                  return;
+                }
+                redesenhar(renderTelefone, renderNotas, renderEtiquetas, renderFase, renderDispensa);
+              })(),
+          },
+          'Vincular telefone',
+        ),
+      ),
+      msg,
+      h('div', { class: 'dica' }, 'O telefone liga este contato ao mesmo cliente em outros sistemas e junta registros duplicados.'),
+    );
   };
 
   const badge = h('span', { class: 'dica' });
@@ -236,14 +262,17 @@ export function abrirPainelCliente(ancora: HTMLElement, ctx: ContextoCliente, no
     h('h5', {}, 'Notas'),
     campoNota,
     msgNota,
-    h('div', { class: 'linha2' }, h('button', { class: 'btn pri', type: 'button', onclick: salvarNota }, 'Salvar nota')),
+    h('div', { class: 'linha2' }, h('button', { class: 'btn pri', type: 'button', onclick: () => void salvarNota() }, 'Salvar nota')),
     secNotas,
+    h('h5', {}, 'Telefone'),
+    secTelefone,
   );
   renderBadge();
   renderDispensa();
   renderFase();
   renderEtiquetas();
   renderNotas();
+  renderTelefone();
   pop.reposicionar();
 }
 

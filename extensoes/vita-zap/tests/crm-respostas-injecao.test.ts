@@ -184,7 +184,7 @@ describe('criar, editar e excluir modelo', () => {
     (popover().querySelector('input[aria-label="Atalho do modelo"]') as HTMLInputElement).value = '/orc'; // já existe
     (popover().querySelector('textarea') as HTMLTextAreaElement).value = 'Obrigado, {primeiro_nome}!';
     botao(popover(), 'Salvar').click();
-    expect(popover().textContent).toContain('já existe');
+    await vi.waitFor(() => expect(popover().textContent).toContain('já existe'));
     (popover().querySelector('input[aria-label="Atalho do modelo"]') as HTMLInputElement).value = '/obg';
     botao(popover(), 'Salvar').click();
     await vi.waitFor(() => expect((chrome.dados.get('vz.respostas') as RespostaRapida[]).some((r) => r.atalho === 'obg')).toBe(true));

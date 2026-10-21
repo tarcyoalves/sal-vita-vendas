@@ -44,11 +44,23 @@ export interface Nota {
   editadaEm?: number;
 }
 
-export interface Contato {
-  /** Chave estável: nome normalizado (ou só dígitos quando o contato aparece como número). */
-  chave: string;
+/** Como se refere a um contato: o id interno, se já se sabe, ou o que o WhatsApp mostra (nome e/ou telefone). */
+export interface RefContato {
+  contatoId?: string;
   nome: string;
+  /** Qualquer formato; o repositório normaliza (dígitos com DDI 55). */
+  telefone?: string | null;
+}
+
+export interface Contato {
+  /** Id interno, opaco e imutável. NÃO é o nome nem o telefone: ambos podem mudar ou ser vinculados depois. */
+  id: string;
+  /** Nome exibido no WhatsApp. */
+  nome: string;
+  /** Só dígitos, com DDI 55 (ver telefone.ts). Pode faltar: contato salvo só com nome. */
   telefone?: string;
+  /** Nomes (normalizados) pelos quais este contato já foi visto na lista. */
+  aliases: string[];
   fase?: Fase;
   /** Ids de Etiqueta. */
   etiquetas: string[];
@@ -56,12 +68,17 @@ export interface Contato {
   /** Assinatura da conversa no momento em que foi dispensada de "Precisa de resposta". */
   dispensadaAss?: string;
   dispensadaEm?: number;
+  /** Instante estimado da última mensagem da conversa (qualquer lado), lido da lista. */
+  ultimoContatoEm?: number;
+  /** Quando a fase passou a "Fechado". */
+  convertidoEm?: number;
   criadoEm: number;
   atualizadoEm: number;
 }
 
 /** O que a lista do WhatsApp mostrou da conversa (estado derivado, recalculável). */
 export interface Conversa {
+  /** Chave de leitura da lista: nome normalizado (ou o telefone, se o nome exibido é um número). Não é o id do contato. */
   chave: string;
   nome: string;
   telefone?: string;
@@ -92,8 +109,11 @@ export interface Etiqueta {
 
 export interface Lembrete {
   id: string;
-  chave: string;
+  /** Id interno do contato (não o nome). */
+  contatoId: string;
+  /** Nome exibido, para achar a conversa na hora de abrir. */
   nome: string;
+  telefone?: string;
   /** Instante do aviso (epoch ms). */
   venceEm: number;
   /** Texto que será COLADO (nunca enviado) na caixa ao abrir a conversa. */
@@ -118,6 +138,7 @@ export interface ConfigCrm {
 }
 
 export interface DadosCrm {
+  /** Por id interno. */
   contatos: Record<string, Contato>;
   conversas: Record<string, Conversa>;
   etiquetas: Etiqueta[];
@@ -129,6 +150,7 @@ export interface DadosCrm {
 export interface AcaoPendente {
   tipo: 'abrirConversa';
   nome: string;
+  telefone?: string;
   rascunho?: string;
   lembreteId?: string;
   /** Identifica o pedido (evita executar duas vezes). */

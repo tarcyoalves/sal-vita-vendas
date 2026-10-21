@@ -26,7 +26,7 @@ const AGORA = new Date('2026-10-21T15:00:00Z');
 const hora = (iso: string, h: number, m = 0) => instanteNoFuso(iso, h, m);
 
 function lembrete(p: Partial<Lembrete> & { id: string }): Lembrete {
-  return { chave: 'ana', nome: 'Ana Souza', venceEm: hora('2026-10-22', 9), criadoEm: AGORA.getTime(), status: 'pendente', ...p };
+  return { contatoId: 'id-ana', nome: 'Ana Souza', venceEm: hora('2026-10-22', 9), criadoEm: AGORA.getTime(), status: 'pendente', ...p };
 }
 
 describe('prazos rápidos e data personalizada', () => {
@@ -55,14 +55,14 @@ describe('prazos rápidos e data personalizada', () => {
 
 describe('criar lembrete', () => {
   it('recusa horário que já passou e data não escolhida', () => {
-    expect(criarLembrete({ chave: 'ana', nome: 'Ana', venceEm: AGORA.getTime() - 1000 }, AGORA, 'x')).toEqual({ ok: false, erro: 'Esse horário já passou. Escolha uma data futura.' });
-    expect(criarLembrete({ chave: 'ana', nome: 'Ana', venceEm: null }, AGORA, 'x')).toMatchObject({ ok: false });
+    expect(criarLembrete({ contatoId: 'id-ana', nome: 'Ana', venceEm: AGORA.getTime() - 1000 }, AGORA, 'x')).toEqual({ ok: false, erro: 'Esse horário já passou. Escolha uma data futura.' });
+    expect(criarLembrete({ contatoId: 'id-ana', nome: 'Ana', venceEm: null }, AGORA, 'x')).toMatchObject({ ok: false });
   });
 
   it('cria pendente, com rascunho aparado (ou sem rascunho)', () => {
-    const r = criarLembrete({ chave: 'ana', nome: 'Ana', venceEm: AGORA.getTime() + 3_600_000, rascunho: '  Oi, Ana!  ' }, AGORA, 'id1');
+    const r = criarLembrete({ contatoId: 'id-ana', nome: 'Ana', venceEm: AGORA.getTime() + 3_600_000, rascunho: '  Oi, Ana!  ' }, AGORA, 'id1');
     expect(r.ok && r.lembrete).toMatchObject({ id: 'id1', status: 'pendente', rascunho: 'Oi, Ana!' });
-    const vazio = criarLembrete({ chave: 'ana', nome: 'Ana', venceEm: AGORA.getTime() + 3_600_000, rascunho: '   ' }, AGORA, 'id2');
+    const vazio = criarLembrete({ contatoId: 'id-ana', nome: 'Ana', venceEm: AGORA.getTime() + 3_600_000, rascunho: '   ' }, AGORA, 'id2');
     expect(vazio.ok && 'rascunho' in vazio.lembrete).toBe(false);
   });
 });

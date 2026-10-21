@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { instanteDaUltima, montarClientes } from '../src/shared/crm-clientes';
 import { instanteNoFuso } from '../src/shared/crm-lembretes';
 import { dadosVazios } from '../src/shared/crm-store';
-import type { Contato, Conversa, DadosCrm } from '../src/shared/crm-tipos';
+import type { Conversa, DadosCrm, Lembrete } from '../src/shared/crm-tipos';
+import { contato as fabricaContato } from './ajuda/fabrica';
 
 const AGORA = new Date('2026-10-21T15:00:00Z'); // 12:00 em Fortaleza
 
@@ -28,9 +29,8 @@ function conversa(nome: string, p: Partial<Conversa> = {}): Conversa {
   };
 }
 
-function contato(nome: string, p: Partial<Contato> = {}): Contato {
-  return { chave: nome.toLowerCase(), nome, etiquetas: [], notas: [], criadoEm: 1, atualizadoEm: 1, ...p };
-}
+const contato = fabricaContato;
+const lembrete = (id: string, de: string, venceEm: number, status: Lembrete['status']): Lembrete => ({ id, contatoId: `id-${de}`, nome: de, venceEm, criadoEm: 1, status });
 
 function cenario(): DadosCrm {
   const d = dadosVazios();
@@ -44,13 +44,14 @@ function cenario(): DadosCrm {
     conversa('Carla', { dataMsg: '2026-10-15' }), // 6 dias
     conversa('Clientes Sal', { dataMsg: '2026-09-01', grupo: true }),
   ]) d.conversas[c.chave] = c;
-  d.contatos.ana = contato('Ana', { fase: 'negociando', etiquetas: ['e1'], notas: [{ id: 'n', texto: 'Quer 200 sacos para dia 30', criadaEm: 1 }] });
-  d.contatos.bruno = contato('Bruno', { etiquetas: ['e2'] });
-  d.contatos.dani = contato('Dani', { fase: 'novo' }); // contato do CRM que nunca vimos na lista
+  const ana = contato('Ana', { fase: 'negociando', etiquetas: ['e1'], notas: [{ id: 'n', texto: 'Quer 200 sacos para dia 30', criadaEm: 1 }] });
+  const bruno = contato('Bruno', { etiquetas: ['e2'] });
+  const dani = contato('Dani', { fase: 'novo' }); // contato do CRM que nunca vimos na lista
+  for (const c of [ana, bruno, dani]) d.contatos[c.id] = c;
   d.lembretes = [
-    { id: 'l1', chave: 'ana', nome: 'Ana', venceEm: instanteNoFuso('2026-10-25', 9), criadoEm: 1, status: 'pendente' },
-    { id: 'l2', chave: 'ana', nome: 'Ana', venceEm: instanteNoFuso('2026-10-22', 9), criadoEm: 1, status: 'pendente' },
-    { id: 'l3', chave: 'ana', nome: 'Ana', venceEm: instanteNoFuso('2026-10-21', 8), criadoEm: 1, status: 'concluido' },
+    lembrete('l1', 'ana', instanteNoFuso('2026-10-25', 9), 'pendente'),
+    lembrete('l2', 'ana', instanteNoFuso('2026-10-22', 9), 'pendente'),
+    lembrete('l3', 'ana', instanteNoFuso('2026-10-21', 8), 'concluido'),
   ];
   return d;
 }
@@ -74,7 +75,8 @@ describe('montar a lista de clientes', () => {
 
   it('"Precisa de resposta" respeita a dispensa', () => {
     const d = cenario();
-    d.contatos.carla = contato('Carla', { dispensadaAss: 'Carla|0' });
+    const carla = contato('Carla', { dispensadaAss: 'Carla|0' });
+    d.contatos[carla.id] = carla;
     const lista = montarClientes(d, AGORA);
     expect(lista.find((c) => c.nome === 'Carla')?.precisaResposta).toBe(false);
     expect(lista.find((c) => c.nome === 'Bruno')?.precisaResposta).toBe(false); // última foi minha
@@ -126,8 +128,35 @@ describe('busca e filtros', () => {
   it('lembrete concluído não conta como "dado do usuário"', () => {
     const d = dadosVazios();
     d.conversas.eva = conversa('Eva');
-    d.contatos.eva = contato('Eva');
-    d.lembretes = [{ id: 'x', chave: 'eva', nome: 'Eva', venceEm: 1, criadoEm: 1, status: 'concluido' }];
+    const eva = contato('Eva');
+    d.contatos[eva.id] = eva;
+    d.lembretes = [lembrete('x', 'eva', 1, 'concluido')];
     expect(nomes(d, { soComDados: true })).toEqual([]);
+  });
+});
+
+describe('identidade do contato (nome x telefone)', () => {
+  it('liga a conversa ao contato pelo telefone mesmo que o nome exibido tenha mudado', () => {
+    const d = dadosVazios();
+    const c = contato('Ana Souza', { telefone: '5584999990000', fase: 'orcamento' });
+    d.contatos[c.id] = c;
+    // a lista agora mostra outro nome (o cliente renomeou o contato), mas o telefone é o mesmo
+    d.conversas.novo = conversa('Aninha', { telefone: '5584999990000' });
+    const lista = montarClientes(d, AGORA);
+    expect(lista).toHaveLength(1);
+    expect(lista[0]).toMatchObject({ id: c.id, nome: 'Ana Souza', fase: 'orcamento', ultimaInteracaoTexto: 'há 1 dia' });
+  });
+
+  it('o mesmo nome com telefones diferentes são pessoas diferentes', () => {
+    const d = dadosVazios();
+    const a = contato('Carlos', { telefone: '5584999990001' });
+    const b = contato('Carlos', { id: 'id-carlos-2', telefone: '5584999990002' });
+    d.contatos[a.id] = a;
+    d.contatos[b.id] = b;
+    d.conversas.x = conversa('Carlos', { telefone: '5584999990002', dataMsg: '2026-10-20' });
+    const lista = montarClientes(d, AGORA);
+    expect(lista).toHaveLength(2);
+    expect(lista.find((l) => l.id === 'id-carlos-2')?.ultimaInteracaoTexto).toBe('há 1 dia');
+    expect(lista.find((l) => l.id === a.id)?.ultimaInteracaoTexto).toBe('');
   });
 });

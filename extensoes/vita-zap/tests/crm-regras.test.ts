@@ -14,6 +14,7 @@ import {
   type LeituraConversa,
 } from '../src/shared/crm-regras';
 import type { Contato, Conversa } from '../src/shared/crm-tipos';
+import { contato as fabricaContato } from './ajuda/fabrica';
 
 // 2026-10-21 12:00 em Fortaleza (UTC-3), quarta-feira.
 const AGORA = new Date('2026-10-21T15:00:00Z');
@@ -27,7 +28,7 @@ function conversa(p: Partial<LeituraConversa> = {}, arquivada = false, anterior?
 }
 
 function contato(c: Conversa, p: Partial<Contato> = {}): Contato {
-  return { chave: c.chave, nome: c.nome, etiquetas: [], notas: [], criadoEm: 0, atualizadoEm: 0, ...p };
+  return fabricaContato(c.nome, p);
 }
 
 describe('chave da conversa', () => {
@@ -88,8 +89,8 @@ describe('classificação das abas', () => {
       conversa({ nome: 'E', ultimaDeMim: true }, true),
     ];
     const dispensada = contato(lista[0], { dispensadaAss: lista[0].ass });
-    expect(contar(lista, {})).toEqual({ todas: 4, naoLidas: 1, precisa: 2, aguardando: 1 });
-    expect(contar(lista, { [dispensada.chave]: dispensada })).toEqual({ todas: 4, naoLidas: 1, precisa: 1, aguardando: 1 });
+    expect(contar(lista, () => undefined)).toEqual({ todas: 4, naoLidas: 1, precisa: 2, aguardando: 1 });
+    expect(contar(lista, (c) => (c === lista[0] ? dispensada : undefined))).toEqual({ todas: 4, naoLidas: 1, precisa: 1, aguardando: 1 });
   });
 });
 

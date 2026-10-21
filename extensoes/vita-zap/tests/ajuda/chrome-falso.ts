@@ -1,5 +1,7 @@
 // chrome.storage / chrome.runtime falsos para testar o CRM sem o Chrome.
 
+import { reiniciarRepositorioPadrao } from '../../src/shared/repositorio-local';
+
 type Mudancas = Record<string, { oldValue?: unknown; newValue?: unknown }>;
 type Ouvinte = (mudancas: Mudancas, area: string) => void;
 
@@ -106,5 +108,6 @@ export function instalarChromeFalso(inicial: Record<string, unknown> = {}): Chro
     windows: { async update() {} },
   };
   (globalThis as unknown as { chrome: unknown }).chrome = estado.chrome;
+  reiniciarRepositorioPadrao();
   return estado;
 }

@@ -2,7 +2,7 @@
 // editar, excluir). Escolher um modelo só COLA o texto na caixa, com {nome} e {primeiro_nome}
 // resolvidos. Quem manda é você, apertando Enter. Digitar /atalho na caixa também abre o menu.
 
-import { excluirResposta, renderizarModelo, salvarResposta, buscarRespostas, variaveisDesconhecidas, VARIAVEIS } from '../../shared/crm-modelos';
+import { renderizarModelo, buscarRespostas, variaveisDesconhecidas, VARIAVEIS } from '../../shared/crm-modelos';
 import type { RespostaRapida } from '../../shared/crm-tipos';
 import { acrescentarNoCampo, escreverNoCampo, textoDoCampo } from '../dom';
 import type { Estado } from './estado';
@@ -130,23 +130,15 @@ export function abrirMenuRespostas(ancora: HTMLElement, ctx: ContextoRespostas, 
       h(
         'div',
         { class: 'linha2' },
-        h('button', { class: 'btn pri', type: 'button', onclick: () => {
-          const erro = salvarResposta(ctx.estado.dados, { id: atual?.id, titulo: titulo.value, atalho: atalho.value, texto: texto.value });
+        h('button', { class: 'btn pri', type: 'button', onclick: () => void (async () => {
+          const erro = await ctx.estado.fazer((r) => r.salvarResposta({ id: atual?.id, titulo: titulo.value, atalho: atalho.value, texto: texto.value }));
           if (erro) { msg.textContent = erro; return; }
-          ctx.estado.mudou('respostas');
-          void ctx.estado.salvarAgora();
           tela = { tipo: 'lista' };
           render();
-        } }, 'Salvar'),
+        })() }, 'Salvar'),
         h('button', { class: 'btn', type: 'button', onclick: () => { tela = { tipo: 'lista' }; render(); } }, 'Cancelar'),
         atual
-          ? h('button', { class: 'btn perigo', type: 'button', onclick: () => {
-              excluirResposta(ctx.estado.dados, atual.id);
-              ctx.estado.mudou('respostas');
-              void ctx.estado.salvarAgora();
-              tela = { tipo: 'lista' };
-              render();
-            } }, 'Excluir')
+          ? h('button', { class: 'btn perigo', type: 'button', onclick: () => void ctx.estado.fazer((r) => r.excluirResposta(atual.id)).then(() => { tela = { tipo: 'lista' }; render(); }) }, 'Excluir')
           : null,
       ),
     ];

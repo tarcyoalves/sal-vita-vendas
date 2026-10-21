@@ -2,7 +2,6 @@
 // em JSON. Tudo local: nada é enviado a servidor nenhum.
 
 import { useEffect, useState } from 'react';
-import { exportarJson, lerImportacao, mesclarDados, substituirDados } from '../shared/crm-store';
 import type { CrmPainel } from './crm';
 
 function carimbo(): string {
@@ -23,29 +22,23 @@ export function CrmBackup({ crm }: { crm: CrmPainel }) {
   );
 
   function exportar() {
-    if (!crm.dados) return;
-    const url = URL.createObjectURL(new Blob([exportarJson(crm.dados)], { type: 'application/json' }));
-    setArquivo({ url, nome: `vita-zap-crm-${carimbo()}.json` });
+    void crm.repo.exportarJson().then((json) => {
+      const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+      setArquivo({ url, nome: `vita-zap-crm-${carimbo()}.json` });
+    });
   }
 
   async function importar(f: File | undefined) {
     setMsg(null);
     setErro(null);
-    if (!f || !crm.dados) return;
-    const r = lerImportacao(await f.text());
+    if (!f) return;
+    const texto = await f.text();
+    if (modo === 'substituir' && !window.confirm('Substituir contatos, notas, etiquetas, lembretes e respostas rápidas pelo conteúdo deste arquivo?')) return;
+    const r = await crm.fazer((repo) => repo.importar(texto, modo));
     if (!r.ok) {
       setErro(r.erro);
       return;
     }
-    if (modo === 'substituir' && !window.confirm('Substituir contatos, notas, etiquetas, lembretes e respostas rápidas pelo conteúdo deste arquivo?')) return;
-    await crm.alterar(['contatos', 'etiquetas', 'lembretes', 'respostas'], (d) => {
-      const novo = modo === 'substituir' ? substituirDados(d, r.dados) : mesclarDados(d, r.dados);
-      d.contatos = novo.contatos;
-      d.etiquetas = novo.etiquetas;
-      d.lembretes = novo.lembretes;
-      d.respostas = novo.respostas;
-    });
-    await crm.recarregar();
     setMsg(`Importado (${modo === 'substituir' ? 'substituindo' : 'mesclando'}): ${r.resumo.contatos} contatos, ${r.resumo.etiquetas} etiquetas, ${r.resumo.lembretes} lembretes, ${r.resumo.respostas} respostas rápidas.`);
   }
 

@@ -1,20 +1,20 @@
 // Regras puras de triagem: classificação das abas, "há X dias" e filtros. Sem DOM, sem storage.
 
 import { diferencaDias, hojeNoFuso, interpretarRotuloData, partesNoFuso } from './datas';
-import { normalizarTexto, pareceSoNumero } from './nomes';
+import { normalizarTexto } from './nomes';
+import { telefoneDoNomeExibido } from './telefone';
 import type { AbaId, Contato, Conversa } from './crm-tipos';
 import { ABAS } from './crm-tipos';
 
 const DIA_MS = 86_400_000;
 
-/** Chave do contato: dígitos quando o nome é um número (contato não salvo), senão nome normalizado. */
+/** Chave de leitura da lista: o telefone normalizado quando o nome exibido é um número (contato não salvo), senão o nome normalizado. */
 export function chaveDaConversa(nome: string): string {
-  if (pareceSoNumero(nome)) return nome.replace(/\D/g, '');
-  return normalizarTexto(nome);
+  return telefoneDoNomeExibido(nome) ?? normalizarTexto(nome);
 }
 
 export function telefoneDoNome(nome: string): string | undefined {
-  return pareceSoNumero(nome) ? nome.replace(/\D/g, '') : undefined;
+  return telefoneDoNomeExibido(nome) ?? undefined;
 }
 
 /** O que foi lido de uma linha da lista, antes de virar Conversa. */
@@ -139,12 +139,12 @@ export interface Contagens {
   aguardando: number;
 }
 
-export function contar(conversas: Conversa[], contatos: Record<string, Contato>): Contagens {
+export function contar(conversas: Conversa[], contatoDe: (c: Conversa) => Contato | undefined): Contagens {
   const r: Contagens = { todas: 0, naoLidas: 0, precisa: 0, aguardando: 0 };
   for (const c of conversas) {
     if (c.arquivada) continue;
     r.todas += 1;
-    const k = classificar(c, contatos[c.chave]);
+    const k = classificar(c, contatoDe(c));
     if (k.naoLida) r.naoLidas += 1;
     if (k.precisa) r.precisa += 1;
     if (k.aguardando) r.aguardando += 1;

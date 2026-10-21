@@ -3,7 +3,7 @@
 // Prova, com um HTML SINTÉTICO que imita a lista do WhatsApp Web, que a barra de abas aparece,
 // que os contadores batem e que o filtro esconde as linhas certas (sem reordenar o DOM).
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { iniciarCrm, type ControladorCrm } from '../src/content/crm';
 import { limparAvisos } from '../src/content/crm/ui';
 import { instalarChromeFalso } from './ajuda/chrome-falso';
@@ -114,7 +114,7 @@ describe('barra de abas injetada', () => {
     const dispensar = (document.querySelector('[data-nome="Ana Souza"] [data-vita-zap-linha]') as HTMLElement).shadowRoot?.querySelector<HTMLButtonElement>('button');
     expect(dispensar?.textContent).toBe('dispensar');
     dispensar?.click();
-    expect(nomesVisiveis()).toEqual(['Carla Dias', 'Fábio Reis']);
+    await vi.waitFor(() => expect(nomesVisiveis()).toEqual(['Carla Dias', 'Fábio Reis']));
     expect(abas()['Precisa de resposta']).toBe(2);
   });
 

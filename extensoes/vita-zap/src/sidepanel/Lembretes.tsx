@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { abrirConversaNoWhatsApp } from '../shared/crm-acoes';
-import { adiarLembrete, agruparLembretes, formatarVencimento, prazoRapido } from '../shared/crm-lembretes';
+import { agruparLembretes, formatarVencimento, prazoRapido } from '../shared/crm-lembretes';
 import type { Lembrete } from '../shared/crm-tipos';
 import type { CrmPainel } from './crm';
 
@@ -31,12 +31,7 @@ function Secao({ titulo, itens, vencidos, crm, aoAbrir }: { titulo: string; iten
                 <button
                   type="button"
                   className="pequeno"
-                  onClick={() =>
-                    void crm.alterar(['lembretes'], (d) => {
-                      const x = d.lembretes.find((y) => y.id === l.id);
-                      if (x) x.status = 'concluido';
-                    })
-                  }
+                  onClick={() => void crm.fazer((r) => r.atualizarLembrete(l.id, { status: 'concluido' }))}
                 >
                   Concluir
                 </button>
@@ -44,12 +39,7 @@ function Secao({ titulo, itens, vencidos, crm, aoAbrir }: { titulo: string; iten
                   type="button"
                   className="pequeno"
                   title="Adiar para amanhã às 9h"
-                  onClick={() =>
-                    void crm.alterar(['lembretes'], (d) => {
-                      const i = d.lembretes.findIndex((y) => y.id === l.id);
-                      if (i >= 0) d.lembretes[i] = adiarLembrete(d.lembretes[i], prazoRapido('amanha9h', new Date()), new Date());
-                    })
-                  }
+                  onClick={() => void crm.fazer((r) => r.adiarLembrete(l.id, prazoRapido('amanha9h', new Date()), new Date()))}
                 >
                   Adiar
                 </button>
@@ -57,7 +47,7 @@ function Secao({ titulo, itens, vencidos, crm, aoAbrir }: { titulo: string; iten
                   type="button"
                   className="pequeno perigo"
                   onClick={() => {
-                    if (window.confirm(`Excluir o lembrete de "${l.nome}"?`)) void crm.alterar(['lembretes'], (d) => (d.lembretes = d.lembretes.filter((y) => y.id !== l.id)));
+                    if (window.confirm(`Excluir o lembrete de "${l.nome}"?`)) void crm.fazer((r) => r.excluirLembrete(l.id));
                   }}
                 >
                   Excluir
@@ -79,7 +69,7 @@ export function Lembretes({ crm }: { crm: CrmPainel }) {
   async function abrir(l: Lembrete) {
     setMsg(null);
     try {
-      await abrirConversaNoWhatsApp(l.nome, l.rascunho, l.id);
+      await abrirConversaNoWhatsApp(crm.repo, { nome: l.nome, telefone: l.telefone, rascunho: l.rascunho, lembreteId: l.id });
       setMsg(`Abrindo a conversa de ${l.nome} no WhatsApp Web. O rascunho (se houver) será colado na caixa: confira e aperte Enter.`);
     } catch {
       setMsg('Não consegui falar com a aba do WhatsApp Web. Abra web.whatsapp.com e recarregue a aba (F5).');

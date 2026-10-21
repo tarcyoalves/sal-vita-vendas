@@ -81,8 +81,12 @@ describe('botão de lembrete no cabeçalho da conversa', () => {
     botao(popover(), 'Salvar lembrete').click();
     await vi.waitFor(() => expect((chrome.dados.get('vz.lembretes') as Lembrete[] | undefined)?.length).toBe(1));
     const [l] = chrome.dados.get('vz.lembretes') as Lembrete[];
-    expect(l).toMatchObject({ nome: 'Ana Souza', chave: 'ana souza', status: 'pendente', rascunho: 'Oi {primeiro_nome}, conseguiu ver o orçamento?' });
+    expect(l).toMatchObject({ nome: 'Ana Souza', status: 'pendente', rascunho: 'Oi {primeiro_nome}, conseguiu ver o orçamento?' });
     expect(l.venceEm).toBe(prazoRapido('amanha9h', AGORA));
+    // o lembrete é do contato (id interno), não do nome
+    const [contatoCriado] = Object.values(chrome.dados.get('vz.contatos') as Record<string, { id: string; nome: string }>);
+    expect(l.contatoId).toBe(contatoCriado.id);
+    expect(contatoCriado.id).not.toContain('ana');
     // nada foi colado nem digitado agora: o rascunho só vai para a caixa quando o aviso for aberto
     expect(compositor().textContent).toBe('');
     // o botão ganha o selo de 1 lembrete
@@ -96,7 +100,7 @@ describe('botão de lembrete no cabeçalho da conversa', () => {
     campo.value = '2026-10-20T09:00';
     campo.dispatchEvent(new Event('input'));
     botao(popover(), 'Salvar lembrete').click();
-    expect(popover().textContent).toContain('já passou');
+    await vi.waitFor(() => expect(popover().textContent).toContain('já passou'));
     expect(chrome.dados.get('vz.lembretes')).toBeUndefined();
   });
 
@@ -150,8 +154,8 @@ describe('abrir pelo aviso: cola o rascunho e para', () => {
 });
 
 describe('central de lembretes (sino da barra)', () => {
-  const vencido: Lembrete = { id: 'v1', chave: 'ana souza', nome: 'Ana Souza', venceEm: instanteNoFuso('2026-10-20', 9), criadoEm: 1, status: 'disparado', rascunho: 'Oi Ana!' };
-  const proximo: Lembrete = { id: 'p1', chave: 'bruno', nome: 'Bruno Lima', venceEm: instanteNoFuso('2026-10-25', 9), criadoEm: 1, status: 'pendente' };
+  const vencido: Lembrete = { id: 'v1', contatoId: 'id-ana-souza', nome: 'Ana Souza', venceEm: instanteNoFuso('2026-10-20', 9), criadoEm: 1, status: 'disparado', rascunho: 'Oi Ana!' };
+  const proximo: Lembrete = { id: 'p1', contatoId: 'id-bruno', nome: 'Bruno Lima', venceEm: instanteNoFuso('2026-10-25', 9), criadoEm: 1, status: 'pendente' };
 
   beforeEach(() => {
     chrome = instalarChromeFalso({ 'vz.lembretes': [vencido, proximo] });
@@ -174,7 +178,7 @@ describe('central de lembretes (sino da barra)', () => {
     await iniciar();
     (sombra('vita-zap-barra').querySelector('[title^="Lembretes"]') as HTMLButtonElement).click();
     botao(popover(), 'Concluir').click();
-    expect(popover().textContent).toContain('Vencidos (0)');
+    await vi.waitFor(() => expect(popover().textContent).toContain('Vencidos (0)'));
     await vi.waitFor(() => expect((chrome.dados.get('vz.lembretes') as Lembrete[]).find((l) => l.id === 'v1')?.status).toBe('concluido'));
   });
 

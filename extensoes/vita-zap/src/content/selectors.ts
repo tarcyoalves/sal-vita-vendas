@@ -94,6 +94,9 @@ export const SELETORES = {
   /** Cabeçalho da conversa aberta (onde entram os botões Lembrete e Cliente). */
   cabecalhoConversa: ['#main header'],
 
+  /** Painel "Dados do contato" (à direita), quando aberto: pode mostrar o telefone do contato. */
+  painelDadosContato: ['[data-testid="contact-info-drawer"]', 'section[aria-label*="Dados do contato"]', 'section[aria-label*="Contact info"]'],
+
   /** Rodapé da conversa aberta (a caixa de digitação mora aqui). */
   rodapeConversa: ['#main footer'],
 
