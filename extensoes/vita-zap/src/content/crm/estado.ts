@@ -2,7 +2,8 @@
 // Gravação com debounce (a lista de conversas muda o tempo todo) e leitura das mudanças feitas
 // por outras partes da extensão (painel lateral, service worker).
 
-import { carregarDados, CHAVES, dadosVazios, gravar, observarMudancas, sanearDados, type Colecao } from '../../shared/crm-store';
+import { MODELOS_INICIAIS } from '../../shared/crm-modelos';
+import { carregarDados, CHAVES, dadosVazios, gravar, novoId, observarMudancas, sanearDados, type Colecao } from '../../shared/crm-store';
 import type { DadosCrm } from '../../shared/crm-tipos';
 
 const ATRASO_GRAVACAO_MS = 800;
@@ -18,6 +19,11 @@ export class Estado {
 
   async iniciar(aoAcaoPendente?: () => void): Promise<void> {
     this.dados = await carregarDados();
+    // Primeira vez: um modelo de exemplo, para o menu de respostas rápidas não abrir vazio.
+    if (!(CHAVES.respostas in (await chrome.storage.local.get(CHAVES.respostas)))) {
+      this.dados.respostas = MODELOS_INICIAIS.map((m) => ({ ...m, id: novoId() }));
+      this.mudouSilencioso('respostas');
+    }
     this.parar = observarMudancas((colecoes, mudancas) => {
       let mudou = false;
       for (const c of colecoes) {

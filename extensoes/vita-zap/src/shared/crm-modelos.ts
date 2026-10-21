@@ -2,7 +2,8 @@
 // O texto renderizado só é COLADO na caixa de mensagem; quem envia é sempre o usuário.
 
 import { normalizarTexto, primeiroNome } from './nomes';
-import type { RespostaRapida } from './crm-tipos';
+import { novoId } from './crm-store';
+import type { DadosCrm, RespostaRapida } from './crm-tipos';
 
 export const VARIAVEIS = ['{nome}', '{primeiro_nome}'] as const;
 
@@ -80,4 +81,24 @@ export function validarResposta(r: { titulo: string; atalho: string; texto: stri
     if (existentes.some((e) => e.id !== idAtual && normalizarAtalho(e.atalho) === normalizarAtalho(atalho))) return `O atalho /${atalho} já existe.`;
   }
   return null;
+}
+
+/** Cria (sem `id`) ou atualiza o modelo. Devolve o erro em texto, ou null se salvou. */
+export function salvarResposta(dados: DadosCrm, entrada: { id?: string; titulo: string; atalho: string; texto: string }): string | null {
+  const erro = validarResposta(entrada, dados.respostas, entrada.id);
+  if (erro) return erro;
+  const r: RespostaRapida = {
+    id: entrada.id ?? novoId(),
+    titulo: entrada.titulo.trim(),
+    atalho: entrada.atalho.replace(/^\/+/, '').trim(),
+    texto: entrada.texto.trim(),
+  };
+  const i = dados.respostas.findIndex((x) => x.id === r.id);
+  if (i >= 0) dados.respostas[i] = r;
+  else dados.respostas.push(r);
+  return null;
+}
+
+export function excluirResposta(dados: DadosCrm, id: string): void {
+  dados.respostas = dados.respostas.filter((r) => r.id !== id);
 }

@@ -18,6 +18,8 @@ import { Barra } from './barra';
 import { Cabecalho } from './cabecalho';
 import { Estado } from './estado';
 import { aplicarFiltroNaLista } from './filtro-lista';
+import { BotaoRespostas } from './painel-respostas';
+import { consultaDeAtalho } from '../../shared/crm-modelos';
 import { abrirFiltroEtiquetas, abrirPainelCliente } from './painel-cliente';
 import { abrirCentral, abrirPainelNovoLembrete, type ContextoLembretes } from './painel-lembrete';
 import { fecharPopover, popoverAbertoEm } from './popover';
@@ -65,6 +67,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   await estado.iniciar(() => void consumirAcaoPendente());
   const barra = new Barra();
   const cabecalho = new Cabecalho();
+  const botaoRespostas = new BotaoRespostas({ estado, nomeDaConversa: nomeDaConversaAberta, caixa: () => encontrar(document, 'caixaMensagem') });
 
   let lendoLista = false;
   let pararLeitura = false;
@@ -186,6 +189,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       }
 
       atualizarCabecalho(agora);
+      botaoRespostas.posicionar(encontrar(document, 'caixaMensagem'));
 
       barra.render(
         {
@@ -248,6 +252,19 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
     }, espera);
   }
 
+  // Digitar "/atalho" na caixa de mensagem abre o menu de respostas rápidas (só escuta; não escreve nada).
+  const aoDigitar = (e: Event): void => {
+    try {
+      const caixa = encontrar(document, 'caixaMensagem');
+      if (!caixa || !(e.target instanceof Node) || !caixa.contains(e.target)) return;
+      botaoRespostas.aoDigitar(consultaDeAtalho(textoDoCampo(caixa)));
+    } catch (erro) {
+      avisarUmaVez('atalho', 'Falha ao ler o atalho digitado.', erro);
+    }
+  };
+  document.addEventListener('input', aoDigitar, true);
+  window.addEventListener('resize', ciclo);
+
   observador.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
   const removerOuvinte = estado.ouvir(() => agendar());
   const periodico = op.periodicoMs === 0 ? null : setInterval(ciclo, op.periodicoMs ?? 30_000);
@@ -266,6 +283,9 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       if (periodico) clearInterval(periodico);
       barra.remover();
       cabecalho.remover();
+      botaoRespostas.remover();
+      document.removeEventListener('input', aoDigitar, true);
+      window.removeEventListener('resize', ciclo);
       fecharPopover();
       estado.encerrar();
     },

@@ -54,6 +54,26 @@ export function escreverNoCampo(el: HTMLElement, texto: string): void {
   document.execCommand('insertText', false, texto);
 }
 
+/** Acrescenta `texto` no FIM do que já está no campo (não apaga nada). */
+export function acrescentarNoCampo(el: HTMLElement, texto: string): void {
+  el.focus();
+  if (ehInput(el)) {
+    const proto = el instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(el, el.value + texto);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return;
+  }
+  const sel = window.getSelection();
+  if (sel) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false); // cursor no fim
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  document.execCommand('insertText', false, texto);
+}
+
 export function limparCampo(el: HTMLElement): void {
   el.focus();
   if (ehInput(el)) {
