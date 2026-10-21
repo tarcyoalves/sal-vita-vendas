@@ -5,7 +5,7 @@
 
 import { chaveDaConversa, classificar, contar, diagnosticoDaLeitura, idadeDaUltima, passaNoFiltro, atualizarConversa, type FiltroLista } from '../../shared/crm-regras';
 import { contarVencidos } from '../../shared/crm-lembretes';
-import { garantirContato } from '../../shared/crm-store';
+import { dispensarConversa, reativarConversa } from '../../shared/crm-contatos';
 import type { AbaId, Conversa } from '../../shared/crm-tipos';
 import { textoDoCampo } from '../dom';
 import { lerLinhaCrm } from '../extrair';
@@ -18,6 +18,7 @@ import { Barra } from './barra';
 import { Cabecalho } from './cabecalho';
 import { Estado } from './estado';
 import { aplicarFiltroNaLista } from './filtro-lista';
+import { abrirFiltroEtiquetas, abrirPainelCliente } from './painel-cliente';
 import { abrirCentral, abrirPainelNovoLembrete, type ContextoLembretes } from './painel-lembrete';
 import { fecharPopover, popoverAbertoEm } from './popover';
 import { anotarLinha, removerSelo } from './linha-extra';
@@ -88,8 +89,11 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
     const pendentes = dados.lembretes.filter((l) => l.chave === chave && l.status !== 'concluido');
     cabecalho.atualizar(
       header,
-      { nome, chave, lembretes: pendentes.length, anotacoes: 0, vencido: pendentes.some((l) => l.venceEm <= agora.getTime()) },
-      { abrirLembrete: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirPainelNovoLembrete(ancora, ctxLembretes, nome, chave)) },
+      { nome, chave, lembretes: pendentes.length, anotacoes: dados.contatos[chave]?.notas.length ?? 0, vencido: pendentes.some((l) => l.venceEm <= agora.getTime()) },
+      {
+        abrirLembrete: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirPainelNovoLembrete(ancora, ctxLembretes, nome, chave)),
+        abrirCliente: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirPainelCliente(ancora, { estado, agora: agoraFn, dispensar, reativar }, nome, chave)),
+      },
     );
   }
 
@@ -105,14 +109,15 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   }
 
   function dispensar(chave: string): void {
-    const conversa = estado.dados.conversas[chave];
-    if (!conversa) return;
-    const agora = agoraFn().getTime();
-    const contato = garantirContato(estado.dados, chave, conversa.nome, agora);
-    contato.dispensadaAss = conversa.ass;
-    contato.dispensadaEm = agora;
-    contato.atualizadoEm = agora;
+    if (dispensarConversa(estado.dados, chave, agoraFn().getTime())) estado.mudou('contatos');
+    void estado.salvarAgora();
+    ciclo();
+  }
+
+  function reativar(chave: string): void {
+    reativarConversa(estado.dados, chave, agoraFn().getTime());
     estado.mudou('contatos');
+    void estado.salvarAgora();
     ciclo();
   }
 
@@ -196,7 +201,10 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
         {
           escolherAba: (id) => mudarConfig({ aba: id }),
           escolherDias: (dias) => mudarConfig({ diasSemResposta: dias }),
-          abrirEtiquetas: () => undefined,
+          abrirEtiquetas: (ancora) =>
+            popoverAbertoEm(ancora)
+              ? fecharPopover()
+              : abrirFiltroEtiquetas(ancora, { estado, marcadas: () => estado.dados.config.filtroEtiquetas, aoMudar: (ids) => mudarConfig({ filtroEtiquetas: ids }) }),
           abrirLembretes: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirCentral(ancora, ctxLembretes)),
           lerLista: () => void lerListaToda(),
         },
