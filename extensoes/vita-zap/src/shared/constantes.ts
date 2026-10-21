@@ -45,3 +45,12 @@ export const HORARIO_PERMITIDO: ReadonlyArray<{ inicio: number; fim: number } | 
   { inicio: 8, fim: 18 }, // sexta
   { inicio: 8, fim: 12 }, // sábado
 ];
+
+/** ID FIXO da extensão (derivado da chave pública em `key` do manifest; a chave privada não é versionada). */
+export const ID_DA_EXTENSAO = 'anlifdaoagpcbdjpbflodkcialbdbghh';
+
+/** Origem enviada pelo Chrome ao CRM; o servidor (shared/extensao.ts) só aceita esta. */
+export const ORIGEM_DA_EXTENSAO = `chrome-extension://${ID_DA_EXTENSAO}`;
+
+/** Endereço padrão do CRM Lembretes (configurável na aba Dados). */
+export const URL_CRM_PADRAO = 'https://lembretes.salvitarn.com.br';
