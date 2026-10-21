@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.4: CRM + campanhas "uma tecla", sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.5: CRM + integração com o CRM Lembretes + campanhas "uma tecla", sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -8,7 +8,8 @@ texto pronto. **Quem envia é você, apertando Enter.** Especificação completa
 Desde a v0.4 ela também é um **CRM dentro do WhatsApp Web**: abas de triagem (quem espera
 resposta sua e quem não responde você), lembretes de follow-up, notas, etiquetas, fase do funil e
 respostas rápidas. Tudo local (`chrome.storage.local`), lido só do HTML do WhatsApp Web, sem
-servidor e sem login. Especificação do CRM: [`docs/VITA-ZAP-SPEC-CRM.md`](../../docs/VITA-ZAP-SPEC-CRM.md).
+servidor e sem login. Desde a v0.5 há um **login opcional no CRM Lembretes** (seção 3.3): sem entrar,
+nada muda. Especificação do CRM: [`docs/VITA-ZAP-SPEC-CRM.md`](../../docs/VITA-ZAP-SPEC-CRM.md).
 
 Projeto **separado do CRM**: tem `package.json`, dependências e testes próprios. Não usa
 banco, servidor nem chave de IA. O build e os testes do CRM (raiz do repositório) ignoram
@@ -142,6 +143,64 @@ e salve. Sem isso nenhuma campanha roda. Confira também se o WhatsApp Web está
 
 **Feche o painel = campanha pausada.** A lógica roda no painel; ao reabrir, use *Retomar*.
 
+### 3.3 Conectar ao CRM Lembretes (v0.5)
+
+Opcional. **Sem login tudo funciona como na v0.4** (dados só neste navegador). Com login, a extensão
+usa o mesmo cadastro do CRM (`lembretes.salvitarn.com.br`): cada conversa mostra o lead (task) do CRM e
+os lembretes do CRM aparecem na central e nos alarmes. **Nada envia mensagem de WhatsApp**: continua
+valendo "você aperta o Enter".
+
+**Entrar:** painel lateral → **Dados** → **CRM Lembretes**. Digite o e-mail e a senha do CRM e clique
+em **Entrar**. Na primeira vez o Chrome pede permissão para acessar o endereço do CRM (aceite; é
+permissão opcional, pedida só aqui). A **senha não é guardada**: só a sessão do CRM (cookie de 7 dias do
+próprio navegador). O mesmo bloco mostra "Conectado como …", **Sincronizar lembretes agora**, **Sair**,
+as ações que estão esperando a internet e as que o CRM recusou. O endereço do CRM é editável (só
+`https://`, ou `http://localhost`); trocar o endereço derruba a sessão.
+
+**Faixa do lead** (logo abaixo do cabeçalho da conversa aberta, só com login):
+
+- a extensão procura o lead pelo **telefone** da conversa (`tasks.findForWhatsapp`, vale com ou sem o
+  9 extra e com ou sem DDI; só os seus leads, a mesma regra do CRM). Achou: mostra **status**,
+  **etiquetas**, **próximo lembrete**, **último contato** e a **última nota**; o vínculo conversa→lead
+  fica guardado neste navegador;
+- não achou: **Vincular a um lead** (busca pelo nome) ou **Criar lead** (nome + telefone; o CRM exige
+  data de lembrete, então nasce com lembrete para amanhã às 9h). Telefone com mais de um lead: você
+  escolhe;
+- **Registrar contato**: anexa às notas do lead uma linha `[21/10/2026 14:30] texto` (fuso de Fortaleza).
+  Como no CRM, nota nova com mais de 15 caracteres conta como contato (data do último contato e
+  contador). Se as notas passarem de 5000 caracteres, as linhas mais antigas saem;
+- **Reagendar lembrete** (amanhã 9h, 3 dias, 1 semana ou data/hora), **Etiquetas** (adicionar/tirar;
+  `ativo` e `Email Confirmado` são do CRM e não mudam aqui) e **Marcar convertido** (valor do pedido
+  opcional).
+
+**Lembretes do CRM** (a cada 5 minutos, `chrome.alarms`, `tasks.reminders`: de ontem até 7 dias): entram
+na central (Vencidos / Hoje / Próximos), no selo do ícone e nos alarmes, junto com os lembretes locais.
+Cada lembrete avisa **uma vez** (a chave é a task + o horário; se o horário mudar no CRM, avisa de novo).
+Os que já estavam vencidos há mais de 15 minutos quando aparecem pela primeira vez entram como vencidos,
+**sem** notificação (para não despejar dezenas de avisos ao entrar). **Clicar** na notificação (ou em
+**Abrir**) leva a aba do WhatsApp Web a `web.whatsapp.com/send?phone=<telefone>` (recarrega a aba; sem
+texto, nada é enviado). Concluir/Excluir um lembrete do CRM só o esconde na extensão (no CRM os lembretes
+são recorrentes); **Adiar** muda a data no CRM.
+
+**Sem internet, ou sessão caída:** a ação (contato, reagendar, etiqueta, convertido) vai para uma **fila
+local** e a faixa já mostra o resultado esperado com o aviso "guardada". A fila é reenviada na próxima
+sincronização (5 min), ao entrar de novo ou em "Reenviar agora", sempre na ordem; a mesma linha de
+contato nunca é duplicada. O que o CRM recusar de vez (lead apagado, sem permissão) sai da fila e aparece
+em Dados com o resumo, para você refazer. O texto que você digitou **não se perde**: em erro de validação
+ele continua no campo. A fila é de cada usuário (não é enviada com a sessão de outro).
+
+**Erros que a extensão explica:** senha errada; muitas tentativas (429); sem conexão; sessão expirada ou
+**IP não liberado** (o CRM trata IP restrito como "não logado": a mensagem cita as duas causas); servidor
+que ainda não conhece esta extensão (403 "origem").
+
+**Como funciona por baixo:** só o service worker fala com o CRM (`fetch` com `credentials: 'include'`,
+tRPC + superjson em `/api/trpc`); o WhatsApp Web e o painel chamam o service worker por mensagem
+(`src/shared/crm-transporte.ts`). `RepositorioCRM` (`src/shared/repositorio-crm.ts`) implementa a mesma
+interface `RepositorioContatos`: o que não é do CRM cai no `RepositorioLocal`; o que está em
+`chrome.storage` (chaves `vz.crm.*`: conta, vínculos, cache de leads, fila, lembretes, avisados) é só
+cache. O servidor aceita a origem `chrome-extension://anlifdaoagpcbdjpbflodkcialbdbghh` (ID fixo, vindo da
+chave pública `key` do manifest; a chave privada **não** está no repositório).
+
 ### Dados e backup
 
 Campanhas: tudo fica **só neste navegador** (IndexedDB da extensão): contatos varridos, campanhas,
@@ -273,6 +332,18 @@ número salvo como "CLIENTE TESTE").
 - [ ] Aba Clientes lista os contatos e ordena por mais tempo sem contato.
 - [ ] Se algo falhar, o WhatsApp continua normal e o console mostra **um** aviso `[Vita Zap]`.
 
+**CRM Lembretes (v0.5, precisa do servidor com o ID da extensão: push em `main` feito)**
+- [ ] Carregar a pasta `dist` e conferir em `chrome://extensions` que o **ID é `anlifdaoagpcbdjpbflodkcialbdbghh`**.
+- [ ] Dados → CRM Lembretes → Entrar com um usuário **de teste**: o Chrome pede a permissão do endereço; depois
+      aparece "Conectado como …". Se aparecer "sessão não reconhecida" logo após o login, ver o plano B no registro
+      de coordenação (cookie SameSite=Lax ou IP restrito).
+- [ ] Abrir uma conversa cujo telefone existe como lead: a faixa mostra status, etiquetas, lembrete e nota.
+- [ ] Registrar contato: a linha `[data hora] texto` aparece nas notas do lead **no CRM** (abrir o lead no site).
+- [ ] Reagendar, etiquetas e Marcar convertido refletem no CRM.
+- [ ] Desligar o Wi-Fi, registrar contato: aviso "guardada"; religar: a nota chega ao CRM sozinha em até 5 min.
+- [ ] Lembrete do CRM para daqui a 3 minutos: **uma** notificação; clicar abre a conversa pelo telefone **sem enviar**.
+- [ ] Sair: a faixa some e o selo/central voltam a mostrar só os lembretes locais.
+
 **Dados**
 - [ ] Exportar backup JSON, importar em outro perfil do Chrome (mesclar) — campanhas e
       "não enviar" voltam.
@@ -285,8 +356,9 @@ número salvo como "CLIENTE TESTE").
 contato, respostas rápidas, backup). A implementação atual é o `RepositorioLocal`
 (`src/shared/repositorio-local.ts`, `chrome.storage.local`, chaves `vz.*`) e é o **único** arquivo
 que toca em `chrome.storage` (o teste `tests/arquitetura-repositorio.test.ts` garante). A tela do
-WhatsApp, o painel lateral e o service worker só falam com a interface. Um segundo adaptador
-(sincronizar com o CRM Lembretes) poderá implementar a mesma interface sem mexer na UI. Campos
+WhatsApp, o painel lateral e o service worker só falam com a interface. O segundo adaptador, o
+`RepositorioCRM` (`src/shared/repositorio-crm.ts`, v0.5), implementa a mesma interface por cima do local e
+fala com o CRM Lembretes (seção 3.3) sem mexer na UI. Campos
 já guardados com essa finalidade: `telefone` (dígitos com 55), `notas`, `etiquetas`, `fase`,
 lembretes (`venceEm`), `ultimoContatoEm` (última mensagem lida da lista) e `convertidoEm`
 (quando a fase virou "Fechado").
