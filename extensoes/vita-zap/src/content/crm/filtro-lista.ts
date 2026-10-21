@@ -75,6 +75,9 @@ export function aplicarFiltroNaLista(itens: ItemFiltro[], ativo: boolean): void 
     if (d > 0 && d < menor) menor = d;
   }
   if (Number.isFinite(menor)) espaco = menor;
+  // As linhas que ficam são encostadas no início da janela que o WhatsApp renderizou (com a lista
+  // rolada, o início da janela não é o topo da lista).
+  const base = posicoes.length > 0 ? posicoes[0] : 0;
 
   let k = 0;
   for (const a of ordenados) {
@@ -88,7 +91,7 @@ export function aplicarFiltroNaLista(itens: ItemFiltro[], ativo: boolean): void 
       ocultos.delete(a.alvo);
     }
     if (a.comTransform && a.pos != null) {
-      const t = `translateY(${k * espaco}px)`;
+      const t = `translateY(${base + k * espaco}px)`;
       const atual = a.alvo.style.transform;
       if (atual !== t) {
         const reg = registros.get(a.alvo);

@@ -1,9 +1,14 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (fase 1, sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.4: CRM + campanhas "uma tecla", sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
 texto pronto. **Quem envia é você, apertando Enter.** Especificação completa:
 [`docs/PLANO-CAMPANHAS-WHATSAPP.md`](../../docs/PLANO-CAMPANHAS-WHATSAPP.md).
+
+Desde a v0.4 ela também é um **CRM dentro do WhatsApp Web**: abas de triagem (quem espera
+resposta sua e quem não responde você), lembretes de follow-up, notas, etiquetas, fase do funil e
+respostas rápidas. Tudo local (`chrome.storage.local`), lido só do HTML do WhatsApp Web, sem
+servidor e sem login. Especificação do CRM: [`docs/VITA-ZAP-SPEC-CRM.md`](../../docs/VITA-ZAP-SPEC-CRM.md).
 
 Projeto **separado do CRM**: tem `package.json`, dependências e testes próprios. Não usa
 banco, servidor nem chave de IA. O build e os testes do CRM (raiz do repositório) ignoram
@@ -51,6 +56,57 @@ Requer Chrome 116 ou mais novo (API de painel lateral).
 
 ## 3. Como usar
 
+### 3.1 CRM dentro do WhatsApp Web (v0.4)
+
+Abra o WhatsApp Web com a extensão carregada. Nada para configurar: a barra aparece sozinha.
+Tudo isso **só lê a tela e anota no seu navegador**; nada manda mensagem. Onde há texto pronto
+(lembrete, resposta rápida) a extensão **cola na caixa e para**: você confere e aperta Enter.
+
+1. **Abas de triagem** (barra acima da lista de conversas, com contadores):
+   - **Todas** / **Não lidas**;
+   - **Precisa de resposta**: a última mensagem **não** foi sua (conversas individuais; grupos e
+     arquivadas ficam fora). Cada linha ganha o botão **dispensar** (para o "obrigado" final):
+     ela some da aba até chegar mensagem nova daquele contato. Também dá para dispensar e
+     reativar pelo painel do cliente;
+   - **Aguardando resposta**: a última mensagem foi **sua**; a linha mostra há quanto tempo.
+
+   Clicar numa aba **esconde as linhas que não batem** (não reordena nada do WhatsApp).
+   Com a busca do WhatsApp preenchida ou na pasta "Arquivadas" o filtro fica desligado.
+
+   > **A lista do WhatsApp é virtualizada** (só as conversas perto da tela existem no HTML). Os
+   > contadores valem para as **conversas já vistas** pela extensão (estado guardado conforme
+   > as linhas aparecem). A barra diz isso e tem o link **ler a lista toda**, que rola a lista
+   > devagar (só leitura) para contar todas. A aba **Clientes** do painel lateral lista tudo
+   > o que já foi visto, inclusive o que não está na janela da lista.
+2. **Sem resposta há X dias**: na aba Aguardando resposta, escolha 1, 3, 7 ou 15 dias (dias de
+   calendário desde a última mensagem sua, no fuso de Fortaleza).
+3. **Lembretes de follow-up**: botão de relógio no cabeçalho da conversa aberta → **amanhã 9h**,
+   **em 3 dias**, **em 1 semana** (sempre às 9h) ou data/hora **personalizada**, mais um
+   **rascunho opcional** (aceita `{primeiro_nome}` e `{nome}`). Na hora marcada o Chrome mostra
+   uma notificação; **clicar nela abre o WhatsApp Web na conversa e cola o rascunho** (se a
+   caixa já tiver texto seu, não mexe). O ícone da extensão mostra um **selo vermelho** com os
+   lembretes vencidos. A **central** (sino na barra de abas e aba **Lembretes** do painel lateral)
+   separa **Vencidos / Hoje / Próximos**, com Abrir, Concluir, Adiar (amanhã 9h) e Excluir.
+   Lembrete vencido com o Chrome fechado aparece como vencido ao abrir.
+4. **Notas, etiquetas e fase**: botão de etiqueta no cabeçalho da conversa abre o painel do
+   cliente: **fase do funil** (Novo, Orçamento, Negociando, Fechado, Perdido), **etiquetas com
+   cor** (crie ali mesmo) e **notas** (salvar, editar, excluir). O chip **Etiquetas** da barra
+   filtra a lista por etiqueta ou fase (junto com a aba escolhida). Renomear, recolorir e
+   excluir etiquetas: aba **Clientes** do painel lateral.
+5. **Respostas rápidas**: botão **Respostas** junto à caixa de digitação (ou digite **`/atalho`**
+   na caixa). Modelos com título, atalho e texto; variáveis **`{nome}`** e **`{primeiro_nome}`**.
+   **Inserir** só cola o texto; se a caixa já tem texto, pergunta Substituir / Adicionar /
+   Cancelar. Crie, edite e exclua modelos no próprio menu.
+6. **Aba Clientes** (painel lateral): contatos com fase, etiquetas, última interação e próximo
+   lembrete; **busca**, filtros por fase/etiqueta e ordenação, por padrão **mais tempo sem
+   contato**. O botão Abrir leva ao WhatsApp Web na conversa.
+
+**Contato = nome exibido** (ou só os dígitos, se o contato não está salvo). Dois contatos com o
+mesmo nome dividem os dados. **Dados** → *CRM: backup (JSON)*: exportar e importar (mesclar ou
+substituir) contatos, notas, etiquetas, fases, lembretes e respostas rápidas.
+
+### 3.2 Campanhas "uma tecla" (varredura → prévia → envio)
+
 **Antes da primeira campanha:** aba **Dados** → marque "Este número tem mais de 30 dias de uso"
 e salve. Sem isso nenhuma campanha roda. Confira também se o WhatsApp Web está em
 **português** (as datas da lista são lidas como dia/mês).
@@ -80,8 +136,10 @@ e salve. Sem isso nenhuma campanha roda. Confira também se o WhatsApp Web está
 
 ### Dados e backup
 
-Tudo fica **só neste navegador** (IndexedDB da extensão): contatos varridos, campanhas,
-envios e a lista "Não enviar mais". A extensão **não guarda telefone**. Na aba **Dados**:
+Campanhas: tudo fica **só neste navegador** (IndexedDB da extensão): contatos varridos, campanhas,
+envios e a lista "Não enviar mais". O CRM usa `chrome.storage.local` (chaves `vz.*`). A extensão
+só guarda telefone de contato **não salvo** (o próprio número que aparece como nome) ou quando o
+WhatsApp o expõe no HTML da lista. Na aba **Dados**:
 exportar backup (JSON), importar (mesclar ou substituir) e exportar campanhas em CSV
 (separador `;`, abre no Excel em português).
 
@@ -115,6 +173,12 @@ Outros sinais usados (todos isolados e testados com HTML sintético):
 - **Grupo:** ícone padrão de grupo na linha e, ao abrir, o `data-id` das mensagens
   (`@g.us` = grupo, `@broadcast` = transmissão, `@newsletter` = canal; `@c.us`/`@lid` =
   individual). Sem sinal → não cola (falha fechada).
+- **CRM, última mensagem é minha?** A linha da lista só mostra o ícone de entrega/leitura
+  (`data-icon` com `check`, `dblcheck`, `time`) quando a última mensagem foi sua. Sem esse ícone
+  a conversa conta como "do cliente". Se **nenhuma** mensagem sua for reconhecida em 15+
+  conversas, a barra avisa que "Precisa de resposta" pode estar inflada.
+- **CRM, não lida:** selo com `aria-label` "não lida(s)". **Arquivadas:** título da coluna
+  esquerda. **Tema escuro:** classe `dark` no `body`. Tudo em `selectors.ts` (seção "CRM").
 - **Envio detectado:** a última mensagem do chat é sua (`data-id` começa com `true_`), não
   existia antes de colar, e a caixa ficou vazia.
 
@@ -131,6 +195,13 @@ especial, não verificado:
 - se `execCommand('insertText')` coloca o texto no editor do WhatsApp (e quebras de linha);
 - o formato do `data-id` das mensagens e a detecção do envio;
 - se `<html lang>` do WhatsApp Web indica o idioma.
+
+CRM (v0.4), também **não verificado no WhatsApp real**: ícones de entrega da linha (decidem
+"Precisa de resposta" x "Aguardando"), selo de não lida, nome/data/prévia da linha, ícone de
+grupo (grupos com foto própria **não** são detectados como grupo: use **dispensar**), título
+da visão "Arquivadas", onde a barra entra (antes de `#pane-side`), os botões no `#main header`,
+o botão flutuante sobre a caixa de digitação, o recálculo do `translateY` das linhas ao filtrar
+e se `execCommand('insertText')` cola o rascunho/modelo no editor.
 
 **Rode o checklist abaixo antes da primeira campanha real** e a cada atualização do
 WhatsApp Web. Se algo falhar, ajuste só `selectors.ts` (ou o sinal correspondente) e rode
@@ -175,6 +246,24 @@ número salvo como "CLIENTE TESTE").
 - [ ] Contato inexistente/renomeado 3 vezes seguidas → campanha pausa (freio).
 - [ ] Fora do horário (ou mude o relógio): *Iniciar* não abre ninguém.
 
+**CRM (v0.4)**
+- [ ] A barra de abas aparece acima da lista, no tema claro e no escuro, sem quebrar a tela.
+- [ ] "Precisa de resposta" mostra conversas em que o cliente falou por último; uma conversa em
+      que a sua mensagem foi a última aparece em "Aguardando resposta" com o tempo certo.
+- [ ] Grupos e arquivadas não entram em nenhuma das duas; **dispensar** tira a linha e ela
+      volta quando o cliente escreve de novo.
+- [ ] Filtro 1/3/7/15 dias bate com as datas da lista; filtro por etiqueta/fase funciona junto
+      com a aba.
+- [ ] Clicar numa aba não deixa buraco na lista; voltar para Todas restaura a lista; rolar a
+      lista com filtro ligado não quebra.
+- [ ] Lembrete para daqui a 2 minutos: notificação aparece; clicar abre a conversa e cola o
+      rascunho **sem enviar**; selo do ícone conta os vencidos.
+- [ ] Notas, etiquetas e fase salvam e continuam depois de recarregar a aba (F5).
+- [ ] Botão "Respostas" junto à caixa; `/atalho` abre o menu; Inserir cola e para; com texto
+      na caixa aparece Substituir/Adicionar/Cancelar.
+- [ ] Aba Clientes lista os contatos e ordena por mais tempo sem contato.
+- [ ] Se algo falhar, o WhatsApp continua normal e o console mostra **um** aviso `[Vita Zap]`.
+
 **Dados**
 - [ ] Exportar backup JSON, importar em outro perfil do Chrome (mesclar) — campanhas e
       "não enviar" voltam.
@@ -184,10 +273,11 @@ número salvo como "CLIENTE TESTE").
 
 ```
 extensoes/vita-zap/
-├── public/manifest.json        Manifest V3 (permissões: sidePanel + web.whatsapp.com)
+├── public/manifest.json        Manifest V3 (sidePanel, scripting, storage, alarms, notifications + web.whatsapp.com)
 ├── sidepanel.html
 ├── src/
-│   ├── background/service-worker.ts   ícone → abre o painel
+│   ├── background/service-worker.ts   ícone → abre o painel; lembretes (alarmes, notificações, selo)
+│   ├── background/lembretes.ts        sincroniza alarmes, dispara a notificação, clique → abrir conversa
 │   ├── content/                       roda dentro do WhatsApp Web
 │   │   ├── selectors.ts               TODOS os seletores
 │   │   ├── extrair.ts                 leitura de uma linha da lista (puro)
@@ -195,6 +285,8 @@ extensoes/vita-zap/
 │   │   ├── execucao.ts                abrir + colar + observar envio
 │   │   ├── abrir-conversa.ts          único clique simulado (linha da lista)
 │   │   ├── dom.ts, lista.ts           utilidades
+│   │   ├── crm/                       CRM injetado em Shadow DOM: barra de abas, filtro da lista,
+│   │   │                              cabeçalho (lembrete/cliente), respostas rápidas, estado
 │   │   └── index.ts                   recebe pedidos do painel
 │   ├── shared/                        lógica pura + IndexedDB
 │   │   ├── constantes.ts              política (pisos/tetos)
@@ -203,8 +295,10 @@ extensoes/vita-zap/
 │   │   ├── filtros.ts, politica.ts, texto.ts, campanha.ts
 │   │   ├── banco.ts, exportar.ts      IndexedDB, backup JSON, CSV
 │   │   ├── mensagens.ts               protocolo painel ↔ content (sem "enviar")
+│   │   ├── crm-*.ts                   CRM: tipos, regras das abas, lembretes, contatos, modelos,
+│   │   │                              clientes, armazenamento (chrome.storage.local) e JSON
 │   │   └── ia.ts                      interface da fase 2 (desligada)
-│   └── sidepanel/                     React: Varredura, Prévia, Envio, Dados + executor.ts
+│   └── sidepanel/                     React: Lembretes, Clientes, Varredura, Prévia, Envio, Dados
 └── tests/                             vitest (npm test)
 ```
 
