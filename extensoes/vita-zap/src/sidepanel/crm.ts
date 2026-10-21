@@ -4,20 +4,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DadosCrm } from '../shared/crm-tipos';
 import type { RepositorioContatos } from '../shared/repositorio';
+import type { RepositorioComCrm } from '../shared/repositorio-crm';
 import { repositorioPadrao } from '../shared/repositorio-local';
 
 export interface CrmPainel {
   dados: DadosCrm | null;
   /** "Agora" do painel, atualizado a cada 30 s (para tempos decorridos e vencimentos). */
   agora: Date;
-  repo: RepositorioContatos;
+  /** Dados locais + CRM Lembretes (leads, conta): ver repositorio-crm.ts. */
+  repo: RepositorioComCrm;
   /** Executa uma operação no repositório e atualiza a tela com o resultado. */
   fazer: <T>(op: (repo: RepositorioContatos) => Promise<T>) => Promise<T>;
   recarregar: () => Promise<void>;
 }
 
-export function useCrm(repositorio?: RepositorioContatos): CrmPainel {
-  const repo = useRef<RepositorioContatos>(repositorio ?? repositorioPadrao()).current;
+export function useCrm(repositorio?: RepositorioComCrm): CrmPainel {
+  const repo = useRef<RepositorioComCrm>(repositorio ?? repositorioPadrao()).current;
   const [dados, setDados] = useState<DadosCrm | null>(null);
   const [agora, setAgora] = useState(() => new Date());
   const ativo = useRef(true);

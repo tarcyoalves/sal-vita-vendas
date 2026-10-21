@@ -200,6 +200,13 @@ button.pequeno {
   margin: 4px 0;
 }
 
+.aviso-pendente {
+  background: #fff4d6;
+  color: #8a5a00;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
 .erro {
   color: var(--erro);
   margin: 4px 0;

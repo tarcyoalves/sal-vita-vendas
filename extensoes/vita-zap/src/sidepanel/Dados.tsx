@@ -4,6 +4,7 @@ import { INTERVALO_MIN_SEG, TETO_DIARIO_MAXIMO } from '../shared/constantes';
 import { csvDasCampanhas, lerBackup } from '../shared/exportar';
 import { CONFIG_PADRAO, type ConfigPolitica } from '../shared/politica';
 import type { DadosLocais } from './App';
+import { ContaCrm } from './ContaCrm';
 import { CrmBackup } from './CrmBackup';
 import type { CrmPainel } from './crm';
 
@@ -78,6 +79,7 @@ export function Dados({ db, dados, aoMudar, crm }: Props) {
 
   return (
     <section>
+      <ContaCrm crm={crm} />
       <CrmBackup crm={crm} />
 
       <div className="cartao">
