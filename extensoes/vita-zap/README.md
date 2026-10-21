@@ -101,9 +101,17 @@ Tudo isso **só lê a tela e anota no seu navegador**; nada manda mensagem. Onde
    lembrete; **busca**, filtros por fase/etiqueta e ordenação, por padrão **mais tempo sem
    contato**. O botão Abrir leva ao WhatsApp Web na conversa.
 
-**Contato = nome exibido** (ou só os dígitos, se o contato não está salvo). Dois contatos com o
-mesmo nome dividem os dados. **Dados** → *CRM: backup (JSON)*: exportar e importar (mesclar ou
-substituir) contatos, notas, etiquetas, fases, lembretes e respostas rápidas.
+**Quem é o contato.** Cada contato tem um **id interno** (não é o nome nem o telefone), o **nome
+exibido**, o **telefone** e os nomes (aliases) pelos quais já foi visto. O telefone é guardado
+**só com dígitos e com DDI 55** (`84 99999-0000` → `5584999990000`) e é lido do HTML quando dá:
+nome exibido que é um número (contato não salvo), id das mensagens da conversa (`...@c.us`) ou
+o painel "Dados do contato" aberto. O WhatsApp mostra números antigos sem o 9 extra do celular;
+a comparação trata as duas formas como a mesma linha. Se o contato for renomeado no WhatsApp,
+o telefone mantém as notas e os lembretes no mesmo registro. Dois contatos com o mesmo nome e
+telefones diferentes são pessoas diferentes. No painel do cliente, **Vincular telefone** grava o
+telefone e, se já existir outro registro com ele, **junta os dois** (notas, etiquetas, lembretes).
+**Dados** → *CRM: backup (JSON)*: exportar e importar (mesclar ou substituir) contatos, notas,
+etiquetas, fases, lembretes e respostas rápidas.
 
 ### 3.2 Campanhas "uma tecla" (varredura → prévia → envio)
 
@@ -201,7 +209,8 @@ CRM (v0.4), também **não verificado no WhatsApp real**: ícones de entrega da 
 grupo (grupos com foto própria **não** são detectados como grupo: use **dispensar**), título
 da visão "Arquivadas", onde a barra entra (antes de `#pane-side`), os botões no `#main header`,
 o botão flutuante sobre a caixa de digitação, o recálculo do `translateY` das linhas ao filtrar
-e se `execCommand('insertText')` cola o rascunho/modelo no editor.
+se `execCommand('insertText')` cola o rascunho/modelo no editor, e de onde sai o **telefone**
+(ids `@c.us` das mensagens e o painel "Dados do contato", seletor `painelDadosContato`).
 
 **Rode o checklist abaixo antes da primeira campanha real** e a cada atualização do
 WhatsApp Web. Se algo falhar, ajuste só `selectors.ts` (ou o sinal correspondente) e rode
@@ -271,6 +280,17 @@ número salvo como "CLIENTE TESTE").
 
 ## 8. Estrutura
 
+**Acesso aos dados do CRM = uma interface só.** `src/shared/repositorio.ts` define
+`RepositorioContatos` (métodos assíncronos: contatos, notas, etiquetas, fase, lembretes, último
+contato, respostas rápidas, backup). A implementação atual é o `RepositorioLocal`
+(`src/shared/repositorio-local.ts`, `chrome.storage.local`, chaves `vz.*`) e é o **único** arquivo
+que toca em `chrome.storage` (o teste `tests/arquitetura-repositorio.test.ts` garante). A tela do
+WhatsApp, o painel lateral e o service worker só falam com a interface. Um segundo adaptador
+(sincronizar com o CRM Lembretes) poderá implementar a mesma interface sem mexer na UI. Campos
+já guardados com essa finalidade: `telefone` (dígitos com 55), `notas`, `etiquetas`, `fase`,
+lembretes (`venceEm`), `ultimoContatoEm` (última mensagem lida da lista) e `convertidoEm`
+(quando a fase virou "Fechado").
+
 ```
 extensoes/vita-zap/
 ├── public/manifest.json        Manifest V3 (sidePanel, scripting, storage, alarms, notifications + web.whatsapp.com)
@@ -295,8 +315,11 @@ extensoes/vita-zap/
 │   │   ├── filtros.ts, politica.ts, texto.ts, campanha.ts
 │   │   ├── banco.ts, exportar.ts      IndexedDB, backup JSON, CSV
 │   │   ├── mensagens.ts               protocolo painel ↔ content (sem "enviar")
-│   │   ├── crm-*.ts                   CRM: tipos, regras das abas, lembretes, contatos, modelos,
-│   │   │                              clientes, armazenamento (chrome.storage.local) e JSON
+│   │   ├── repositorio.ts             interface única de dados (RepositorioContatos)
+│   │   ├── repositorio-local.ts       implementação em chrome.storage.local (único que o usa)
+│   │   ├── telefone.ts                telefone: só dígitos, DDI 55
+│   │   ├── crm-*.ts                   CRM: tipos, regras das abas, lembretes, contatos (id, vínculo),
+│   │   │                              modelos, clientes, formato/sanitização e JSON (puros)
 │   │   └── ia.ts                      interface da fase 2 (desligada)
 │   └── sidepanel/                     React: Lembretes, Clientes, Varredura, Prévia, Envio, Dados
 └── tests/                             vitest (npm test)
