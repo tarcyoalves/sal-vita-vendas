@@ -481,6 +481,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   };
   document.addEventListener('input', aoDigitar, true);
   window.addEventListener('resize', ciclo);
+  window.addEventListener('scroll', agendar, { capture: true, passive: true });
   // Voltou para a aba do WhatsApp (por exemplo depois de entrar no CRM pelo painel): confere a conta (leitura local, sem rede).
   const aoVoltar = (): void => {
     if (document.visibilityState !== 'hidden') lerConta();
@@ -514,6 +515,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       botaoRespostas.remover();
       document.removeEventListener('input', aoDigitar, true);
       window.removeEventListener('resize', ciclo);
+      window.removeEventListener('scroll', agendar, true);
       window.removeEventListener('focus', aoVoltar);
       document.removeEventListener('visibilitychange', aoVoltar);
       fecharPopover();
