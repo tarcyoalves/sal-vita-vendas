@@ -178,8 +178,8 @@ export default function VitaZap() {
         <PanelHeader title="Atualizar" description="Quando aparecer 'Nova versão disponível' no painel do Vita Zap ou aqui." />
         <div className="space-y-3 px-4 py-3 text-sm text-slate-700">
           <p>
-            <b>Se você usa o instalador:</b> nada a fazer. A cada vez que o computador liga ele baixa a versão nova. Depois, feche e abra o Chrome (ou clique em ↻ em{" "}
-            <Codigo texto={ENDERECO_EXTENSOES} />) para aplicar. Para atualizar na hora, rode o instalador de novo.
+            <b>Se você usa o instalador:</b> nada a fazer. Ele confere a versão nova de hora em hora (e ao ligar o computador). Depois, clique em ↻ em{" "}
+            <Codigo texto={ENDERECO_EXTENSOES} /> e dê F5 no WhatsApp. Para atualizar na hora, use o atalho <b>Atualizar Vita Zap</b> da área de trabalho (instaladores antigos: rode o instalador de novo uma vez para ganhar o atalho).
           </p>
           <p className="font-medium text-slate-900">Atualização manual:</p>
           <ol className="list-decimal space-y-1 pl-5">

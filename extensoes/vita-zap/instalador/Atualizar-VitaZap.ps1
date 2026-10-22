@@ -7,22 +7,31 @@
 #   manifest.json local, baixa o zip, confere o ID da extensão e troca a pasta (extrai em extensao.novo e renomeia;
 #   se algo falhar, a versão antiga continua no lugar). Sem rede = sai em silêncio. Log: atualizador.log.
 # O Chrome relê a extensão ao reabrir; o botão de recarregar em chrome://extensions aplica na hora.
+# Também cria o atalho "Atualizar Vita Zap" na área de trabalho (confere na hora, com aviso) e uma tarefa agendada
+# do usuário (sem admin) que confere de HORA EM HORA, oculta: o botão de recarregar passa a pegar a versão nova
+# sem precisar reiniciar o PC.
 #
-# Parâmetros: -Origem e -PastaInicializar (só para teste), -Pasta, -Silencioso (modo logon: sem janelas e sem
-# mexer no atalho), -SemJanela (sem mensagens, mas age como execução manual).
+# Parâmetros: -Origem, -PastaInicializar e -PastaAreaTrabalho (só para teste), -Pasta, -Silencioso (modo logon/
+# tarefa: sem janelas e sem mexer nos atalhos), -SemJanela (sem mensagens, mas age como execução manual),
+# -SemTarefa (não cria a tarefa de hora em hora; usado nos testes).
 
 param(
   [string]$Origem = 'https://lembretes.salvitarn.com.br',
   [string]$Pasta = '',
   [string]$PastaInicializar = '',
+  [string]$PastaAreaTrabalho = '',
   [switch]$Silencioso,
-  [switch]$SemJanela
+  [switch]$SemJanela,
+  [switch]$SemTarefa
 )
 
 $OrigemPadrao = 'https://lembretes.salvitarn.com.br'
 $IdEsperado = 'anlifdaoagpcbdjpbflodkcialbdbghh'
 $NomeAtalho = 'Vita Zap - atualizador.lnk'
 $NomeScript = 'Atualizar-VitaZap.ps1'
+$NomeAtalhoMesa = 'Atualizar Vita Zap.lnk'
+$NomeTarefa = 'Vita Zap - atualizador'
+$NomeOculto = 'VitaZap-oculto.vbs'
 
 # ---- funções puras (testáveis com dot-source) -----------------------------------------------------------------
 
@@ -90,6 +99,7 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::
 
 if ($Pasta -eq '') { $Pasta = Join-Path $env:LOCALAPPDATA 'VitaZap' }
 if ($PastaInicializar -eq '') { $PastaInicializar = [Environment]::GetFolderPath('Startup') }
+if ($PastaAreaTrabalho -eq '') { $PastaAreaTrabalho = [Environment]::GetFolderPath('Desktop') }
 $Origem = $Origem.TrimEnd('/')
 $Ext = Join-Path $Pasta 'extensao'
 $Log = Join-Path $Pasta 'atualizador.log'
@@ -152,16 +162,44 @@ function Criar-Atalho {
   $copia = Join-Path $Pasta $NomeScript
   if ($PSCommandPath -and ($PSCommandPath -ne $copia)) { Copy-Item -LiteralPath $PSCommandPath -Destination $copia -Force }
   if (-not (Test-Path -LiteralPath $PastaInicializar)) { New-Item -ItemType Directory -Path $PastaInicializar -Force | Out-Null }
-  $argumentos = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $copia + '" -Silencioso'
-  if ($Origem -ne $OrigemPadrao) { $argumentos += ' -Origem "' + $Origem + '"' }
-  if ($Pasta -ne (Join-Path $env:LOCALAPPDATA 'VitaZap')) { $argumentos += ' -Pasta "' + $Pasta + '"' }
+  $extra = ''
+  if ($Origem -ne $OrigemPadrao) { $extra += ' -Origem "' + $Origem + '"' }
+  if ($Pasta -ne (Join-Path $env:LOCALAPPDATA 'VitaZap')) { $extra += ' -Pasta "' + $Pasta + '"' }
+  $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  $base = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $copia + '"'
   $sh = New-Object -ComObject WScript.Shell
+
+  # Logon: oculto.
   $lnk = $sh.CreateShortcut((Join-Path $PastaInicializar $NomeAtalho))
-  $lnk.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-  $lnk.Arguments = $argumentos
+  $lnk.TargetPath = $ps
+  $lnk.Arguments = $base + ' -Silencioso' + $extra
   $lnk.WindowStyle = 7
   $lnk.Description = 'Atualiza o Vita Zap (extensão do Chrome) a cada logon'
   $lnk.Save()
+
+  # Área de trabalho: confere agora e avisa o resultado.
+  if (Test-Path -LiteralPath $PastaAreaTrabalho) {
+    $mesa = $sh.CreateShortcut((Join-Path $PastaAreaTrabalho $NomeAtalhoMesa))
+    $mesa.TargetPath = $ps
+    $mesa.Arguments = $base + ' -SemTarefa' + $extra
+    $mesa.WindowStyle = 7
+    $mesa.IconLocation = (Join-Path $env:SystemRoot 'System32\shell32.dll') + ',238'
+    $mesa.Description = 'Baixa a versão nova do Vita Zap, se houver. Depois clique em recarregar em chrome://extensions.'
+    $mesa.Save()
+  }
+
+  # De hora em hora: tarefa agendada do próprio usuário (sem admin). O .vbs abre o PowerShell sem piscar janela.
+  if (-not $SemTarefa) {
+    $vbs = Join-Path $Pasta $NomeOculto
+    $comando = '"' + $ps + '" ' + $base + ' -Silencioso' + $extra
+    $linhaVbs = 'CreateObject("WScript.Shell").Run "' + $comando.Replace('"', '""') + '", 0, False'
+    Set-Content -LiteralPath $vbs -Value $linhaVbs -Encoding ASCII
+    $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    $tr = '"' + $wscript + '" "' + $vbs + '"'
+    $saida = & schtasks.exe /Create /F /SC HOURLY /TN $NomeTarefa /TR $tr 2>&1
+    if ($LASTEXITCODE -ne 0) { Escrever-Log ('não consegui criar a tarefa de hora em hora: ' + ($saida -join ' ')) }
+    else { Escrever-Log 'tarefa de hora em hora criada' }
+  }
 }
 
 if (-not (Origem-Segura $Origem)) {
@@ -215,7 +253,7 @@ if (-not $Silencioso -and -not $SemJanela) {
   try { Set-Clipboard -Value $Ext } catch { }
 }
 if ($primeira) {
-  Avisar ('Vita Zap ' + $instalada + ' baixado em:' + $nl + $nl + $Ext + $nl + $nl + '(o caminho foi copiado: basta colar)' + $nl + $nl + 'Agora, no Chrome:' + $nl + '1. Abra chrome://extensions' + $nl + '2. Ligue o Modo do desenvolvedor' + $nl + '3. Clique em Carregar sem compactação e escolha a pasta acima' + $nl + $nl + 'Daí para frente ele se atualiza sozinho a cada vez que você liga o computador.') 'Information'
+  Avisar ('Vita Zap ' + $instalada + ' baixado em:' + $nl + $nl + $Ext + $nl + $nl + '(o caminho foi copiado: basta colar)' + $nl + $nl + 'Agora, no Chrome:' + $nl + '1. Abra chrome://extensions' + $nl + '2. Ligue o Modo do desenvolvedor' + $nl + '3. Clique em Carregar sem compactação e escolha a pasta acima' + $nl + $nl + 'Daí para frente ele confere a versão nova de hora em hora (e ao ligar o computador). Para conferir na hora, use o atalho Atualizar Vita Zap na área de trabalho.') 'Information'
 } else {
   Avisar ('Vita Zap atualizado para a versão ' + $instalada + '.' + $nl + $nl + 'Feche e abra o Chrome (ou clique em recarregar em chrome://extensions) para aplicar.') 'Information'
 }
