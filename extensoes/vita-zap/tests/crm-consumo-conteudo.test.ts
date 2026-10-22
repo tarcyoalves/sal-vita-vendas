@@ -36,7 +36,7 @@ beforeEach(() => {
   servico = new ServicoCrm(local, crm.transporte, agora);
   vi.spyOn(console, 'debug').mockImplementation(() => undefined);
   const repo = criarRepositorioCRM(local, servico, agora);
-  montarWhatsApp([{ nome: 'Ana Souza', data: '11:40', previa: 'Quanto fica?' }], 'Ana Souza');
+  montarWhatsApp([{ nome: 'Ana Souza Cliente', data: '11:40', previa: 'Quanto fica?' }], 'Ana Souza Cliente');
   (globalThis as { __repo?: unknown }).__repo = repo;
 });
 

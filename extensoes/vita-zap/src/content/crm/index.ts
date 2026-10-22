@@ -3,7 +3,7 @@
 //
 // Nada aqui envia mensagem: botões nossos só filtram, anotam e colam rascunho.
 
-import { chaveDaConversa, classificar, diagnosticoDaLeitura, idadeDaUltima, passaNoFiltro, atualizarConversa, type FiltroLista } from '../../shared/crm-regras';
+import { chaveDaConversa, classificar, diagnosticoDaLeitura, idadeDaUltima, passaNoFiltro, atualizarConversa, ehContatoCliente, type FiltroLista } from '../../shared/crm-regras';
 import { contarVencidos } from '../../shared/crm-lembretes';
 import { acharNoIndice, criarIndice, lembretesDoContato } from '../../shared/crm-contatos';
 import { instanteDaUltima } from '../../shared/crm-clientes';
@@ -136,7 +136,9 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
    */
   function atualizarFaixa(header: HTMLElement | null, ref: RefContato | null, agora: Date): void {
     if (!leads) return;
-    if (!header || !ref) {
+    // Só contatos com "CLIENTE" no nome (padrão do dono) ganham faixa e consulta ao CRM: contato pessoal
+    // não polui a tela nem acorda o banco.
+    if (!header || !ref || !ehContatoCliente(ref.nome)) {
       faixa.remover();
       return;
     }

@@ -214,3 +214,8 @@ export function diagnosticoDaLeitura(conversas: Conversa[]): string[] {
   }
   return avisos;
 }
+
+/** Contato de cliente = nome salvo com "cliente" (sem diferenciar maiúsculas/acentos). Só esses ganham a faixa do CRM. */
+export function ehContatoCliente(nome: string | null | undefined): boolean {
+  return /cliente/i.test((nome ?? '').normalize('NFD').replace(/[̀-ͯ]/g, ''));
+}

@@ -15,7 +15,7 @@ import { BASE, criarCrmFalso, EMAIL, SENHA, task, type CrmFalso } from './ajuda/
 import { montarWhatsApp, type LinhaFalsa } from './ajuda/whatsapp-falso';
 
 const AGORA = new Date('2026-10-21T15:00:00Z'); // 12:00 em Fortaleza
-const LINHAS: LinhaFalsa[] = [{ nome: 'Ana Souza', data: '11:40', previa: 'Quanto fica?' }];
+const LINHAS: LinhaFalsa[] = [{ nome: 'Ana Souza Cliente', data: '11:40', previa: 'Quanto fica?' }];
 
 let ctrl: ControladorCrm | null = null;
 let crm: CrmFalso;
@@ -46,7 +46,7 @@ beforeEach(() => {
   const local = new RepositorioLocal();
   servico = new ServicoCrm(local, crm.transporte);
   repo = criarRepositorioCRM(local, servico);
-  montarWhatsApp(LINHAS, 'Ana Souza'); // as mensagens da conversa têm o telefone 5584999990000
+  montarWhatsApp(LINHAS, 'Ana Souza Cliente'); // as mensagens da conversa têm o telefone 5584999990000
 });
 
 afterEach(() => {
@@ -121,11 +121,11 @@ describe('faixa do lead', () => {
     expect(textoFaixa()).toContain('Vincular a um lead');
     botao(faixa()!, 'Criar lead').click();
     const campos = overlay().querySelectorAll<HTMLInputElement>('input');
-    expect(campos[0].value).toBe('Ana Souza');
+    expect(campos[0].value).toBe('Ana Souza Cliente');
     expect(campos[1].value).toBe('5584999990000');
     botao(overlay(), 'Criar lead').click();
     await vi.waitFor(() => expect(crm.tasks).toHaveLength(1));
-    expect(crm.tasks[0]).toMatchObject({ title: 'Ana Souza', phone: '84999990000' });
+    expect(crm.tasks[0]).toMatchObject({ title: 'Ana Souza Cliente', phone: '84999990000' });
     await vi.waitFor(() => expect(textoFaixa()).toContain('Lead: Ana Souza'));
   });
 

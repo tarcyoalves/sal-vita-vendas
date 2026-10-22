@@ -34,3 +34,18 @@ describe('ícones pelo <title> do svg', () => {
     expect(encontrar(l, 'iconeGrupo')?.tagName).toBe('SPAN');
   });
 });
+
+import { ehContatoCliente } from '../src/shared/crm-regras';
+
+describe('faixa só para contato de cliente', () => {
+  it('aceita "cliente" em qualquer caixa e posição', () => {
+    expect(ehContatoCliente('Johnny HCM Cliente Itapemirim Es')).toBe(true);
+    expect(ehContatoCliente('CLIENTE Vere PR Novo')).toBe(true);
+    expect(ehContatoCliente('Maria cliênte')).toBe(true);
+  });
+  it('ignora contatos pessoais', () => {
+    expect(ehContatoCliente('Alan Braga Salina Casqueira')).toBe(false);
+    expect(ehContatoCliente('KITE NINJA | Kitesurf')).toBe(false);
+    expect(ehContatoCliente('')).toBe(false);
+  });
+});
