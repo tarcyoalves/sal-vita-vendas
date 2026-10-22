@@ -43,7 +43,7 @@ Para cada versão nova:
 1. Suba a versão em `public/manifest.json`, `package.json` e `tests/extensao-id.test.ts` (as três iguais).
 2. `npm run publicar` (gera `client/public/vita-zap/vita-zap.zip` e `versao.json`; `tests/publicacao.test.ts` reprova se ficar atrás do manifest).
 3. Rode os testes de novo. Se mexeu no servidor/CRM, na raiz: `npm run check` e `FB_CAPI_TOKEN=x WA_API_KEY=y npx vitest run` (no Windows, `schema-preguicoso` e `smbi-multi-item-tool` falham por CRLF também no main: ignore só esses dois).
-4. O Chrome do dono carrega a pasta `C:\Users\Tarcyo Alves\Downloads\vita-zap-0.6.0` (o nome ficou antigo, o conteúdo é a versão atual). Copie o `dist` para lá (apague só a subpasta `assets` antes) e peça: ↻ em `chrome://extensions` + F5 na aba do WhatsApp.
+4. O Chrome do dono carrega a pasta `C:\Users\Tarcyo Alves\Downloads\vita-zap` (e mantenha também `vita-zap-0.6.0` sincronizada). Copie o `dist` para lá (apague só a subpasta `assets` antes) e peça: ↻ em `chrome://extensions` + F5 na aba do WhatsApp.
 5. Commit em português com a linha final `Co-Authored-By: ...` do agente. Pergunte antes do push.
 6. Depois do push: acompanhe até `https://lembretes.salvitarn.com.br/vita-zap/versao.json` mostrar a versão nova (o build leva 5 a 7 min). Atendentes com o instalador recebem em até 1 hora (ou pelo atalho "Atualizar Vita Zap").
 
