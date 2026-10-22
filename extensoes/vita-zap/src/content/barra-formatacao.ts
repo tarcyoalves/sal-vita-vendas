@@ -29,9 +29,11 @@ function ajustar(): void {
   if (!caixa || !botao) return;
   const barra = barraDoBotao(botao);
   if (!barra) return;
-  barra.style.transform = '';
+  // O WhatsApp posiciona a barra pelo `transform` (posicionamento flutuante): mexer nele joga a barra
+  // para o canto da tela. A propriedade `translate` soma por cima sem apagar o transform deles.
+  barra.style.translate = '';
   const d = deslocamento(barra.getBoundingClientRect(), caixa.getBoundingClientRect());
-  if (d > 0) barra.style.transform = `translateY(-${d}px)`;
+  if (d > 0) barra.style.translate = `0 -${d}px`;
   barra.setAttribute(MARCA, String(d));
 }
 
