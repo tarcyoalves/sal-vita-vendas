@@ -320,3 +320,15 @@ button.pequeno {
   padding: 6px 4px;
   font-size: 13px;
 }
+
+.aviso-versao {
+  background: #e8f0fe;
+  color: #1a3d8f;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.aviso-versao a {
+  color: inherit;
+  text-decoration: underline;
+}

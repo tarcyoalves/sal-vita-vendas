@@ -55,6 +55,25 @@ Para atualizar depois de mudar o código: `npm run build`, botão ↻ da extens�
 
 Requer Chrome 116 ou mais novo (API de painel lateral).
 
+### 2.1 Distribuição pelo CRM (v0.7)
+
+O Chrome não deixa um site instalar extensão sem compactação, então o caminho é: página **/vita-zap** do CRM
+(status detectado, botão de baixar, passo a passo) + instalador de Windows + aviso de versão nova.
+
+- `npm run publicar`: faz o build e gera, em `client/public/vita-zap/`, `vita-zap.zip` (o conteúdo do dist),
+  `versao.json` (`{versao, data}`) e as cópias de `instalador/`. Versione os arquivos junto com a mudança
+  (o teste `tests/publicacao.test.ts` reprova se o publicado ficou para trás da versão do manifest).
+- `instalador/Instalar-VitaZap.cmd` + `Atualizar-VitaZap.ps1` (PowerShell 5.1, sem admin): extrai em
+  `%LOCALAPPDATA%\VitaZap\extensao`, cria um atalho na pasta Inicializar e, a cada logon, só baixa se o
+  `versao.json` for maior que o `manifest.json` local (confere o ID, troca a pasta por renomeação e mantém a
+  antiga se falhar; log em `atualizador.log`). Testes: `Invoke-Pester .\instalador`.
+- O site pergunta `{tipo:'ping'}` à extensão (`externally_connectable`, só a origem do CRM): ela responde apenas
+  versão, `conectadoAoCrm` e `temPermissao`, nunca dado pessoal.
+- Login automático: quem já está logado no site fica logado na extensão (mesmo cookie), sem senha. A permissão do
+  domínio do CRM é pedida uma vez, no clique em **Conectar ao CRM**; o e-mail e a senha só aparecem se o site
+  disser que não há sessão.
+- Aviso de versão: ao abrir o painel (no máximo 1 vez a cada 6 h) lê o `versao.json` estático do site.
+
 ## 3. Como usar
 
 ### 3.0 Barra superior do CRM (v0.6)

@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc --noEmit && vite build && vite build -c vite.content.config.ts",
     "check": "tsc --noEmit",
+    "publicar": "npm run build && node dev/publicar.mjs",
     "harness": "npm run build && node dev/servir.mjs",
     "test": "vitest run",
     "test:watch": "vitest"

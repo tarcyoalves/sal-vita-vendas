@@ -4,6 +4,7 @@ import type { Campanha } from '../shared/campanha';
 import type { ContatoVarrido } from '../shared/contatos';
 import type { Envio, NaoEnviar } from '../shared/exportar';
 import { Clientes } from './Clientes';
+import { AvisoVersao } from './AvisoVersao';
 import { conectarAutomaticamente, dependenciasPadrao } from './conexao';
 import { useCrm } from './crm';
 import { Dados } from './Dados';
@@ -84,6 +85,7 @@ export function App() {
         <strong>Vita Zap</strong>
         <span className="selo">CRM · você aperta o Enter</span>
       </header>
+      <AvisoVersao />
       <nav className="abas">
         {ABAS.map((a) => (
           <button key={a.id} type="button" className={a.id === aba ? 'ativa' : ''} onClick={() => setAba(a.id)}>
