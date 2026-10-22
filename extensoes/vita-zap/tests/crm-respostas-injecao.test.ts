@@ -42,7 +42,8 @@ function inserir(titulo: string): HTMLButtonElement {
   return botao(item, 'Inserir');
 }
 
-const abrirMenu = () => botao(sombra('vita-zap-respostas'), 'Respostas').click();
+const iconeDaCaixa = (acao: 'respostas' | 'lembrete'): HTMLButtonElement => sombra('vita-zap-respostas').querySelector(`[data-acao="${acao}"]`) as HTMLButtonElement;
+const abrirMenu = () => iconeDaCaixa('respostas').click();
 
 function digitar(texto: string): void {
   compositor().textContent = texto;
@@ -77,11 +78,15 @@ async function iniciar(): Promise<ControladorCrm> {
 }
 
 describe('botão e menu', () => {
-  it('o botão aparece junto à caixa (Shadow DOM) e some sem conversa aberta', async () => {
+  it('os ícones entram na caixa, à esquerda do microfone (Shadow DOM), e somem sem conversa aberta', async () => {
     const c = await iniciar();
     const host = document.getElementById('vita-zap-respostas') as HTMLElement;
-    expect(host.style.display).toBe('block');
     expect(host.shadowRoot).not.toBeNull();
+    const microfone = document.querySelector('#main footer button[aria-label="Mensagem de voz"]') as HTMLElement;
+    expect(host.nextElementSibling).toBe(microfone);
+    expect(host.parentElement).toBe(microfone.parentElement);
+    expect(iconeDaCaixa('lembrete').title).toBe('Lembrete de follow-up');
+    expect(iconeDaCaixa('respostas').title).toContain('Respostas rápidas');
     montarWhatsApp(LINHAS, null);
     c.ciclo();
     expect(document.getElementById('vita-zap-respostas')).toBeNull();

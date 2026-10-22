@@ -28,7 +28,7 @@ describe('leitura e gravação por coleção', () => {
     const d = await repo.carregar();
     expect(d.contatos).toEqual({});
     expect(d.lembretes).toEqual([]);
-    expect(d.config).toEqual({ aba: 'todas', diasSemResposta: null, filtroEtiquetas: [] });
+    expect(d.config).toMatchObject({ aba: 'todas', diasSemResposta: null, filtroEtiquetas: [], barraSuperior: true });
     expect(d.respostas.map((r) => r.atalho)).toEqual(['oi']);
     // semear duas vezes não duplica (id fixo)
     const outro = new RepositorioLocal();
@@ -54,7 +54,7 @@ describe('leitura e gravação por coleção', () => {
     expect(d.contatos.x.fase).toBeUndefined();
     expect(Object.keys(d.contatos)).toEqual(['x']);
     expect(d.lembretes).toEqual([]);
-    expect(d.config).toEqual({ aba: 'todas', diasSemResposta: null, filtroEtiquetas: [] });
+    expect(d.config).toMatchObject({ aba: 'todas', diasSemResposta: null, filtroEtiquetas: [], barraSuperior: true });
   });
 
   it('carregar só algumas coleções não lê as outras', async () => {
@@ -203,7 +203,7 @@ describe('respostas rápidas, conversas e config', () => {
     await repo.salvarConfig({ aba: 'precisa', diasSemResposta: 7, filtroEtiquetas: ['e1'] });
     const d = await repo.carregar();
     expect(Object.keys(d.conversas)).toEqual(['ana']);
-    expect(d.config).toEqual({ aba: 'precisa', diasSemResposta: 7, filtroEtiquetas: ['e1'] });
+    expect(d.config).toMatchObject({ aba: 'precisa', diasSemResposta: 7, filtroEtiquetas: ['e1'] });
   });
 });
 

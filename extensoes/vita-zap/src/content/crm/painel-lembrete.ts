@@ -30,8 +30,8 @@ const adiar = (ctx: ContextoLembretes, id: string, ate: number) => ctx.estado.fa
 
 // ── Novo lembrete para a conversa aberta ─────────────────────────────────────
 
-export function abrirPainelNovoLembrete(ancora: HTMLElement, ctx: ContextoLembretes, ref: RefContato): void {
-  const pop = abrirPopover({ ancora, titulo: 'Lembrete de follow-up', largura: 350 });
+export function abrirPainelNovoLembrete(ancora: HTMLElement, ctx: ContextoLembretes, ref: RefContato, acima = false): void {
+  const pop = abrirPopover({ ancora, titulo: 'Lembrete de follow-up', largura: 350, acima });
   let venceEm: number | null = null;
   let escolhido: PrazoRapido | 'custom' | null = null;
 

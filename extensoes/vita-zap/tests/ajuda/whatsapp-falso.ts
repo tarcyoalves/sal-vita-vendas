@@ -38,7 +38,7 @@ export function montarWhatsApp(linhas: LinhaFalsa[], abertaNome: string | null =
         abertaNome
           ? `<header><span dir="auto" title="${abertaNome}">${abertaNome}</span></header>
              <div data-id="false_5584999990000@c.us_ABC"></div>
-             <footer><div contenteditable="true" role="textbox"></div></footer>`
+             <footer><div><div contenteditable="true" role="textbox"></div></div><div><button aria-label="Mensagem de voz"><span data-icon="ptt"></span></button></div></footer>`
           : ''
       }
     </div>

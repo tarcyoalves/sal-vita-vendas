@@ -48,7 +48,7 @@ function clicarAba(rotulo: string): void {
 
 beforeEach(() => {
   limparAvisos();
-  instalarChromeFalso();
+  instalarChromeFalso({ 'vz.config': { barraSuperior: false } });
   montarWhatsApp(LINHAS);
 });
 
@@ -139,7 +139,7 @@ describe('barra de abas injetada', () => {
   });
 
   it('guarda o estado conforme as linhas aparecem (lista virtualizada)', async () => {
-    const chrome = instalarChromeFalso();
+    const chrome = instalarChromeFalso({ 'vz.config': { barraSuperior: false } });
     montarWhatsApp(LINHAS.slice(0, 3));
     const c = await iniciar();
     expect(abas().Todas).toBe(3);

@@ -3,7 +3,7 @@
 // repositório (repositorio-local.ts): este arquivo não acessa o storage.
 
 import { normalizarTelefone } from './telefone';
-import { CORES_ETIQUETA, ehFase, type AbaId, type AcaoPendente, type ConfigCrm, type Contato, type Conversa, type DadosCrm, type Etiqueta, type Lembrete, type Nota, type RespostaRapida } from './crm-tipos';
+import { CORES_ETIQUETA, ehFase, type AbaId, type AbaPersonalizada, type AcaoPendente, type ConfigCrm, type Contato, type Conversa, type DadosCrm, type Etiqueta, type Lembrete, type Nota, type RespostaRapida } from './crm-tipos';
 import { novoId } from './id';
 
 export { novoId };
@@ -22,7 +22,7 @@ export type Colecao = keyof typeof CHAVES;
 /** Pedido "abrir a conversa e colar o rascunho", gravado pelo service worker/painel e consumido pelo content script. */
 export const CHAVE_ACAO_PENDENTE = 'vz.acaoPendente';
 
-export const CONFIG_PADRAO: ConfigCrm = { aba: 'todas', diasSemResposta: null, filtroEtiquetas: [] };
+export const CONFIG_PADRAO: ConfigCrm = { aba: 'todas', diasSemResposta: null, filtroEtiquetas: [], barraSuperior: true, ocultarGrupos: false, abasOcultas: [], abasPersonalizadas: [], abasVistas: {} };
 
 export const COLECOES = Object.keys(CHAVES) as Colecao[];
 
@@ -141,13 +141,35 @@ function sanearResposta(v: unknown): RespostaRapida | null {
   return { id, titulo, atalho: (str(o.atalho, 40) ?? '').replace(/^\/+/, '').trim(), texto };
 }
 
+function sanearAbaPersonalizada(v: unknown): AbaPersonalizada | null {
+  const o = obj(v);
+  const id = str(o?.id, 80);
+  const nome = str(o?.nome, 40)?.trim();
+  if (!o || !id || !nome) return null;
+  const textos = (x: unknown): string[] => (Array.isArray(x) ? x : []).filter((e): e is string => typeof e === 'string');
+  return { id, nome, etiquetas: textos(o.etiquetas), fases: textos(o.fases).filter(ehFase) };
+}
+
 function sanearConfig(v: unknown): ConfigCrm {
   const o = obj(v);
   const abas: AbaId[] = ['todas', 'naoLidas', 'precisa', 'aguardando'];
+  const aba = typeof o?.aba === 'string' && (abas.includes(o.aba as AbaId) || /^(fase|p):.+/.test(o.aba)) ? o.aba : 'todas';
+  const vistas: Record<string, number> = {};
+  for (const [k, n] of Object.entries(obj(o?.abasVistas) ?? {})) if (typeof n === 'number' && Number.isFinite(n)) vistas[k] = n;
+  const pedido = obj(o?.pedidoPainel);
+  const pedidoAba = pedido?.aba === 'clientes' || pedido?.aba === 'dados' || pedido?.aba === 'lembretes' ? pedido.aba : null;
+  const pedidoTs = num(pedido?.ts);
+  const lista = (x: unknown): string[] => (Array.isArray(x) ? x : []).filter((e): e is string => typeof e === 'string');
   return {
-    aba: abas.includes(o?.aba as AbaId) ? (o?.aba as AbaId) : 'todas',
+    aba,
     diasSemResposta: num(o?.diasSemResposta),
-    filtroEtiquetas: (Array.isArray(o?.filtroEtiquetas) ? (o?.filtroEtiquetas as unknown[]) : []).filter((e): e is string => typeof e === 'string'),
+    filtroEtiquetas: lista(o?.filtroEtiquetas),
+    barraSuperior: o?.barraSuperior !== false,
+    ocultarGrupos: o?.ocultarGrupos === true,
+    abasOcultas: lista(o?.abasOcultas),
+    abasPersonalizadas: (Array.isArray(o?.abasPersonalizadas) ? o.abasPersonalizadas : []).map(sanearAbaPersonalizada).filter((x): x is AbaPersonalizada => x != null).slice(0, 30),
+    abasVistas: vistas,
+    ...(pedidoAba && pedidoTs != null ? { pedidoPainel: { aba: pedidoAba, ts: pedidoTs } } : {}),
   };
 }
 

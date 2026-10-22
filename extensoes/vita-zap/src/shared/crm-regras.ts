@@ -154,14 +154,25 @@ export function contar(conversas: Conversa[], contatoDe: (c: Conversa) => Contat
 
 export interface FiltroLista {
   aba: AbaId;
+  /** Filtro de uma aba de funil ou personalizada (ids de etiqueta ou "fase:<id>"; basta um bater). Combina com `etiquetas` por E. */
+  abaFiltro?: string[];
+  /** Esconde grupos. */
+  ocultarGrupos?: boolean;
   /** Só na aba "aguardando": mínimo de dias sem resposta. */
   diasSemResposta: number | null;
   /** Ids de etiqueta; vale também "fase:<id>". Vazio = sem filtro. */
   etiquetas: string[];
 }
 
+/** O contato tem alguma das etiquetas (ids) ou fases ("fase:<id>") da lista. */
+export function contatoTemAlgum(contato: Contato | undefined, itens: readonly string[]): boolean {
+  if (!contato) return false;
+  return itens.some((e) => (e.startsWith('fase:') ? contato.fase === e.slice(5) : contato.etiquetas.includes(e)));
+}
+
 export function passaNoFiltro(c: Conversa, contato: Contato | undefined, f: FiltroLista, agora: Date): boolean {
   if (c.arquivada) return false;
+  if (f.ocultarGrupos && c.grupo) return false;
   const k = classificar(c, contato);
   let ok: boolean;
   switch (f.aba) {
@@ -179,10 +190,8 @@ export function passaNoFiltro(c: Conversa, contato: Contato | undefined, f: Filt
       break;
   }
   if (!ok) return false;
-  if (f.etiquetas.length > 0) {
-    if (!contato) return false;
-    return f.etiquetas.some((e) => (e.startsWith('fase:') ? contato.fase === e.slice(5) : contato.etiquetas.includes(e)));
-  }
+  if (f.abaFiltro && !contatoTemAlgum(contato, f.abaFiltro)) return false;
+  if (f.etiquetas.length > 0 && !contatoTemAlgum(contato, f.etiquetas)) return false;
   return true;
 }
 

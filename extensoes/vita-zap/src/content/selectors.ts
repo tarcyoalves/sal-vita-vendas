@@ -100,6 +100,12 @@ export const SELETORES = {
   /** Rodapé da conversa aberta (a caixa de digitação mora aqui). */
   rodapeConversa: ['#main footer'],
 
+  /** Contêiner raiz do WhatsApp Web: a barra superior diminui a altura dele para caber acima. Se falhar, a barra flutua. */
+  raizApp: ['#app'],
+
+  /** Botão do microfone na caixa de digitação: nossos ícones entram à esquerda dele. */
+  microfone: ['#main footer [data-icon="ptt"]', '#main footer button[aria-label*="Mensagem de voz"]', '#main footer button[aria-label*="Voice message"]'],
+
   /** Indica o tema escuro do WhatsApp (classe "dark" no body/html). */
   temaEscuro: ['body.dark', 'html.dark', '.dark #app', '[data-theme="dark"]'],
 } as const;

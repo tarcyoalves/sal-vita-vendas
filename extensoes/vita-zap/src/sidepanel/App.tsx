@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { abrirBanco, listarCampanhas, listarContatos, listarEnvios, listarNaoEnviar, type Banco } from '../shared/banco';
 import type { Campanha } from '../shared/campanha';
 import type { ContatoVarrido } from '../shared/contatos';
@@ -34,6 +34,7 @@ export function App() {
   const [erro, setErro] = useState<string | null>(null);
   const [aba, setAba] = useState<Aba>('lembretes');
   const crm = useCrm();
+  const pedidoAtendido = useRef(0);
   const [dados, setDados] = useState<DadosLocais>({ contatos: [], campanhas: [], envios: [], naoEnviar: [] });
   const [campanhaAtiva, setCampanhaAtiva] = useState<string | null>(null);
 
@@ -41,6 +42,15 @@ export function App() {
   useEffect(() => {
     void crm.repo.sincronizarLembretes('painel').catch(() => undefined);
   }, [crm.repo]);
+
+  // Botão "Clientes" / "Entrar no CRM" da barra do WhatsApp: a página grava o pedido na configuração e o painel
+  // abre nessa aba (só pedidos de até 15 s, para não pular de aba por um pedido antigo).
+  const pedido = crm.dados?.config.pedidoPainel;
+  useEffect(() => {
+    if (!pedido || pedido.ts <= pedidoAtendido.current) return;
+    pedidoAtendido.current = pedido.ts;
+    if (Date.now() - pedido.ts < 15_000) setAba(pedido.aba);
+  }, [pedido]);
 
   useEffect(() => {
     abrirBanco().then(setDb, (e: unknown) => setErro(`Não abri o banco local: ${String(e)}`));

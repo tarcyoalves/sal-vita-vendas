@@ -131,10 +131,36 @@ export interface RespostaRapida {
   texto: string;
 }
 
+/** Aba criada pelo usuário no "+" da barra superior: filtra as conversas por etiqueta e/ou fase (basta uma bater). */
+export interface AbaPersonalizada {
+  id: string;
+  nome: string;
+  /** Ids de Etiqueta. */
+  etiquetas: string[];
+  fases: Fase[];
+}
+
+/** Pedido "abrir o painel lateral nesta aba": a página grava, o painel lê (ver sidepanel/App.tsx). */
+export interface PedidoPainel {
+  aba: 'clientes' | 'dados' | 'lembretes';
+  ts: number;
+}
+
 export interface ConfigCrm {
-  aba: AbaId;
+  /** Aba ativa da barra: uma fixa (AbaId), `fase:<id>` (funil) ou `p:<id>` (personalizada). */
+  aba: AbaId | string;
   diasSemResposta: number | null;
   filtroEtiquetas: string[];
+  /** Barra superior de largura total (padrão: ligada). Desligada, as abas ficam acima da lista (layout da v0.5). */
+  barraSuperior?: boolean;
+  /** Esconde conversas de grupo da lista e dos contadores. */
+  ocultarGrupos?: boolean;
+  /** Ids de abas (fixas ou de funil) que o usuário escondeu. */
+  abasOcultas?: string[];
+  abasPersonalizadas?: AbaPersonalizada[];
+  /** Por aba: quantas conversas ela tinha na última vez que o usuário clicou nela (ponto verde = novidade desde então). */
+  abasVistas?: Record<string, number>;
+  pedidoPainel?: PedidoPainel;
 }
 
 export interface DadosCrm {

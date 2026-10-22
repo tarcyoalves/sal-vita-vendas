@@ -6,6 +6,7 @@
 
 import { iniciarCrm, limparAlarmeSyncAntigo } from './crm-sync';
 import { aoAlarme, aoClicarNotificacao, sincronizar } from './lembretes';
+import { ehPedidoPainelAberto } from '../shared/mensagens';
 import { RepositorioLocal, repositorioPadrao, usarServicoCrm } from '../shared/repositorio-local';
 
 // O serviço do CRM Lembretes (rede, fila, sincronização) precisa estar registrado ANTES de qualquer repositorioPadrao().
@@ -29,6 +30,14 @@ chrome.runtime.onStartup.addListener(() => {
 // Lembrete criado, concluído, adiado ou apagado (no WhatsApp ou no painel): refaz os alarmes e o selo.
 repositorioPadrao().aoMudar((e) => {
   if (e.colecoes.includes('lembretes')) void sincronizar().catch(() => undefined);
+});
+
+// Botões "Clientes" e "Entrar no CRM" da barra superior do WhatsApp: abrem o painel lateral (precisa ser chamado
+// direto no ouvinte, enquanto o gesto do usuário ainda vale). Em qual aba o painel abre vem da configuração.
+chrome.runtime.onMessage.addListener((msg: unknown, remetente) => {
+  if (remetente.id !== chrome.runtime.id || !ehPedidoPainelAberto(msg) || remetente.tab?.id == null) return false;
+  chrome.sidePanel.open({ tabId: remetente.tab.id }).catch(() => undefined);
+  return false;
 });
 
 chrome.alarms.onAlarm.addListener((alarme) => {

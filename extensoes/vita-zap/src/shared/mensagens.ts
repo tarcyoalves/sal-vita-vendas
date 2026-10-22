@@ -29,6 +29,17 @@ export type RespostaConteudo =
   | { ok: true; linhas?: LinhaBruta[]; avisos?: string[] }
   | { ok: false; codigo: CodigoErro; erro: string };
 
+/** Pedido da página do WhatsApp ao service worker: abrir o painel lateral (a aba vem pelo pedido gravado na configuração). */
+export interface PedidoPainelAberto {
+  vz: 'painel';
+  aba: 'clientes' | 'dados' | 'lembretes';
+}
+
+export function ehPedidoPainelAberto(v: unknown): v is PedidoPainelAberto {
+  const x = v as Partial<PedidoPainelAberto> | null;
+  return typeof x === 'object' && x !== null && x.vz === 'painel' && (x.aba === 'clientes' || x.aba === 'dados' || x.aba === 'lembretes');
+}
+
 /** Eventos espontâneos do content script → painel (chrome.runtime.sendMessage). */
 export type EventoConteudo =
   | { tipo: 'vitaZap:envioDetectado'; nome: string; texto: string; textoConfere: boolean }

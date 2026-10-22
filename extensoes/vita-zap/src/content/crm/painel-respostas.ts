@@ -7,7 +7,8 @@ import type { RespostaRapida } from '../../shared/crm-tipos';
 import { acrescentarNoCampo, escreverNoCampo, textoDoCampo } from '../dom';
 import type { Estado } from './estado';
 import { abrirPopover, fecharPopover, mostrarAviso, popoverAbertoEm } from './popover';
-import { criarHost, h, icone, isolarCliques, sincronizarTema, type Host } from './ui';
+import { encontrar } from '../selectors';
+import { avisarUmaVez, criarHost, h, icone, isolarCliques, sincronizarTema, type Host } from './ui';
 
 export interface ContextoRespostas {
   estado: Estado;
@@ -27,8 +28,8 @@ function trecho(t: string, max = 110): string {
 
 type Tela = { tipo: 'lista' } | { tipo: 'form'; id: string | null } | { tipo: 'confirmar'; resposta: RespostaRapida };
 
-export function abrirMenuRespostas(ancora: HTMLElement, ctx: ContextoRespostas, op: { consulta?: string; porAtalho?: boolean; aoFechar?: () => void } = {}): MenuRespostas {
-  const pop = abrirPopover({ ancora, titulo: 'Respostas rápidas', largura: 360, acima: true, aoFechar: op.aoFechar });
+export function abrirMenuRespostas(ancora: HTMLElement, ctx: ContextoRespostas, op: { consulta?: string; porAtalho?: boolean; aoFechar?: () => void; acima?: boolean } = {}): MenuRespostas {
+  const pop = abrirPopover({ ancora, titulo: 'Respostas rápidas', largura: 360, acima: op.acima ?? true, aoFechar: op.aoFechar });
   let tela: Tela = { tipo: 'lista' };
   let consulta = op.consulta ?? '';
   const busca = h('input', { class: 'campo', placeholder: 'Buscar resposta rápida', 'aria-label': 'Buscar resposta rápida', value: consulta });
@@ -159,20 +160,27 @@ export function abrirMenuRespostas(ancora: HTMLElement, ctx: ContextoRespostas, 
   };
 }
 
-/** Botão flutuante colado no canto superior direito da caixa de digitação. */
+/**
+ * Ícones na caixa de digitação, à esquerda do microfone: "Lembrete de follow-up" e "Respostas rápidas".
+ * Os dois só agendam lembrete ou colam texto na caixa: nenhum aciona o envio. Se não achar o lugar ao lado
+ * do microfone, flutua colado ao canto da caixa (e avisa uma vez no console).
+ */
 export class BotaoRespostas {
   readonly h: Host = criarHost('vita-zap-respostas');
   private menuPorAtalho: MenuRespostas | null = null;
+  private modo: 'inline' | 'flutuante' | null = null;
 
-  constructor(private readonly ctx: ContextoRespostas) {
-    Object.assign(this.h.host.style, { position: 'fixed', zIndex: '2147482000', display: 'none' });
+  constructor(
+    private readonly ctx: ContextoRespostas,
+    private readonly abrirLembrete: (ancora: HTMLElement) => void = () => undefined,
+  ) {
     isolarCliques(this.h.host);
     this.h.conteudo.append(
       h(
-        'button',
-        { class: 'flutuante', type: 'button', title: 'Respostas rápidas (ou digite / na caixa)', onclick: (e) => this.alternar(e.currentTarget as HTMLElement) },
-        icone('balao', 15),
-        'Respostas',
+        'div',
+        { class: 'caixa-icones' },
+        h('button', { class: 'cxbtn', type: 'button', 'data-acao': 'lembrete', title: 'Lembrete de follow-up', 'aria-label': 'Lembrete de follow-up', onclick: (e) => this.abrirLembrete(e.currentTarget as HTMLElement) }, icone('relogioCalendario', 22)),
+        h('button', { class: 'cxbtn', type: 'button', 'data-acao': 'respostas', title: 'Respostas rápidas (ou digite / na caixa)', 'aria-label': 'Respostas rápidas', onclick: (e) => this.alternar(e.currentTarget as HTMLElement) }, icone('raio', 22)),
       ),
     );
   }
@@ -182,29 +190,55 @@ export class BotaoRespostas {
     else abrirMenuRespostas(ancora, this.ctx);
   }
 
-  /** Posiciona o botão sobre a caixa; sem caixa (nenhuma conversa aberta, seletor quebrado) some. */
+  /** Ponto ao lado do microfone (ou do que vem depois da caixa): onde os ícones entram. */
+  private ponto(caixa: HTMLElement): { pai: HTMLElement; antes: Element } | null {
+    const mic = encontrar(document, 'microfone');
+    const botao = mic?.closest<HTMLElement>('button,[role="button"]') ?? mic;
+    if (botao?.parentElement) return { pai: botao.parentElement, antes: botao };
+    // Sem microfone (a caixa tem texto): sobe a partir da caixa até achar um irmão com botão.
+    let atual: HTMLElement | null = caixa;
+    for (let i = 0; i < 8 && atual?.parentElement; i += 1) {
+      let prox = atual.nextElementSibling;
+      if (prox === this.h.host) prox = prox.nextElementSibling;
+      if (prox && prox.querySelector('button,[role="button"]')) return { pai: atual.parentElement, antes: prox };
+      atual = atual.parentElement;
+    }
+    return null;
+  }
+
+  /** Posiciona os ícones junto à caixa; sem caixa (nenhuma conversa aberta, seletor quebrado) somem. */
   posicionar(caixa: HTMLElement | null): void {
     if (!caixa) {
       this.remover();
       return;
     }
-    if (!this.h.host.isConnected) document.body.append(this.h.host);
     sincronizarTema(this.h.host);
+    const ponto = this.ponto(caixa);
+    if (ponto) {
+      if (this.h.host.parentElement !== ponto.pai || this.h.host.nextElementSibling !== ponto.antes) ponto.pai.insertBefore(this.h.host, ponto.antes);
+      if (this.modo !== 'inline') {
+        this.modo = 'inline';
+        this.h.host.removeAttribute('style');
+        Object.assign(this.h.host.style, { display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' });
+      }
+      return;
+    }
+    avisarUmaVez('caixa', 'Não achei o microfone da caixa de digitação (seletor microfone); os ícones ficam flutuando junto à caixa.');
+    if (!this.h.host.isConnected) document.body.append(this.h.host);
+    this.modo = 'flutuante';
     const r = caixa.getBoundingClientRect();
-    Object.assign(this.h.host.style, {
-      display: 'block',
-      left: `${Math.max(8, Math.round(r.right - 116))}px`,
-      top: `${Math.max(8, Math.round(r.top - 36))}px`,
-    });
+    this.h.host.removeAttribute('style');
+    Object.assign(this.h.host.style, { position: 'fixed', zIndex: '2147482000', display: 'block', left: `${Math.max(8, Math.round(r.right - 96))}px`, top: `${Math.max(8, Math.round(r.top - 44))}px` });
   }
 
   remover(): void {
     this.h.host.remove();
+    this.modo = null;
   }
 
   /** Chamado a cada "input" na caixa: "/" + atalho abre o menu filtrado; outro texto fecha. */
   aoDigitar(consulta: string | null): void {
-    const ancora = this.h.conteudo.querySelector<HTMLElement>('button');
+    const ancora = this.h.conteudo.querySelector<HTMLElement>('[data-acao="respostas"]');
     if (consulta === null) {
       if (this.menuPorAtalho) {
         this.menuPorAtalho = null;

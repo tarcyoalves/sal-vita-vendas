@@ -3,13 +3,16 @@
 //
 // Nada aqui envia mensagem: botões nossos só filtram, anotam e colam rascunho.
 
-import { chaveDaConversa, classificar, contar, diagnosticoDaLeitura, idadeDaUltima, passaNoFiltro, atualizarConversa, type FiltroLista } from '../../shared/crm-regras';
+import { chaveDaConversa, classificar, diagnosticoDaLeitura, idadeDaUltima, passaNoFiltro, atualizarConversa, type FiltroLista } from '../../shared/crm-regras';
 import { contarVencidos } from '../../shared/crm-lembretes';
 import { acharNoIndice, criarIndice, lembretesDoContato } from '../../shared/crm-contatos';
 import { instanteDaUltima } from '../../shared/crm-clientes';
 import { repositorioPadrao } from '../../shared/repositorio-local';
 import type { ItemVisto, RepositorioContatos } from '../../shared/repositorio';
-import type { AbaId, Conversa, RefContato } from '../../shared/crm-tipos';
+import type { ConfigCrm, Conversa, PedidoPainel, RefContato } from '../../shared/crm-tipos';
+import { abaEfetiva, abasVisiveis, contarAbas, filtroDaConfig, filtroLigado as haFiltro, idDaPersonalizada, temNovidade, todasAsAbas } from '../../shared/crm-abas';
+import { novoId } from '../../shared/crm-store';
+import { normalizarTexto } from '../../shared/nomes';
 import { textoDoCampo } from '../dom';
 import { lerLinhaCrm } from '../extrair';
 import { linhasDaLista } from '../lista';
@@ -22,14 +25,16 @@ import { FaixaLead, type AcoesFaixa } from './faixa-lead';
 import { abrirConverter, abrirCriarLead, abrirEtiquetas, abrirReagendar, abrirRegistrarContato, abrirVincular, type ContextoLead } from './painel-lead';
 import { ehLeadsCRM, type EstadoLead, type LeadsCRM } from '../../shared/leads';
 import { Barra } from './barra';
+import { BarraSuperior, iniciaisDe, type ContaTopo } from './barra-superior';
+import { abrirAjuda, abrirAjustesFiltro, abrirMenuConta, abrirNovaAba, type ContextoAbas } from './painel-abas';
 import { Cabecalho } from './cabecalho';
 import { Estado } from './estado';
 import { aplicarFiltroNaLista } from './filtro-lista';
-import { BotaoRespostas } from './painel-respostas';
+import { abrirMenuRespostas, BotaoRespostas } from './painel-respostas';
 import { consultaDeAtalho } from '../../shared/crm-modelos';
 import { abrirFiltroEtiquetas, abrirPainelCliente } from './painel-cliente';
 import { abrirCentral, abrirPainelNovoLembrete, type ContextoLembretes } from './painel-lembrete';
-import { fecharPopover, popoverAbertoEm } from './popover';
+import { fecharPopover, mostrarAviso, popoverAbertoEm } from './popover';
 import { anotarLinha, removerSelo } from './linha-extra';
 import { rolarELer } from './rolagem';
 import { avisarUmaVez } from './ui';
@@ -76,13 +81,20 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   const estado = new Estado(repo);
   await estado.iniciar(() => void consumirAcaoPendente(repo));
   const barra = new Barra();
+  const topo = new BarraSuperior();
   const cabecalho = new Cabecalho();
   // Lead do CRM Lembretes (só existe com login; sem login a faixa não aparece e tudo segue local).
   const leads: LeadsCRM | null = ehLeadsCRM(repo) ? repo : null;
   const faixa = new FaixaLead();
   // `em` = quando a conversa pediu o lead ao service worker (quem decide se vai ao CRM é o ServicoCrm: cache de 30 min por contato).
   const leadCache: { chave: string; estado: EstadoLead | null; em: number } = { chave: '', estado: null, em: 0 };
-  const botaoRespostas = new BotaoRespostas({ estado, nomeDaConversa: nomeDaConversaAberta, caixa: () => encontrar(document, 'caixaMensagem') });
+  const ctxRespostas = { estado, nomeDaConversa: nomeDaConversaAberta, caixa: () => encontrar(document, 'caixaMensagem') };
+  const botaoRespostas = new BotaoRespostas(ctxRespostas, (ancora) => abrirLembreteDaCaixa(ancora));
+  // Estado da barra superior: conta do CRM (leitura local no service worker, sem rede), última contagem por aba, base do ponto verde.
+  let contaTopo: ContaTopo = { tipo: 'oculta' };
+  let contaEm = 0;
+  let contagensAtuais: Record<string, number> = {};
+  const baseNovidade = new Map<string, number>();
 
   let lendoLista = false;
   let pararLeitura = false;
@@ -188,15 +200,82 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
     );
   }
 
-  const filtroAtual = (): FiltroLista => {
-    const c = estado.dados.config;
-    return { aba: c.aba, diasSemResposta: c.diasSemResposta, etiquetas: c.filtroEtiquetas };
-  };
+  const barraSuperiorLigada = (): boolean => estado.dados.config.barraSuperior !== false;
+  const filtroAtual = (): FiltroLista => filtroDaConfig(estado.dados.config, !barraSuperiorLigada());
 
-  function mudarConfig(parcial: Partial<{ aba: AbaId; diasSemResposta: number | null; filtroEtiquetas: string[] }>): void {
+  function mudarConfig(parcial: Partial<ConfigCrm>): void {
     estado.dados.config = { ...estado.dados.config, ...parcial };
     void estado.repo.salvarConfig(estado.dados.config).catch((e: unknown) => avisarUmaVez('config', 'Não consegui gravar o filtro.', e));
     ciclo();
+  }
+
+  /** Lê a conta do CRM (cache local no service worker: não há rede). No máximo uma vez a cada 5 s. */
+  function lerConta(forcar = false): void {
+    if (!leads || encerrado) return;
+    if (!forcar && Date.now() - contaEm < 5000) return;
+    contaEm = Date.now();
+    leads.conta().then(
+      (c) => {
+        contaTopo = c.usuario ? { tipo: 'logado', nome: c.usuario.name, email: c.usuario.email, iniciais: iniciaisDe(c.usuario.name, c.usuario.email) } : { tipo: 'sem-login' };
+        if (!encerrado) ciclo();
+      },
+      () => undefined,
+    );
+  }
+
+  /** Abre o painel lateral na aba pedida: grava o pedido (o painel lê) e avisa o service worker, que abre o painel. */
+  function abrirPainel(aba: PedidoPainel['aba']): void {
+    mudarConfig({ pedidoPainel: { aba, ts: Date.now() } });
+    try {
+      void Promise.resolve(chrome.runtime.sendMessage({ vz: 'painel', aba })).catch(() => undefined);
+    } catch {
+      /* a extensão foi recarregada: o usuário abre o painel pelo ícone */
+    }
+  }
+
+  /** Ícone de relógio da caixa de digitação: o mesmo popover de lembrete do cabeçalho da conversa. */
+  function abrirLembreteDaCaixa(ancora: HTMLElement): void {
+    if (popoverAbertoEm(ancora)) return fecharPopover();
+    const ref = refDaConversaAberta();
+    if (!ref) return mostrarAviso('Abra uma conversa para criar o lembrete.', 'erro');
+    abrirPainelNovoLembrete(ancora, ctxLembretes, ref, true);
+  }
+
+  const alternarItem = (lista: string[], id: string): string[] => (lista.includes(id) ? lista.filter((x) => x !== id) : [...lista, id]);
+  const ctxAbas: ContextoAbas = {
+    config: () => estado.dados.config,
+    etiquetas: () => estado.dados.etiquetas,
+    criarAba: (a) => {
+      const nome = a.nome.trim();
+      const c = estado.dados.config;
+      const proprias = c.abasPersonalizadas ?? [];
+      if (!nome) return 'Dê um nome à aba.';
+      if (a.etiquetas.length + a.fases.length === 0) return 'Marque ao menos uma etiqueta ou fase.';
+      if (proprias.length >= 30) return 'Limite de 30 abas personalizadas.';
+      if (todasAsAbas(c).some((x) => normalizarTexto(x.rotulo) === normalizarTexto(nome))) return 'Já existe uma aba com esse nome.';
+      const id = novoId();
+      mudarConfig({ abasPersonalizadas: [...proprias, { id, nome, etiquetas: a.etiquetas, fases: a.fases }], aba: idDaPersonalizada(id) });
+      return null;
+    },
+    excluirAba: (id) => {
+      const c = estado.dados.config;
+      const aba = idDaPersonalizada(id);
+      mudarConfig({ abasPersonalizadas: (c.abasPersonalizadas ?? []).filter((x) => x.id !== id), aba: c.aba === aba ? 'todas' : c.aba, abasOcultas: (c.abasOcultas ?? []).filter((x) => x !== aba) });
+    },
+    escolherDias: (dias) => mudarConfig({ diasSemResposta: dias }),
+    alternarGrupos: () => mudarConfig({ ocultarGrupos: estado.dados.config.ocultarGrupos !== true }),
+    alternarAbaVisivel: (id) => {
+      const c = estado.dados.config;
+      const ocultas = alternarItem(c.abasOcultas ?? [], id);
+      mudarConfig({ abasOcultas: ocultas, aba: ocultas.includes(c.aba) ? 'todas' : c.aba });
+    },
+  };
+
+  /** Clique numa aba da barra superior: filtra e zera o ponto verde (guarda quantas conversas ela tinha agora). */
+  function escolherAbaTopo(id: string): void {
+    const n = contagensAtuais[id] ?? 0;
+    baseNovidade.set(id, n);
+    mudarConfig({ aba: id, abasVistas: { ...(estado.dados.config.abasVistas ?? {}), [id]: n } });
   }
 
   function dispensar(conversa: Conversa): void {
@@ -236,6 +315,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
         // O WhatsApp demora a montar a tela: só vira aviso se continuar sem lista depois de 30 s.
         if (Date.now() - inicio > 30_000) avisarUmaVez('lista', 'Lista de conversas não encontrada (seletor painelLateral); o CRM fica em silêncio até ela aparecer.');
         barra.remover();
+        topo.remover();
         return;
       }
       barra.garantirNoLugar(lista);
@@ -254,7 +334,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       const contatoDe = (c: Conversa) => acharNoIndice(indice, { nome: c.nome, telefone: c.telefone });
       const conversas = Object.values(dados.conversas);
       const filtro = filtroAtual();
-      const filtroLigado = !busca && !arquivadas && !lendoLista && (filtro.aba !== 'todas' || filtro.etiquetas.length > 0);
+      const filtroLigado = !busca && !arquivadas && !lendoLista && haFiltro(filtro);
 
       const leituras = elementos.map((el) => {
         const l = lerLinhaCrm(el);
@@ -280,13 +360,51 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       atualizarCabecalho(agora, indice);
       botaoRespostas.posicionar(encontrar(document, 'caixaMensagem'));
 
+      const cfg = dados.config;
+      contagensAtuais = contarAbas(conversas, contatoDe, cfg);
+      const vencidos = contarVencidos(dados.lembretes, agora);
+      if (barraSuperiorLigada()) {
+        topo.garantirNoLugar();
+        const ativa = abaEfetiva(cfg);
+        topo.render(
+          {
+            abas: abasVisiveis(cfg).map((a) => {
+              const n = contagensAtuais[a.id] ?? 0;
+              const salva = cfg.abasVistas?.[a.id];
+              const base = salva === undefined ? undefined : Math.min(baseNovidade.get(a.id) ?? salva, salva, n);
+              if (base !== undefined) baseNovidade.set(a.id, base);
+              return { ...a, n, ativa: a.id === ativa, novidade: temNovidade(n, base) };
+            }),
+            vencidos,
+            conta: contaTopo,
+          },
+          {
+            escolherAba: escolherAbaTopo,
+            novaAba: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirNovaAba(ancora, ctxAbas)),
+            ajustes: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirAjustesFiltro(ancora, ctxAbas)),
+            respostas: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : void abrirMenuRespostas(ancora, ctxRespostas, { acima: false })),
+            lembretes: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirCentral(ancora, ctxLembretes)),
+            clientes: () => abrirPainel('clientes'),
+            ajuda: (ancora) => (popoverAbertoEm(ancora) ? fecharPopover() : abrirAjuda(ancora)),
+            conta: (ancora) => {
+              if (popoverAbertoEm(ancora)) return fecharPopover();
+              if (contaTopo.tipo !== 'logado' || !leads) return abrirPainel('dados');
+              abrirMenuConta(ancora, { nome: contaTopo.nome, email: contaTopo.email, abrirPainel: () => abrirPainel('dados'), sair: () => void leads.sair().then(() => lerConta(true), () => undefined) });
+            },
+          },
+        );
+      } else {
+        topo.remover();
+      }
+
       barra.render(
         {
-          aba: filtro.aba,
-          contagens: contar(conversas, contatoDe),
+          compacta: barraSuperiorLigada(),
+          aba: abaEfetiva(cfg, !barraSuperiorLigada()),
+          contagens: { todas: contagensAtuais.todas, naoLidas: contagensAtuais.naoLidas, precisa: contagensAtuais.precisa, aguardando: contagensAtuais.aguardando },
           dias: filtro.diasSemResposta,
           etiquetasMarcadas: filtro.etiquetas.length,
-          vencidos: contarVencidos(dados.lembretes, agora),
+          vencidos,
           emArquivadas: arquivadas,
           lendoLista,
           avisos: diagnosticoDaLeitura(conversas.filter((c: Conversa) => !c.arquivada)),
@@ -353,11 +471,18 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   };
   document.addEventListener('input', aoDigitar, true);
   window.addEventListener('resize', ciclo);
+  // Voltou para a aba do WhatsApp (por exemplo depois de entrar no CRM pelo painel): confere a conta (leitura local, sem rede).
+  const aoVoltar = (): void => {
+    if (document.visibilityState !== 'hidden') lerConta();
+  };
+  window.addEventListener('focus', aoVoltar);
+  document.addEventListener('visibilitychange', aoVoltar);
 
   observador.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
   const removerOuvinte = estado.ouvir(() => agendar()); // só redesenha: mudança em outra parte não gera consulta ao CRM
   const periodico = op.periodicoMs === 0 ? null : setInterval(ciclo, op.periodicoMs ?? 30_000);
   ciclo();
+  lerConta(true);
   // A aba do WhatsApp Web carregou: busca os lembretes do CRM (no máximo 1 por hora; sem login não faz nada).
   if (leads) void leads.sincronizarLembretes('aba-whatsapp').catch(() => undefined);
   // Pedido pendente (clique na notificação com o WhatsApp Web ainda carregando): espera a lista e executa.
@@ -373,11 +498,14 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       if (timer) clearTimeout(timer);
       if (periodico) clearInterval(periodico);
       barra.remover();
+      topo.remover();
       cabecalho.remover();
       faixa.remover();
       botaoRespostas.remover();
       document.removeEventListener('input', aoDigitar, true);
       window.removeEventListener('resize', ciclo);
+      window.removeEventListener('focus', aoVoltar);
+      document.removeEventListener('visibilitychange', aoVoltar);
       fecharPopover();
       estado.encerrar();
     },

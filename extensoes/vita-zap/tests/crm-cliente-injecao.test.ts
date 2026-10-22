@@ -44,7 +44,7 @@ async function iniciar(): Promise<ControladorCrm> {
 
 beforeEach(() => {
   limparAvisos();
-  chrome = instalarChromeFalso();
+  chrome = instalarChromeFalso({ 'vz.config': { barraSuperior: false } });
   montarWhatsApp(LINHAS, 'Ana Souza');
 });
 
@@ -121,7 +121,7 @@ describe('painel do cliente no cabeçalho', () => {
   });
 
   it('o botão mostra o número de notas', async () => {
-    chrome = instalarChromeFalso({ 'vz.contatos': porId(contato('Ana Souza', { notas: [{ id: 'n', texto: 'x', criadaEm: 1 }, { id: 'm', texto: 'y', criadaEm: 2 }] })) });
+    chrome = instalarChromeFalso({ 'vz.config': { barraSuperior: false }, 'vz.contatos': porId(contato('Ana Souza', { notas: [{ id: 'n', texto: 'x', criadaEm: 1 }, { id: 'm', texto: 'y', criadaEm: 2 }] })) });
     montarWhatsApp(LINHAS, 'Ana Souza');
     await iniciar();
     expect(sombra('vita-zap-cabecalho').querySelector('[title^="Cliente"] .selo')?.textContent).toBe('2');
@@ -146,7 +146,7 @@ describe('painel do cliente no cabeçalho', () => {
 describe('chip "Etiquetas" filtra a lista', () => {
 
   beforeEach(() => {
-    chrome = instalarChromeFalso({
+    chrome = instalarChromeFalso({ 'vz.config': { barraSuperior: false },
       'vz.etiquetas': [{ id: 'e1', nome: 'Quente', cor: '#c62828' }, { id: 'e2', nome: 'Cliente fiel', cor: '#8e24aa' }],
       'vz.contatos': porId(contato('Ana Souza', { etiquetas: ['e1'] }), contato('Bruno Lima', { etiquetas: ['e2'], fase: 'negociando' })),
     });

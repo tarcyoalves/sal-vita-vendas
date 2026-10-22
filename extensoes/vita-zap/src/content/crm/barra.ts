@@ -1,13 +1,16 @@
-// Barra de abas injetada acima da lista de conversas:
-// Todas | Não lidas | Precisa de resposta | Aguardando resposta, com contadores, o sino de
-// lembretes, o chip "Etiquetas" e o filtro "sem resposta há X dias".
+// Barra injetada acima da lista de conversas. No layout antigo (barra superior desligada) traz as abas
+// Todas | Não lidas | Precisa de resposta | Aguardando resposta com contadores e o sino de lembretes.
+// Com a barra superior ligada (padrão) as abas moram lá (barra-superior.ts) e aqui sobra só a linha de
+// chips: "Etiquetas", o filtro "sem resposta há X dias" e os avisos.
 
 import { ABAS, OPCOES_DIAS, type AbaId } from '../../shared/crm-tipos';
 import type { Contagens } from '../../shared/crm-regras';
 import { criarHost, h, icone, sincronizarTema, type Host } from './ui';
 
 export interface EstadoBarra {
-  aba: AbaId;
+  /** true = a barra superior mostra as abas: aqui só ficam os chips. */
+  compacta: boolean;
+  aba: string;
   contagens: Contagens;
   dias: number | null;
   /** Quantas etiquetas/fases estão marcadas no filtro. */
@@ -56,7 +59,7 @@ export class Barra {
     const c = e.contagens;
     const numero = (id: AbaId): number => (id === 'todas' ? c.todas : id === 'naoLidas' ? c.naoLidas : id === 'precisa' ? c.precisa : c.aguardando);
 
-    const abas = h(
+    const abas = e.compacta ? null : h(
       'div',
       { class: 'abas', role: 'tablist' },
       ABAS.map((a) =>
@@ -90,7 +93,7 @@ export class Barra {
 
     const chips = h(
       'div',
-      { class: 'chips' },
+      { class: e.compacta ? 'chips compacta' : 'chips' },
       h(
         'button',
         { class: `chip${e.etiquetasMarcadas > 0 ? ' ativo' : ''}`, type: 'button', onclick: (ev) => acoes.abrirEtiquetas(ev.currentTarget as HTMLElement) },

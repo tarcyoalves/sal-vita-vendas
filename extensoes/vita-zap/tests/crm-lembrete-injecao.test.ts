@@ -41,7 +41,7 @@ async function iniciar(): Promise<ControladorCrm> {
 
 beforeEach(() => {
   limparAvisos();
-  chrome = instalarChromeFalso();
+  chrome = instalarChromeFalso({ 'vz.config': { barraSuperior: false } });
   montarWhatsApp(LINHAS, 'Ana Souza');
   // jsdom não tem execCommand: simula só "inserir texto" / "apagar" no compositor (como o editor faria).
   (document as unknown as { execCommand: unknown }).execCommand = (cmd: string, _ui: boolean, valor?: string) => {
@@ -158,7 +158,7 @@ describe('central de lembretes (sino da barra)', () => {
   const proximo: Lembrete = { id: 'p1', contatoId: 'id-bruno', nome: 'Bruno Lima', venceEm: instanteNoFuso('2026-10-25', 9), criadoEm: 1, status: 'pendente' };
 
   beforeEach(() => {
-    chrome = instalarChromeFalso({ 'vz.lembretes': [vencido, proximo] });
+    chrome = instalarChromeFalso({ 'vz.config': { barraSuperior: false }, 'vz.lembretes': [vencido, proximo] });
     montarWhatsApp(LINHAS, 'Ana Souza');
   });
 

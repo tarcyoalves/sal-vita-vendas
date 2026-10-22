@@ -36,6 +36,11 @@ const ICONES = {
   relogio: '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>',
   seta: '<path d="M7 10l5 5 5-5"/>',
   mais: '<path d="M12 5v14M5 12h14"/>',
+  raio: '<path d="M13 3L5.5 13.5H11l-1 7.5 7.5-10.5H12z"/>',
+  relogioCalendario: '<path d="M15 11V6.5a2 2 0 0 0-2-2H5.5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2H10"/><path d="M3.5 9H15M7 3v3M12 3v3"/><circle cx="16.5" cy="16.5" r="4.5"/><path d="M16.5 14v2.7l1.8 1"/>',
+  ajustes: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  ajuda: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.6 2.2c-.8.5-1.2 1-1.2 2"/><path d="M12 16.8h.01"/>',
+  clientes: '<circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c0-3 2.5-4.7 5.5-4.7s5.5 1.7 5.5 4.7"/><circle cx="17" cy="9.5" r="2.3"/><path d="M16 14.4c2.9-.2 4.8 1.2 4.8 3.8"/>',
 } as const;
 
 export type NomeIcone = keyof typeof ICONES;
@@ -52,6 +57,19 @@ export function icone(nome: NomeIcone, tamanho = 18): SVGElement {
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
   svg.innerHTML = ICONES[nome];
+  return svg;
+}
+
+/** Logo próprio do Vita Zap: círculo verde com "VZ" (traços, sem fonte). */
+export function logoVz(tamanho = 32): SVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 32 32');
+  svg.setAttribute('width', String(tamanho));
+  svg.setAttribute('height', String(tamanho));
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Vita Zap');
+  svg.innerHTML =
+    '<circle cx="16" cy="16" r="16" fill="#00a884"/><g fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 10.5l3.7 11 3.7-11"/><path d="M17.5 10.5h7l-7 11h7"/></g>';
   return svg;
 }
 

@@ -79,6 +79,22 @@ export function Dados({ db, dados, aoMudar, crm }: Props) {
 
   return (
     <section>
+      <div className="cartao">
+        <h3>Barra superior do WhatsApp</h3>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={crm.dados?.config.barraSuperior !== false}
+            disabled={!crm.dados}
+            onChange={(e) => {
+              const cfg = crm.dados?.config;
+              if (cfg) void crm.fazer((r) => r.salvarConfig({ ...cfg, barraSuperior: e.target.checked }));
+            }}
+          />
+          Mostrar barra superior
+        </label>
+        <p className="ajuda">Ligada (padrão): as abas, os lembretes e o login ficam numa barra no topo do WhatsApp Web. Desligada: volta ao layout antigo, com as abas acima da lista de conversas.</p>
+      </div>
       <ContaCrm crm={crm} />
       <CrmBackup crm={crm} />
 
