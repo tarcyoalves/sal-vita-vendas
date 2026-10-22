@@ -5,6 +5,7 @@
 // o que é o comportamento seguro.
 
 import { iniciarCrm, limparAlarmeSyncAntigo } from './crm-sync';
+import { criarAtendenteExterno } from './externo';
 import { aoAlarme, aoClicarNotificacao, sincronizar } from './lembretes';
 import { ehPedidoPainelAberto } from '../shared/mensagens';
 import { RepositorioLocal, repositorioPadrao, usarServicoCrm } from '../shared/repositorio-local';
@@ -39,6 +40,15 @@ chrome.runtime.onMessage.addListener((msg: unknown, remetente) => {
   chrome.sidePanel.open({ tabId: remetente.tab.id }).catch(() => undefined);
   return false;
 });
+
+// Página do CRM (/vita-zap) perguntando "você está instalado?": só origem do CRM e só o ping (ver externo.ts).
+chrome.runtime.onMessageExternal.addListener(
+  criarAtendenteExterno({
+    versao: () => chrome.runtime.getManifest().version,
+    conectadoAoCrm: async () => (await repositorioPadrao().conta()).usuario != null,
+    temPermissao: async () => chrome.permissions.contains({ origins: [`${(await repositorioPadrao().conta()).baseUrl}/*`] }),
+  }),
+);
 
 chrome.alarms.onAlarm.addListener((alarme) => {
   void aoAlarme(alarme.name).catch(() => undefined);
