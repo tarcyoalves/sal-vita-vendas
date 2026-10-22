@@ -75,7 +75,7 @@ describe('Executor — modo uma tecla', () => {
     await t.ex.iniciar();
     expect(t.ex.atual.fase).toBe('aguardando_envio');
     expect(abertos(t.pedidos)).toEqual(['Ana']);
-    expect(t.pedidos[0]).toEqual({ tipo: 'abrirEColar', nome: 'Ana', texto: 'Oi Ana' });
+    expect(t.pedidos[0]).toEqual({ tipo: 'abrirEColar', nome: 'Ana', texto: 'Oi Ana', envioAutomatico: true });
 
     // Sem evento de envio, nada acontece: não existe "enviar" no protocolo.
     expect(await listarEnvios(t.db)).toHaveLength(0);

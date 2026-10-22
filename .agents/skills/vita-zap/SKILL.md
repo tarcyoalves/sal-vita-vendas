@@ -23,7 +23,7 @@ Responda sempre em português do Brasil, em linguagem simples (o dono não é pr
 
 ## 2. Regras que NUNCA se quebram
 
-1. **A extensão nunca envia mensagem sozinha.** Ela abre a conversa e cola o texto; quem aperta Enter é a pessoa. `tests/sem-envio-automatico.test.ts` reprova: `.click()`, `KeyboardEvent`, `dispatchEvent` fora de `dom.ts`/`abrir-conversa.ts`, `MouseEvent/PointerEvent` fora de `abrir-conversa.ts`. NUNCA edite esse teste nem `tests/arquitetura-repositorio.test.ts` para "passar".
+1. **Envio humano automático (pedido explícito do dono em 22/10/2026):** O envio 100% automático é permitido e foi ativado a pedido do dono, operando de forma humanizada (pausa de 2 a 4s antes do clique, variação de coordenadas e tempo de clique, intervalo de 60-120s entre contatos). Todo código de envio é isolado estritamente em `src/content/envio-humano.ts` e testado em `tests/sem-envio-automatico.test.ts`. Nenhum outro arquivo pode conter disparos não controlados.
 2. **Banco Neon no plano grátis: nada de consulta periódica ao CRM.** Só por ação do usuário (abrir conversa, abrir painel, botão "Atualizar do CRM", login). Os testes `crm-consumo*` garantem isso. Arquivo estático (`/vita-zap/versao.json`) não conta.
 3. **Cada atendente vê só os próprios leads e lembretes** (inclusive o admin): `tasks.reminders({ meus: true })` e `findForWhatsapp` usam `meusLeadsFilter`.
 4. **Faixa do lead, consulta ao CRM e aba Clientes só para contatos com "cliente" no nome** (`ehContatoCliente` em `src/shared/crm-regras.ts`). Contato pessoal não aparece.

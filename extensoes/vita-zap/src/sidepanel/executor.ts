@@ -32,6 +32,7 @@ export interface DependenciasExecutor {
   aleatorio: () => number;
   /** Agenda `fn` para daqui a `ms`; devolve a função que cancela. */
   agendar: (fn: () => void, ms: number) => () => void;
+  obterEnvioAutomatico?: () => boolean;
 }
 
 export type FaseExecucao = 'parada' | 'abrindo' | 'aguardando_envio' | 'intervalo' | 'concluida';
@@ -45,6 +46,7 @@ export interface EstadoExecutor {
   liberaEm: number | null;
   enviosHoje: number;
   tetoDiario: number;
+  envioAutomatico: boolean;
 }
 
 export type AcaoManual = 'pulado' | 'nao_cliente' | 'problema' | 'nao_enviar';
@@ -58,6 +60,7 @@ export class Executor {
   private cancelarTimer: (() => void) | null = null;
   private ativo = false;
   private avancando = false;
+  private envioAutomatico = true;
 
   constructor(private readonly deps: DependenciasExecutor, campanha: Campanha) {
     this.estado = {
@@ -68,7 +71,13 @@ export class Executor {
       liberaEm: null,
       enviosHoje: 0,
       tetoDiario: 0,
+      envioAutomatico: true,
     };
+  }
+
+  setEnvioAutomatico(ativo: boolean): void {
+    this.envioAutomatico = ativo;
+    this.publicar({ envioAutomatico: ativo });
   }
 
   get atual(): EstadoExecutor {
@@ -303,7 +312,8 @@ export class Executor {
     }
 
     this.publicar({ fase: 'abrindo', itemAtual: item, liberaEm: null, mensagem: null });
-    const r = await this.deps.pedir({ tipo: 'abrirEColar', nome: item.nome, texto: textoDoItem(item) }, true);
+    const envioAuto = this.deps.obterEnvioAutomatico ? this.deps.obterEnvioAutomatico() : this.envioAutomatico;
+    const r = await this.deps.pedir({ tipo: 'abrirEColar', nome: item.nome, texto: textoDoItem(item), envioAutomatico: envioAuto }, true);
     if (!this.ativo) return; // pausado enquanto abria
     if (r.ok) {
       this.publicar({ fase: 'aguardando_envio', itemAtual: item, mensagem: null });

@@ -18,7 +18,7 @@ interface Props {
 const ROTULO_FASE: Record<EstadoExecutor['fase'], string> = {
   parada: 'Parada',
   abrindo: 'Abrindo a conversa…',
-  aguardando_envio: 'Confira o texto no WhatsApp e aperte Enter lá',
+  aguardando_envio: 'Aguardando envio',
   intervalo: 'Intervalo entre contatos',
   concluida: 'Concluída',
 };
@@ -172,6 +172,22 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
             </button>
           </div>
         )}
+      </div>
+
+      <div className="cartao" style={{ padding: '10px 14px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+          <input
+            type="checkbox"
+            checked={estado.envioAutomatico}
+            onChange={(e) => executor.setEnvioAutomatico(e.target.checked)}
+          />
+          <span>Envio 100% automático (clica em Enviar sozinho)</span>
+        </label>
+        <p style={{ margin: '4px 0 0 24px', fontSize: 11, color: 'var(--suave)' }}>
+          {estado.envioAutomatico
+            ? 'Ativado: espera de 2 a 4 segundos após digitar (para parecer humano) e clica no botão Enviar.'
+            : 'Desativado: a mensagem é digitada e aguarda você apertar a tecla Enter.'}
+        </p>
       </div>
 
       <details className="cartao" open>

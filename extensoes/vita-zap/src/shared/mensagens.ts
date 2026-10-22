@@ -8,7 +8,7 @@ import type { LinhaBruta } from './contatos';
 export type PedidoConteudo =
   | { tipo: 'verificar' }
   | { tipo: 'varrer'; termo: string }
-  | { tipo: 'abrirEColar'; nome: string; texto: string }
+  | { tipo: 'abrirEColar'; nome: string; texto: string; envioAutomatico?: boolean }
   | { tipo: 'limparCaixa'; texto: string }
   | { tipo: 'pararObservacao' };
 
@@ -50,3 +50,4 @@ export function ehEventoConteudo(v: unknown): v is EventoConteudo {
   const tipo = (v as { tipo: unknown }).tipo;
   return tipo === 'vitaZap:envioDetectado' || tipo === 'vitaZap:progressoVarredura';
 }
+

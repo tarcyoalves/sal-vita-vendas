@@ -60,6 +60,7 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
     case 'abrirEColar':
       return abrirEColar(pedido.nome, pedido.texto, (texto, textoConfere) =>
         emitir({ tipo: 'vitaZap:envioDetectado', nome: pedido.nome, texto, textoConfere }),
+        pedido.envioAutomatico,
       );
   }
 }
@@ -87,3 +88,4 @@ if (!jaCarregado) chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo
 // CRM dentro do WhatsApp Web (barra de abas, lembretes, notas...). Falha em silêncio.
 if (!jaCarregado) iniciarBarraFormatacao();
 if (!jaCarregado) iniciarCrm().catch((e: unknown) => avisarUmaVez('crm', 'Não consegui iniciar o CRM.', e));
+

@@ -11,6 +11,7 @@ import { escreverNoCampo, esperar, esperarAte, limparCampo, limparMarcas, textoD
 import { lerConversasVisiveis } from './extrair';
 import { buscar, exigir, linhasDaLista } from './lista';
 import { encontrar, encontrarTodos, existeAlgum } from './selectors';
+import { agendarEnvioHumano, clicarBotaoEnviarHumano, encontrarBotaoEnviar, enviarPeloTecladoHumano } from './envio-humano';
 
 export type TipoConversa = 'individual' | 'grupo' | 'desconhecido';
 
@@ -70,9 +71,14 @@ interface Observacao {
 }
 
 let observacao: Observacao | null = null;
+let cancelarEnvioAuto: (() => void) | null = null;
 const LIMITE_OBSERVACAO_MS = 30 * 60 * 1000;
 
 export function pararObservacao(): void {
+  if (cancelarEnvioAuto) {
+    cancelarEnvioAuto();
+    cancelarEnvioAuto = null;
+  }
   if (!observacao) return;
   observacao.observador.disconnect();
   if (observacao.timer) clearTimeout(observacao.timer);
@@ -148,7 +154,7 @@ async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promi
   return null;
 }
 
-export async function abrirEColar(nome: string, texto: string, aoDetectarEnvio: (texto: string, confere: boolean) => void): Promise<RespostaConteudo> {
+export async function abrirEColar(nome: string, texto: string, aoDetectarEnvio: (texto: string, confere: boolean) => void, envioAutomatico = false): Promise<RespostaConteudo> {
   pararObservacao();
   const falha = await abrirConversaPorNome(nome);
   if (falha) return falha;
@@ -176,8 +182,33 @@ export async function abrirEColar(nome: string, texto: string, aoDetectarEnvio: 
   }
   caixa.focus();
 
-  // 5. Esperar o usuário enviar.
-  observarEnvio(nome, texto, antes, aoDetectarEnvio);
+  // 5. Esperar o envio (observador).
+  observarEnvio(nome, texto, antes, (textoEnviado, confere) => {
+    if (cancelarEnvioAuto) {
+      cancelarEnvioAuto();
+      cancelarEnvioAuto = null;
+    }
+    aoDetectarEnvio(textoEnviado, confere);
+  });
+
+  // 6. Envio humano automático (quando ativado).
+  if (envioAutomatico) {
+    cancelarEnvioAuto = agendarEnvioHumano(async () => {
+      cancelarEnvioAuto = null;
+      if (tituloAberto() !== nome) return;
+      const botao = encontrarBotaoEnviar(document);
+      if (botao) {
+        await clicarBotaoEnviarHumano(botao);
+      }
+      setTimeout(() => {
+        const cx = encontrar(document, 'caixaMensagem');
+        if (cx && textoDoCampo(cx).trim() !== '') {
+          enviarPeloTecladoHumano(cx);
+        }
+      }, 600);
+    });
+  }
+
   return { ok: true };
 }
 
