@@ -201,3 +201,23 @@ service worker e o lead da conversa a cada ~60 s. Mudanças (só em `extensoes/v
   `tests/crm-consumo-conteudo.test.ts` (relógio falso: 8 h sem ação = zero rede; 50 despertares = no máximo 1 busca).
 - Mudança de contrato: `leadDoContato(ref, { forcar? })` e `sincronizarLembretes(motivo?)` ganharam parâmetros
   opcionais; os testes antigos que dependiam de reconsulta a cada chamada passaram a usar `forcar`.
+
+## Nota (v0.6.0): barra superior do CRM
+
+Só em `extensoes/vita-zap` (nada no servidor nem no CRM). A barra superior de largura total (48 px, Shadow DOM)
+substitui a barra de abas acima da lista: abas fixas, de funil e personalizadas ("+"), ajustes de filtro,
+respostas rápidas, central de lembretes, Clientes, conta e ajuda; ícones de lembrete e respostas rápidas na caixa
+de digitação (só colam/agendam, nunca enviam); chip "Etiquetas" e faixa do lead com o mesmo estilo; opção
+"Mostrar barra superior" na aba Dados (padrão ligado; desligada volta o layout antigo).
+
+- Layout: `#app` (seletor `raizApp`) recebe `calc(100vh - 48px)` + margem de 48 px, revertidos ao desligar; se o
+  seletor falhar a barra flutua com sombra e há um `console.warn` (uma vez). Seletor novo `microfone` posiciona
+  os ícones da caixa. **Nenhum dos dois foi validado no WhatsApp Web real.**
+- Neon: nenhuma consulta nova nem periódica; `crm-consumo*` continuam verdes.
+- Harness: `npm run harness` (porta 5288) serve `dev/harness.html`, um WhatsApp falso estático que carrega o
+  `dist/content.js` com `chrome.*` falso (`?crm=1` simula login e lead). Layout, tema claro/escuro e rolagem
+  conferidos ali, não no WhatsApp real.
+- Teste `crm-painel-clientes` ("há 1 dia"): falhava só porque a data estava fixa em 2026-10-20 e o relógio
+  passou de 21/10; agora a data é "ontem", calculada em tempo de execução. Não era regressão da v0.6.
+- Testes jsdom novos: `tests/crm-barra-superior.test.ts` e `tests/crm-abas.test.ts`.
+

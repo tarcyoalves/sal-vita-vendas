@@ -1,12 +1,13 @@
 {
   "name": "vita-zap",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "description": "Vita Zap — copiloto comercial no WhatsApp Web (fase 1, sem IA). Projeto separado do CRM.",
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && vite build && vite build -c vite.content.config.ts",
     "check": "tsc --noEmit",
+    "harness": "npm run build && node dev/servir.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

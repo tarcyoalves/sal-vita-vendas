@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Harness Vita Zap (WhatsApp Web falso)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- HTML SINTÉTICO: imita só a estrutura esperada do WhatsApp Web. Sem assets nem marca do WhatsApp. -->
+<style>
+  :root { --bg: #f0f2f5; --painel: #fff; --borda: #e9edef; --texto: #111b21; --suave: #667781; --verde: #00a884; }
+  body.dark { --bg: #0b141a; --painel: #111b21; --borda: #222d34; --texto: #e9edef; --suave: #8696a0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font: 14px/1.35 system-ui, Segoe UI, sans-serif; color: var(--texto); background: var(--bg); }
+  #app { display: flex; height: 100vh; width: 100%; background: var(--painel); overflow: hidden; }
+  #nav { width: 64px; background: var(--bg); border-right: 1px solid var(--borda); display: flex; flex-direction: column; align-items: center; gap: 14px; padding-top: 16px; }
+  #nav i { width: 24px; height: 24px; border-radius: 6px; background: var(--suave); opacity: .35; display: block; }
+  #side { width: 30%; min-width: 320px; max-width: 460px; display: flex; flex-direction: column; border-right: 1px solid var(--borda); }
+  #side > header { padding: 14px 16px 6px; font-size: 22px; font-weight: 700; }
+  #busca { padding: 6px 12px; }
+  #busca input { width: 100%; padding: 8px 12px; border: 0; border-radius: 8px; background: var(--bg); color: var(--texto); font: inherit; outline: none; }
+  #nativos { display: flex; gap: 8px; padding: 6px 16px 8px; }
+  #nativos span { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--borda); color: var(--suave); font-size: 14px; line-height: 20px; }
+  #nativos span.on { background: #d9fdd3; color: #0a6c46; border-color: transparent; }
+  body.dark #nativos span.on { background: #103529; color: #21c063; }
+  #pane-side { flex: 1; overflow-y: auto; position: relative; }
+  [role="listitem"] { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; padding: 10px 16px; border-bottom: 1px solid var(--borda); position: relative; min-height: 72px; }
+  [role="listitem"]::before { content: ""; width: 49px; height: 49px; border-radius: 50%; background: var(--bg); flex: none; }
+  [role="listitem"] > div { flex: 1; min-width: 0; }
+  [role="listitem"] .l1 { display: flex; justify-content: space-between; }
+  [role="listitem"] .l1 div { color: var(--suave); font-size: 12px; }
+  [role="listitem"] .l2 { display: flex; align-items: center; gap: 4px; color: var(--suave); }
+  [data-icon] { display: inline-block; color: #53bdeb; font-size: 12px; }
+  [data-icon="msg-check"] { color: var(--suave); }
+  [aria-label*="não lidas"] { margin-left: auto; background: var(--verde); color: #fff; border-radius: 999px; padding: 0 6px; font-size: 12px; }
+  #main { flex: 1; display: flex; flex-direction: column; background: var(--bg); min-width: 0; }
+  #main > header { height: 59px; padding: 0 16px; display: flex; align-items: center; gap: 12px; background: var(--painel); border-bottom: 1px solid var(--borda); }
+  #main > header::before { content: ""; width: 40px; height: 40px; border-radius: 50%; background: var(--bg); }
+  #msgs { flex: 1; overflow: auto; padding: 16px 8%; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 60%; padding: 6px 10px; border-radius: 8px; background: var(--painel); box-shadow: 0 1px 1px rgba(11,20,26,.13); }
+  .msg.minha { align-self: flex-end; background: #d9fdd3; color: #111b21; }
+  #main footer { display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: var(--painel); }
+  #main footer .caixa { flex: 1; padding: 9px 12px; border-radius: 8px; background: var(--bg); min-height: 40px; }
+  #main footer .caixa [contenteditable] { outline: none; min-height: 20px; }
+  #main footer button { width: 40px; height: 40px; border-radius: 50%; border: 0; background: none; color: var(--suave); }
+  #controles { position: fixed; right: 12px; bottom: 70px; z-index: 5; background: var(--painel); border: 1px solid var(--borda); border-radius: 8px; padding: 6px 10px; font-size: 12px; opacity: .9; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="nav"><i></i><i></i><i></i><i></i></div>
+  <div id="side">
+    <header>Conversas</header>
+    <div id="busca"><input role="textbox" aria-label="Pesquisar ou começar uma nova conversa" placeholder="Pesquisar ou começar uma nova conversa"></div>
+    <div id="nativos"><span class="on">Tudo</span><span>Não lidas</span><span>Favoritas</span></div>
+    <div id="pane-side"><div id="lista"></div></div>
+  </div>
+  <div id="main">
+    <header><span dir="auto" title="Padaria Estrela">Padaria Estrela</span></header>
+    <div id="msgs">
+      <div class="msg" data-id="false_5584999990001@c.us_A1">Bom dia! Vocês têm sal grosso?</div>
+      <div class="msg minha" data-id="true_5584999990001@c.us_A2">Temos sim, saco de 25 kg.</div>
+      <div class="msg" data-id="false_5584999990001@c.us_A3">Quanto fica o fardo?</div>
+    </div>
+    <footer>
+      <div class="caixa"><div contenteditable="true" role="textbox" data-tab="10"></div></div>
+      <button type="button" aria-label="Mensagem de voz"><span data-icon="ptt">&#9679;</span></button>
+    </footer>
+  </div>
+</div>
+<div id="controles"><label><input type="checkbox" id="escuro"> tema escuro</label></div>
+
+<script>
+  // chrome.* falso: storage em memória, runtime.sendMessage responde vazio.
+  (function () {
+    var dados = {}, ouvintes = [];
+    var copia = function (v) { return v === undefined ? v : JSON.parse(JSON.stringify(v)); };
+    // Sem ?crm=1: sem login (aparece "Entrar no CRM"). Com ?crm=1: logado e com um lead falso na conversa aberta.
+    var logado = /[?&]crm=1/.test(location.search);
+    var conta = { baseUrl: 'http://crm.falso', usuario: logado ? { id: 1, name: 'Tarcyo Alves', email: 't@exemplo.com', role: 'admin' } : null, pendentes: 0, falhas: [], sincronizadoEm: null };
+    var lead = { id: 7, titulo: 'Padaria Estrela', telefone: '84999990001', etiquetas: ['Quente'], lembreteEm: Date.now() + 86400000, lembreteAtivo: true, status: 'open', ultimoContatoEm: Date.now() - 2 * 86400000, contatos: 3, convertidoEm: null, notas: 'Quer 20 fardos de sal grosso.\nPediu preço de frete.' };
+    function sendMessage(m) {
+      if (m && m.vz === 'crm') {
+        var v = null;
+        if (m.metodo === 'conta') v = conta;
+        else if (m.metodo === 'leadDoContato') v = logado ? { tipo: 'lead', lead: lead, desatualizado: false, pendentes: 0 } : { tipo: 'sem-login' };
+        else if (m.metodo === 'sincronizarLembretes') v = { ok: true, quantidade: 0 };
+        return Promise.resolve({ ok: true, valor: v });
+      }
+      return Promise.resolve();
+    }
+    var local = {
+      get: function (k) { var lista = k == null ? Object.keys(dados) : [].concat(k), r = {}; lista.forEach(function (x) { if (x in dados) r[x] = copia(dados[x]); }); return Promise.resolve(r); },
+      set: function (o) { var m = {}; Object.keys(o).forEach(function (x) { m[x] = { oldValue: copia(dados[x]), newValue: copia(o[x]) }; dados[x] = copia(o[x]); }); ouvintes.forEach(function (f) { f(m, 'local'); }); return Promise.resolve(); },
+      remove: function (k) { [].concat(k).forEach(function (x) { delete dados[x]; }); return Promise.resolve(); }
+    };
+    window.chrome = {
+      storage: { local: local, onChanged: { addListener: function (f) { ouvintes.push(f); }, removeListener: function (f) { ouvintes = ouvintes.filter(function (x) { return x !== f; }); } } },
+      runtime: { id: 'harness', sendMessage: sendMessage, onMessage: { addListener: function () {} }, getURL: function (p) { return p; } },
+      tabs: { query: function () { return Promise.resolve([]); }, update: function () { return Promise.resolve(); }, create: function () { return Promise.resolve(); } }
+    };
+    window.__harnessStorage = dados;
+  })();
+
+  // Conversas falsas. "minha" = a última mensagem é minha (ícone de entrega), como na lista real.
+  var CONVERSAS = [
+    { nome: 'Padaria Estrela', data: '10:42', previa: 'Quanto fica o fardo?', naoLidas: 2 },
+    { nome: 'Mercadinho do Zé', data: '09:15', previa: 'Combinado, fecho amanhã.', minha: 'msg-dblcheck' },
+    { nome: 'Restaurante Sabor & Cia', data: 'Ontem', previa: 'Pode mandar a tabela de preços?', naoLidas: 1 },
+    { nome: 'Grupo Compras Natal', data: 'Ontem', previa: 'Maria: alguém tem contato do fornecedor?', grupo: true },
+    { nome: 'Frigorífico Norte', data: 'Ontem', previa: 'Enviei o orçamento em PDF.', minha: 'msg-check' },
+    { nome: 'Ana Souza', data: 'Segunda', previa: 'Obrigada! Vou avaliar.' },
+    { nome: 'Salgados da Vovó', data: 'Segunda', previa: 'Segue a proposta atualizada.', minha: 'msg-dblcheck-ack' },
+    { nome: 'Bruno Lima', data: '18/10/2026', previa: 'Tá caro, vou pensar.' }
+  ];
+  document.getElementById('lista').innerHTML = CONVERSAS.map(function (c) {
+    var icone = c.minha ? '<span data-icon="' + c.minha + '">&#10003;</span>' : '';
+    var grupo = c.grupo ? '<span data-icon="default-group"></span>' : '';
+    var selo = c.naoLidas ? '<span aria-label="' + c.naoLidas + ' mensagens não lidas"><span>' + c.naoLidas + '</span></span>' : '';
+    return '<div role="listitem" data-nome="' + c.nome + '">' + grupo +
+      '<div><div class="l1"><span dir="auto" title="' + c.nome + '">' + c.nome + '</span><div>' + c.data + '</div></div>' +
+      '<div class="l2">' + icone + '<span title="' + c.previa + '"><span>' + c.previa + '</span></span>' + selo + '</div></div></div>';
+  }).join('');
+
+  document.getElementById('escuro').addEventListener('change', function (e) { document.body.classList.toggle('dark', e.target.checked); });
+</script>
+<script src="../dist/content.js"></script>
+</body>
+</html>

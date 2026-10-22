@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.5.1: CRM + integração com o CRM Lembretes + campanhas "uma tecla", sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.6.0: barra superior do CRM + integração com o CRM Lembretes + campanhas "uma tecla", sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -56,6 +56,33 @@ Para atualizar depois de mudar o código: `npm run build`, botão ↻ da extens�
 Requer Chrome 116 ou mais novo (API de painel lateral).
 
 ## 3. Como usar
+
+### 3.0 Barra superior do CRM (v0.6)
+
+Desde a v0.6 as abas e os atalhos moram numa **barra de largura total (48 px) acima de todo o WhatsApp Web**
+(Shadow DOM, tema claro e escuro). O contêiner raiz do WhatsApp (`#app`) ganha altura `calc(100vh - 48px)` e é
+empurrado para baixo; ao desligar, a altura e a margem originais voltam. Se o seletor `raizApp` falhar, a barra
+flutua por cima com sombra e há um único `console.warn`.
+
+- **Esquerda:** logo "VZ", abas *Todas | Não lidas | Aguardando resposta | Precisa de resposta* com contadores
+  (aba ativa verde com sublinhado; ponto verde quando a aba cresceu desde o último clique), abas de funil
+  (Novo, Orçamento, Negociando, Fechado, Perdido; ocultáveis), abas personalizadas criadas no **"+"** (por
+  etiqueta ou fase) e o ícone de **ajustes** (dias sem resposta 1/3/7/15, ocultar grupos, abas visíveis).
+  Rola na horizontal quando não cabe.
+- **Direita:** Respostas rápidas, sino com selo de vencidos (central Vencidos/Hoje/Próximos), Clientes (abre o
+  painel lateral), "Entrar no CRM" ou as iniciais com "CRM ✓" (login ou Sair) e "?" de ajuda.
+- A barra antiga de abas acima da lista some (sem duplicar); sobra só a linha de chips ("Etiquetas" com a mesma
+  pílula dos chips nativos).
+- Na caixa de digitação, à esquerda do microfone: ícone de **lembrete de follow-up** e de **respostas rápidas**.
+  Só colam texto ou agendam; nunca enviam.
+- A faixa do lead e as notas usam cartões brancos (raio 8 px, verde `#00a884`).
+- Painel lateral, aba **Dados**: "Mostrar barra superior" (padrão ligado). Desligada, volta o layout antigo.
+- Nenhuma consulta periódica ao CRM: a barra só usa o que já está em memória/cache (testes `crm-consumo*`).
+
+**Harness visual** (sem o WhatsApp real): `npm run harness` faz o build e serve em http://localhost:5288/ uma
+página estática que imita a estrutura do WhatsApp Web e carrega `dist/content.js` com um `chrome.*` falso.
+Adicione `?crm=1` para simular login e um lead na conversa aberta. Serve para ver layout, tema e rolagem; **não
+substitui** o checklist da seção 7 no WhatsApp real.
 
 ### 3.1 CRM dentro do WhatsApp Web (v0.4)
 
@@ -394,7 +421,7 @@ extensoes/vita-zap/
 │   │   ├── execucao.ts                abrir + colar + observar envio
 │   │   ├── abrir-conversa.ts          único clique simulado (linha da lista)
 │   │   ├── dom.ts, lista.ts           utilidades
-│   │   ├── crm/                       CRM injetado em Shadow DOM: barra de abas, filtro da lista,
+│   │   ├── crm/                       CRM injetado em Shadow DOM: barra superior, chips, filtro da lista,
 │   │   │                              cabeçalho (lembrete/cliente), respostas rápidas, estado
 │   │   └── index.ts                   recebe pedidos do painel
 │   ├── shared/                        lógica pura + IndexedDB
@@ -411,6 +438,7 @@ extensoes/vita-zap/
 │   │   │                              modelos, clientes, formato/sanitização e JSON (puros)
 │   │   └── ia.ts                      interface da fase 2 (desligada)
 │   └── sidepanel/                     React: Lembretes, Clientes, Varredura, Prévia, Envio, Dados
+├── dev/                               harness visual (harness.html + servir.mjs, porta 5288)
 └── tests/                             vitest (npm test)
 ```
 
