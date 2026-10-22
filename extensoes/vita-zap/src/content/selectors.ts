@@ -112,18 +112,39 @@ export const SELETORES = {
 
 export type ChaveSeletor = keyof typeof SELETORES;
 
+/**
+ * Ícones por nome: desde 10/2026 o WhatsApp Web desenha os ícones como <svg><title>nome</title>
+ * (ex.: "wds-ic-read", "ic-push-pin") sem `data-icon`. O CSS não casa texto, então estas chaves
+ * também são procuradas pelo <title> do svg. Visto no WhatsApp real em 22/10/2026: "wds-ic-read".
+ */
+export const TITULOS_ICONE: Partial<Record<ChaveSeletor, RegExp>> = {
+  iconeMinhaMensagem: /^(wds-)?(ic-)?(msg-|status-)?(read|delivered|sent|check|dblcheck|double-check|pending|time|clock)\b/i,
+  iconeGrupo: /^(wds-)?(ic-)?default-(group|community|broadcast)\b/i,
+  linhaArquivadas: /^(wds-)?(ic-)?archived?(-chat)?\b/i,
+  microfone: /^(wds-)?(ic-)?(ptt|mic|keyboard-voice)\b/i,
+};
+
+function svgPorTitulo(raiz: ParentNode, chave: ChaveSeletor): HTMLElement | null {
+  const rx = TITULOS_ICONE[chave];
+  if (!rx) return null;
+  for (const t of raiz.querySelectorAll('svg > title')) {
+    if (rx.test((t.textContent ?? '').trim())) return t.parentElement?.parentElement ?? null;
+  }
+  return null;
+}
+
 /** Primeiro elemento que bate com alguma alternativa, ou null. */
 export function encontrar(raiz: ParentNode, chave: ChaveSeletor): HTMLElement | null {
   for (const s of SELETORES[chave]) {
     const el = raiz.querySelector<HTMLElement>(s);
     if (el) return el;
   }
-  return null;
+  return svgPorTitulo(raiz, chave);
 }
 
 /** Verdadeiro se QUALQUER alternativa bate com algum elemento. */
 export function existeAlgum(raiz: ParentNode, chave: ChaveSeletor): boolean {
-  return SELETORES[chave].some((s) => raiz.querySelector(s) != null);
+  return SELETORES[chave].some((s) => raiz.querySelector(s) != null) || svgPorTitulo(raiz, chave) != null;
 }
 
 /** Todos os elementos da primeira alternativa que tiver algum resultado. */

@@ -37,7 +37,9 @@ export class FaixaLead {
   private chaveRender = '';
 
   constructor() {
-    Object.assign(this.h.host.style, { display: 'block', flex: '0 0 auto' });
+    // position/z-index: no WhatsApp de 10/2026 o painel das mensagens é posicionado por cima do que
+    // vem depois do header; sem isto a faixa fica por baixo (apagada e sem receber cliques).
+    Object.assign(this.h.host.style, { display: 'block', flex: '0 0 auto', position: 'relative', zIndex: '5' });
     isolarCliques(this.h.host);
   }
 
