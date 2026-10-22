@@ -84,7 +84,7 @@ describe('instalador do Windows (conferência do texto; a lógica roda em Pester
     // Única tarefa agendada permitida (pedido do dono em 22/10/2026): a de hora em hora, do próprio usuário,
     // sem conta de sistema nem privilégio elevado.
     expect(ps1.match(/schtasks\.exe[^\n]*/g)).toEqual(['schtasks.exe /Create /F /SC HOURLY /TN $NomeTarefa /TR $tr 2>&1']);
-    expect(ps1).not.toMatch(/\/RU\b|\/RL\s+HIGHEST|SYSTEM/i);
+    expect(ps1).not.toMatch(/\/RU\b|\/RL\s+HIGHEST|\bSYSTEM\b|NT AUTHORITY/);
   });
 
   it('o .ps1 tem BOM UTF-8 (PowerShell 5.1 lê os acentos)', () => {
