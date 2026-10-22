@@ -45,6 +45,20 @@ export async function userTaskFilter(userId: number, userName: string) {
   return or(...conditions);
 }
 
+/**
+ * Leads DO PRÓPRIO atendente, inclusive para o admin (usado pela extensão Vita Zap): responsável = o usuário
+ * (pelo nome de login ou de vendedor) ou, sem responsável, criada por ele. Diferente de userTaskFilter, não
+ * inclui o que ele criou/importou e atribuiu a outra pessoa. Pedido do dono em 22/10/2026: cada atendente vê
+ * só os próprios lembretes e leads na extensão.
+ */
+export async function meusLeadsFilter(userId: number, userName: string) {
+  const sellerRows = await db.select({ name: sellers.name }).from(sellers).where(eq(sellers.userId, userId));
+  const nomes = [...new Set([userName, sellerRows[0]?.name ?? ''].map((n) => n.trim().toLowerCase()).filter(Boolean))];
+  const semResponsavel = and(sql`coalesce(trim(${tasks.assignedTo}), '') = ''`, eq(tasks.userId, userId))!;
+  if (nomes.length === 0) return semResponsavel;
+  return or(inArray(sql`lower(trim(${tasks.assignedTo}))`, nomes), semResponsavel)!;
+}
+
 // "Dono da tarefa" tem que existir: atendente cadastrado ou conta admin/gerente. Devolve a grafia
 // do cadastro (lista, filtros e userTaskFilter comparam o nome em minúsculas, mas a tela mostra o texto).
 async function resolveAssignee(raw: string): Promise<string> {
@@ -137,9 +151,8 @@ export const tasksRouter = router({
       }
       if (conds.length === 0) return [];
       const busca = or(...conds)!;
-      const where = ctx.user.role === 'admin'
-        ? busca
-        : and(await userTaskFilter(ctx.user.id, ctx.user.name ?? ''), busca);
+      // Só os leads do próprio atendente, também para o admin (extensão Vita Zap é individual).
+      const where = and(await meusLeadsFilter(ctx.user.id, ctx.user.name ?? ''), busca);
       const rows = await db.select({
         id: tasks.id, title: tasks.title, phone: tasks.phone, tags: tasks.tags,
         reminderDate: tasks.reminderDate, reminderEnabled: tasks.reminderEnabled, status: tasks.status,
@@ -788,7 +801,10 @@ export const tasksRouter = router({
     return alerts;
   }),
 
-  reminders: protectedProcedure.query(async ({ ctx }) => {
+  reminders: protectedProcedure
+    // `meus: true` (extensão Vita Zap): só os lembretes do próprio atendente, mesmo sendo admin.
+    .input(z.object({ meus: z.boolean().optional() }).optional())
+    .query(async ({ ctx, input }) => {
     // Só o que as notificações e o painel usam: pendentes, com lembrete ligado (nulo conta como ligado), de ontem
     // até +7 dias. A janela de cima impede que o limit(300) corte lembretes próximos por causa de datas distantes.
     const { de: yesterday, ate: ateData } = janelaLembretes(new Date());
@@ -805,6 +821,12 @@ export const tasksRouter = router({
       // Telefone: a extensão Vita Zap abre a conversa do WhatsApp por ele ao clicar no lembrete.
       phone: tasks.phone,
     };
+    if (input?.meus) {
+      return db.select(reminderFields).from(tasks)
+        .where(and(await meusLeadsFilter(ctx.user.id, ctx.user.name ?? ''), filtroLembrete))
+        .orderBy(asc(tasks.reminderDate))
+        .limit(300);
+    }
     if (ctx.user.role === 'admin') {
       return db.select(reminderFields).from(tasks)
         .where(filtroLembrete)

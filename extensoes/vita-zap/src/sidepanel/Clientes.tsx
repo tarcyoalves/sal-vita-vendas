@@ -78,7 +78,7 @@ export function Clientes({ crm }: { crm: CrmPainel }) {
   const [msg, setMsg] = useState<string | null>(null);
 
   const linhas = useMemo(
-    () => (crm.dados ? montarClientes(crm.dados, crm.agora, { busca, ordem, fase: fase || null, etiquetaId: etiquetaId || null, soComDados }) : []),
+    () => (crm.dados ? montarClientes(crm.dados, crm.agora, { busca, ordem, fase: fase || null, etiquetaId: etiquetaId || null, soComDados, apenasClientes: true }) : []),
     [crm.dados, crm.agora, busca, ordem, fase, etiquetaId, soComDados],
   );
 
@@ -141,7 +141,7 @@ export function Clientes({ crm }: { crm: CrmPainel }) {
           Só quem tem fase, etiqueta, nota ou lembrete
         </label>
         <p className="ajuda">
-          {linhas.length} cliente{linhas.length === 1 ? '' : 's'} · baseado nas {vistas} conversas que a extensão já viu na lista do WhatsApp Web (a lista carrega aos poucos). Grupos ficam de fora.
+          {linhas.length} cliente{linhas.length === 1 ? '' : 's'} · baseado nas {vistas} conversas que a extensão já viu na lista do WhatsApp Web (a lista carrega aos poucos). Só aparecem contatos com "cliente" no nome; grupos ficam de fora.
         </p>
       </div>
 

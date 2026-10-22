@@ -53,13 +53,13 @@ beforeEach(() => {
   raiz = createRoot(el);
   chrome = instalarChromeFalso({
     'vz.etiquetas': [{ id: 'e1', nome: 'Quente', cor: '#c62828' }],
-    'vz.conversas': { ana: conv('Ana', ontem), bruno: conv('Bruno', '2026-09-01') },
+    'vz.conversas': { ana: conv('Ana Cliente', ontem), bruno: conv('Bruno Cliente', '2026-09-01') },
     'vz.contatos': {
-      ...porId(contato('Ana', { fase: 'negociando', etiquetas: ['e1'] }), contato('Bruno')),
+      ...porId(contato('Ana Cliente', { fase: 'negociando', etiquetas: ['e1'] }), contato('Bruno Cliente')),
     },
     'vz.lembretes': [
-      { id: 'v', contatoId: 'id-ana', nome: 'Ana', venceEm: Date.now() - 3_600_000, criadoEm: 1, status: 'disparado', rascunho: 'Oi Ana!' },
-      { id: 'p', contatoId: 'id-bruno', nome: 'Bruno', venceEm: instanteNoFuso('2099-01-01', 9), criadoEm: 1, status: 'pendente' },
+      { id: 'v', contatoId: 'id-ana-cliente', nome: 'Ana Cliente', venceEm: Date.now() - 3_600_000, criadoEm: 1, status: 'disparado', rascunho: 'Oi Ana!' },
+      { id: 'p', contatoId: 'id-bruno-cliente', nome: 'Bruno Cliente', venceEm: instanteNoFuso('2099-01-01', 9), criadoEm: 1, status: 'pendente' },
     ],
   });
   (chrome.chrome as { tabs: { query: () => Promise<unknown[]> } }).tabs.query = async () => [{ id: 3, windowId: 1, active: true }];
@@ -74,7 +74,7 @@ describe('aba Clientes', () => {
   it('lista com fase, etiqueta, última interação e próximo lembrete; mais tempo sem contato primeiro', async () => {
     await montar(Cliente);
     const itens = [...(el.querySelector('ul.lista') as HTMLElement).querySelectorAll(':scope > li')]; // a 1ª lista é a de clientes
-    expect(itens.map((i) => i.querySelector('b')?.textContent)).toEqual(['Bruno', 'Ana']);
+    expect(itens.map((i) => i.querySelector('b')?.textContent)).toEqual(['Bruno Cliente', 'Ana Cliente']);
     const ana = itens[1].textContent ?? '';
     expect(ana).toContain('Negociando');
     expect(ana).toContain('Quente');
@@ -91,14 +91,14 @@ describe('aba Clientes', () => {
       set?.call(busca, 'ana');
       busca.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    expect([...el.querySelectorAll('ul.lista > li b')].map((b) => b.textContent)).toEqual(['Ana']);
+    expect([...el.querySelectorAll('ul.lista > li b')].map((b) => b.textContent)).toEqual(['Ana Cliente']);
   });
 
   it('Abrir leva ao WhatsApp Web: grava o pedido (sem rascunho)', async () => {
     await montar(Cliente);
     const abrir = [...el.querySelectorAll('button')].find((b) => b.textContent === 'Abrir') as HTMLButtonElement;
     await act(async () => abrir.click());
-    await vi.waitFor(() => expect(chrome.dados.get(CHAVE_ACAO_PENDENTE)).toMatchObject({ tipo: 'abrirConversa', nome: 'Bruno' }));
+    await vi.waitFor(() => expect(chrome.dados.get(CHAVE_ACAO_PENDENTE)).toMatchObject({ tipo: 'abrirConversa', nome: 'Bruno Cliente' }));
     expect(chrome.abasAtivadas).toEqual([3]);
   });
 });
@@ -112,7 +112,7 @@ describe('aba Lembretes (central)', () => {
     expect(texto).toContain('Próximos (1)');
     const abrir = [...el.querySelectorAll('button')].find((b) => b.textContent === 'Abrir conversa') as HTMLButtonElement;
     await act(async () => abrir.click());
-    await vi.waitFor(() => expect(chrome.dados.get(CHAVE_ACAO_PENDENTE)).toMatchObject({ nome: 'Ana', rascunho: 'Oi Ana!', lembreteId: 'v' }));
+    await vi.waitFor(() => expect(chrome.dados.get(CHAVE_ACAO_PENDENTE)).toMatchObject({ nome: 'Ana Cliente', rascunho: 'Oi Ana!', lembreteId: 'v' }));
   });
 
   it('Concluir tira o vencido da central', async () => {

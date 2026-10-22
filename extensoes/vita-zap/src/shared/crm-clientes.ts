@@ -3,7 +3,7 @@
 
 import { acharNoIndice, criarIndice } from './crm-contatos';
 import { instanteNoFuso } from './crm-lembretes';
-import { idadeDaUltima } from './crm-regras';
+import { ehContatoCliente, idadeDaUltima } from './crm-regras';
 import { normalizarTexto } from './nomes';
 import type { Contato, Conversa, DadosCrm, Etiqueta, Fase, Lembrete } from './crm-tipos';
 
@@ -39,6 +39,8 @@ export interface LinhaCliente {
 
 export interface OpcoesClientes {
   busca?: string;
+  /** Só contatos com "cliente" no nome (a aba Clientes liga; pedido do dono em 22/10/2026). */
+  apenasClientes?: boolean;
   ordem?: OrdemClientes;
   fase?: Fase | null;
   etiquetaId?: string | null;
@@ -97,6 +99,8 @@ export function montarClientes(dados: DadosCrm, agora: Date, op: OpcoesClientes 
 
   for (const { contato, conversa } of candidatos) {
     if (conversa?.grupo && !op.incluirGrupos) continue;
+    // Só contatos de cliente ("cliente" no nome), como a faixa do lead: contato pessoal não entra.
+    if (op.apenasClientes && !ehContatoCliente(contato?.nome ?? conversa?.nome)) continue;
     if (op.soComDados && !temDadosDoUsuario(contato, dados.lembretes)) continue;
     const etiquetas = (contato?.etiquetas ?? []).map((id) => etiquetasPorId.get(id)).filter((e): e is Etiqueta => e != null);
     if (op.fase && contato?.fase !== op.fase) continue;

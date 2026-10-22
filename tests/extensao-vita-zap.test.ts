@@ -85,8 +85,9 @@ describe('tasks.findForWhatsapp: telefone e notas', () => {
     const i = fonte.indexOf('findForWhatsapp: protectedProcedure');
     const corpo = fonte.slice(i, fonte.indexOf('getById: protectedProcedure', i));
     expect(i).toBeGreaterThan(0);
-    expect(corpo).toContain("ctx.user.role === 'admin'");
-    expect(corpo).toContain('userTaskFilter(ctx.user.id');
+    // Individual também para o admin (22/10/2026): sem atalho de admin, sempre o filtro dos próprios leads.
+    expect(corpo).not.toContain("ctx.user.role === 'admin'");
+    expect(corpo).toContain('meusLeadsFilter(ctx.user.id');
     expect(corpo).toContain('.limit(FIND_WHATSAPP_LIMITE)');
     for (const proibido of ['email', 'cnpj', 'assignedTo', 'orderValue']) expect(corpo).not.toContain(`${proibido}: tasks.`);
   });

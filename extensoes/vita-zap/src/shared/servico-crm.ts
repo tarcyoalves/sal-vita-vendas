@@ -660,7 +660,7 @@ export class ServicoCrm implements LeadsCRM {
   private async sincronizarInterno(): Promise<{ ok: true; quantidade: number } | { ok: false; erro: ErroCrm }> {
     const c = await this.lerConta();
     if (!c.usuario) return { ok: true, quantidade: 0 };
-    const r = await this.chamar(() => this.consultar<unknown[]>('tasks.reminders'));
+    const r = await this.chamar(() => this.consultar<unknown[]>('tasks.reminders', { meus: true }));
     if (!r.ok) return { ok: false, erro: r.erro };
     const agora = this.relogio();
     const itens: LembreteCrm[] = (Array.isArray(r.valor) ? r.valor : []).map(lembreteDeTask).filter((l): l is LembreteCrm => l != null);
