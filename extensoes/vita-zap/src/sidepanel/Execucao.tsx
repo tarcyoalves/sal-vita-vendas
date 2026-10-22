@@ -113,6 +113,13 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
           <li><b>{r.problema}</b> problemas</li>
           <li><b>{r.nao_cliente + r.nao_enviar}</b> não enviar</li>
         </ul>
+        {r.problema > 0 && !rodando && (
+          <p style={{ marginTop: 8 }}>
+            <button type="button" style={{ fontSize: '.82rem', padding: '4px 8px', cursor: 'pointer' }} onClick={() => void executor.recolocarProblemasComoPendentes()}>
+              Recolocar {r.problema} com problema como pendentes
+            </button>
+          </p>
+        )}
         <p className="info">
           Hoje: {estado.enviosHoje}
           {estado.tetoDiario ? `/${estado.tetoDiario}` : ''} envios · {horario.ok ? 'dentro do horário' : horario.motivo}

@@ -149,6 +149,15 @@ export class Executor {
     if (await this.marcar(item, tipo, motivo)) await this.avancar();
   }
 
+  /** Recoloca itens com problema de volta para pendente e zera o freio de problemas. */
+  async recolocarProblemasComoPendentes(): Promise<void> {
+    const c = this.estado.campanha;
+    const novosItens = c.itens.map((i) =>
+      i.status === 'problema' ? { ...i, status: 'pendente' as const, motivo: null } : i,
+    );
+    await this.gravar({ ...c, itens: novosItens, problemasSeguidos: 0, status: c.status === 'concluida' ? 'pausada' : c.status });
+  }
+
   /** Marca o item. Devolve false se o freio parou a campanha. */
   private async marcar(item: ItemCampanha, tipo: AcaoManual, motivo: string | null): Promise<boolean> {
     const agora = this.deps.agora();

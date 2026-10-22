@@ -85,4 +85,14 @@ describe('classificarConversa (data-id das mensagens)', () => {
   it('qualquer sinal de grupo vence', () => {
     expect(classificarConversa(['true_558499990000@c.us_A', 'false_120363@g.us_B_5584@c.us'])).toBe('grupo');
   });
+
+  it('novo formato do WhatsApp (10/2026): hashes sem JID usam a estrutura do cabeçalho', () => {
+    const individual = document.createElement('div');
+    individual.innerHTML = '<main id="main"><header><div><span dir="auto" title="Evandro">Evandro</span></div><div><span>Conta comercial</span></div></header></main>';
+    expect(classificarConversa(['ACEF999B99FB9999E9F99CC999999DF9'], individual)).toBe('individual');
+
+    const grupo = document.createElement('div');
+    grupo.innerHTML = '<main id="main"><header><span data-icon="default-group"></span><div><span dir="auto">Grupo Vendas</span></div><div><span>Você, Ana, Pedro</span></div></header></main>';
+    expect(classificarConversa(['ACEF999B99FB9999E9F99CC999999DF9'], grupo)).toBe('grupo');
+  });
 });

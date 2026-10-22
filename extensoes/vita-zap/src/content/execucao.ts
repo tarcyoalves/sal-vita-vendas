@@ -10,7 +10,7 @@ import { abrirLinhaDaLista } from './abrir-conversa';
 import { escreverNoCampo, esperar, esperarAte, limparCampo, limparMarcas, textoDoCampo } from './dom';
 import { lerConversasVisiveis } from './extrair';
 import { buscar, exigir, linhasDaLista } from './lista';
-import { encontrar, encontrarTodos } from './selectors';
+import { encontrar, encontrarTodos, existeAlgum } from './selectors';
 
 export type TipoConversa = 'individual' | 'grupo' | 'desconhecido';
 
@@ -18,16 +18,31 @@ export type TipoConversa = 'individual' | 'grupo' | 'desconhecido';
  * Classifica a conversa aberta pelo data-id das mensagens ("true_5584...@c.us_ABC").
  * Qualquer sinal de grupo/transmissão/canal vence; sem sinal nenhum → desconhecido.
  */
-export function classificarConversa(dataIds: string[]): TipoConversa {
+export function classificarConversa(dataIds: string[], raiz: ParentNode = document): TipoConversa {
   let individual = false;
+  let teveJid = false;
   for (const id of dataIds) {
     const m = /^(?:true|false)_([^_]+)_/.exec(id);
     if (!m) continue;
+    teveJid = true;
     const jid = m[1];
     if (/@g\.us$|@broadcast$|@newsletter$/.test(jid)) return 'grupo';
     if (/@c\.us$|@lid$|@s\.whatsapp\.net$/.test(jid)) individual = true;
   }
-  return individual ? 'individual' : 'desconhecido';
+  if (teveJid) {
+    return individual ? 'individual' : 'desconhecido';
+  }
+
+  const cabecalho = encontrar(raiz, 'cabecalhoConversa');
+  if (cabecalho) {
+    if (existeAlgum(cabecalho, 'iconeGrupo')) return 'grupo';
+    const textoCabecalho = (cabecalho.textContent ?? '').toLowerCase();
+    if (/\b(participantes?|participants?|membros?|members?)\b/i.test(textoCabecalho)) return 'grupo';
+    if (/\b(grupo|group|comunidade|community|canal|channel)\b/i.test(textoCabecalho)) return 'grupo';
+    if (dataIds.length > 0) return 'individual';
+  }
+
+  return 'desconhecido';
 }
 
 function tituloAberto(): string | null {
@@ -78,12 +93,14 @@ function observarEnvio(nome: string, textoColado: string, antes: Set<string>, ao
     const mensagens = encontrarTodos(document, 'mensagem');
     const ultima = mensagens[mensagens.length - 1];
     const id = ultima?.getAttribute('data-id') ?? '';
-    if (!id.startsWith('true_') || antes.has(id)) return;
+    if (antes.has(id)) return;
     const caixa = encontrar(document, 'caixaMensagem');
     if (caixa && textoDoCampo(caixa).trim() !== '') return;
     const textoEl = encontrar(ultima, 'textoMensagem');
     const texto = limparMarcas(textoEl?.innerText ?? textoEl?.textContent ?? '');
     const confere = normalizarParaComparar(texto) === normalizarParaComparar(textoColado);
+    const ehMinha = id.startsWith('true_') || existeAlgum(ultima, 'iconeMinhaMensagem') || confere;
+    if (!ehMinha) return;
     pararObservacao();
     aoDetectarEnvio(texto, confere);
   };

@@ -83,7 +83,7 @@ describe('instalador do Windows (conferência do texto; a lógica roda em Pester
     expect(ps1).not.toMatch(/HKLM|HKCU|New-Service|Set-ExecutionPolicy|-Verb\s+RunAs/i);
     // Única tarefa agendada permitida (pedido do dono em 22/10/2026): a de hora em hora, do próprio usuário,
     // sem conta de sistema nem privilégio elevado.
-    expect(ps1.match(/schtasks\.exe[^\n]*/g)).toEqual(['schtasks.exe /Create /F /SC HOURLY /TN $NomeTarefa /TR $tr 2>&1']);
+    expect(ps1.match(/schtasks\.exe[^\r\n]*/g)).toEqual(['schtasks.exe /Create /F /SC HOURLY /TN $NomeTarefa /TR $tr 2>&1']);
     expect(ps1).not.toMatch(/\/RU\b|\/RL\s+HIGHEST|\bSYSTEM\b|NT AUTHORITY/);
   });
 
