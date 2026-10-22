@@ -221,3 +221,24 @@ de digitação (só colam/agendam, nunca enviam); chip "Etiquetas" e faixa do le
   passou de 21/10; agora a data é "ontem", calculada em tempo de execução. Não era regressão da v0.6.
 - Testes jsdom novos: `tests/crm-barra-superior.test.ts` e `tests/crm-abas.test.ts`.
 
+
+## 22/10/2026: distribuição pelo CRM (extensão 0.7.0, branch local `wip/vita-zap-0.6-barra`)
+
+Status: implementado e testado no branch; **sem push, sem merge, nada em produção**. Push em `main` = deploy.
+
+- Extensão 0.7.0: `externally_connectable` (CRM + `http://localhost:5173`); o service worker só responde a essas origens e
+  só ao `{tipo:'ping'}` com `{ok, versao, conectadoAoCrm, temPermissao}` (sem dado pessoal; `tests/mensagem-externa.test.ts`).
+- Login automático: `ServicoCrm.conectarPelaSessao()` (um `auth.me`, mesmo cookie do site); botão "Conectar ao CRM" na barra e
+  na aba Dados; ao abrir o painel só consulta se a permissão do domínio já existe. E-mail e senha só se o site disser que
+  não há sessão. Nada periódico.
+- Aviso "Nova versão X disponível" lendo `/vita-zap/versao.json` estático (no máximo 1 vez a cada 6 h, só com a permissão).
+- `npm run publicar` (em `extensoes/vita-zap`): build + `client/public/vita-zap/{vita-zap.zip, versao.json, Instalar-VitaZap.cmd,
+  Atualizar-VitaZap.ps1}`. O zip é determinístico. `tests/publicacao.test.ts` reprova se o publicado ficar atrás do manifest.
+- Instalador Windows (`extensoes/vita-zap/instalador/`): PowerShell 5.1, sem admin. Confere o ID da extensão, troca a pasta por
+  renomeação e mantém a antiga se falhar. Testado com Pester e com execução real contra servidor local (instalar, mesma versão,
+  atualizar, zip de outro ID, zip corrompido, sem rede, origem insegura).
+- CRM: página `/vita-zap` (menu para todos os papéis), `client/src/lib/vitaZap.ts`, `tests/vita-zap-pagina.test.ts`.
+  `vercel.json` passou a servir `.zip/.cmd/.ps1` (antes caíam no index.html) e o PWA ganhou `navigateFallbackDenylist` para `/vita-zap/`.
+- Não toquei em: servidor, schema, migrações. Nenhuma procedure nova.
+- Não verificado: instalação no Chrome real, `externally_connectable` com a extensão carregada, cookie da sessão chegando ao
+  service worker, a página em produção/navegador, SmartScreen com o `.cmd` baixado, e o deploy na Vercel.
