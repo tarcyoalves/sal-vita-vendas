@@ -77,6 +77,10 @@ function emArquivadas(): boolean {
 
 export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   const agoraFn = op.agora ?? (() => new Date());
+  // Extensão atualizada (↻) com a aba aberta: o Chrome injeta um script novo, mas o antigo continua vivo e
+  // desenhando a barra dele (aparecia duplicada). O novo apaga o que sobrou; o antigo se desliga sozinho no ciclo.
+  for (const velho of document.querySelectorAll('[data-vita-zap]')) velho.remove();
+  let pararTudo: (() => void) | null = null;
   const repo = op.repositorio ?? repositorioPadrao();
   const estado = new Estado(repo);
   await estado.iniciar(() => void consumirAcaoPendente(repo));
@@ -311,6 +315,10 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
 
   function ciclo(): void {
     if (encerrado) return;
+    if (scriptOrfao()) {
+      pararTudo?.();
+      return;
+    }
     try {
       const lista = encontrar(document, 'painelLateral');
       if (!lista) {
@@ -490,7 +498,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   // Pedido pendente (clique na notificação com o WhatsApp Web ainda carregando): espera a lista e executa.
   void esperarAte(() => encontrar(document, 'painelLateral'), 60_000, 500).then((lista) => (lista && !encerrado ? consumirAcaoPendente(repo) : undefined));
 
-  return {
+  const controlador: ControladorCrm = {
     estado,
     ciclo,
     parar: () => {
@@ -512,4 +520,15 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       estado.encerrar();
     },
   };
+  pararTudo = controlador.parar;
+  return controlador;
+}
+
+/** Script de uma versão anterior da extensão (o Chrome tirou o `runtime.id` dele): deve se desligar. */
+function scriptOrfao(): boolean {
+  try {
+    return typeof chrome !== 'undefined' && !!chrome.runtime && 'id' in chrome.runtime && !chrome.runtime.id;
+  } catch {
+    return true;
+  }
 }
