@@ -19,6 +19,13 @@ let raiz: Root;
 let el: HTMLElement;
 let chrome: ChromeFalso;
 
+// Ontem em ISO local: a expectativa "há 1 dia" não pode depender do dia em que o teste roda.
+const ontem = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+})();
+
 const conv = (nome: string, dataMsg: string) => ({
   chave: nome.toLowerCase(), nome, ultimaDeMim: false, naoLida: false, naoLidas: 0, grupo: false, arquivada: false,
   rotuloData: null, dataMsg, hora: null, previa: 'oi', ass: `${nome}|0`, desdeEm: 0, vistaEm: 0,
@@ -46,7 +53,7 @@ beforeEach(() => {
   raiz = createRoot(el);
   chrome = instalarChromeFalso({
     'vz.etiquetas': [{ id: 'e1', nome: 'Quente', cor: '#c62828' }],
-    'vz.conversas': { ana: conv('Ana', '2026-10-20'), bruno: conv('Bruno', '2026-09-01') },
+    'vz.conversas': { ana: conv('Ana', ontem), bruno: conv('Bruno', '2026-09-01') },
     'vz.contatos': {
       ...porId(contato('Ana', { fase: 'negociando', etiquetas: ['e1'] }), contato('Bruno')),
     },
