@@ -149,7 +149,60 @@ export class Executor {
     if (await this.marcar(item, tipo, motivo)) await this.avancar();
   }
 
-  /** Recoloca itens com problema de volta para pendente e zera o freio de problemas. */
+  /** Pula um item específico da campanha (remove dos próximos disparos). */
+  async pularItem(chave: string, motivo: string = 'removido por você da lista'): Promise<void> {
+    const c = this.estado.campanha;
+    const novosItens = c.itens.map((i) =>
+      i.chave === chave && (i.status === 'pendente' || i.status === 'problema')
+        ? { ...i, status: 'pulado' as const, motivo, atualizadoEm: this.deps.agora().toISOString() }
+        : i,
+    );
+    await this.gravar({ ...c, itens: novosItens });
+  }
+
+  /** Bloqueia o contato (não enviar mais) e marca como 'nao_enviar' na campanha. */
+  async bloquearItem(chave: string, motivo: string = 'não enviar mais'): Promise<void> {
+    const item = this.estado.campanha.itens.find((i) => i.chave === chave);
+    if (item) {
+      await marcarNaoEnviar(this.deps.db, {
+        chave: item.chave,
+        nome: item.nome,
+        desde: this.deps.agora().toISOString(),
+        motivo,
+      });
+    }
+    const c = this.estado.campanha;
+    const novosItens = c.itens.map((i) =>
+      i.chave === chave && (i.status === 'pendente' || i.status === 'problema')
+        ? { ...i, status: 'nao_enviar' as const, motivo, atualizadoEm: this.deps.agora().toISOString() }
+        : i,
+    );
+    await this.gravar({ ...c, itens: novosItens });
+  }
+
+  /** Edita o primeiro nome de um item antes do envio. */
+  async editarItem(chave: string, novoPrimeiroNome: string): Promise<void> {
+    const c = this.estado.campanha;
+    const novosItens = c.itens.map((i) =>
+      i.chave === chave && (i.status === 'pendente' || i.status === 'problema')
+        ? { ...i, primeiroNome: novoPrimeiroNome }
+        : i,
+    );
+    await this.gravar({ ...c, itens: novosItens });
+  }
+
+  /** Recoloca um item (problema ou pulado) de volta como pendente. */
+  async recolocarPendente(chave: string): Promise<void> {
+    const c = this.estado.campanha;
+    const novosItens = c.itens.map((i) =>
+      i.chave === chave && (i.status === 'problema' || i.status === 'pulado')
+        ? { ...i, status: 'pendente' as const, motivo: null, atualizadoEm: this.deps.agora().toISOString() }
+        : i,
+    );
+    await this.gravar({ ...c, itens: novosItens, problemasSeguidos: 0, status: c.status === 'concluida' ? 'pausada' : c.status });
+  }
+
+  /** Recoloca todos os itens com problema de volta para pendente e zera o freio de problemas. */
   async recolocarProblemasComoPendentes(): Promise<void> {
     const c = this.estado.campanha;
     const novosItens = c.itens.map((i) =>

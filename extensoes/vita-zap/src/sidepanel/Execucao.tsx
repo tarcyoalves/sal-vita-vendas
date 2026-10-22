@@ -51,6 +51,7 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
   );
   const [estado, setEstado] = useState<EstadoExecutor | null>(null);
   const [agora, setAgora] = useState(Date.now());
+  const [filtroLista, setFiltroLista] = useState<'todos' | 'pendente' | 'problema' | 'enviado' | 'pulado'>('todos');
 
   useEffect(() => {
     if (!executor) {
@@ -91,6 +92,11 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
   const faltaSeg = estado.liberaEm ? Math.max(0, Math.ceil((estado.liberaEm - agora) / 1000)) : null;
   const item = estado.itemAtual;
   const podeAgir = estado.fase === 'aguardando_envio' && item != null;
+
+  const itensExibidos = useMemo(() => {
+    if (filtroLista === 'todos') return c.itens;
+    return c.itens.filter((i) => i.status === filtroLista);
+  }, [c.itens, filtroLista]);
 
   return (
     <section>
@@ -168,12 +174,69 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
         )}
       </div>
 
-      <details className="cartao">
+      <details className="cartao" open>
         <summary>Contatos da campanha ({c.itens.length})</summary>
+        <div className="botoes" style={{ margin: '8px 0', gap: 4 }}>
+          {(['todos', 'pendente', 'problema', 'enviado', 'pulado'] as const).map((st) => (
+            <button
+              key={st}
+              type="button"
+              className={filtroLista === st ? 'primario pequeno' : 'pequeno'}
+              onClick={() => setFiltroLista(st)}
+            >
+              {st === 'todos' ? `Todos (${c.itens.length})` : `${st === 'pendente' ? 'Pendentes' : st === 'problema' ? 'Problemas' : st === 'enviado' ? 'Enviados' : 'Pulados'} (${r[st] ?? 0})`}
+            </button>
+          ))}
+        </div>
         <ul className="lista">
-          {c.itens.map((i) => (
-            <li key={i.chave}>
-              <b>{i.nome}</b> <small>— {i.status.replace('_', ' ')}{i.motivo ? ` (${i.motivo})` : ''}</small>
+          {itensExibidos.map((i) => (
+            <li key={i.chave} style={{ padding: '8px 0', borderBottom: '1px solid var(--borda)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <b>{i.nome}</b>
+                  <small style={{ marginLeft: 6, color: i.status === 'enviado' ? 'var(--ok)' : i.status === 'problema' ? 'var(--erro)' : 'var(--suave)' }}>
+                    — {i.status.replace('_', ' ')}{i.motivo ? ` (${i.motivo})` : ''}
+                  </small>
+                </div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(i.status === 'pendente' || i.status === 'problema') && (
+                    <button type="button" className="pequeno" title="Pular este contato (não enviar nesta campanha)" onClick={() => void executor.pularItem(i.chave)}>
+                      Pular
+                    </button>
+                  )}
+                  {i.status === 'problema' && (
+                    <button type="button" className="pequeno primario" onClick={() => void executor.recolocarPendente(i.chave)}>
+                      Tentar de novo
+                    </button>
+                  )}
+                  {i.status === 'pulado' && (
+                    <button type="button" className="pequeno" onClick={() => void executor.recolocarPendente(i.chave)}>
+                      Recolocar
+                    </button>
+                  )}
+                  {(i.status === 'pendente' || i.status === 'problema') && (
+                    <button type="button" className="pequeno perigo" title="Bloquear (não enviar mais nenhuma campanha)" onClick={() => void executor.bloquearItem(i.chave)}>
+                      Não enviar
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {i.status === 'pendente' && (
+                <div style={{ marginTop: 6 }}>
+                  <label className="inline" style={{ fontSize: 12 }}>
+                    <span>Primeiro nome:</span>
+                    <input
+                      style={{ padding: '2px 6px', fontSize: 12, width: 140 }}
+                      value={i.primeiroNome}
+                      onChange={(e) => void executor.editarItem(i.chave, e.target.value)}
+                    />
+                  </label>
+                  <div className="balao" style={{ marginTop: 4, fontSize: 12 }}>
+                    {textoDoItem(i)}
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>
