@@ -5,7 +5,7 @@ import { encontrar, encontrarTodos } from './selectors';
 
 export class ErroSeletor extends Error {
   constructor(public readonly qual: string) {
-    super(`Não encontrei "${qual}" no WhatsApp Web. O layout pode ter mudado — a extensão parou por segurança.`);
+    super(`Não encontrei "${qual}" no WhatsApp Web. O layout pode ter mudado — a extensão parou por segurança. Confira se a lista de Conversas está aberta (ícone de conversas à esquerda) e dê F5; se continuar, avise o suporte.`);
   }
 }
 

@@ -61,3 +61,16 @@ describe('extensão atualizada com a aba aberta', () => {
     await expect(metodo()).rejects.toThrow(ERRO_ABA_ANTIGA);
   });
 });
+
+describe('caixa de busca em variações do WhatsApp', () => {
+  it('acha pelo placeholder, em inglês, ou campo sem rótulo na coluna de conversas', () => {
+    for (const html of [
+      '<input placeholder="Pesquisar ou começar uma nova conversa">',
+      '<input aria-label="Search or start a new chat">',
+      '<div id="side"><input type="text"></div>',
+    ]) {
+      document.body.innerHTML = html;
+      expect(encontrar(document, 'caixaBusca')).not.toBeNull();
+    }
+  });
+});

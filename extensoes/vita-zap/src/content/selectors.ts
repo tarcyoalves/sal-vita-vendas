@@ -37,6 +37,14 @@ export const SELETORES = {
     'div[contenteditable="true"][role="textbox"][aria-label*="esquisar"]',
     'div[contenteditable="true"][data-tab="3"]',
     'input[role="textbox"][aria-label*="earch"]',
+    // Variações vistas em contas diferentes (22/10/2026): rótulo só no placeholder, idioma inglês,
+    // ou campo sem aria-label. Por último, qualquer campo de texto no topo da coluna de conversas.
+    'input[placeholder*="esquisar"]',
+    'input[placeholder*="earch"]',
+    'input[aria-label*="uscar"]',
+    'div[contenteditable="true"][aria-label*="earch"]',
+    '#side input[type="text"]',
+    '#side div[contenteditable="true"][role="textbox"]',
   ],
 
   /** Painel da conversa aberta. */
