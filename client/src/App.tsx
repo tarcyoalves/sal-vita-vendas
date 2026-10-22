@@ -36,6 +36,7 @@ const EmailMarketing = lazy(() => import("./pages/EmailMarketing"));
 const Faturamento = lazy(() => import("./pages/Faturamento"));
 const AnaliseCredito = lazy(() => import("./pages/AnaliseCredito"));
 const Documentos = lazy(() => import("./pages/Documentos"));
+const VitaZap = lazy(() => import("./pages/VitaZap"));
 const RadarCargas = lazy(() => import("./pages/RadarCargas"));
 const FloatingChat = lazy(() => import("./components/FloatingChat"));
 const AppShell = lazy(() => import("./components/AppShell"));
@@ -84,6 +85,9 @@ function Router() {
       </Route>
       <Route path="/documentos">
         <AppShell><Documentos /></AppShell>
+      </Route>
+      <Route path="/vita-zap">
+        <AppShell><VitaZap /></AppShell>
       </Route>
       <Route path="/representatives">
         <AppShell><Attendants /></AppShell>

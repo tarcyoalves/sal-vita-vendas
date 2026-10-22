@@ -45,6 +45,9 @@ export default defineConfig({
         // todo visitante da loja baixaria o CRM inteiro em segundo plano pelo service worker.
         // Os chunks do CRM entram no cache sob demanda (runtimeCaching abaixo): no PWA
         // instalado, tela já aberta funciona offline; tela nunca aberta exige rede.
+        // O zip e o instalador do Vita Zap (/vita-zap/*) são downloads: sem isto o service worker devolveria o
+        // index.html no lugar do arquivo quando o PWA está ativo.
+        navigateFallbackDenylist: [/^\/vita-zap\//],
         globPatterns: [
           '**/*.{css,html,svg,png,ico,woff,woff2}',
           'assets/index-*.js',

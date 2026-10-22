@@ -22,6 +22,7 @@ import {
   ChevronsUpDown,
   Loader2,
   ShieldCheck,
+  MessageCircle,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -100,6 +101,13 @@ const NAV_ITEMS: NavItem[] = [
     path: "/documentos",
     icon: <FileText size={16} />,
     roles: ["admin", "manager"],
+    group: "Recursos",
+  },
+  {
+    label: "Vita Zap",
+    path: "/vita-zap",
+    icon: <MessageCircle size={16} />,
+    roles: ["admin", "manager", "user"],
     group: "Recursos",
   },
   {
@@ -185,6 +193,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/faturamento": "Faturamento",
   "/admin/analise-credito": "Análise de crédito",
   "/documentos": "Documentos & Fichas Técnicas",
+  "/vita-zap": "Vita Zap",
   "/ai-chat": "Chat IA",
   "/ai-settings": "Configurações IA",
   "/knowledge-base": "Base de Conhecimento",
