@@ -41,6 +41,7 @@ export const SELETORES = {
     // ou campo sem aria-label. Por último, qualquer campo de texto no topo da coluna de conversas.
     'input[placeholder*="esquisar"]',
     'input[placeholder*="earch"]',
+    'input[aria-label*="earch"]',
     'input[aria-label*="uscar"]',
     'div[contenteditable="true"][aria-label*="earch"]',
     '#side input[type="text"]',
