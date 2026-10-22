@@ -33,7 +33,7 @@ repositorioPadrao().aoMudar((e) => {
   if (e.colecoes.includes('lembretes')) void sincronizar().catch(() => undefined);
 });
 
-// Botões "Clientes" e "Entrar no CRM" da barra superior do WhatsApp: abrem o painel lateral (precisa ser chamado
+// Botões "Clientes" e "Conectar ao CRM" da barra superior do WhatsApp: abrem o painel lateral (precisa ser chamado
 // direto no ouvinte, enquanto o gesto do usuário ainda vale). Em qual aba o painel abre vem da configuração.
 chrome.runtime.onMessage.addListener((msg: unknown, remetente) => {
   if (remetente.id !== chrome.runtime.id || !ehPedidoPainelAberto(msg) || remetente.tab?.id == null) return false;

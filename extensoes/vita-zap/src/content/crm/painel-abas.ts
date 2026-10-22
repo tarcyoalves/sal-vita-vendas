@@ -116,7 +116,7 @@ export function abrirAjuda(ancora: HTMLElement): void {
       h('li', {}, h('strong', {}, '+'), ': cria uma aba por etiqueta ou fase. O ícone de ajustes escolhe as abas visíveis, os dias sem resposta e oculta grupos.'),
       h('li', {}, h('strong', {}, 'Respostas rápidas'), ' (raio) e ', h('strong', {}, 'Lembrete'), ' (relógio) também estão na caixa de digitação. Só colam texto ou agendam: quem manda é você, com Enter.'),
       h('li', {}, h('strong', {}, 'Clientes'), ': abre o painel lateral com notas, etiquetas e fases.'),
-      h('li', {}, h('strong', {}, 'Entrar no CRM'), ': liga o CRM Lembretes (login na aba Dados do painel). Sem login tudo funciona só neste computador.'),
+      h('li', {}, h('strong', {}, 'Conectar ao CRM'), ': liga o CRM Lembretes (se você já está logado no site, não pede senha; fica na aba Dados do painel). Sem conectar tudo funciona só neste computador.'),
     ),
     h('div', { class: 'dica', style: 'margin-top:8px' }, 'Detalhes completos: README.md na pasta da extensão. Dá para desligar esta barra em Dados, "Mostrar barra superior".'),
   );

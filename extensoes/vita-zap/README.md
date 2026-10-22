@@ -70,7 +70,7 @@ flutua por cima com sombra e há um único `console.warn`.
   etiqueta ou fase) e o ícone de **ajustes** (dias sem resposta 1/3/7/15, ocultar grupos, abas visíveis).
   Rola na horizontal quando não cabe.
 - **Direita:** Respostas rápidas, sino com selo de vencidos (central Vencidos/Hoje/Próximos), Clientes (abre o
-  painel lateral), "Entrar no CRM" ou as iniciais com "CRM ✓" (login ou Sair) e "?" de ajuda.
+  painel lateral), "Conectar ao CRM" ou as iniciais com "CRM ✓" (login ou Sair) e "?" de ajuda.
 - A barra antiga de abas acima da lista some (sem duplicar); sobra só a linha de chips ("Etiquetas" com a mesma
   pílula dos chips nativos).
 - Na caixa de digitação, à esquerda do microfone: ícone de **lembrete de follow-up** e de **respostas rápidas**.

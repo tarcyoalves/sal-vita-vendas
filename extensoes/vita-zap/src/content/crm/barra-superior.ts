@@ -1,7 +1,7 @@
 // Barra superior de largura total (48 px) acima de TODO o WhatsApp Web, em Shadow DOM.
 //
 // Esquerda: logo, abas (Todas, Não lidas, Aguardando, Precisa, funil e personalizadas), "+" e ajustes de filtro.
-// Direita: respostas rápidas, lembretes, clientes, ajuda e "Entrar no CRM" / conta.
+// Direita: respostas rápidas, lembretes, clientes, ajuda e "Conectar ao CRM" / conta.
 //
 // Layout: a barra é fixa no topo e o contêiner raiz do WhatsApp (#app) ganha altura calc(100vh - 48px) e
 // margem de 48 px (revertidos ao desligar). Se o seletor da raiz falhar, não empurramos nada: a barra
@@ -181,7 +181,7 @@ export class BarraSuperior {
             h('span', { class: 'ok-crm' }, 'CRM ✓'),
           )
         : e.conta.tipo === 'sem-login'
-          ? h('button', { class: 'cta', type: 'button', 'data-tip': 'Entre no CRM Lembretes (o login fica no painel do Vita Zap)', onclick: (ev) => a.conta(ev.currentTarget as HTMLElement) }, 'Entrar no CRM')
+          ? h('button', { class: 'cta', type: 'button', 'data-tip': 'Conecte ao CRM Lembretes (se você já está logado no site, não pede senha)', onclick: (ev) => a.conta(ev.currentTarget as HTMLElement) }, 'Conectar ao CRM')
           : null;
 
     this.h.conteudo.replaceChildren(

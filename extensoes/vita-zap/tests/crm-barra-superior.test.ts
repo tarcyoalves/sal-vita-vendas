@@ -276,7 +276,7 @@ describe('barra superior: ícones da direita', () => {
     expect(c.estado.dados.config.pedidoPainel).toMatchObject({ aba: 'clientes' });
   });
 
-  it('sem o repositório do CRM não há botão de conta; com ele: "Entrar no CRM" e, logado, avatar e "CRM ✓"', async () => {
+  it('sem o repositório do CRM não há botão de conta; com ele: "Conectar ao CRM" e, logado, avatar e "CRM ✓"', async () => {
     await iniciar();
     expect(topo().querySelector('.cta, .conta')).toBeNull();
     ctrl?.parar();
@@ -295,7 +295,7 @@ describe('barra superior: ícones da direita', () => {
     };
     montarWhatsApp(LINHAS, null);
     ctrl = await iniciarCrm({ agora: () => AGORA, periodicoMs: 0, repositorio: repo });
-    await vi.waitFor(() => expect(topo().querySelector('.cta')?.textContent).toBe('Entrar no CRM'));
+    await vi.waitFor(() => expect(topo().querySelector('.cta')?.textContent).toBe('Conectar ao CRM'));
     topo().querySelector<HTMLButtonElement>('.cta')?.click();
     expect(mensagens).toContainEqual({ vz: 'painel', aba: 'dados' }); // o login mora na aba Dados do painel
 
@@ -309,7 +309,7 @@ describe('barra superior: ícones da direita', () => {
     topo().querySelector<HTMLButtonElement>('.conta')?.click();
     expect(popover().textContent).toContain(EMAIL);
     botao(popover(), 'Sair').click();
-    await vi.waitFor(() => expect(topo().querySelector('.cta')?.textContent).toBe('Entrar no CRM'));
+    await vi.waitFor(() => expect(topo().querySelector('.cta')?.textContent).toBe('Conectar ao CRM'));
   });
 });
 

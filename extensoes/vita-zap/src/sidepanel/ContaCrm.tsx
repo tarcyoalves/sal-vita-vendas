@@ -1,11 +1,12 @@
-// Conta do CRM Lembretes (aba Dados): login com e-mail e senha, "logado como", sair, sincronizar e
-// ações guardadas. A senha só atravessa a chamada de login: não é guardada em lugar nenhum (fica só a
+// Conta do CRM Lembretes (aba Dados): "Conectar ao CRM" (usa a sessão do site, sem senha), login com e-mail e
+// senha só se não houver sessão no site, "conectado como", sair, sincronizar e ações guardadas. A senha só atravessa a chamada de login: não é guardada em lugar nenhum (fica só a
 // sessão, que é um cookie do navegador). Sem login a extensão continua 100% local (modo misto).
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { normalizarBaseUrl } from '../shared/crm-rede';
 import type { EstadoConta, ResultadoConta } from '../shared/leads';
 import type { CrmPainel } from './crm';
+import { conectarAoCrm, conectarAutomaticamente, dependenciasPadrao, esquecerTentativaAutomatica, type ResultadoConexao } from './conexao';
 
 function hora(ms: number): string {
   return new Date(ms).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Fortaleza' });
@@ -21,6 +22,7 @@ export function ContaCrm({ crm }: { crm: CrmPainel }) {
   const [msg, setMsg] = useState<{ erro: boolean; texto: string } | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [falhasVistas, setFalhasVistas] = useState(0);
+  const [fase, setFase] = useState<ResultadoConexao | { tipo: 'verificando' }>({ tipo: 'verificando' });
 
   const carregar = useCallback(async () => {
     try {
@@ -36,6 +38,36 @@ export function ContaCrm({ crm }: { crm: CrmPainel }) {
     void carregar(); // sem consulta ao CRM aqui: a sessão é conferida pelas ações do usuário
     return crm.repo.aoMudar(() => void carregar());
   }, [crm.repo, carregar]);
+
+  // Abriu a aba: se o Chrome já deu acesso ao CRM, pergunta ao site quem está logado (um auth.me por abertura do painel).
+  useEffect(() => {
+    let vivo = true;
+    void conectarAutomaticamente(dependenciasPadrao(crm.repo)).then((r) => {
+      if (!vivo) return;
+      setFase(r);
+      void carregar();
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [crm.repo, carregar]);
+
+  /** Clique em "Conectar ao CRM" / "Tentar de novo": pede a permissão (se faltar) e usa a sessão do site. */
+  async function conectar() {
+    const base = normalizarBaseUrl(url);
+    if (!base) {
+      setMsg({ erro: true, texto: 'Endereço inválido. Use https://... (http só em localhost).' });
+      return;
+    }
+    setOcupado(true);
+    setMsg(null);
+    try {
+      setFase(await conectarAoCrm(dependenciasPadrao(crm.repo), { pedirPermissao: true, base }));
+    } finally {
+      setOcupado(false);
+      await carregar();
+    }
+  }
 
   function mostrar(r: ResultadoConta, okTexto: string) {
     setConta(r.conta);
@@ -61,6 +93,7 @@ export function ContaCrm({ crm }: { crm: CrmPainel }) {
       if (base !== conta?.baseUrl) await crm.repo.definirUrl(base);
       const r = await crm.repo.entrar(email, senha);
       mostrar(r, 'Conectado ao CRM.');
+      esquecerTentativaAutomatica();
     } catch (e) {
       setMsg({ erro: true, texto: textoDoErro(e) });
     } finally {
@@ -88,10 +121,32 @@ export function ContaCrm({ crm }: { crm: CrmPainel }) {
     <div className="cartao">
       <h3>CRM Lembretes</h3>
       {!conta && !msg && <p className="ajuda">Carregando…</p>}
-      {conta && !logado && (
+      {conta && !logado && fase.tipo === 'verificando' && <p className="ajuda">Procurando a sua sessão no CRM…</p>}
+      {conta && !logado && (fase.tipo === 'sem-permissao' || fase.tipo === 'erro') && (
+        <>
+          {fase.tipo === 'sem-permissao' ? (
+            <p className="ajuda">
+              Se você já entrou no site do CRM neste Chrome, o Vita Zap usa a mesma sessão: sem digitar senha. O Chrome vai pedir uma permissão para o site do CRM, uma única vez. Sem conectar, tudo continua só neste navegador.
+            </p>
+          ) : (
+            <p className="erro">{fase.mensagem}</p>
+          )}
+          <details>
+            <summary>Usar outro endereço do CRM</summary>
+            <label>
+              Endereço do CRM
+              <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} spellCheck={false} />
+            </label>
+          </details>
+          <button type="button" disabled={ocupado} onClick={() => void conectar()}>
+            {ocupado ? 'Conectando…' : fase.tipo === 'erro' ? 'Tentar de novo' : 'Conectar ao CRM'}
+          </button>
+        </>
+      )}
+      {conta && !logado && fase.tipo === 'sem-sessao' && (
         <form onSubmit={(e) => void entrar(e)}>
           <p className="ajuda">
-            Entre com o mesmo e-mail e senha do CRM para ver o lead de cada conversa, registrar contatos e receber os lembretes do CRM. Sem entrar, tudo continua só neste navegador.
+            Você ainda não entrou no site do CRM neste Chrome. Entre aqui com o mesmo e-mail e senha do CRM (ou entre no site e clique em "Já entrei no site"). Sem entrar, tudo continua só neste navegador.
           </p>
           {conta.erro && <p className="erro">{conta.erro.mensagem}</p>}
           <label>
@@ -107,9 +162,14 @@ export function ContaCrm({ crm }: { crm: CrmPainel }) {
             <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="current-password" required />
           </label>
           <p className="ajuda">A senha não é guardada: o Chrome mantém só a sessão (cookie de 7 dias).</p>
-          <button type="submit" disabled={ocupado}>
-            {ocupado ? 'Entrando…' : 'Entrar'}
-          </button>
+          <div className="botoes">
+            <button type="submit" disabled={ocupado}>
+              {ocupado ? 'Entrando…' : 'Entrar'}
+            </button>
+            <button type="button" disabled={ocupado} onClick={() => void conectar()}>
+              Já entrei no site
+            </button>
+          </div>
         </form>
       )}
       {conta && logado && (
@@ -158,7 +218,17 @@ export function ContaCrm({ crm }: { crm: CrmPainel }) {
             >
               Atualizar do CRM
             </button>
-            <button type="button" disabled={ocupado} onClick={() => void executar(async () => void setConta(await crm.repo.sair()))}>
+            <button
+              type="button"
+              disabled={ocupado}
+              onClick={() =>
+                void executar(async () => {
+                  setConta(await crm.repo.sair());
+                  esquecerTentativaAutomatica();
+                  setFase({ tipo: 'sem-sessao' }); // o logout também derrubou a sessão do site: e-mail e senha
+                })
+              }
+            >
               Sair
             </button>
           </div>

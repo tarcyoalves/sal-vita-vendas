@@ -224,7 +224,7 @@ export class ServicoCrm implements LeadsCRM {
       const c = await this.lerConta();
       if (base !== c.baseUrl) {
         // O cookie e os ids são do outro servidor: recomeça (vínculos, cache e fila ficam para trás).
-        await this.arm.limparChaves('vz.crm.', [CHAVES_CRM.conta]);
+        await this.arm.limparChaves('vz.crm.', [CHAVES_CRM.conta, CHAVES_CRM.vinculos, CHAVES_CRM.fila, CHAVES_CRM.falhas]);
         await this.gravarConta({ baseUrl: base, usuario: null });
       }
       return this.resultadoConta({ ok: true });
@@ -253,6 +253,33 @@ export class ServicoCrm implements LeadsCRM {
       await this.gravarConta({ baseUrl: c.baseUrl, usuario: u });
       await this.sincronizarInterno();
       await this.reenviarInterno();
+      return this.resultadoConta({ ok: true });
+    });
+  }
+
+  /**
+   * Login sem senha: o CRM e a extensão usam o MESMO cookie de sessão. Se o atendente já está logado no site,
+   * um auth.me devolve o usuário e a extensão fica conectada. Só roda por pedido do usuário (abrir o painel,
+   * botão Conectar): nada periódico.
+   */
+  conectarPelaSessao(): Promise<ResultadoConta> {
+    return this.exclusivo('conectar pela sessão do site (pedido do usuário)', async () => {
+      const c = await this.lerConta();
+      const r = await this.chamar(() => this.consultar<unknown>('auth.me'));
+      if (!r.ok) return this.resultadoConta(r);
+      const u = usuarioDe(r.valor);
+      if (!u) {
+        const erro: ErroCrm = { tipo: 'nao-autenticado', mensagem: 'Você ainda não entrou no site do CRM neste Chrome.' };
+        if (c.usuario) await this.gravarConta({ ...c, usuario: null, erro });
+        return this.resultadoConta({ ok: false, erro });
+      }
+      // Outro usuário no site: o cache do anterior (leads, lembretes) não vale para este (vínculos e fila ficam, como no sair).
+      if (c.usuario && c.usuario.id !== u.id) await this.arm.limparChaves('vz.crm.', [CHAVES_CRM.conta, CHAVES_CRM.vinculos, CHAVES_CRM.fila, CHAVES_CRM.falhas]);
+      await this.gravarConta({ baseUrl: c.baseUrl, usuario: u });
+      if (!c.usuario || c.usuario.id !== u.id) {
+        await this.sincronizarInterno();
+        await this.reenviarInterno();
+      }
       return this.resultadoConta({ ok: true });
     });
   }

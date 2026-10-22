@@ -63,6 +63,8 @@ export interface LeadsCRM {
   definirUrl(url: string): Promise<ResultadoConta>;
   /** A senha só passa por aqui: não é guardada em lugar nenhum. */
   entrar(email: string, senha: string): Promise<ResultadoConta>;
+  /** Já está logado no site do CRM neste Chrome? Conecta sem senha (um auth.me). Sem sessão: erro `nao-autenticado`. */
+  conectarPelaSessao(): Promise<ResultadoConta>;
   verificarSessao(): Promise<ResultadoConta>;
   sair(): Promise<EstadoConta>;
 
@@ -86,7 +88,7 @@ export interface LeadsCRM {
 }
 
 export const METODOS_LEADS = [
-  'conta', 'definirUrl', 'entrar', 'verificarSessao', 'sair', 'leadDoContato', 'procurarLeads', 'vincularLead', 'desvincularLead',
+  'conta', 'definirUrl', 'entrar', 'conectarPelaSessao', 'verificarSessao', 'sair', 'leadDoContato', 'procurarLeads', 'vincularLead', 'desvincularLead',
   'criarLead', 'registrarContatoNoLead', 'reagendar', 'alterarEtiquetas', 'marcarConvertido', 'reagendarTask', 'sincronizarLembretes', 'reenviarFila',
 ] as const satisfies ReadonlyArray<keyof LeadsCRM>;
 

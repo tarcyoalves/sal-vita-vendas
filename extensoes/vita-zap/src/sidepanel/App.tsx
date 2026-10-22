@@ -4,6 +4,7 @@ import type { Campanha } from '../shared/campanha';
 import type { ContatoVarrido } from '../shared/contatos';
 import type { Envio, NaoEnviar } from '../shared/exportar';
 import { Clientes } from './Clientes';
+import { conectarAutomaticamente, dependenciasPadrao } from './conexao';
 import { useCrm } from './crm';
 import { Dados } from './Dados';
 import { Execucao } from './Execucao';
@@ -38,12 +39,15 @@ export function App() {
   const [dados, setDados] = useState<DadosLocais>({ contatos: [], campanhas: [], envios: [], naoEnviar: [] });
   const [campanhaAtiva, setCampanhaAtiva] = useState<string | null>(null);
 
-  // Abriu o painel: busca os lembretes do CRM (no máximo 1 por hora; sem login não consulta nada).
+  // Abriu o painel: se o Chrome já deu acesso ao CRM e o atendente está logado no site, conecta sozinho (sem senha);
+  // depois busca os lembretes do CRM (no máximo 1 por hora; sem login não consulta nada).
   useEffect(() => {
-    void crm.repo.sincronizarLembretes('painel').catch(() => undefined);
+    void conectarAutomaticamente(dependenciasPadrao(crm.repo))
+      .then(() => crm.repo.sincronizarLembretes('painel'))
+      .catch(() => undefined);
   }, [crm.repo]);
 
-  // Botão "Clientes" / "Entrar no CRM" da barra do WhatsApp: a página grava o pedido na configuração e o painel
+  // Botão "Clientes" / "Conectar ao CRM" da barra do WhatsApp: a página grava o pedido na configuração e o painel
   // abre nessa aba (só pedidos de até 15 s, para não pular de aba por um pedido antigo).
   const pedido = crm.dados?.config.pedidoPainel;
   useEffect(() => {
