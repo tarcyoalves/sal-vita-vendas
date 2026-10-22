@@ -21,6 +21,18 @@ export function ehMensagemCrm(m: unknown): m is MensagemCrm {
 
 export const ERRO_SEM_SERVICO: ErroCrm = { tipo: 'rede', mensagem: 'A extensão não respondeu. Recarregue a extensão em chrome://extensions e a aba do WhatsApp.' };
 
+/** A extensão foi atualizada (↻) com esta aba aberta: o código antigo da aba perdeu a ligação. Só F5 resolve. */
+export const ERRO_ABA_ANTIGA = 'O Vita Zap foi atualizado: dê F5 nesta aba do WhatsApp.';
+
+export function abaFicouAntiga(e: unknown): boolean {
+  try {
+    if (typeof chrome !== 'undefined' && chrome.runtime && !chrome.runtime.id) return true;
+  } catch {
+    return true;
+  }
+  return /context invalidated|contexto.*invalid/i.test(e instanceof Error ? e.message : String(e ?? ''));
+}
+
 /** Lado do service worker: atende as mensagens com o serviço real. */
 export function atenderMensagensCrm(servico: LeadsCRM): (msg: unknown, remetenteId: string | undefined, meuId: string, responder: (r: RespostaMensagemCrm) => void) => boolean {
   return (msg, remetenteId, meuId, responder) => {
@@ -43,8 +55,8 @@ export function criarProxyLeads(enviar: (m: MensagemCrm) => Promise<RespostaMens
       let r: RespostaMensagemCrm | undefined;
       try {
         r = await enviar({ vz: 'crm', metodo, args });
-      } catch {
-        throw new Error(ERRO_SEM_SERVICO.mensagem);
+      } catch (e) {
+        throw new Error(abaFicouAntiga(e) ? ERRO_ABA_ANTIGA : ERRO_SEM_SERVICO.mensagem);
       }
       if (!r) throw new Error(ERRO_SEM_SERVICO.mensagem);
       if (!r.ok) throw new Error(r.erro);

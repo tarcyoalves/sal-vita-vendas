@@ -49,3 +49,15 @@ describe('faixa só para contato de cliente', () => {
     expect(ehContatoCliente('')).toBe(false);
   });
 });
+
+import { abaFicouAntiga, criarProxyLeads, ERRO_ABA_ANTIGA } from '../src/shared/crm-transporte';
+
+describe('extensão atualizada com a aba aberta', () => {
+  it('reconhece o erro do Chrome e pede F5', async () => {
+    expect(abaFicouAntiga(new Error('Extension context invalidated.'))).toBe(true);
+    expect(abaFicouAntiga(new Error('Could not establish connection'))).toBe(false);
+    const proxy = criarProxyLeads(() => Promise.reject(new Error('Extension context invalidated.')));
+    const metodo = Object.values(proxy).find((f) => typeof f === 'function') as () => Promise<unknown>;
+    await expect(metodo()).rejects.toThrow(ERRO_ABA_ANTIGA);
+  });
+});
