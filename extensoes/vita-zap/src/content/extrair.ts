@@ -83,7 +83,10 @@ export function lerLinha(el: HTMLElement): LeituraLinha {
  * Lê as linhas visíveis em ordem de posição. Linhas abaixo de um cabeçalho de seção sem
  * conversa ("Contatos", "Mensagens") são descartadas: lá não há conversa existente.
  */
-export function lerConversasVisiveis(elementos: HTMLElement[]): {
+export function lerConversasVisiveis(
+  elementos: HTMLElement[],
+  cortarEmSecaoSemConversa = true,
+): {
   conversas: Array<{ el: HTMLElement; linha: LinhaBruta }>;
   achouSecaoSemConversa: boolean;
 } {
@@ -96,15 +99,19 @@ export function lerConversasVisiveis(elementos: HTMLElement[]): {
   for (const { el, leitura } of lidas) {
     if (leitura.tipo === 'secaoSemConversa') {
       achouSecaoSemConversa = true;
-      break; // tudo daqui para baixo: contatos sem conversa / mensagens
+      if (cortarEmSecaoSemConversa) break;
+      continue;
     }
     if (leitura.tipo === 'conversa') conversas.push({ el, linha: leitura.linha });
   }
   return { conversas, achouSecaoSemConversa };
 }
 
-export function lerLinhasVisiveis(elementos: HTMLElement[]): { linhas: LinhaBruta[]; achouSecaoSemConversa: boolean } {
-  const r = lerConversasVisiveis(elementos);
+export function lerLinhasVisiveis(
+  elementos: HTMLElement[],
+  cortarEmSecaoSemConversa = true,
+): { linhas: LinhaBruta[]; achouSecaoSemConversa: boolean } {
+  const r = lerConversasVisiveis(elementos, cortarEmSecaoSemConversa);
   return { linhas: r.conversas.map((c) => c.linha), achouSecaoSemConversa: r.achouSecaoSemConversa };
 }
 

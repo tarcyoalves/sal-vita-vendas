@@ -35,20 +35,33 @@ export async function varrerLista(termo: string, aoProgredir: (lidas: number, un
   if (rolavel) rolavel.scrollTop = 0;
   await esperar(600);
 
+  let tentativasSemMover = 0;
   for (let passo = 0; passo < MAX_PASSOS; passo += 1) {
     linhas = linhasDaLista();
-    const { linhas: lidas, achouSecaoSemConversa } = lerLinhasVisiveis(linhas);
+    // cortarEmSecaoSemConversa = false: continua lendo todos os contatos e mensagens da lista!
+    const { linhas: lidas } = lerLinhasVisiveis(linhas, false);
     for (const l of lidas) {
       todas.push(l);
       nomes.add(l.nome);
     }
     aoProgredir(todas.length, nomes.size);
-    if (achouSecaoSemConversa) break; // dali para baixo são contatos sem conversa / mensagens
     if (!rolavel || todas.length >= MAX_LINHAS) break;
+
     const antes = rolavel.scrollTop;
-    rolavel.scrollTop = antes + Math.max(200, Math.floor(rolavel.clientHeight * 0.7));
-    await esperar(aleatorioEntre(700, 1400));
-    if (Math.abs(rolavel.scrollTop - antes) < 2) break; // fim da lista
+    rolavel.scrollTop = antes + Math.max(300, Math.floor(rolavel.clientHeight * 0.8));
+    await esperar(aleatorioEntre(700, 1200));
+
+    if (Math.abs(rolavel.scrollTop - antes) < 2) {
+      tentativasSemMover += 1;
+      // Dá tempo de o WhatsApp Web carregar o próximo lote assíncrono
+      await esperar(1000);
+      rolavel.scrollTop = rolavel.scrollHeight;
+      if (tentativasSemMover >= 3) {
+        break; // fim real da lista
+      }
+    } else {
+      tentativasSemMover = 0;
+    }
   }
   if (todas.length > 0 && todas.every((l) => l.rotuloData == null)) {
     avisos.push('Nenhuma data de última mensagem foi reconhecida — todos ficarão fora da campanha. Confira o idioma do WhatsApp (português) e os seletores.');

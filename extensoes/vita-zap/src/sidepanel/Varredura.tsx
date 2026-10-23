@@ -77,8 +77,28 @@ export function Varredura({ db, dados, aoMudar, aoContinuar }: Props) {
       </p>
       <label>
         Termo de busca no WhatsApp
-        <input value={termo} onChange={(e) => setTermo(e.target.value)} placeholder="ex.: CLIENTE (vazio = lista inteira)" disabled={rodando} />
+        <input value={termo} onChange={(e) => setTermo(e.target.value)} placeholder="ex.: CLIENTE (deixe vazio para varrer TODA a lista de conversas)" disabled={rodando} />
       </label>
+      <div style={{ display: 'flex', gap: 8, margin: '2px 0 10px 0' }}>
+        <button
+          type="button"
+          className="pequeno"
+          style={{ fontSize: 11, padding: '3px 8px' }}
+          onClick={() => setTermo('')}
+          disabled={rodando || termo === ''}
+        >
+          Limpar busca (varrer todas as conversas)
+        </button>
+        <button
+          type="button"
+          className="pequeno"
+          style={{ fontSize: 11, padding: '3px 8px' }}
+          onClick={() => setTermo('CLIENTE')}
+          disabled={rodando || termo === 'CLIENTE'}
+        >
+          Buscar "CLIENTE"
+        </button>
+      </div>
       <button type="button" className="primario" onClick={() => void varrer()} disabled={rodando}>
         {rodando ? 'Varrendo…' : 'Varrer conversas'}
       </button>
