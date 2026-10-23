@@ -17,6 +17,7 @@ export interface ItemCampanha {
   status: StatusItem;
   motivo: string | null;
   atualizadoEm: string | null;
+  ultimaConversa?: string | null;
 }
 
 export interface Campanha {
@@ -40,7 +41,7 @@ export function novoId(agora: Date, aleatorio: () => number = Math.random): stri
 }
 
 export function criarItens(
-  selecionados: ReadonlyArray<{ chave: string; nome: string }>,
+  selecionados: ReadonlyArray<{ chave: string; nome: string; ultimaConversa?: string | null }>,
   modelos: string[],
   termosIgnorar: string[],
   aleatorio: () => number = Math.random,
@@ -58,6 +59,7 @@ export function criarItens(
       status: 'pendente',
       motivo: null,
       atualizadoEm: null,
+      ultimaConversa: s.ultimaConversa ?? null,
     });
   }
   return itens;

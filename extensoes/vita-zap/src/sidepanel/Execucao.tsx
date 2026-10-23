@@ -3,6 +3,7 @@ import type { Banco } from '../shared/banco';
 import { resumo, textoDoItem } from '../shared/campanha';
 import { ehEventoConteudo } from '../shared/mensagens';
 import { dentroDoHorario } from '../shared/politica';
+import { formatarDataBr } from '../shared/datas';
 import type { DadosLocais } from './App';
 import { type EstadoExecutor, Executor } from './executor';
 import { pedir } from './whatsapp';
@@ -81,6 +82,8 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
     return () => clearInterval(t);
   }, [estado?.fase]);
 
+  const mapaContatos = useMemo(() => new Map(dados.contatos.map((ct) => [ct.chave, ct])), [dados.contatos]);
+  const mapaDatas = useMemo(() => new Map(dados.contatos.map((ct) => [ct.chave, ct.ultimaConversa])), [dados.contatos]);
   const c = estado?.campanha ?? null;
   const itensExibidos = useMemo(() => {
     if (!c) return [];
@@ -127,6 +130,18 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
             </button>
           </p>
         )}
+        {!rodando && r.pendente > 1 && (
+          <p style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              style={{ fontSize: '.82rem', padding: '4px 8px', cursor: 'pointer', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', borderRadius: 4, fontWeight: 600 }}
+              onClick={() => void executor.ordenarPendentesPorData(mapaDatas)}
+              title="Organiza os pendentes do mais recente para o mais antigo"
+            >
+              ⇅ Reordenar {r.pendente} pendentes por data
+            </button>
+          </p>
+        )}
         <p className="info">
           Hoje: {estado.enviosHoje}
           {estado.tetoDiario ? `/${estado.tetoDiario}` : ''} envios · {horario.ok ? 'dentro do horário' : horario.motivo}
@@ -140,7 +155,15 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
         {item && (
           <>
             <p>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--suave)', marginRight: 6 }}>
+                #{c.itens.findIndex((x) => x.chave === item.chave) + 1} de {c.itens.length}
+              </span>
               <b>{item.nome}</b>
+              {(item.ultimaConversa ?? mapaContatos.get(item.chave)?.ultimaConversa) && (
+                <span style={{ fontSize: 11, background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: 4, fontWeight: 600, marginLeft: 6 }}>
+                  {formatarDataBr(item.ultimaConversa ?? mapaContatos.get(item.chave)!.ultimaConversa)}
+                </span>
+              )}
             </p>
             <div className="balao">{textoDoItem(item)}</div>
           </>
@@ -210,7 +233,17 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
             <li key={i.chave} style={{ padding: '8px 0', borderBottom: '1px solid var(--borda)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 160 }}>
-                  <b>{i.nome}</b>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--suave)', minWidth: 22 }}>
+                      #{c.itens.findIndex((x) => x.chave === i.chave) + 1}
+                    </span>
+                    <b>{i.nome}</b>
+                    {(i.ultimaConversa ?? mapaContatos.get(i.chave)?.ultimaConversa) && (
+                      <span style={{ fontSize: 11, background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
+                        {formatarDataBr(i.ultimaConversa ?? mapaContatos.get(i.chave)!.ultimaConversa)}
+                      </span>
+                    )}
+                  </div>
                   <small style={{ marginLeft: 6, color: i.status === 'enviado' ? 'var(--ok)' : i.status === 'problema' ? 'var(--erro)' : 'var(--suave)' }}>
                     — {i.status.replace('_', ' ')}{i.motivo ? ` (${i.motivo})` : ''}
                   </small>

@@ -182,4 +182,15 @@ describe('Executor — modo uma tecla', () => {
     expect(t.ex.atual.fase).toBe('concluida');
     expect(t.ex.atual.campanha.status).toBe('concluida');
   });
+
+  it('ordenarPendentesPorData reordena os itens pendentes do mais recente para o mais antigo', async () => {
+    const t = await montar(['Helton', 'Logans', 'Carlos']);
+    const mapa = new Map([
+      ['helton', '2026-08-25'],
+      ['logans', '2026-08-17'],
+      ['carlos', '2026-09-10'],
+    ]);
+    await t.ex.ordenarPendentesPorData(mapa);
+    expect(t.ex.atual.campanha.itens.map((i) => i.nome)).toEqual(['Carlos', 'Helton', 'Logans']);
+  });
 });

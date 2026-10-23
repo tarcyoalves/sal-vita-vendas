@@ -212,6 +212,23 @@ export class Executor {
   }
 
   /** Recoloca todos os itens com problema de volta para pendente e zera o freio de problemas. */
+  /** Ordena os itens pendentes por data decrescente (mais recente primeiro) e desempata por nome. */
+  async ordenarPendentesPorData(mapaDatas: Map<string, string | null>): Promise<void> {
+    const c = this.estado.campanha;
+    const processados = c.itens.filter((i) => i.status !== 'pendente');
+    const pendentes = c.itens
+      .filter((i) => i.status === 'pendente')
+      .sort((a, b) => {
+        const dataA = a.ultimaConversa ?? mapaDatas.get(a.chave) ?? '';
+        const dataB = b.ultimaConversa ?? mapaDatas.get(b.chave) ?? '';
+        if (dataA && dataB && dataA !== dataB) return dataB.localeCompare(dataA);
+        if (dataA && !dataB) return -1;
+        if (!dataA && dataB) return 1;
+        return a.nome.localeCompare(b.nome, 'pt-BR');
+      });
+    await this.gravar({ ...c, itens: [...processados, ...pendentes] });
+  }
+
   async recolocarProblemasComoPendentes(): Promise<void> {
     const c = this.estado.campanha;
     const novosItens = c.itens.map((i) =>

@@ -241,10 +241,13 @@ export function Previa({ db, dados, aoAprovar }: Props) {
           <h3>Prévia · {itens.length} contatos</h3>
           {desatualizada && <p className="aviso">Filtros ou textos mudaram depois da prévia. Gere a prévia de novo antes de aprovar.</p>}
           <ul className="lista">
-            {itens.map((i) => (
+            {itens.map((i, idx) => (
               <li key={i.chave}>
                 <div className="lista-topo">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--suave)', minWidth: 22 }}>
+                      #{idx + 1}
+                    </span>
                     <b>{i.nome}</b>
                     {contatoPorChave.get(i.chave)?.ultimaConversa && (
                       <span style={{ fontSize: 11, background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
