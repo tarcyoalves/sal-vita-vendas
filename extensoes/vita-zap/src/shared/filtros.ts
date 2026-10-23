@@ -17,6 +17,8 @@ export interface Filtros {
   /** Excluir quem recebeu campanha há menos de N dias (nunca menos que DIAS_SEM_REPETIR). */
   excluirContatadosHaDias: number;
   incluirSemConversa?: boolean;
+  /** Tags do CRM selecionadas: se houver alguma, o contato precisa ter ao menos UMA delas. */
+  tags?: string[];
 }
 
 export const FILTROS_PADRAO: Filtros = {
@@ -26,6 +28,7 @@ export const FILTROS_PADRAO: Filtros = {
   ultimaConversaDepoisDe: null,
   excluirContatadosHaDias: DIAS_SEM_REPETIR,
   incluirSemConversa: false,
+  tags: [],
 };
 
 export interface ContextoFiltro {
@@ -34,6 +37,8 @@ export interface ContextoFiltro {
   naoEnviar: ReadonlySet<string>;
   /** Último envio de campanha por chave (ISO data-hora), de qualquer campanha. */
   ultimoEnvioPorChave: ReadonlyMap<string, string>;
+  /** Mapa chave do contato → conjunto de tags do CRM (nomes normalizados). */
+  tagsPorChave?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 export type Situacao = 'incluido' | 'excluido' | 'revisar';
@@ -76,6 +81,14 @@ export function avaliarContato(c: ContatoVarrido, filtros: Filtros, ctx: Context
 
   if (c.duplicado) return { situacao: 'revisar', motivo: 'mais de uma conversa com este nome' };
 
+  if (filtros.tags && filtros.tags.length > 0) {
+    const tagsContato = ctx.tagsPorChave?.get(c.chave);
+    const temTag = tagsContato && filtros.tags.some((t) => tagsContato.has(normalizarTexto(t)));
+    if (!temTag) {
+      return { situacao: 'excluido', motivo: `não possui as tags do CRM selecionadas (${filtros.tags.join(', ')})` };
+    }
+  }
+
   const usaData = filtros.ultimaConversaAntesDe != null || filtros.ultimaConversaDepoisDe != null;
   const partes: string[] = [];
   for (const termo of filtros.contem) partes.push(`contém "${termo}"`);
@@ -102,6 +115,12 @@ export function avaliarContato(c: ContatoVarrido, filtros: Filtros, ctx: Context
     partes.push(`última conversa ${formatarDataBr(c.ultimaConversa)}`);
   } else if (c.ultimaConversa) {
     partes.push(`última conversa ${formatarDataBr(c.ultimaConversa)}`);
+  }
+
+  const tagsContato = ctx.tagsPorChave?.get(c.chave);
+  if (tagsContato && tagsContato.size > 0 && filtros.tags && filtros.tags.length > 0) {
+    const marcadas = filtros.tags.filter((t) => tagsContato.has(normalizarTexto(t)));
+    if (marcadas.length > 0) partes.push(`tag: ${marcadas.join(', ')}`);
   }
 
   return { situacao: 'incluido', motivo: partes.length ? partes.join('; ') : 'contato salvo com conversa' };

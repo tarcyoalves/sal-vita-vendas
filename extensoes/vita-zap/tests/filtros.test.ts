@@ -185,4 +185,30 @@ describe('filtros', () => {
     expect(m.get('a')).toBe('2026-10-10T12:00:00.000Z');
     expect(m.get('b')).toBe('2026-09-01T12:00:00.000Z');
   });
+
+  it('filtra por tags do CRM: só inclui quem tem ao menos uma das tags selecionadas', () => {
+    const c1 = contato('João Cliente');
+    const c2 = contato('Maria Cliente');
+    const c3 = contato('Pedro Cliente');
+    const tagsMap = new Map([
+      [c1.chave, new Set(['ativo', 'cotacao'])],
+      [c2.chave, new Set(['inativo'])],
+    ]);
+    const ctxComTags = { ...ctxVazio, tagsPorChave: tagsMap };
+
+    // Filtro com "Ativo"
+    const fAtivo = filtros({ tags: ['Ativo'] });
+    expect(avaliarContato(c1, fAtivo, ctxComTags).situacao).toBe('incluido');
+    expect(avaliarContato(c2, fAtivo, ctxComTags).situacao).toBe('excluido');
+    expect(avaliarContato(c3, fAtivo, ctxComTags).situacao).toBe('excluido');
+
+    // Filtro com "Inativo" ou "Cotação"
+    const fMulti = filtros({ tags: ['Inativo', 'Cotação'] });
+    expect(avaliarContato(c1, fMulti, ctxComTags).situacao).toBe('incluido');
+    expect(avaliarContato(c2, fMulti, ctxComTags).situacao).toBe('incluido');
+    expect(avaliarContato(c3, fMulti, ctxComTags).situacao).toBe('excluido');
+
+    // Sem filtro de tags -> todos entram
+    expect(avaliarContato(c3, filtros({ tags: [] }), ctxComTags).situacao).toBe('incluido');
+  });
 });

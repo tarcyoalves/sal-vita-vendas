@@ -5,6 +5,8 @@ import { ehEventoConteudo } from '../shared/mensagens';
 import { dentroDoHorario } from '../shared/politica';
 import { formatarDataBr } from '../shared/datas';
 import type { DadosLocais } from './App';
+import type { CrmPainel } from './crm';
+import { acharContato } from '../shared/crm-contatos';
 import { type EstadoExecutor, Executor } from './executor';
 import { pedir } from './whatsapp';
 
@@ -14,6 +16,7 @@ interface Props {
   campanhaId: string | null;
   aoEscolher: (id: string) => void;
   aoMudar: () => Promise<void>;
+  crm?: CrmPainel;
 }
 
 const ROTULO_FASE: Record<EstadoExecutor['fase'], string> = {
@@ -24,7 +27,7 @@ const ROTULO_FASE: Record<EstadoExecutor['fase'], string> = {
   concluida: 'Concluída',
 };
 
-export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) {
+export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Props) {
   const campanhas = dados.campanhas;
   const idEscolhido = campanhaId ?? campanhas.find((c) => c.status !== 'concluida')?.id ?? campanhas[0]?.id ?? null;
   const campanhaInicial = campanhas.find((c) => c.id === idEscolhido) ?? null;
@@ -84,6 +87,38 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
 
   const mapaContatos = useMemo(() => new Map(dados.contatos.map((ct) => [ct.chave, ct])), [dados.contatos]);
   const mapaDatas = useMemo(() => new Map(dados.contatos.map((ct) => [ct.chave, ct.ultimaConversa])), [dados.contatos]);
+
+  const { tagsExibicaoPorChave, etiquetasCrm } = useMemo(() => {
+    const mapaExibicao = new Map<string, Array<{ id: string; nome: string; cor: string }>>();
+    const listaEtq = crm?.dados?.etiquetas ?? [];
+    if (!crm?.dados) return { tagsExibicaoPorChave: mapaExibicao, etiquetasCrm: listaEtq };
+    const mapaEtqPorId = new Map(listaEtq.map((e) => [e.id, e]));
+
+    for (const ct of dados.contatos) {
+      const crmC = acharContato(crm.dados, { nome: ct.nome });
+      if (crmC && crmC.etiquetas.length > 0) {
+        const tags: Array<{ id: string; nome: string; cor: string }> = [];
+        for (const etqId of crmC.etiquetas) {
+          const etq = mapaEtqPorId.get(etqId);
+          if (etq) tags.push({ id: etq.id, nome: etq.nome, cor: etq.cor });
+        }
+        if (tags.length > 0) mapaExibicao.set(ct.chave, tags);
+      }
+    }
+    return { tagsExibicaoPorChave: mapaExibicao, etiquetasCrm: listaEtq };
+  }, [crm?.dados, dados.contatos]);
+
+  const obterTags = (chave: string, nome: string) => {
+    const doMapa = tagsExibicaoPorChave.get(chave);
+    if (doMapa) return doMapa;
+    if (!crm?.dados) return [];
+    const crmC = acharContato(crm.dados, { nome });
+    if (!crmC || crmC.etiquetas.length === 0) return [];
+    const mapaEtqPorId = new Map(etiquetasCrm.map((e) => [e.id, e]));
+    return crmC.etiquetas
+      .map((id) => mapaEtqPorId.get(id))
+      .filter((x): x is { id: string; nome: string; cor: string } => Boolean(x));
+  };
   const c = estado?.campanha ?? null;
   const itensExibidos = useMemo(() => {
     if (!c) return [];
@@ -159,6 +194,30 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
                 #{c.itens.findIndex((x) => x.chave === item.chave) + 1} de {c.itens.length}
               </span>
               <b>{item.nome}</b>
+              {obterTags(item.chave, item.nome).map((t) => (
+                <span key={t.id} style={{ fontSize: 10, background: t.cor, color: '#fff', padding: '1px 6px', borderRadius: 8, fontWeight: 600 }}>
+                  {t.nome}
+                </span>
+              ))}
+              {crm && (
+                <select
+                  aria-label={`Tag para ${item.nome}`}
+                  value=""
+                  onChange={async (e) => {
+                    const etqId = e.target.value;
+                    if (!etqId) return;
+                    await crm.fazer((r) => r.alternarEtiqueta({ nome: item.nome }, etqId));
+                  }}
+                  style={{ fontSize: 10, padding: '1px 4px', borderRadius: 4, border: '1px solid var(--borda)', background: '#fff', cursor: 'pointer', color: 'var(--suave)' }}
+                >
+                  <option value="">+ tag</option>
+                  {etiquetasCrm.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {obterTags(item.chave, item.nome).some((x) => x.id === t.id) ? `✓ ${t.nome}` : t.nome}
+                    </option>
+                  ))}
+                </select>
+              )}
               {(item.ultimaConversa ?? mapaContatos.get(item.chave)?.ultimaConversa) && (
                 <span style={{ fontSize: 11, background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: 4, fontWeight: 600, marginLeft: 6 }}>
                   {formatarDataBr(item.ultimaConversa ?? mapaContatos.get(item.chave)!.ultimaConversa)}
@@ -238,6 +297,30 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
                       #{c.itens.findIndex((x) => x.chave === i.chave) + 1}
                     </span>
                     <b>{i.nome}</b>
+                    {obterTags(i.chave, i.nome).map((t) => (
+                      <span key={t.id} style={{ fontSize: 10, background: t.cor, color: '#fff', padding: '1px 6px', borderRadius: 8, fontWeight: 600 }}>
+                        {t.nome}
+                      </span>
+                    ))}
+                    {crm && (
+                      <select
+                        aria-label={`Tag para ${i.nome}`}
+                        value=""
+                        onChange={async (e) => {
+                          const etqId = e.target.value;
+                          if (!etqId) return;
+                          await crm.fazer((r) => r.alternarEtiqueta({ nome: i.nome }, etqId));
+                        }}
+                        style={{ fontSize: 10, padding: '1px 4px', borderRadius: 4, border: '1px solid var(--borda)', background: '#fff', cursor: 'pointer', color: 'var(--suave)' }}
+                      >
+                        <option value="">+ tag</option>
+                        {etiquetasCrm.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {obterTags(i.chave, i.nome).some((x) => x.id === t.id) ? `✓ ${t.nome}` : t.nome}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     {(i.ultimaConversa ?? mapaContatos.get(i.chave)?.ultimaConversa) && (
                       <span style={{ fontSize: 11, background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
                         {formatarDataBr(i.ultimaConversa ?? mapaContatos.get(i.chave)!.ultimaConversa)}

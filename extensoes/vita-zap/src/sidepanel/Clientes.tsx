@@ -13,11 +13,50 @@ const POR_PAGINA = 80;
 
 function GerenciarEtiquetas({ crm }: { crm: CrmPainel }) {
   const [erro, setErro] = useState<string | null>(null);
+  const [novoNome, setNovoNome] = useState('');
+  const [novaCor, setNovaCor] = useState<string>(CORES_ETIQUETA[0]);
   const etiquetas = crm.dados?.etiquetas ?? [];
+
+  async function criarTag(ev: React.FormEvent) {
+    ev.preventDefault();
+    setErro(null);
+    const n = novoNome.trim();
+    if (!n) return;
+    const res = await crm.fazer((r) => r.criarEtiqueta(n, novaCor));
+    if ('erro' in res) {
+      setErro(res.erro);
+    } else {
+      setNovoNome('');
+    }
+  }
   return (
     <details className="cartao">
       <summary>Etiquetas ({etiquetas.length})</summary>
-      <p className="ajuda">Crie etiquetas no WhatsApp Web, no painel do cliente (cabeçalho da conversa). Aqui você renomeia, muda a cor ou exclui.</p>
+      <p className="ajuda">Crie novas tags ou renomeie, mude a cor e exclua as existentes.</p>
+      <form onSubmit={criarTag} style={{ display: 'flex', gap: 6, margin: '8px 0', alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          placeholder="Nome da nova tag..."
+          value={novoNome}
+          onChange={(e) => setNovoNome(e.target.value)}
+          style={{ flex: 1, minWidth: 140, padding: '4px 8px', fontSize: 13 }}
+        />
+        <select
+          aria-label="Cor da nova tag"
+          value={novaCor}
+          onChange={(e) => setNovaCor(e.target.value)}
+          style={{ padding: '4px 6px', fontSize: 13 }}
+        >
+          {CORES_ETIQUETA.map((c) => (
+            <option key={c} value={c} style={{ background: c, color: '#fff' }}>
+              Cor
+            </option>
+          ))}
+        </select>
+        <button type="submit" className="primario pequeno" style={{ whiteSpace: 'nowrap' }} disabled={!novoNome.trim()}>
+          + Criar tag
+        </button>
+      </form>
       {etiquetas.length === 0 && <p className="ajuda">Nenhuma etiqueta ainda.</p>}
       <ul className="lista">
         {etiquetas.map((e) => (

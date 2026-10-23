@@ -8,16 +8,21 @@ import { separarTermos } from '../shared/nomes';
 import { validarModelos } from '../shared/texto';
 import type { DadosLocais } from './App';
 import { lerPreferencia, salvarPreferencia } from './preferencias';
+import type { CrmPainel } from './crm';
+import { acharContato } from '../shared/crm-contatos';
+import { CORES_ETIQUETA } from '../shared/crm-tipos';
+import { normalizarTexto } from '../shared/nomes';
 
 interface Props {
   db: Banco;
   dados: DadosLocais;
   aoAprovar: (campanhaId: string) => Promise<void>;
+  crm?: CrmPainel;
 }
 
 const TEXTO_EXEMPLO = `Boa tarde, ${MARCADOR_PRIMEIRO_NOME}, tudo bem? Como estão de sal por aí?`;
 
-export function Previa({ db, dados, aoAprovar }: Props) {
+export function Previa({ db, dados, aoAprovar, crm }: Props) {
   const hojeBr = new Date().toLocaleDateString('pt-BR');
   const [nome, setNome] = useState(`Campanha ${hojeBr}`);
   const [contem, setContem] = useState('');
@@ -32,6 +37,56 @@ export function Previa({ db, dados, aoAprovar }: Props) {
   const [assinaturaPrevia, setAssinaturaPrevia] = useState('');
   const [errosAprovacao, setErrosAprovacao] = useState<string[]>([]);
   const [salvando, setSalvando] = useState(false);
+  const [tagsSelecionadas, setTagsSelecionadas] = useState<string[]>([]);
+  const [criandoTag, setCriandoTag] = useState(false);
+  const [novaTagNome, setNovaTagNome] = useState('');
+  const [novaTagCor, setNovaTagCor] = useState<string>(CORES_ETIQUETA[0]);
+  const [erroTag, setErroTag] = useState<string | null>(null);
+
+  const { tagsPorChave, tagsExibicaoPorChave, catalogoTags } = useMemo(() => {
+    const mapaNorm = new Map<string, Set<string>>();
+    const mapaExibicao = new Map<string, Array<{ nome: string; cor: string }>>();
+    const contagemPorTag = new Map<string, number>();
+
+    const etiquetasCrm = crm?.dados?.etiquetas ?? [];
+    const mapaEtqPorId = new Map(etiquetasCrm.map((e) => [e.id, e]));
+
+    for (const c of dados.contatos) {
+      const tagsDoContato: Array<{ nome: string; cor: string }> = [];
+      const setNorm = new Set<string>();
+
+      if (crm?.dados) {
+        const crmC = acharContato(crm.dados, { nome: c.nome });
+        if (crmC) {
+          for (const etqId of crmC.etiquetas) {
+            const etq = mapaEtqPorId.get(etqId);
+            if (etq) {
+              tagsDoContato.push({ nome: etq.nome, cor: etq.cor });
+              setNorm.add(normalizarTexto(etq.nome));
+            }
+          }
+        }
+      }
+
+      if (setNorm.size > 0) {
+        mapaNorm.set(c.chave, setNorm);
+        mapaExibicao.set(c.chave, tagsDoContato);
+        for (const t of tagsDoContato) {
+          const k = normalizarTexto(t.nome);
+          contagemPorTag.set(k, (contagemPorTag.get(k) ?? 0) + 1);
+        }
+      }
+    }
+
+    const catalogo = etiquetasCrm.map((e) => ({
+      id: e.id,
+      nome: e.nome,
+      cor: e.cor,
+      contagem: contagemPorTag.get(normalizarTexto(e.nome)) ?? 0,
+    }));
+
+    return { tagsPorChave: mapaNorm, tagsExibicaoPorChave: mapaExibicao, catalogoTags: catalogo };
+  }, [crm?.dados, dados.contatos]);
 
   const filtros: Filtros = useMemo(
     () => ({
@@ -41,8 +96,9 @@ export function Previa({ db, dados, aoAprovar }: Props) {
       ultimaConversaDepoisDe: lerDataIso(depoisDe),
       excluirContatadosHaDias: Math.max(DIAS_SEM_REPETIR, dias),
       incluirSemConversa,
+      tags: tagsSelecionadas,
     }),
-    [contem, naoContem, antesDe, depoisDe, dias, incluirSemConversa],
+    [contem, naoContem, antesDe, depoisDe, dias, incluirSemConversa, tagsSelecionadas],
   );
 
   const avaliados = useMemo(
@@ -51,8 +107,9 @@ export function Previa({ db, dados, aoAprovar }: Props) {
         agora: new Date(),
         naoEnviar: new Set(dados.naoEnviar.map((n) => n.chave)),
         ultimoEnvioPorChave: ultimoEnvioPorChave(dados.envios),
+        tagsPorChave,
       }),
-    [dados, filtros],
+    [dados, filtros, tagsPorChave],
   );
   const motivoPorChave = useMemo(() => new Map(avaliados.map((a) => [a.contato.chave, a.decisao.motivo])), [avaliados]);
   const contatoPorChave = useMemo(() => new Map(dados.contatos.map((c) => [c.chave, c])), [dados.contatos]);
@@ -175,6 +232,111 @@ export function Previa({ db, dados, aoAprovar }: Props) {
             onChange={(e) => setDias(Math.max(DIAS_SEM_REPETIR, Number(e.target.value) || DIAS_SEM_REPETIR))}
           />
         </label>
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--borda)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>Tags do CRM (opcional)</span>
+            <button
+              type="button"
+              className="pequeno"
+              onClick={() => setCriandoTag(!criandoTag)}
+              style={{ fontSize: 11, padding: '2px 8px' }}
+            >
+              {criandoTag ? 'Cancelar' : '+ Nova tag'}
+            </button>
+          </div>
+
+          {criandoTag && (
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center', flexWrap: 'wrap', padding: 8, background: '#f8fafc', borderRadius: 6, border: '1px solid var(--borda)' }}>
+              <input
+                type="text"
+                placeholder="Nome da tag (ex: Ativo, Cotação)..."
+                value={novaTagNome}
+                onChange={(e) => setNovaTagNome(e.target.value)}
+                style={{ flex: 1, minWidth: 140, padding: '3px 8px', fontSize: 12 }}
+              />
+              <select
+                aria-label="Cor da nova tag"
+                value={novaTagCor}
+                onChange={(e) => setNovaTagCor(e.target.value)}
+                style={{ padding: '3px', fontSize: 12 }}
+              >
+                {CORES_ETIQUETA.map((c) => (
+                  <option key={c} value={c} style={{ background: c, color: '#fff' }}>
+                    Cor
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="primario pequeno"
+                disabled={!novaTagNome.trim()}
+                onClick={async () => {
+                  if (!crm || !novaTagNome.trim()) return;
+                  setErroTag(null);
+                  const res = await crm.fazer((r) => r.criarEtiqueta(novaTagNome.trim(), novaTagCor));
+                  if ('erro' in res) {
+                    setErroTag(res.erro);
+                  } else {
+                    setNovaTagNome('');
+                    setCriandoTag(false);
+                    setTagsSelecionadas((atuais) => [...atuais, res.etiqueta.nome]);
+                  }
+                }}
+              >
+                Salvar tag
+              </button>
+              {erroTag && <p className="erro" style={{ width: '100%', margin: '4px 0 0 0', fontSize: 11 }}>{erroTag}</p>}
+            </div>
+          )}
+
+          {catalogoTags.length === 0 ? (
+            <p className="ajuda" style={{ fontSize: 12, margin: '4px 0' }}>
+              Nenhuma tag cadastrada ainda. Clique em <b>+ Nova tag</b> acima para criar.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              {catalogoTags.map((t) => {
+                const ativa = tagsSelecionadas.includes(t.nome);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      if (ativa) setTagsSelecionadas(tagsSelecionadas.filter((x) => x !== t.nome));
+                      else setTagsSelecionadas([...tagsSelecionadas, t.nome]);
+                    }}
+                    style={{
+                      background: ativa ? t.cor : '#f1f5f9',
+                      color: ativa ? '#fff' : '#334155',
+                      border: ativa ? `1px solid ${t.cor}` : '1px solid #cbd5e1',
+                      borderRadius: 14,
+                      padding: '2px 9px',
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    <span>{t.nome}</span>
+                    <span style={{ opacity: 0.8, fontSize: 10 }}>({t.contagem})</span>
+                    {ativa && <span>✓</span>}
+                  </button>
+                );
+              })}
+              {tagsSelecionadas.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTagsSelecionadas([])}
+                  style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  Limpar filtro de tags
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         <p className="info">
           {incluidos.length} entram · {revisar.length} para revisar · {excluidos.length} fora
         </p>
@@ -249,6 +411,30 @@ export function Previa({ db, dados, aoAprovar }: Props) {
                       #{idx + 1}
                     </span>
                     <b>{i.nome}</b>
+                    {tagsExibicaoPorChave.get(i.chave)?.map((t) => (
+                      <span key={t.nome} style={{ fontSize: 10, background: t.cor, color: '#fff', padding: '1px 6px', borderRadius: 8, fontWeight: 600 }}>
+                        {t.nome}
+                      </span>
+                    ))}
+                    {crm && (
+                      <select
+                        aria-label={`Tag para ${i.nome}`}
+                        value=""
+                        onChange={async (e) => {
+                          const etqId = e.target.value;
+                          if (!etqId) return;
+                          await crm.fazer((r) => r.alternarEtiqueta({ nome: i.nome }, etqId));
+                        }}
+                        style={{ fontSize: 10, padding: '1px 4px', borderRadius: 4, border: '1px solid var(--borda)', background: '#fff', cursor: 'pointer', color: 'var(--suave)' }}
+                      >
+                        <option value="">+ tag</option>
+                        {catalogoTags.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {tagsExibicaoPorChave.get(i.chave)?.some((x) => x.nome === t.nome) ? `✓ ${t.nome}` : t.nome}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     {contatoPorChave.get(i.chave)?.ultimaConversa && (
                       <span style={{ fontSize: 11, background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
                         {formatarDataBr(contatoPorChave.get(i.chave)!.ultimaConversa)}

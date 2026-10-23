@@ -101,6 +101,7 @@ export function App() {
           <Previa
             db={db}
             dados={dados}
+            crm={crm}
             aoAprovar={async (id) => {
               await recarregar();
               setCampanhaAtiva(id);
@@ -110,7 +111,7 @@ export function App() {
         )}
         {/* Sempre montada: trocar de aba não pode interromper uma campanha em andamento. */}
         <div hidden={aba !== 'execucao'}>
-          <Execucao db={db} dados={dados} campanhaId={campanhaAtiva} aoEscolher={setCampanhaAtiva} aoMudar={recarregar} />
+          <Execucao db={db} dados={dados} crm={crm} campanhaId={campanhaAtiva} aoEscolher={setCampanhaAtiva} aoMudar={recarregar} />
         </div>
         {aba === 'dados' && <Dados db={db} dados={dados} aoMudar={recarregar} crm={crm} />}
       </main>

@@ -56,6 +56,8 @@ const filtrosSchema = z.object({
   ultimaConversaAntesDe: dataOuNulo,
   ultimaConversaDepoisDe: dataOuNulo,
   excluirContatadosHaDias: z.number(),
+  incluirSemConversa: z.boolean().optional(),
+  tags: z.array(z.string()).optional(),
 });
 
 const itemSchema = z.object({
