@@ -81,22 +81,23 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
     return () => clearInterval(t);
   }, [estado?.fase]);
 
-  if (campanhas.length === 0 || !executor || !estado) {
+  const c = estado?.campanha ?? null;
+  const itensExibidos = useMemo(() => {
+    if (!c) return [];
+    if (filtroLista === 'todos') return c.itens;
+    return c.itens.filter((i) => i.status === filtroLista);
+  }, [c, filtroLista]);
+
+  if (campanhas.length === 0 || !executor || !estado || !c) {
     return <p className="ajuda">Nenhuma campanha aprovada ainda (aba 2).</p>;
   }
 
-  const c = estado.campanha;
   const r = resumo(c);
   const rodando = estado.fase !== 'parada' && estado.fase !== 'concluida';
   const horario = dentroDoHorario(new Date());
   const faltaSeg = estado.liberaEm ? Math.max(0, Math.ceil((estado.liberaEm - agora) / 1000)) : null;
   const item = estado.itemAtual;
   const podeAgir = estado.fase === 'aguardando_envio' && item != null;
-
-  const itensExibidos = useMemo(() => {
-    if (filtroLista === 'todos') return c.itens;
-    return c.itens.filter((i) => i.status === filtroLista);
-  }, [c.itens, filtroLista]);
 
   return (
     <section>
