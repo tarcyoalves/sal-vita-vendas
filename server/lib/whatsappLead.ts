@@ -1,9 +1,21 @@
 // Busca de lead para a extensão Vita Zap (WhatsApp Web): regras puras (sem banco), testáveis.
 import { z } from 'zod';
 import { normalizeBrPhone } from '../../shared/phone';
+import { searchTerms } from '../../shared/searchText';
 
 export const FIND_WHATSAPP_LIMITE = 20;
 export const FIND_WHATSAPP_NOTAS_MAX = 500;
+
+export const STOP_WORDS_BUSCA = new Set([
+  'de', 'da', 'do', 'em', 'no', 'na', 'ao', 'os', 'as', 'um', 'se', 'com', 'por', 'para', 'dos', 'das',
+]);
+
+/** Extrai os termos relevantes de uma busca por frase, ignorando stop words se houver outros termos. */
+export function extrairTermosBusca(q: string, max = 6): string[] {
+  const todos = searchTerms(q, max).filter((t) => t.length >= 2);
+  const uteis = todos.filter((t) => !STOP_WORDS_BUSCA.has(t));
+  return uteis.length > 0 ? uteis : todos;
+}
 
 /** { phone?, q? }: pelo menos um preenchido; q de 2 a 100 caracteres (depois de aparar). */
 export const findForWhatsappInput = z

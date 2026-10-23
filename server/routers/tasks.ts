@@ -7,8 +7,8 @@ import { db } from '../db';
 import { tasks, sellers, users, taskDeletionLogs } from '../db/schema';
 import { runTriggerNow, cancelAllEnrollments } from '../email/automations';
 import { normalizeBrPhone, phoneOfTask } from '../../shared/phone';
-import { searchTerms, SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../shared/searchText';
-import { findForWhatsappInput, FIND_WHATSAPP_LIMITE, phoneVariants, trechoDasNotas } from '../lib/whatsappLead';
+import { foldText, searchTerms, SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../shared/searchText';
+import { extrairTermosBusca, findForWhatsappInput, FIND_WHATSAPP_LIMITE, phoneVariants, trechoDasNotas } from '../lib/whatsappLead';
 import { validarDocumentoDaTarefa } from '../lib/taskDocumento';
 import { isNewContact } from '../lib/taskNotes';
 import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento, deduplicarNoArquivo, janelaLembretes } from '../lib/taskImport';
@@ -142,23 +142,61 @@ export const tasksRouter = router({
       if (variantes.length > 0) {
         conds.push(sql`regexp_replace(coalesce(${tasks.phone}, ''), '[^0-9]', '', 'g') IN (${sql.join(variantes.map((v) => sql`${v}`), sql`, `)})`);
       }
+      let score: SQL<number> | null = null;
       if (input.q) {
-        const termos = searchTerms(input.q, 4).filter((t) => t.length >= 2);
-        const dobrado = sql`lower(translate(${tasks.title}, ${SQL_ACENTOS}, ${SQL_SEM_ACENTOS}))`;
-        if (termos.length > 0) conds.push(and(...termos.map((t) => sql`position(${t} in ${dobrado}) > 0`))!);
-        const digitos = input.q.replace(/D/g, '');
-        if (digitos.length >= 4) conds.push(sql`position(${digitos} in regexp_replace(coalesce(${tasks.phone}, ''), '[^0-9]', '', 'g')) > 0`);
+        const fraseFolded = foldText(input.q).trim();
+        const termos = extrairTermosBusca(input.q, 6);
+        const titleFolded = sql`lower(translate(coalesce(${tasks.title}, ''), ${SQL_ACENTOS}, ${SQL_SEM_ACENTOS}))`;
+        const notesFolded = sql`lower(translate(coalesce(${tasks.notes}, ''), ${SQL_ACENTOS}, ${SQL_SEM_ACENTOS}))`;
+        const digitos = input.q.replace(/\D/g, '');
+
+        const qConds: SQL<unknown>[] = [];
+        if (fraseFolded.length >= 2) {
+          qConds.push(sql`position(${fraseFolded} in ${titleFolded}) > 0`);
+        }
+        for (const t of termos) {
+          qConds.push(sql`position(${t} in ${titleFolded}) > 0`);
+          qConds.push(sql`position(${t} in ${notesFolded}) > 0`);
+        }
+        if (digitos.length >= 4) {
+          qConds.push(sql`position(${digitos} in regexp_replace(coalesce(${tasks.phone}, ''), '[^0-9]', '', 'g')) > 0`);
+        }
+        if (qConds.length > 0) conds.push(or(...qConds)!);
+
+        const scoreParts: SQL<unknown>[] = [];
+        if (fraseFolded.length >= 2) {
+          scoreParts.push(sql`(CASE WHEN ${titleFolded} = ${fraseFolded} THEN 100 ELSE 0 END)`);
+          scoreParts.push(sql`(CASE WHEN position(${fraseFolded} in ${titleFolded}) > 0 THEN 50 ELSE 0 END)`);
+          scoreParts.push(sql`(CASE WHEN ${titleFolded} LIKE ${fraseFolded + '%'} THEN 25 ELSE 0 END)`);
+        }
+        if (termos.length > 1) {
+          const allInTitle = and(...termos.map((t) => sql`position(${t} in ${titleFolded}) > 0`));
+          if (allInTitle) {
+            scoreParts.push(sql`(CASE WHEN ${allInTitle} THEN 30 ELSE 0 END)`);
+          }
+        }
+        for (const t of termos) {
+          scoreParts.push(sql`(CASE WHEN position(${t} in ${titleFolded}) > 0 THEN 10 ELSE 0 END)`);
+          scoreParts.push(sql`(CASE WHEN position(${t} in ${notesFolded}) > 0 THEN 2 ELSE 0 END)`);
+        }
+        if (digitos.length >= 4) {
+          scoreParts.push(sql`(CASE WHEN position(${digitos} in regexp_replace(coalesce(${tasks.phone}, ''), '[^0-9]', '', 'g')) > 0 THEN 40 ELSE 0 END)`);
+        }
+        if (scoreParts.length > 0) {
+          score = sql<number>`(${sql.join(scoreParts, sql` + `)})`;
+        }
       }
       if (conds.length === 0) return [];
       const busca = or(...conds)!;
       // Só os leads do próprio atendente, também para o admin (extensão Vita Zap é individual).
       const where = and(await meusLeadsFilter(ctx.user.id, ctx.user.name ?? ''), busca);
+      const orderByClauses = score ? [desc(score), desc(tasks.updatedAt)] : [desc(tasks.updatedAt)];
       const rows = await db.select({
         id: tasks.id, title: tasks.title, phone: tasks.phone, tags: tasks.tags,
         reminderDate: tasks.reminderDate, reminderEnabled: tasks.reminderEnabled, status: tasks.status,
         lastContactedAt: tasks.lastContactedAt, contactCount: tasks.contactCount, convertedAt: tasks.convertedAt,
         notes: tasks.notes,
-      }).from(tasks).where(where).orderBy(desc(tasks.updatedAt)).limit(FIND_WHATSAPP_LIMITE);
+      }).from(tasks).where(where).orderBy(...orderByClauses).limit(FIND_WHATSAPP_LIMITE);
       return rows.map(({ notes, ...r }) => ({ ...r, notes: trechoDasNotas(notes) }));
     }),
 

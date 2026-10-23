@@ -96,7 +96,18 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
     if (caminho === 'tasks.findForWhatsapp') {
       const d = dados as { phone?: string; q?: string };
       const digitos = (d.phone ?? '').replace(/\D/g, '').replace(/^55/, '');
-      const achadas = crm.tasks.filter((t) => (digitos && (t.phone ?? '').replace(/\D/g, '').replace(/^55/, '') === digitos) || (d.q && t.title.toLowerCase().includes(d.q.toLowerCase())));
+      const achadas = crm.tasks.filter((t) => {
+        if (digitos && (t.phone ?? '').replace(/\D/g, '').replace(/^55/, '') === digitos) return true;
+        if (!d.q) return false;
+        const qFolded = d.q.toLowerCase().trim();
+        const tFolded = (t.title + ' ' + (t.notes ?? '')).toLowerCase();
+        if (tFolded.includes(qFolded)) return true;
+        const qTerms = qFolded.split(/\s+/).filter((w) => w.length >= 2);
+        if (qTerms.some((term) => tFolded.includes(term))) return true;
+        const qDigits = d.q.replace(/\D/g, '');
+        if (qDigits.length >= 4 && (t.phone ?? '').replace(/\D/g, '').includes(qDigits)) return true;
+        return false;
+      });
       return ok(achadas.slice(0, 20).map((t) => ({ ...t, notes: (t.notes ?? '').slice(-500) })));
     }
     if (caminho === 'tasks.getById') {

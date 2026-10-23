@@ -223,14 +223,32 @@ export function abrirVincular(ancora: HTMLElement, ctx: ContextoLead, ref: RefCo
     return;
   }
   const campo = h('input', { class: 'campo', type: 'text', maxlength: 100, placeholder: 'Nome do lead (mínimo 2 letras)', value: ref.nome, 'aria-label': 'Buscar lead' });
+  let seq = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
   const buscar = (): void => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    const q = campo.value.trim();
+    if (q.length < 2) {
+      msg.textContent = '';
+      resultados.replaceChildren();
+      pop.reposicionar();
+      return;
+    }
+    const atual = ++seq;
     msg.textContent = '';
-    void protegido(() => ctx.leads.procurarLeads(campo.value), msg).then((r) => {
-      if (!r) return;
+    void protegido(() => ctx.leads.procurarLeads(q), msg).then((r) => {
+      if (atual !== seq || !r) return;
       if (!r.ok) msg.textContent = r.erro.mensagem;
       else mostrar(r.leads);
     });
   };
+  campo.addEventListener('input', () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(buscar, 250);
+  });
   const form = h('form', { class: 'linha2' }, campo, h('button', { class: 'btn pri', type: 'submit' }, 'Buscar'));
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -239,6 +257,9 @@ export function abrirVincular(ancora: HTMLElement, ctx: ContextoLead, ref: RefCo
   pop.corpo.append(h('div', { class: 'dica' }, 'Procura entre os leads que você pode ver no CRM.'), form, resultados, msg);
   pop.reposicionar();
   campo.focus();
+  if (campo.value.trim().length >= 2) {
+    buscar();
+  }
 }
 
 export function abrirCriarLead(ancora: HTMLElement, ctx: ContextoLead, ref: RefContato): void {

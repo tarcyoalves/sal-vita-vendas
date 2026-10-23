@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { csrfRejection } from '../server/lib/csrfGuard';
-import { findForWhatsappInput, phoneVariants, trechoDasNotas } from '../server/lib/whatsappLead';
+import { extrairTermosBusca, findForWhatsappInput, phoneVariants, trechoDasNotas } from '../server/lib/whatsappLead';
 import { EXTENSAO_VITA_ZAP_ID, EXTENSAO_VITA_ZAP_ORIGIN, origensDeExtensao } from '../shared/extensao';
 
 const PROD = ['https://lembretes.salvitarn.com.br', ...origensDeExtensao(undefined)];
@@ -90,5 +90,14 @@ describe('tasks.findForWhatsapp: telefone e notas', () => {
     expect(corpo).toContain('meusLeadsFilter(ctx.user.id');
     expect(corpo).toContain('.limit(FIND_WHATSAPP_LIMITE)');
     for (const proibido of ['email', 'cnpj', 'assignedTo', 'orderValue']) expect(corpo).not.toContain(`${proibido}: tasks.`);
+  });
+});
+
+describe('tasks.findForWhatsapp: busca flexível por frase', () => {
+  it('extrai termos relevantes e ignora stop words quando houver outros termos', () => {
+    expect(extrairTermosBusca('Guilherme Cliente Gtex')).toEqual(['guilherme', 'cliente', 'gtex']);
+    expect(extrairTermosBusca('Padaria do Zé')).toEqual(['padaria', 'ze']);
+    expect(extrairTermosBusca('do')).toEqual(['do']);
+    expect(extrairTermosBusca('')).toEqual([]);
   });
 });
