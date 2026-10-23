@@ -16,6 +16,7 @@ export interface Filtros {
   ultimaConversaDepoisDe: DataIso | null;
   /** Excluir quem recebeu campanha há menos de N dias (nunca menos que DIAS_SEM_REPETIR). */
   excluirContatadosHaDias: number;
+  incluirSemConversa?: boolean;
 }
 
 export const FILTROS_PADRAO: Filtros = {
@@ -24,6 +25,7 @@ export const FILTROS_PADRAO: Filtros = {
   ultimaConversaAntesDe: null,
   ultimaConversaDepoisDe: null,
   excluirContatadosHaDias: DIAS_SEM_REPETIR,
+  incluirSemConversa: false,
 };
 
 export interface ContextoFiltro {
@@ -52,7 +54,7 @@ export function avaliarContato(c: ContatoVarrido, filtros: Filtros, ctx: Context
   if (ctx.naoEnviar.has(c.chave)) return { situacao: 'excluido', motivo: 'marcado "Não enviar mais"' };
   if (c.soNumero) return { situacao: 'excluido', motivo: 'não salvo na agenda (aparece só o número)' };
   if (c.pareceGrupo) return { situacao: 'excluido', motivo: 'grupo ou lista de transmissão' };
-  if (!c.temConversa) return { situacao: 'excluido', motivo: 'sem conversa anterior' };
+  if (!filtros.incluirSemConversa && !c.temConversa) return { situacao: 'excluido', motivo: 'sem conversa anterior' };
 
   for (const termo of filtros.contem) {
     if (!nome.includes(normalizarTexto(termo))) return { situacao: 'excluido', motivo: `nome não contém "${termo}"` };

@@ -93,18 +93,34 @@ export function Varredura({ db, dados, aoMudar, aoContinuar }: Props) {
 
       {resumo.total > 0 && (
         <div className="cartao">
-          <h3>Última varredura{varridoEm ? ` · ${varridoEm}` : ''}</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <h3 style={{ margin: 0 }}>💾 Contatos na memória ({resumo.total})</h3>
+            <button
+              type="button"
+              className="pequeno"
+              style={{ fontSize: 11, color: '#dc2626' }}
+              onClick={async () => {
+                if (window.confirm(`Deseja apagar os ${resumo.total} contatos salvos da memória?`)) {
+                  await limparContatos(db);
+                  await aoMudar();
+                }
+              }}
+            >
+              Limpar lista
+            </button>
+          </div>
+          <p className="ajuda" style={{ margin: '0 0 8px 0', fontSize: 12 }}>
+            {varridoEm ? `Gravados em ${varridoEm}. ` : ''}Ficam salvos aqui para envio geral: você não precisa varrer a cada envio nem no mesmo dia.
+          </p>
           <ul className="numeros">
-            <li><b>{resumo.total}</b> nomes</li>
-            <li><b>{resumo.comData}</b> com data lida</li>
-            <li><b>{resumo.revisar}</b> data incerta (revisar)</li>
-            <li><b>{resumo.soNumero}</b> só número (fora)</li>
-            <li><b>{resumo.grupos}</b> grupos (fora)</li>
-            <li><b>{resumo.semConversa}</b> sem conversa (fora)</li>
-            <li><b>{resumo.duplicados}</b> nome repetido (revisar)</li>
+            <li><b>{resumo.total}</b> salvos</li>
+            <li><b>{resumo.comData}</b> com conversa</li>
+            <li><b>{resumo.semConversa}</b> sem conversa anterior</li>
+            {resumo.soNumero > 0 && <li><b>{resumo.soNumero}</b> só número (fora)</li>}
+            {resumo.grupos > 0 && <li><b>{resumo.grupos}</b> grupos (fora)</li>}
           </ul>
-          <button type="button" onClick={aoContinuar}>
-            Montar campanha →
+          <button type="button" className="primario" onClick={aoContinuar} style={{ marginTop: 10 }}>
+            Montar campanha geral ({resumo.total} contatos) →
           </button>
         </div>
       )}

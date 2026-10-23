@@ -20,7 +20,8 @@ const TEXTO_EXEMPLO = `Boa tarde, ${MARCADOR_PRIMEIRO_NOME}, tudo bem? Como est�
 export function Previa({ db, dados, aoAprovar }: Props) {
   const hojeBr = new Date().toLocaleDateString('pt-BR');
   const [nome, setNome] = useState(`Campanha ${hojeBr}`);
-  const [contem, setContem] = useState(() => lerPreferencia('termo', 'CLIENTE'));
+  const [contem, setContem] = useState('');
+  const [incluirSemConversa, setIncluirSemConversa] = useState(true);
   const [naoContem, setNaoContem] = useState('');
   const [antesDe, setAntesDe] = useState('');
   const [depoisDe, setDepoisDe] = useState('');
@@ -39,8 +40,9 @@ export function Previa({ db, dados, aoAprovar }: Props) {
       ultimaConversaAntesDe: lerDataIso(antesDe),
       ultimaConversaDepoisDe: lerDataIso(depoisDe),
       excluirContatadosHaDias: Math.max(DIAS_SEM_REPETIR, dias),
+      incluirSemConversa,
     }),
-    [contem, naoContem, antesDe, depoisDe, dias],
+    [contem, naoContem, antesDe, depoisDe, dias, incluirSemConversa],
   );
 
   const avaliados = useMemo(
@@ -135,9 +137,18 @@ export function Previa({ db, dados, aoAprovar }: Props) {
           Nome NÃO contém
           <input value={naoContem} onChange={(e) => setNaoContem(e.target.value)} placeholder="ex.: FORNECEDOR" />
         </label>
+        <label className="check" style={{ margin: '8px 0', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
+          <input
+            type="checkbox"
+            checked={incluirSemConversa}
+            onChange={(e) => setIncluirSemConversa(e.target.checked)}
+          />
+          <span>Incluir contatos salvos mesmo sem conversa anterior (disparo geral)</span>
+        </label>
+
         <div className="linha2">
           <label>
-            Última conversa antes de
+            Última conversa antes de (opcional)
             <input type="date" value={antesDe} onChange={(e) => setAntesDe(e.target.value)} />
           </label>
           <label>
