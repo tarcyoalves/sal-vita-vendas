@@ -55,6 +55,7 @@ export function Previa({ db, dados, aoAprovar }: Props) {
     [dados, filtros],
   );
   const motivoPorChave = useMemo(() => new Map(avaliados.map((a) => [a.contato.chave, a.decisao.motivo])), [avaliados]);
+  const contatoPorChave = useMemo(() => new Map(dados.contatos.map((c) => [c.chave, c])), [dados.contatos]);
 
   const { modelos, erros: errosTexto } = validarModelos(base, variacoes);
   const assinatura = JSON.stringify({ filtros, modelos });
@@ -152,16 +153,16 @@ export function Previa({ db, dados, aoAprovar }: Props) {
             checked={incluirSemConversa}
             onChange={(e) => setIncluirSemConversa(e.target.checked)}
           />
-          <span>Incluir contatos salvos mesmo sem conversa anterior (disparo geral)</span>
+          <span>Incluir contatos salvos da agenda (mesmo se a busca do WhatsApp não exibir a data da conversa)</span>
         </label>
 
         <div className="linha2">
           <label>
-            Última conversa antes de (opcional)
+            Última conversa até o dia (inclusive)
             <input type="date" value={antesDe} onChange={(e) => setAntesDe(e.target.value)} />
           </label>
           <label>
-            Última conversa depois de
+            Última conversa a partir de (inclusive)
             <input type="date" value={depoisDe} onChange={(e) => setDepoisDe(e.target.value)} />
           </label>
         </div>
@@ -243,7 +244,14 @@ export function Previa({ db, dados, aoAprovar }: Props) {
             {itens.map((i) => (
               <li key={i.chave}>
                 <div className="lista-topo">
-                  <b>{i.nome}</b>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <b>{i.nome}</b>
+                    {contatoPorChave.get(i.chave)?.ultimaConversa && (
+                      <span style={{ fontSize: 11, background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
+                        {formatarDataBr(contatoPorChave.get(i.chave)!.ultimaConversa)}
+                      </span>
+                    )}
+                  </div>
                   <button type="button" className="pequeno" onClick={() => setItens(itens.filter((x) => x.chave !== i.chave))}>
                     Remover
                   </button>

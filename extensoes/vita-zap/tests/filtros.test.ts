@@ -103,13 +103,15 @@ describe('filtros', () => {
     expect(avaliarContato(contato('CLIENTE e FORNECEDOR'), f, ctxVazio).motivo).toMatch(/contém "fornecedor"/);
   });
 
-  it('última conversa antes de / depois de (estritos)', () => {
+  it('última conversa antes de / depois de (inclusive)', () => {
     const antes = filtros({ ultimaConversaAntesDe: '2026-09-17' });
     expect(avaliarContato(contato('A', { ultimaConversa: '2026-09-16' }), antes, ctxVazio).situacao).toBe('incluido');
-    expect(avaliarContato(contato('A', { ultimaConversa: '2026-09-17' }), antes, ctxVazio).situacao).toBe('excluido');
+    expect(avaliarContato(contato('A', { ultimaConversa: '2026-09-17' }), antes, ctxVazio).situacao).toBe('incluido');
+    expect(avaliarContato(contato('A', { ultimaConversa: '2026-09-18' }), antes, ctxVazio).situacao).toBe('excluido');
     const depois = filtros({ ultimaConversaDepoisDe: '2026-09-01' });
     expect(avaliarContato(contato('A', { ultimaConversa: '2026-09-02' }), depois, ctxVazio).situacao).toBe('incluido');
-    expect(avaliarContato(contato('A', { ultimaConversa: '2026-09-01' }), depois, ctxVazio).situacao).toBe('excluido');
+    expect(avaliarContato(contato('A', { ultimaConversa: '2026-09-01' }), depois, ctxVazio).situacao).toBe('incluido');
+    expect(avaliarContato(contato('A', { ultimaConversa: '2026-08-31' }), depois, ctxVazio).situacao).toBe('excluido');
   });
 
   it('data incerta com filtro de data → revisar, nunca incluído', () => {
@@ -157,6 +159,21 @@ describe('filtros', () => {
       ctxVazio,
     );
     expect(r.map((x) => x.decisao.situacao)).toEqual(['incluido', 'revisar', 'excluido']);
+  });
+
+  it('aplicarFiltros ordena por data decrescente e desempata por nome', () => {
+    const r = aplicarFiltros(
+      [
+        contato('Helton', { ultimaConversa: '2026-08-25' }),
+        contato('Logans', { ultimaConversa: '2026-08-17' }),
+        contato('Carlos', { ultimaConversa: '2026-09-10' }),
+        contato('Andre', { ultimaConversa: '2026-09-10' }),
+        contato('Sem Data', { ultimaConversa: null, temConversa: true }),
+      ],
+      filtros({ incluirSemConversa: true }),
+      ctxVazio,
+    );
+    expect(r.map((x) => x.contato.nome)).toEqual(['Andre', 'Carlos', 'Helton', 'Logans', 'Sem Data']);
   });
 
   it('último envio por chave pega o mais recente', () => {

@@ -10,9 +10,9 @@ export interface Filtros {
   contem: string[];
   /** Nome não pode conter NENHUM destes. */
   naoContem: string[];
-  /** Última conversa estritamente antes desta data. */
+  /** Última conversa nesta data ou antes (inclusive). */
   ultimaConversaAntesDe: DataIso | null;
-  /** Última conversa estritamente depois desta data. */
+  /** Última conversa nesta data ou depois (inclusive). */
   ultimaConversaDepoisDe: DataIso | null;
   /** Excluir quem recebeu campanha há menos de N dias (nunca menos que DIAS_SEM_REPETIR). */
   excluirContatadosHaDias: number;
@@ -87,18 +87,20 @@ export function avaliarContato(c: ContatoVarrido, filtros: Filtros, ctx: Context
       }
       return { situacao: 'revisar', motivo: `data da última conversa incerta (${c.revisarData ?? 'sem data'})` };
     }
-    if (filtros.ultimaConversaAntesDe && !(diferencaDias(c.ultimaConversa, filtros.ultimaConversaAntesDe) < 0)) {
+    if (filtros.ultimaConversaAntesDe && !(diferencaDias(c.ultimaConversa, filtros.ultimaConversaAntesDe) <= 0)) {
       return {
         situacao: 'excluido',
-        motivo: `última conversa ${formatarDataBr(c.ultimaConversa)} não é antes de ${formatarDataBr(filtros.ultimaConversaAntesDe)}`,
+        motivo: `última conversa ${formatarDataBr(c.ultimaConversa)} é posterior a ${formatarDataBr(filtros.ultimaConversaAntesDe)}`,
       };
     }
-    if (filtros.ultimaConversaDepoisDe && !(diferencaDias(c.ultimaConversa, filtros.ultimaConversaDepoisDe) > 0)) {
+    if (filtros.ultimaConversaDepoisDe && !(diferencaDias(c.ultimaConversa, filtros.ultimaConversaDepoisDe) >= 0)) {
       return {
         situacao: 'excluido',
-        motivo: `última conversa ${formatarDataBr(c.ultimaConversa)} não é depois de ${formatarDataBr(filtros.ultimaConversaDepoisDe)}`,
+        motivo: `última conversa ${formatarDataBr(c.ultimaConversa)} é anterior a ${formatarDataBr(filtros.ultimaConversaDepoisDe)}`,
       };
     }
+    partes.push(`última conversa ${formatarDataBr(c.ultimaConversa)}`);
+  } else if (c.ultimaConversa) {
     partes.push(`última conversa ${formatarDataBr(c.ultimaConversa)}`);
   }
 
@@ -114,7 +116,23 @@ export function aplicarFiltros(contatos: ContatoVarrido[], filtros: Filtros, ctx
   const ordem: Record<Situacao, number> = { incluido: 0, revisar: 1, excluido: 2 };
   return contatos
     .map((contato) => ({ contato, decisao: avaliarContato(contato, filtros, ctx) }))
-    .sort((a, b) => ordem[a.decisao.situacao] - ordem[b.decisao.situacao] || a.contato.nome.localeCompare(b.contato.nome, 'pt-BR'));
+    .sort((a, b) => {
+      // 1. Agrupamento por situação: incluídos primeiro, depois revisar, depois excluídos
+      const diffSituacao = ordem[a.decisao.situacao] - ordem[b.decisao.situacao];
+      if (diffSituacao !== 0) return diffSituacao;
+
+      // 2. Ordem por data da última conversa decrescente (mais recente primeiro: 10/09, 09/09, 08/09, etc.)
+      const dataA = a.contato.ultimaConversa ?? '';
+      const dataB = b.contato.ultimaConversa ?? '';
+      if (dataA && dataB && dataA !== dataB) {
+        return dataB.localeCompare(dataA);
+      }
+      if (dataA && !dataB) return -1;
+      if (!dataA && dataB) return 1;
+
+      // 3. Desempate por nome alfabético
+      return a.contato.nome.localeCompare(b.contato.nome, 'pt-BR');
+    });
 }
 
 /** Mapa chave → último envio (ISO), a partir do histórico de envios. */
