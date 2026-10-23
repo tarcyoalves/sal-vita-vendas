@@ -1,5 +1,7 @@
-// Preferências de interface (último termo, rascunho de texto). Só conveniência: se o
+// Preferências de interface (último termo, rascunho de texto, rotinas). Só conveniência: se o
 // localStorage falhar, o painel funciona igual. Dados de campanha ficam no IndexedDB.
+
+import { mesclarComPadrao, ROTINAS_PADRAO, type Rotina } from '../shared/rotinas';
 
 const PREFIXO = 'vitaZap:';
 
@@ -17,4 +19,19 @@ export function salvarPreferencia(chave: string, valor: string): void {
   } catch {
     /* sem armazenamento: ignora */
   }
+}
+
+export function carregarRotinasSalvas(): Rotina[] {
+  const raw = lerPreferencia('rotinas', '');
+  if (!raw) return [...ROTINAS_PADRAO];
+  try {
+    const parsed = JSON.parse(raw) as Rotina[];
+    return mesclarComPadrao(parsed);
+  } catch {
+    return [...ROTINAS_PADRAO];
+  }
+}
+
+export function salvarRotinas(rotinas: Rotina[]): void {
+  salvarPreferencia('rotinas', JSON.stringify(rotinas));
 }

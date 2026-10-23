@@ -211,4 +211,36 @@ describe('filtros', () => {
     // Sem filtro de tags -> todos entram
     expect(avaliarContato(c3, filtros({ tags: [] }), ctxComTags).situacao).toBe('incluido');
   });
+
+  it('filtra por fase do funil do CRM', () => {
+    const c1 = contato('Cliente Orçamento');
+    const c2 = contato('Cliente Negociando');
+    const c3 = contato('Cliente Sem Fase');
+    const faseMap = new Map([
+      [c1.chave, 'orcamento' as const],
+      [c2.chave, 'negociando' as const],
+    ]);
+    const ctxComFases = { ...ctxVazio, fasePorChave: faseMap };
+
+    const fOrcamento = filtros({ fases: ['orcamento'] });
+    expect(avaliarContato(c1, fOrcamento, ctxComFases).situacao).toBe('incluido');
+    expect(avaliarContato(c2, fOrcamento, ctxComFases).situacao).toBe('excluido');
+    expect(avaliarContato(c3, fOrcamento, ctxComFases).situacao).toBe('excluido');
+    expect(avaliarContato(c2, fOrcamento, ctxComFases).motivo).toMatch(/fase do CRM não é/);
+  });
+
+  it('filtra por aguardando resposta', () => {
+    const c1 = contato('Cliente Que Nao Respondeu');
+    const c2 = contato('Cliente Que Ja Respondeu');
+    const aguardandoMap = new Map([
+      [c1.chave, true],
+      [c2.chave, false],
+    ]);
+    const ctxAguardando = { ...ctxVazio, aguardandoPorChave: aguardandoMap };
+
+    const fAguardando = filtros({ aguardandoResposta: true });
+    expect(avaliarContato(c1, fAguardando, ctxAguardando).situacao).toBe('incluido');
+    expect(avaliarContato(c2, fAguardando, ctxAguardando).situacao).toBe('excluido');
+    expect(avaliarContato(c2, fAguardando, ctxAguardando).motivo).toMatch(/não está aguardando resposta/);
+  });
 });

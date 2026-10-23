@@ -2,15 +2,17 @@ import { useMemo, useState } from 'react';
 import { salvarCampanha, type Banco } from '../shared/banco';
 import { type Campanha, criarItens, type ItemCampanha, novoId, textoDoItem, validarParaAprovar } from '../shared/campanha';
 import { DIAS_SEM_REPETIR, MARCADOR_PRIMEIRO_NOME, MAX_VARIACOES } from '../shared/constantes';
-import { formatarDataBr, lerDataIso } from '../shared/datas';
+import { formatarDataBr, lerDataIso, hojeNoFuso, somarDias, diferencaDias } from '../shared/datas';
 import { aplicarFiltros, type Filtros, ultimoEnvioPorChave } from '../shared/filtros';
 import { separarTermos } from '../shared/nomes';
 import { validarModelos } from '../shared/texto';
 import type { DadosLocais } from './App';
-import { lerPreferencia, salvarPreferencia } from './preferencias';
+import { carregarRotinasSalvas, lerPreferencia, salvarPreferencia, salvarRotinas } from './preferencias';
 import type { CrmPainel } from './crm';
 import { acharContato } from '../shared/crm-contatos';
-import { CORES_ETIQUETA } from '../shared/crm-tipos';
+import { CORES_ETIQUETA, FASES, type Fase } from '../shared/crm-tipos';
+import { chaveDaConversa } from '../shared/crm-regras';
+import { novaRotina, type Rotina } from '../shared/rotinas';
 import { normalizarTexto } from '../shared/nomes';
 
 interface Props {
@@ -42,11 +44,26 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
   const [novaTagNome, setNovaTagNome] = useState('');
   const [novaTagCor, setNovaTagCor] = useState<string>(CORES_ETIQUETA[0]);
   const [erroTag, setErroTag] = useState<string | null>(null);
+  const [fasesSelecionadas, setFasesSelecionadas] = useState<Fase[]>([]);
+  const [aguardandoResposta, setAguardandoResposta] = useState(false);
+  const [rotinas, setRotinas] = useState<Rotina[]>(() => carregarRotinasSalvas());
+  const [rotinaAtivaId, setRotinaAtivaId] = useState<string | null>(null);
+  const [modalCriarRotina, setModalCriarRotina] = useState(false);
 
-  const { tagsPorChave, tagsExibicaoPorChave, catalogoTags } = useMemo(() => {
+  const [novaRotinaNome, setNovaRotinaNome] = useState('');
+  const [novaRotinaDesc, setNovaRotinaDesc] = useState('');
+  const [novaRotinaIcone, setNovaRotinaIcone] = useState('⚡');
+  const [novaRotinaDias, setNovaRotinaDias] = useState<number | ''>(30);
+  const [novaRotinaAguardando, setNovaRotinaAguardando] = useState(false);
+  const [novaRotinaTextoBase, setNovaRotinaTextoBase] = useState(base);
+  const [erroNovaRotina, setErroNovaRotina] = useState<string | null>(null);
+
+  const { tagsPorChave, tagsExibicaoPorChave, catalogoTags, fasePorChave, aguardandoPorChave } = useMemo(() => {
     const mapaNorm = new Map<string, Set<string>>();
     const mapaExibicao = new Map<string, Array<{ nome: string; cor: string }>>();
     const contagemPorTag = new Map<string, number>();
+    const mapaFases = new Map<string, Fase>();
+    const mapaAguardando = new Map<string, boolean>();
 
     const etiquetasCrm = crm?.dados?.etiquetas ?? [];
     const mapaEtqPorId = new Map(etiquetasCrm.map((e) => [e.id, e]));
@@ -58,6 +75,7 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
       if (crm?.dados) {
         const crmC = acharContato(crm.dados, { nome: c.nome });
         if (crmC) {
+          if (crmC.fase) mapaFases.set(c.chave, crmC.fase);
           for (const etqId of crmC.etiquetas) {
             const etq = mapaEtqPorId.get(etqId);
             if (etq) {
@@ -65,6 +83,12 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
               setNorm.add(normalizarTexto(etq.nome));
             }
           }
+        }
+
+        const chaveConv = chaveDaConversa(c.nome);
+        const conv = crm.dados.conversas?.[chaveConv];
+        if (conv) {
+          mapaAguardando.set(c.chave, conv.ultimaDeMim === true && !conv.naoLida);
         }
       }
 
@@ -85,7 +109,13 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
       contagem: contagemPorTag.get(normalizarTexto(e.nome)) ?? 0,
     }));
 
-    return { tagsPorChave: mapaNorm, tagsExibicaoPorChave: mapaExibicao, catalogoTags: catalogo };
+    return {
+      tagsPorChave: mapaNorm,
+      tagsExibicaoPorChave: mapaExibicao,
+      catalogoTags: catalogo,
+      fasePorChave: mapaFases,
+      aguardandoPorChave: mapaAguardando,
+    };
   }, [crm?.dados, dados.contatos]);
 
   const filtros: Filtros = useMemo(
@@ -97,8 +127,10 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
       excluirContatadosHaDias: Math.max(DIAS_SEM_REPETIR, dias),
       incluirSemConversa,
       tags: tagsSelecionadas,
+      fases: fasesSelecionadas.length > 0 ? fasesSelecionadas : undefined,
+      aguardandoResposta: aguardandoResposta || undefined,
     }),
-    [contem, naoContem, antesDe, depoisDe, dias, incluirSemConversa, tagsSelecionadas],
+    [contem, naoContem, antesDe, depoisDe, dias, incluirSemConversa, tagsSelecionadas, fasesSelecionadas, aguardandoResposta],
   );
 
   const avaliados = useMemo(
@@ -108,9 +140,43 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
         naoEnviar: new Set(dados.naoEnviar.map((n) => n.chave)),
         ultimoEnvioPorChave: ultimoEnvioPorChave(dados.envios),
         tagsPorChave,
+        fasePorChave,
+        aguardandoPorChave,
       }),
-    [dados, filtros, tagsPorChave],
+    [dados, filtros, tagsPorChave, fasePorChave, aguardandoPorChave],
   );
+
+  const contagemPorRotina = useMemo(() => {
+    const res = new Map<string, number>();
+    const agora = new Date();
+    const hojeIso = hojeNoFuso(agora);
+
+    for (const r of rotinas) {
+      const antesIso = r.diasSemContato && r.diasSemContato > 0 ? somarDias(hojeIso, -r.diasSemContato) : null;
+      const f: Filtros = {
+        contem: [],
+        naoContem: [],
+        ultimaConversaAntesDe: antesIso,
+        ultimaConversaDepoisDe: null,
+        excluirContatadosHaDias: DIAS_SEM_REPETIR,
+        incluirSemConversa: !antesIso,
+        tags: r.tags,
+        fases: r.fases,
+        aguardandoResposta: r.aguardandoResposta,
+      };
+      const av = aplicarFiltros(dados.contatos, f, {
+        agora,
+        naoEnviar: new Set(dados.naoEnviar.map((n) => n.chave)),
+        ultimoEnvioPorChave: ultimoEnvioPorChave(dados.envios),
+        tagsPorChave,
+        fasePorChave,
+        aguardandoPorChave,
+      });
+      const qtd = av.filter((x) => x.decisao.situacao === 'incluido').length;
+      res.set(r.id, qtd);
+    }
+    return res;
+  }, [rotinas, dados, tagsPorChave, fasePorChave, aguardandoPorChave]);
   const motivoPorChave = useMemo(() => new Map(avaliados.map((a) => [a.contato.chave, a.decisao.motivo])), [avaliados]);
   const contatoPorChave = useMemo(() => new Map(dados.contatos.map((c) => [c.chave, c])), [dados.contatos]);
 
@@ -136,6 +202,79 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
     setErrosAprovacao([]);
     setItens(criarItens(incluidos.map((a) => a.contato), modelos, filtros.contem));
     setAssinaturaPrevia(assinatura);
+  }
+
+  function aplicarRotina(r: Rotina) {
+    setRotinaAtivaId(r.id);
+    setNome(`${r.nome} - ${hojeBr}`);
+
+    let antesIso = '';
+    let incSemConv = true;
+    if (r.diasSemContato && r.diasSemContato > 0) {
+      antesIso = somarDias(hojeNoFuso(new Date()), -r.diasSemContato);
+      setAntesDe(antesIso);
+      setDepoisDe('');
+      incSemConv = false;
+      setIncluirSemConversa(false);
+    } else {
+      setAntesDe('');
+      setDepoisDe('');
+      incSemConv = true;
+      setIncluirSemConversa(true);
+    }
+
+    setFasesSelecionadas(r.fases ?? []);
+    setTagsSelecionadas(r.tags ?? []);
+    setAguardandoResposta(r.aguardandoResposta ?? false);
+
+    setBase(r.textoBase);
+    salvarPreferencia('textoBase', r.textoBase);
+    const novasVar = Array.from({ length: MAX_VARIACOES }, (_, i) => r.variacoes[i] ?? '');
+    setVariacoes(novasVar);
+
+    setContem('');
+    setNaoContem('');
+
+    const filtrosRotina: Filtros = {
+      contem: [],
+      naoContem: [],
+      ultimaConversaAntesDe: antesIso ? antesIso : null,
+      ultimaConversaDepoisDe: null,
+      excluirContatadosHaDias: DIAS_SEM_REPETIR,
+      incluirSemConversa: incSemConv,
+      tags: r.tags,
+      fases: r.fases,
+      aguardandoResposta: r.aguardandoResposta,
+    };
+    const { modelos: mods } = validarModelos(r.textoBase, novasVar);
+    const av = aplicarFiltros(dados.contatos, filtrosRotina, {
+      agora: new Date(),
+      naoEnviar: new Set(dados.naoEnviar.map((n) => n.chave)),
+      ultimoEnvioPorChave: ultimoEnvioPorChave(dados.envios),
+      tagsPorChave,
+      fasePorChave,
+      aguardandoPorChave,
+    });
+    const contatosInc = av.filter((x) => x.decisao.situacao === 'incluido').map((x) => x.contato);
+    setItens(criarItens(contatosInc, mods, []));
+    setAssinaturaPrevia(JSON.stringify({ filtros: filtrosRotina, modelos: mods }));
+    setErrosAprovacao([]);
+  }
+
+  function desativarRotina() {
+    setRotinaAtivaId(null);
+    setAntesDe('');
+    setDepoisDe('');
+    setFasesSelecionadas([]);
+    setAguardandoResposta(false);
+    setItens(null);
+  }
+
+  function removerRotinaCustom(id: string) {
+    const atualizadas = rotinas.filter((r) => r.id !== id);
+    salvarRotinas(atualizadas);
+    setRotinas(atualizadas);
+    if (rotinaAtivaId === id) setRotinaAtivaId(null);
   }
 
   function incluirManual(chave: string) {
@@ -194,6 +333,250 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
 
   return (
     <section>
+      <div className="cartao" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <h3 style={{ margin: 0, color: '#166534', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+            <span>⚡ Rotinas Rápidas</span>
+            <span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: 10, fontWeight: 600 }}>1 clique</span>
+          </h3>
+          <button
+            type="button"
+            className="pequeno"
+            onClick={() => setModalCriarRotina(!modalCriarRotina)}
+            style={{ fontSize: 11, padding: '2px 8px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}
+          >
+            {modalCriarRotina ? 'Fechar' : '+ Nova Rotina'}
+          </button>
+        </div>
+        <p style={{ margin: '0 0 10px 0', fontSize: 12, color: '#15803d' }}>
+          Execute rotinas automáticas de vendas com filtros e mensagens prontas:
+        </p>
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {rotinas.map((r) => {
+            const qtd = contagemPorRotina.get(r.id) ?? 0;
+            const ativa = rotinaAtivaId === r.id;
+            return (
+              <div
+                key={r.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: ativa ? '#166534' : '#fff',
+                  color: ativa ? '#fff' : '#166534',
+                  border: `1px solid ${ativa ? '#166534' : '#86efac'}`,
+                  borderRadius: 6,
+                  overflow: 'hidden',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => aplicarRotina(r)}
+                  title={r.descricao}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 10px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span>{r.icone}</span>
+                  <span>{r.nome}</span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      background: ativa ? '#15803d' : '#dcfce7',
+                      color: ativa ? '#fff' : '#166534',
+                      padding: '1px 6px',
+                      borderRadius: 10,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {qtd}
+                  </span>
+                </button>
+                {!r.padrao && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removerRotinaCustom(r.id);
+                    }}
+                    title="Excluir rotina"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: ativa ? '#fff' : '#991b1b',
+                      padding: '4px 8px',
+                      cursor: 'pointer',
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {rotinaAtivaId && (
+          <div style={{ marginTop: 10, padding: '8px 10px', background: '#fff', border: '1px solid #86efac', borderRadius: 6, fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <span style={{ fontWeight: 700, color: '#166534' }}>
+                {rotinas.find((x) => x.id === rotinaAtivaId)?.icone} {rotinas.find((x) => x.id === rotinaAtivaId)?.nome} ativa:
+              </span>{' '}
+              <span style={{ color: '#374151' }}>{rotinas.find((x) => x.id === rotinaAtivaId)?.descricao}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => desativarRotina()}
+              style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              Limpar rotina
+            </button>
+          </div>
+        )}
+      </div>
+
+      {modalCriarRotina && (
+        <div className="cartao" style={{ background: '#f8fafc', border: '2px solid #16a34a', padding: 12, marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <h4 style={{ margin: 0, color: '#166534', fontSize: 13, fontWeight: 700 }}>+ Nova Rotina de Vendas</h4>
+            <button
+              type="button"
+              className="pequeno"
+              onClick={() => {
+                setModalCriarRotina(false);
+                setErroNovaRotina(null);
+              }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15 }}
+            >
+              ✕
+            </button>
+          </div>
+
+          <label style={{ display: 'block', marginBottom: 6 }}>
+            Nome da rotina
+            <input
+              type="text"
+              placeholder="ex: Cobrança 15 dias, Reativação..."
+              value={novaRotinaNome}
+              onChange={(e) => setNovaRotinaNome(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box' }}
+            />
+          </label>
+
+          <div className="linha2" style={{ marginBottom: 6 }}>
+            <label>
+              Ícone
+              <select value={novaRotinaIcone} onChange={(e) => setNovaRotinaIcone(e.target.value)}>
+                {['⚡', '🔄', '⏳', '📦', '💬', '🎯', '💰', '⭐'].map((ic) => (
+                  <option key={ic} value={ic}>{ic}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Dias sem contato (opcional)
+              <input
+                type="number"
+                placeholder="ex: 30"
+                value={novaRotinaDias}
+                onChange={(e) => setNovaRotinaDias(e.target.value ? Number(e.target.value) : '')}
+              />
+            </label>
+          </div>
+
+          <label style={{ display: 'block', marginBottom: 6 }}>
+            Descrição rápida
+            <input
+              type="text"
+              placeholder="ex: Follow-up de cotações paradas"
+              value={novaRotinaDesc}
+              onChange={(e) => setNovaRotinaDesc(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box' }}
+            />
+          </label>
+
+          <label className="check" style={{ margin: '8px 0', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={novaRotinaAguardando}
+              onChange={(e) => setNovaRotinaAguardando(e.target.checked)}
+            />
+            <span>Apenas se estiver aguardando resposta (atendente falou por último)</span>
+          </label>
+
+          <label style={{ display: 'block', marginBottom: 6 }}>
+            Texto base da mensagem
+            <textarea
+              rows={2}
+              value={novaRotinaTextoBase}
+              onChange={(e) => setNovaRotinaTextoBase(e.target.value)}
+              placeholder={`ex: Olá, ${MARCADOR_PRIMEIRO_NOME}, tudo bem?`}
+              style={{ width: '100%', boxSizing: 'border-box' }}
+            />
+          </label>
+
+          {erroNovaRotina && <p className="erro" style={{ margin: '4px 0' }}>{erroNovaRotina}</p>}
+
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button
+              type="button"
+              className="primario pequeno"
+              onClick={() => {
+                if (!novaRotinaNome.trim()) {
+                  setErroNovaRotina('Digite o nome da rotina.');
+                  return;
+                }
+                if (!novaRotinaTextoBase.trim()) {
+                  setErroNovaRotina('Digite o texto base da mensagem.');
+                  return;
+                }
+                const criada = novaRotina({
+                  nome: novaRotinaNome.trim(),
+                  descricao: novaRotinaDesc.trim() || 'Rotina personalizada',
+                  icone: novaRotinaIcone,
+                  diasSemContato: typeof novaRotinaDias === 'number' ? novaRotinaDias : undefined,
+                  fases: fasesSelecionadas.length > 0 ? fasesSelecionadas : undefined,
+                  tags: tagsSelecionadas.length > 0 ? tagsSelecionadas : undefined,
+                  aguardandoResposta: novaRotinaAguardando || undefined,
+                  textoBase: novaRotinaTextoBase.trim(),
+                  variacoes: [],
+                });
+                const atualizadas = [criada, ...rotinas];
+                salvarRotinas(atualizadas);
+                setRotinas(atualizadas);
+                setModalCriarRotina(false);
+                setErroNovaRotina(null);
+                setNovaRotinaNome('');
+                setNovaRotinaDesc('');
+                aplicarRotina(criada);
+              }}
+            >
+              Salvar e usar rotina
+            </button>
+            <button
+              type="button"
+              className="pequeno"
+              onClick={() => {
+                setModalCriarRotina(false);
+                setErroNovaRotina(null);
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
       <div className="cartao">
         <h3>Filtros</h3>
         <label>
@@ -337,6 +720,63 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
             </div>
           )}
         </div>
+
+        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--borda)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>Fase do Funil do CRM (opcional)</span>
+            {fasesSelecionadas.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setFasesSelecionadas([])}
+                style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: 11, cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                Limpar fases
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {FASES.map((f) => {
+              const ativa = fasesSelecionadas.includes(f.id);
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => {
+                    setFasesSelecionadas((atuais) =>
+                      atuais.includes(f.id) ? atuais.filter((x) => x !== f.id) : [...atuais, f.id],
+                    );
+                  }}
+                  style={{
+                    fontSize: 11,
+                    padding: '2px 8px',
+                    borderRadius: 12,
+                    border: `1px solid ${f.cor}`,
+                    background: ativa ? f.cor : '#fff',
+                    color: ativa ? '#fff' : f.cor,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: ativa ? '#fff' : f.cor }} />
+                  <span>{f.rotulo}</span>
+                  {ativa && <span>✓</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <label className="check" style={{ margin: '10px 0 0 0', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>
+          <input
+            type="checkbox"
+            checked={aguardandoResposta}
+            onChange={(e) => setAguardandoResposta(e.target.checked)}
+          />
+          <span>Apenas quem está aguardando resposta (você falou por último)</span>
+        </label>
         <p className="info">
           {incluidos.length} entram · {revisar.length} para revisar · {excluidos.length} fora
         </p>
@@ -395,6 +835,27 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
         )}
         <button type="button" className="primario" onClick={gerarPrevia} disabled={errosTexto.length > 0 || incluidos.length === 0}>
           {itens ? 'Gerar prévia de novo (novo sorteio)' : 'Gerar prévia'}
+        </button>
+        <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            className="pequeno"
+            onClick={() => {
+              setNovaRotinaNome(`Rotina ${hojeBr}`);
+              setNovaRotinaTextoBase(base);
+              if (antesDe) {
+                const diff = diferencaDias(hojeNoFuso(new Date()), antesDe);
+                if (diff > 0) setNovaRotinaDias(diff);
+              }
+              setNovaRotinaAguardando(aguardandoResposta);
+              setModalCriarRotina(true);
+            }}
+            style={{ fontSize: 11, background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', fontWeight: 600, borderRadius: 4, padding: '4px 8px', cursor: 'pointer' }}
+          >
+            💾 Salvar estes filtros e mensagens como uma nova Rotina
+          </button>
+        </div>
+        <button type="button" style={{ display: 'none' }}>
         </button>
       </div>
 

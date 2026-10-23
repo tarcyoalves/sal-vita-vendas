@@ -58,6 +58,8 @@ const filtrosSchema = z.object({
   excluirContatadosHaDias: z.number(),
   incluirSemConversa: z.boolean().optional(),
   tags: z.array(z.string()).optional(),
+  fases: z.array(z.enum(['novo', 'orcamento', 'negociando', 'fechado', 'perdido'])).optional(),
+  aguardandoResposta: z.boolean().optional(),
 });
 
 const itemSchema = z.object({

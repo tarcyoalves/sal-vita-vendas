@@ -2,6 +2,7 @@
 
 import { DIAS_SEM_REPETIR } from './constantes';
 import type { ContatoVarrido } from './contatos';
+import { rotuloDaFase, type Fase } from './crm-tipos';
 import { diferencaDias, formatarDataBr, hojeNoFuso, type DataIso } from './datas';
 import { normalizarTexto } from './nomes';
 
@@ -19,6 +20,10 @@ export interface Filtros {
   incluirSemConversa?: boolean;
   /** Tags do CRM selecionadas: se houver alguma, o contato precisa ter ao menos UMA delas. */
   tags?: string[];
+  /** Fases do funil do CRM selecionadas: se houver alguma, o contato precisa estar em uma delas. */
+  fases?: Fase[];
+  /** Se true, filtra conversas onde o atendente falou por último (aguardando resposta). */
+  aguardandoResposta?: boolean;
 }
 
 export const FILTROS_PADRAO: Filtros = {
@@ -29,6 +34,8 @@ export const FILTROS_PADRAO: Filtros = {
   excluirContatadosHaDias: DIAS_SEM_REPETIR,
   incluirSemConversa: false,
   tags: [],
+  fases: [],
+  aguardandoResposta: false,
 };
 
 export interface ContextoFiltro {
@@ -39,6 +46,10 @@ export interface ContextoFiltro {
   ultimoEnvioPorChave: ReadonlyMap<string, string>;
   /** Mapa chave do contato → conjunto de tags do CRM (nomes normalizados). */
   tagsPorChave?: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Mapa chave do contato → fase do funil no CRM. */
+  fasePorChave?: ReadonlyMap<string, Fase>;
+  /** Mapa chave do contato → boolean indicando se está aguardando resposta do cliente. */
+  aguardandoPorChave?: ReadonlyMap<string, boolean>;
 }
 
 export type Situacao = 'incluido' | 'excluido' | 'revisar';
@@ -89,6 +100,21 @@ export function avaliarContato(c: ContatoVarrido, filtros: Filtros, ctx: Context
     }
   }
 
+  if (filtros.fases && filtros.fases.length > 0) {
+    const faseContato = ctx.fasePorChave?.get(c.chave);
+    if (!faseContato || !filtros.fases.includes(faseContato)) {
+      const rotulos = filtros.fases.map((f) => rotuloDaFase(f)).join(', ');
+      return { situacao: 'excluido', motivo: `fase do CRM não é (${rotulos})` };
+    }
+  }
+
+  if (filtros.aguardandoResposta) {
+    const estaAguardando = ctx.aguardandoPorChave?.get(c.chave);
+    if (estaAguardando === false) {
+      return { situacao: 'excluido', motivo: 'conversa não está aguardando resposta (cliente já respondeu)' };
+    }
+  }
+
   const usaData = filtros.ultimaConversaAntesDe != null || filtros.ultimaConversaDepoisDe != null;
   const partes: string[] = [];
   for (const termo of filtros.contem) partes.push(`contém "${termo}"`);
@@ -121,6 +147,15 @@ export function avaliarContato(c: ContatoVarrido, filtros: Filtros, ctx: Context
   if (tagsContato && tagsContato.size > 0 && filtros.tags && filtros.tags.length > 0) {
     const marcadas = filtros.tags.filter((t) => tagsContato.has(normalizarTexto(t)));
     if (marcadas.length > 0) partes.push(`tag: ${marcadas.join(', ')}`);
+  }
+
+  if (filtros.fases && filtros.fases.length > 0) {
+    const faseContato = ctx.fasePorChave?.get(c.chave);
+    if (faseContato) partes.push(`fase: ${rotuloDaFase(faseContato)}`);
+  }
+
+  if (filtros.aguardandoResposta) {
+    partes.push('aguardando resposta');
   }
 
   return { situacao: 'incluido', motivo: partes.length ? partes.join('; ') : 'contato salvo com conversa' };
