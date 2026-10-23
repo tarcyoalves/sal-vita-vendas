@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'node:path';
 
 export default defineConfig({
+  base: './',
   plugins: [react()],
   // A extensão é independente do CRM: não herda o postcss/tailwind da raiz do repositório.
   css: { postcss: { plugins: [] } },

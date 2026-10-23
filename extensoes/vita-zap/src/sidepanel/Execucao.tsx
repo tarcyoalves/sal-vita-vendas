@@ -244,7 +244,7 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar }: Props) 
                     <span>Primeiro nome:</span>
                     <input
                       style={{ padding: '2px 6px', fontSize: 12, width: 140 }}
-                      value={i.primeiroNome}
+                      value={i.primeiroNome ?? ''}
                       onChange={(e) => void executor.editarItem(i.chave, e.target.value)}
                     />
                   </label>

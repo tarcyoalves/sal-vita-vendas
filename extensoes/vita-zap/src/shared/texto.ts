@@ -43,7 +43,9 @@ export function usaPrimeiroNome(modelo: string): boolean {
 }
 
 export function montarMensagem(modelo: string, nome: string): string {
-  return modelo.split(MARCADOR_PRIMEIRO_NOME).join(nome.trim()).trim();
+  const m = modelo ?? '';
+  const n = (nome ?? '').trim();
+  return m.split(MARCADOR_PRIMEIRO_NOME).join(n).trim();
 }
 
 /** Sorteia um modelo. `aleatorio` injetável para teste. */

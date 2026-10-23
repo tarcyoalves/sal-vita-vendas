@@ -64,7 +64,8 @@ export function criarItens(
 }
 
 export function textoDoItem(item: ItemCampanha): string {
-  return montarMensagem(item.modelo, item.primeiroNome);
+  if (!item) return '';
+  return montarMensagem(item.modelo ?? '', item.primeiroNome ?? item.nome ?? '');
 }
 
 /** Erros que impedem aprovar (lista vazia = pode aprovar). */
