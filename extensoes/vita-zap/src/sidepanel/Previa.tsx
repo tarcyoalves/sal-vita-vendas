@@ -61,6 +61,14 @@ export function Previa({ db, dados, aoAprovar }: Props) {
   const incluidos = avaliados.filter((a) => a.decisao.situacao === 'incluido');
   const revisar = avaliados.filter((a) => a.decisao.situacao === 'revisar');
   const excluidos = avaliados.filter((a) => a.decisao.situacao === 'excluido');
+
+  const motivosExclusao = useMemo(() => {
+    const contagem = new Map<string, number>();
+    for (const a of excluidos) {
+      contagem.set(a.decisao.motivo, (contagem.get(a.decisao.motivo) ?? 0) + 1);
+    }
+    return Array.from(contagem.entries()).sort((a, b) => b[1] - a[1]);
+  }, [excluidos]);
   const naPrevia = new Set((itens ?? []).map((i) => i.chave));
 
   function gerarPrevia() {
@@ -149,6 +157,28 @@ export function Previa({ db, dados, aoAprovar }: Props) {
         <p className="info">
           {incluidos.length} entram · {revisar.length} para revisar · {excluidos.length} fora
         </p>
+        {incluidos.length === 0 && motivosExclusao.length > 0 && (
+          <div style={{ marginTop: 8, padding: '8px 10px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, color: '#991b1b' }}>
+            <strong>Por que nenhum contato entrou ({excluidos.length} fora):</strong>
+            <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+              {motivosExclusao.slice(0, 3).map(([motivo, qtd]) => (
+                <li key={motivo}><b>{qtd}</b> contato{qtd > 1 ? 's' : ''}: <i>{motivo}</i></li>
+              ))}
+            </ul>
+            {contem.trim() !== '' && motivosExclusao.some(([m]) => m.includes('não contém')) && (
+              <p style={{ margin: '6px 0 0 0', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span>👉 Seus contatos não têm "{contem}" no nome.</span>
+                <button
+                  type="button"
+                  style={{ fontSize: 11, padding: '2px 8px', cursor: 'pointer', background: '#fff', border: '1px solid #dc2626', borderRadius: 4, color: '#dc2626', fontWeight: 600 }}
+                  onClick={() => setContem('')}
+                >
+                  Limpar filtro de nome
+                </button>
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="cartao">
@@ -175,6 +205,11 @@ export function Previa({ db, dados, aoAprovar }: Props) {
           Nome da campanha
           <input value={nome} onChange={(e) => setNome(e.target.value)} />
         </label>
+        {incluidos.length === 0 && (
+          <p className="aviso" style={{ marginBottom: 8, fontSize: 12 }}>
+            O botão <b>Gerar prévia</b> só libera quando pelo menos 1 contato entra na campanha. Ajuste ou limpe os filtros acima.
+          </p>
+        )}
         <button type="button" className="primario" onClick={gerarPrevia} disabled={errosTexto.length > 0 || incluidos.length === 0}>
           {itens ? 'Gerar prévia de novo (novo sorteio)' : 'Gerar prévia'}
         </button>
@@ -237,7 +272,7 @@ export function Previa({ db, dados, aoAprovar }: Props) {
         </details>
       )}
 
-      <details className="cartao">
+      <details className="cartao" open={incluidos.length === 0}>
         <summary>Fora da campanha ({excluidos.length})</summary>
         <ul className="lista">
           {excluidos.map((a) => (
