@@ -27,12 +27,35 @@ export function posicaoDaLinha(el: HTMLElement): number | null {
 /** Primeiro "texto folha" da linha com cara de data/hora, fora do título. */
 export function rotuloDataDaLinha(el: HTMLElement, titulo: HTMLElement): string | null {
   const todos = el.querySelectorAll<HTMLElement>('*');
+
+  // 1. Nós folha diretos (mais comum e preciso)
   for (const f of todos) {
     if (f.children.length > 0) continue;
     if (titulo.contains(f) || f.contains(titulo)) continue;
     const texto = limparMarcas(f.textContent ?? '');
     if (texto && pareceRotuloData(texto)) return texto;
   }
+
+  // 2. Atributos title ou aria-label de elementos fora do título
+  for (const f of todos) {
+    if (titulo.contains(f) || f.contains(titulo)) continue;
+    const aria = limparMarcas(f.getAttribute('aria-label') ?? '');
+    if (aria && pareceRotuloData(aria)) return aria;
+    const tit = limparMarcas(f.getAttribute('title') ?? '');
+    if (tit && pareceRotuloData(tit)) return tit;
+  }
+
+  // 3. Nós de texto diretos de elementos com filhos (ex.: span com ícone/svg adjacente)
+  for (const f of todos) {
+    if (titulo.contains(f) || f.contains(titulo)) continue;
+    for (const node of f.childNodes) {
+      if (node.nodeType === 3 /* Node.TEXT_NODE */) {
+        const txt = limparMarcas(node.textContent ?? '');
+        if (txt && pareceRotuloData(txt)) return txt;
+      }
+    }
+  }
+
   return null;
 }
 

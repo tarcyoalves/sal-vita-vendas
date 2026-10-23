@@ -82,6 +82,9 @@ export function avaliarContato(c: ContatoVarrido, filtros: Filtros, ctx: Context
 
   if (usaData) {
     if (c.ultimaConversa == null) {
+      if (filtros.incluirSemConversa) {
+        return { situacao: 'incluido', motivo: 'contato salvo da agenda (data não exibida na busca do WhatsApp)' };
+      }
       return { situacao: 'revisar', motivo: `data da última conversa incerta (${c.revisarData ?? 'sem data'})` };
     }
     if (filtros.ultimaConversaAntesDe && !(diferencaDias(c.ultimaConversa, filtros.ultimaConversaAntesDe) < 0)) {

@@ -86,6 +86,15 @@ export function Previa({ db, dados, aoAprovar }: Props) {
     setItens([...itens, ...criarItens([a.contato], modelos, filtros.contem)]);
   }
 
+  function incluirTodosRevisar() {
+    if (!itens) return;
+    const novos = revisar
+      .filter((a) => !a.contato.duplicado && !naPrevia.has(a.contato.chave))
+      .map((a) => a.contato);
+    if (novos.length === 0) return;
+    setItens([...itens, ...criarItens(novos, modelos, filtros.contem)]);
+  }
+
   function atualizarItem(chave: string, mudanca: Partial<ItemCampanha>) {
     setItens((atual) => (atual ?? []).map((i) => (i.chave === chave ? { ...i, ...mudanca } : i)));
   }
@@ -261,7 +270,23 @@ export function Previa({ db, dados, aoAprovar }: Props) {
 
       {revisar.length > 0 && (
         <details className="cartao" open>
-          <summary>Revisar ({revisar.length}) — não entram sozinhos</summary>
+          <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+            <span>Revisar ({revisar.length}) — sem data na lista da busca</span>
+            {itens && (
+              <button
+                type="button"
+                className="pequeno"
+                style={{ fontSize: 11, padding: '2px 8px', fontWeight: 600, background: '#0288d1', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  incluirTodosRevisar();
+                }}
+              >
+                + Incluir todos ({revisar.length})
+              </button>
+            )}
+          </summary>
           <ul className="lista">
             {revisar.map((a) => (
               <li key={a.contato.chave}>

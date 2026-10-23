@@ -137,8 +137,14 @@ const DIAS_SEMANA: Record<string, number> = {
  */
 export function interpretarRotuloData(rotulo: string | null | undefined, agora: Date): ResultadoData {
   if (rotulo == null || rotulo.trim() === '') return { tipo: 'revisar', motivo: 'sem data na lista' };
-  const t = normalizar(rotulo);
+  let t = normalizar(rotulo);
   const hoje = hojeNoFuso(agora);
+
+  // Se tiver data + hora (ex.: "10/09/2026, 14:30", "10/09/2026 às 14:30", "ontem às 14:30"), extrai o prefixo da data
+  const comHora = /^(.+?)(?:,|\s+as|\s+at|\s+de)?\s+\d{1,2}:\d{2}(?:\s*[ap]\.?\s*m\.?)?$/i.exec(t);
+  if (comHora && comHora[1].trim() && !/^\d{1,2}$/.test(comHora[1].trim())) {
+    t = comHora[1].trim();
+  }
 
   // Hora: 14:32 | 9:05 | 2:05 pm | 2:05 p. m.
   const hora = /^(\d{1,2}):(\d{2})(?:\s*([ap])\.?\s*m\.?)?$/.exec(t);
@@ -198,8 +204,12 @@ export function interpretarRotuloData(rotulo: string | null | undefined, agora: 
 
 /** Verdadeiro se o texto tem cara de rótulo de data/hora da lista (usado para achar o rótulo na linha). */
 export function pareceRotuloData(texto: string): boolean {
-  const t = normalizar(texto);
+  let t = normalizar(texto);
   if (t === '') return false;
+  const comHora = /^(.+?)(?:,|\s+as|\s+at|\s+de)?\s+\d{1,2}:\d{2}(?:\s*[ap]\.?\s*m\.?)?$/i.exec(t);
+  if (comHora && comHora[1].trim() && !/^\d{1,2}$/.test(comHora[1].trim())) {
+    t = comHora[1].trim();
+  }
   if (/^\d{1,2}:\d{2}(?:\s*[ap]\.?\s*m\.?)?$/.test(t)) return true;
   if (/^\d{1,2}\/\d{1,2}(?:\/\d{2,4})?$/.test(t)) return true;
   if (['hoje', 'today', 'ontem', 'yesterday'].includes(t)) return true;

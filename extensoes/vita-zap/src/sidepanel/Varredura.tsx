@@ -48,7 +48,6 @@ export function Varredura({ db, dados, aoMudar, aoContinuar }: Props) {
         return;
       }
       const contatos = linhasParaContatos(r.linhas ?? [], new Date());
-      await limparContatos(db);
       await salvarContatos(db, contatos);
       setAvisos([...(v.avisos ?? []), ...(r.avisos ?? [])]);
       await aoMudar();
@@ -115,7 +114,7 @@ export function Varredura({ db, dados, aoMudar, aoContinuar }: Props) {
           <ul className="numeros">
             <li><b>{resumo.total}</b> salvos</li>
             <li><b>{resumo.comData}</b> com conversa</li>
-            <li><b>{resumo.semConversa}</b> sem conversa anterior</li>
+            <li><b>{resumo.semConversa}</b> contatos da agenda</li>
             {resumo.soNumero > 0 && <li><b>{resumo.soNumero}</b> só número (fora)</li>}
             {resumo.grupos > 0 && <li><b>{resumo.grupos}</b> grupos (fora)</li>}
           </ul>
