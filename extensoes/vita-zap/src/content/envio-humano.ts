@@ -96,13 +96,34 @@ export async function clicarBotaoEnviarHumano(botao: HTMLElement): Promise<void>
 
   if (temPointer) botao.dispatchEvent(new PointerEvent('pointerup', ponteiro));
   botao.dispatchEvent(new MouseEvent('mouseup', base));
-  botao.dispatchEvent(new MouseEvent('click', base));
 
+  // Disparo ÚNICO de clique: tenta .click() nativo, ou MouseEvent click caso não funcione (nunca ambos)
   try {
     botao.click();
   } catch {
-    // se o .click() lançar por política, os eventos simulados acima já foram enviados
+    botao.dispatchEvent(new MouseEvent('click', base));
   }
+}
+
+/**
+ * Executa um ÚNICO envio humano.
+ * Encontra o botão de enviar e clica nele uma única vez.
+ * Se o botão não existir no layout, envia pelo teclado na caixa.
+ * Nunca dispara duas vezes.
+ */
+export async function enviarHumano(raiz: ParentNode = document): Promise<boolean> {
+  const botao = encontrarBotaoEnviar(raiz);
+  if (botao) {
+    await clicarBotaoEnviarHumano(botao);
+    return true;
+  }
+  const caixa = (raiz.querySelector('#main footer div[contenteditable="true"]') ??
+    raiz.querySelector('div[contenteditable="true"]')) as HTMLElement | null;
+  if (caixa) {
+    enviarPeloTecladoHumano(caixa);
+    return true;
+  }
+  return false;
 }
 
 /** Envia pressionando Enter na caixa de digitação caso o botão não reaja. */

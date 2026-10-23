@@ -11,7 +11,7 @@ import { escreverNoCampo, esperar, esperarAte, limparCampo, limparMarcas, textoD
 import { lerConversasVisiveis } from './extrair';
 import { buscar, exigir, linhasDaLista } from './lista';
 import { encontrar, encontrarTodos, existeAlgum } from './selectors';
-import { agendarEnvioHumano, clicarBotaoEnviarHumano, encontrarBotaoEnviar, enviarPeloTecladoHumano } from './envio-humano';
+import { agendarEnvioHumano, enviarHumano } from './envio-humano';
 
 export type TipoConversa = 'individual' | 'grupo' | 'desconhecido';
 
@@ -193,19 +193,12 @@ export async function abrirEColar(nome: string, texto: string, aoDetectarEnvio: 
 
   // 6. Envio humano automático (quando ativado).
   if (envioAutomatico) {
+    let enviado = false;
     cancelarEnvioAuto = agendarEnvioHumano(async () => {
       cancelarEnvioAuto = null;
-      if (tituloAberto() !== nome) return;
-      const botao = encontrarBotaoEnviar(document);
-      if (botao) {
-        await clicarBotaoEnviarHumano(botao);
-      }
-      setTimeout(() => {
-        const cx = encontrar(document, 'caixaMensagem');
-        if (cx && textoDoCampo(cx).trim() !== '') {
-          enviarPeloTecladoHumano(cx);
-        }
-      }, 600);
+      if (enviado || tituloAberto() !== nome) return;
+      enviado = true;
+      await enviarHumano(document);
     });
   }
 
