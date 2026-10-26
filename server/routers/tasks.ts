@@ -8,7 +8,7 @@ import { tasks, sellers, users, taskDeletionLogs } from '../db/schema';
 import { runTriggerNow, cancelAllEnrollments } from '../email/automations';
 import { normalizeBrPhone, phoneOfTask } from '../../shared/phone';
 import { foldText, searchTerms, SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../shared/searchText';
-import { buscaDoVincularVeTodos, extrairTermosBusca, findForWhatsappInput, FIND_WHATSAPP_LIMITE, phoneVariants, trechoDasNotas } from '../lib/whatsappLead';
+import { ACOMPANHANDO_LIMITE, buscaDoVincularVeTodos, ETIQUETA_ACOMPANHAR, etiquetasAoConverter, extrairTermosBusca, findForWhatsappInput, FIND_WHATSAPP_LIMITE, phoneVariants, trechoDasNotas } from '../lib/whatsappLead';
 import { validarDocumentoDaTarefa } from '../lib/taskDocumento';
 import { isNewContact } from '../lib/taskNotes';
 import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento, deduplicarNoArquivo, janelaLembretes } from '../lib/taskImport';
@@ -201,6 +201,27 @@ export const tasksRouter = router({
       // O responsável só sai na busca ampliada do admin (o atendente só vê os próprios leads).
       return rows.map(({ notes, assignedTo, ...r }) => ({ ...r, notes: trechoDasNotas(notes), ...(veTodos ? { assignedTo: assignedTo?.trim() || null } : {}) }));
     }),
+
+  // Extensão Vita Zap, aba "Acompanhar": os leads DO PRÓPRIO atendente com a etiqueta "Acompanhar", ainda
+  // pendentes e não convertidos. Sem polling: a extensão só chama ao abrir a aba/clicar em Atualizar (no máximo
+  // 1 a cada 15 min sozinha). Mesmo formato do findForWhatsapp.
+  acompanhando: protectedProcedure.query(async ({ ctx }) => {
+    const rows = await db.select({
+      id: tasks.id, title: tasks.title, phone: tasks.phone, tags: tasks.tags,
+      reminderDate: tasks.reminderDate, reminderEnabled: tasks.reminderEnabled, status: tasks.status,
+      lastContactedAt: tasks.lastContactedAt, contactCount: tasks.contactCount, convertedAt: tasks.convertedAt,
+      notes: tasks.notes,
+    }).from(tasks)
+      .where(and(
+        await meusLeadsFilter(ctx.user.id, ctx.user.name ?? ''),
+        sql`${tasks.tags} @> ARRAY[${ETIQUETA_ACOMPANHAR}]::text[]`,
+        eq(tasks.status, 'pending'),
+        isNull(tasks.convertedAt),
+      ))
+      .orderBy(asc(tasks.reminderDate))
+      .limit(ACOMPANHANDO_LIMITE);
+    return rows.map(({ notes, ...r }) => ({ ...r, notes: trechoDasNotas(notes) }));
+  }),
 
   getById: protectedProcedure
     .input(z.object({ id: z.number() }))
@@ -634,7 +655,7 @@ export const tasksRouter = router({
       if (!existing) throw new TRPCError({ code: 'FORBIDDEN', message: 'Tarefa não encontrada ou sem permissão' });
       const currentTags = existing.tags ?? [];
       const newTags = input.converted
-        ? (currentTags.includes('ativo') ? currentTags : [...currentTags, 'ativo'])
+        ? etiquetasAoConverter(currentTags) // 'ativo' entra e 'Acompanhar' (extensão Vita Zap) sai na mesma gravação
         : currentTags.filter(t => t !== 'ativo');
       const alreadyConverted = !!existing.convertedAt;
 

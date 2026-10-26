@@ -54,3 +54,13 @@ export function trechoDasNotas(notes: string | null | undefined, max = FIND_WHAT
 export function buscaDoVincularVeTodos(role: string | null | undefined, input: { phone?: string; q?: string }): boolean {
   return role === 'admin' && !!input.q && !input.phone;
 }
+
+/** Etiqueta do CRM que marca "cliente prestes a fechar, não pode ser esquecido" (botão Acompanhar da extensão Vita Zap). */
+export const ETIQUETA_ACOMPANHAR = 'Acompanhar';
+export const ACOMPANHANDO_LIMITE = 100;
+
+/** Converter o lead encerra o acompanhamento: tira "Acompanhar" na MESMA chamada de toggleConverted. */
+export function etiquetasAoConverter(tags: readonly string[]): string[] {
+  const sem = tags.filter((t) => t !== ETIQUETA_ACOMPANHAR);
+  return sem.includes('ativo') ? sem : [...sem, 'ativo'];
+}

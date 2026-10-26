@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { csrfRejection } from '../server/lib/csrfGuard';
-import { buscaDoVincularVeTodos, extrairTermosBusca, findForWhatsappInput, phoneVariants, trechoDasNotas } from '../server/lib/whatsappLead';
+import { ACOMPANHANDO_LIMITE, buscaDoVincularVeTodos, ETIQUETA_ACOMPANHAR, etiquetasAoConverter, extrairTermosBusca, findForWhatsappInput, phoneVariants, trechoDasNotas } from '../server/lib/whatsappLead';
 import { EXTENSAO_VITA_ZAP_ID, EXTENSAO_VITA_ZAP_ORIGIN, origensDeExtensao } from '../shared/extensao';
 
 const PROD = ['https://lembretes.salvitarn.com.br', ...origensDeExtensao(undefined)];
@@ -121,5 +121,31 @@ describe('tasks.findForWhatsapp: busca flexível por frase', () => {
     expect(extrairTermosBusca('Padaria do Zé')).toEqual(['padaria', 'ze']);
     expect(extrairTermosBusca('do')).toEqual(['do']);
     expect(extrairTermosBusca('')).toEqual([]);
+  });
+});
+
+describe('tasks.acompanhando e conversão (Vita Zap 0.7.23, etiqueta "Acompanhar")', () => {
+  const fonte = readFileSync('server/routers/tasks.ts', 'utf8');
+  const i = fonte.indexOf('acompanhando: protectedProcedure');
+  const corpo = fonte.slice(i, fonte.indexOf('getById: protectedProcedure', i));
+
+  it('só os leads do próprio atendente, pendentes, não convertidos, com a etiqueta e com limite', () => {
+    expect(i).toBeGreaterThan(0);
+    expect(corpo).toContain('meusLeadsFilter(ctx.user.id');
+    expect(corpo).not.toContain("ctx.user.role === 'admin'");
+    expect(corpo).toContain('ETIQUETA_ACOMPANHAR');
+    expect(corpo).toContain("eq(tasks.status, 'pending')");
+    expect(corpo).toContain('isNull(tasks.convertedAt)');
+    expect(corpo).toContain('.limit(ACOMPANHANDO_LIMITE)');
+    expect(ACOMPANHANDO_LIMITE).toBeLessThanOrEqual(100);
+    for (const proibido of ['email', 'cnpj', 'orderValue']) expect(corpo).not.toContain(`${proibido}: tasks.`);
+  });
+
+  it('converter tira "Acompanhar" e põe "ativo" na mesma gravação (toggleConverted)', () => {
+    expect(etiquetasAoConverter(['Acompanhar', 'atacado'])).toEqual(['atacado', 'ativo']);
+    expect(etiquetasAoConverter(['ativo', ETIQUETA_ACOMPANHAR])).toEqual(['ativo']);
+    expect(etiquetasAoConverter([])).toEqual(['ativo']);
+    const t = fonte.slice(fonte.indexOf('toggleConverted: protectedProcedure'));
+    expect(t.slice(0, 1500)).toContain('etiquetasAoConverter(currentTags)');
   });
 });
