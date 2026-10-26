@@ -10,6 +10,7 @@ import { acharContato } from '../shared/crm-contatos';
 import { type EstadoExecutor, Executor } from './executor';
 import { iniciarBatimento, protegerContraFechamento } from './protecao';
 import { pedir } from './whatsapp';
+import { lerPreferencia, salvarPreferencia } from './preferencias';
 
 interface Props {
   db: Banco;
@@ -63,6 +64,8 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
       setEstado(null);
       return;
     }
+    // Envio automático: autorizado uma vez, fica autorizado (decisão do dono, 20/10/2026) — lembra a escolha.
+    if (lerPreferencia('envioAutomatico', '0') === '1') executor.setEnvioAutomatico(true);
     const sair = executor.assinar(setEstado);
     const ouvir = (msg: unknown) => {
       if (ehEventoConteudo(msg)) void executor.aoReceberEvento(msg);
@@ -278,14 +281,17 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
           <input
             type="checkbox"
             checked={estado.envioAutomatico}
-            onChange={(e) => executor.setEnvioAutomatico(e.target.checked)}
+            onChange={(e) => {
+              salvarPreferencia('envioAutomatico', e.target.checked ? '1' : '0');
+              executor.setEnvioAutomatico(e.target.checked);
+            }}
           />
           <span>Envio automático (opcional): a extensão clica em Enviar depois da janela de conferência</span>
         </label>
         <p style={{ margin: '4px 0 0 24px', fontSize: 11, color: 'var(--suave)' }}>
           {estado.envioAutomatico
             ? 'Ligado: depois de colar, há uma janela de conferência de 2 a 4 segundos. Imediatamente antes do clique a extensão reconfere a conversa, o texto exato e a caixa; se algo mudar, não clica e pausa. Só conta como enviado se a mensagem aparecer no chat em até 20 s. Se o painel fechar, a campanha pausa e nada é clicado.'
-            : 'Desligado (padrão): a mensagem é colada e você confere e aperta Enter.'}
+            : 'Desligado: a mensagem é colada e você confere e aperta Enter. Ao ligar, a escolha fica salva para as próximas campanhas.'}
         </p>
       </div>
 
