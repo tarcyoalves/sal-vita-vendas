@@ -113,6 +113,7 @@ export function App() {
             db={db}
             dados={dados}
             crm={crm}
+            aoIrParaVarredura={() => setAba('varredura')}
             aoAprovar={async (id) => {
               await recarregar();
               setCampanhaAtiva(id);

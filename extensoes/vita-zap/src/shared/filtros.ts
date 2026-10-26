@@ -73,6 +73,7 @@ export function diasSemRepetir(filtros: Filtros): number {
 }
 
 export const MOTIVO_SEM_MENSAGEM_MINHA = 'sem mensagem sua (nenhum sinal de conversa feita por você)';
+export const MOTIVO_SINAL_DESCONHECIDO = 'sinal de conversa sua desconhecido — varra de novo';
 
 /** Ajuda do campo "Só contatos com conversa já feita por mim" (aba Varredura). */
 export const TEXTO_AJUDA_SO_MINHA =
@@ -98,8 +99,20 @@ export function falouComOContato(c: ContatoVarrido, ctx: ContextoFiltro): boolea
 
 export function avaliarContato(c: ContatoVarrido, filtros: Filtros, ctx: ContextoFiltro): Decisao {
   const d = avaliarSemFiltroDeMensagemMinha(c, filtros, ctx);
-  if (filtros.soComMensagemMinha && d.situacao !== 'excluido' && !falouComOContato(c, ctx)) {
-    return { situacao: 'excluido', motivo: MOTIVO_SEM_MENSAGEM_MINHA };
+  if (filtros.soComMensagemMinha && d.situacao !== 'excluido') {
+    if (falouComOContato(c, ctx)) {
+      return d;
+    }
+    // Só excluir quando ultimaDeMim === false E não houver histórico de envios nem registro no CRM
+    if (c.ultimaDeMim === false) {
+      return { situacao: 'excluido', motivo: MOTIVO_SEM_MENSAGEM_MINHA };
+    }
+    // Contato sem o campo ultimaDeMim (varrido antes da 0.7.21, valor undefined) ou desconhecido:
+    // Trata como 'revisar' com motivo "sinal de conversa sua desconhecido — varra de novo"
+    if (d.situacao === 'revisar') {
+      return d;
+    }
+    return { situacao: 'revisar', motivo: MOTIVO_SINAL_DESCONHECIDO };
   }
   return d;
 }

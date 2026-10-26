@@ -109,12 +109,17 @@ describe('filtro "só contatos com conversa já feita por mim"', () => {
     expect(temRegistroDoAtendente({ notas: [], fase: undefined, convertidoEm: undefined })).toBe(false);
   });
 
-  it('nenhum sinal (cliente por último, sem envio, sem registro): fica FORA, com o motivo visível', () => {
-    for (const ultimaDeMim of [false, null, undefined]) {
-      const d = avaliarContato(contato('Duda Cliente', { ultimaDeMim }), SO_MINHA, ctx());
-      expect(d).toEqual({ situacao: 'excluido', motivo: MOTIVO_SEM_MENSAGEM_MINHA });
-    }
+  it('nenhum sinal e cliente por último (ultimaDeMim: false): fica FORA, com o motivo visível', () => {
+    const d = avaliarContato(contato('Duda Cliente', { ultimaDeMim: false }), SO_MINHA, ctx());
+    expect(d).toEqual({ situacao: 'excluido', motivo: MOTIVO_SEM_MENSAGEM_MINHA });
     expect(MOTIVO_SEM_MENSAGEM_MINHA).toContain('sem mensagem sua');
+  });
+
+  it('contato legado da memória (sem ultimaDeMim / undefined): NÃO exclui como sem mensagem sua, entra em revisar', () => {
+    for (const ultimaDeMim of [undefined, null]) {
+      const d = avaliarContato(contato('Duda Cliente', { ultimaDeMim }), SO_MINHA, ctx());
+      expect(d).toEqual({ situacao: 'revisar', motivo: 'sinal de conversa sua desconhecido — varra de novo' });
+    }
   });
 
   it('desmarcado: volta ao comportamento atual (todos os que passam nos outros filtros)', () => {
@@ -126,7 +131,7 @@ describe('filtro "só contatos com conversa já feita por mim"', () => {
 
   it('também tira da lista "revisar" (data incerta) quem não tem sinal, mas não esconde outras exclusões', () => {
     const f = filtros({ soComMensagemMinha: true, ultimaConversaAntesDe: '2026-10-01' });
-    const incerto = contato('Eva Cliente', { ultimaConversa: null, revisarData: 'sem data' });
+    const incerto = contato('Eva Cliente', { ultimaConversa: null, revisarData: 'sem data', ultimaDeMim: false });
     expect(avaliarContato(incerto, f, ctx()).motivo).toBe(MOTIVO_SEM_MENSAGEM_MINHA);
     expect(avaliarContato({ ...incerto, ultimaDeMim: true }, f, ctx()).situacao).toBe('revisar');
     // grupo continua com o motivo próprio

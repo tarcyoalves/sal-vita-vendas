@@ -3,7 +3,7 @@ import { salvarCampanha, type Banco } from '../shared/banco';
 import { type Campanha, criarItens, type ItemCampanha, novoId, textoDoItem, validarParaAprovar } from '../shared/campanha';
 import { DIAS_SEM_REPETIR, MARCADOR_PRIMEIRO_NOME, MAX_VARIACOES } from '../shared/constantes';
 import { formatarDataBr, lerDataIso, hojeNoFuso, somarDias, diferencaDias } from '../shared/datas';
-import { aplicarFiltros, type Filtros, MOTIVO_SEM_MENSAGEM_MINHA, temRegistroDoAtendente, ultimoEnvioPorChave } from '../shared/filtros';
+import { aplicarFiltros, type Filtros, MOTIVO_SEM_MENSAGEM_MINHA, MOTIVO_SINAL_DESCONHECIDO, temRegistroDoAtendente, ultimoEnvioPorChave } from '../shared/filtros';
 import { separarTermos } from '../shared/nomes';
 import { validarModelos } from '../shared/texto';
 import type { DadosLocais } from './App';
@@ -20,11 +20,12 @@ interface Props {
   dados: DadosLocais;
   aoAprovar: (campanhaId: string) => Promise<void>;
   crm?: CrmPainel;
+  aoIrParaVarredura?: () => void;
 }
 
 const TEXTO_EXEMPLO = `Boa tarde, ${MARCADOR_PRIMEIRO_NOME}, tudo bem? Como estão de sal por aí?`;
 
-export function Previa({ db, dados, aoAprovar, crm }: Props) {
+export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) {
   const hojeBr = new Date().toLocaleDateString('pt-BR');
   const [nome, setNome] = useState(`Campanha ${hojeBr}`);
   const [contem, setContem] = useState('');
@@ -204,11 +205,27 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
     return Array.from(contagem.entries()).sort((a, b) => b[1] - a[1]);
   }, [excluidos]);
   const naPrevia = new Set((itens ?? []).map((i) => i.chave));
+  const contatosLegados = useMemo(
+    () => dados.contatos.filter((c) => c.ultimaDeMim === undefined).length,
+    [dados.contatos],
+  );
+  const todosExcluidosPorNome =
+    excluidos.length > 0 &&
+    excluidos.every((a) => a.decisao.motivo.startsWith('nome não contém') || a.decisao.motivo.startsWith('nome contém'));
+  const semMensagemSua = useMemo(
+    () => excluidos.filter((a) => a.decisao.motivo === MOTIVO_SEM_MENSAGEM_MINHA),
+    [excluidos],
+  );
+  const itensMarcados = useMemo(() => (itens ?? []).filter((i) => i.marcado !== false), [itens]);
 
   function gerarPrevia() {
     salvarPreferencia('textoBase', base);
     setErrosAprovacao([]);
-    setItens(criarItens(incluidos.map((a) => a.contato), modelos, filtros.contem));
+    const contatosInc = incluidos.map((a) => a.contato);
+    const contatosRev = revisar.filter((a) => !a.contato.duplicado).map((a) => a.contato);
+    const itensInc = criarItens(contatosInc, modelos, filtros.contem).map((i) => ({ ...i, marcado: true }));
+    const itensRev = criarItens(contatosRev, modelos, filtros.contem).map((i) => ({ ...i, marcado: false }));
+    setItens([...itensInc, ...itensRev]);
     setAssinaturaPrevia(assinatura);
   }
 
@@ -288,18 +305,61 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
   }
 
   function incluirManual(chave: string) {
-    const a = revisar.find((x) => x.contato.chave === chave) ?? excluidos.find((x) => x.contato.chave === chave && x.decisao.motivo === MOTIVO_SEM_MENSAGEM_MINHA);
-    if (!a || !itens || a.contato.duplicado || naPrevia.has(chave)) return;
-    setItens([...itens, ...criarItens([a.contato], modelos, filtros.contem)]);
+    const a =
+      revisar.find((x) => x.contato.chave === chave) ??
+      excluidos.find((x) => x.contato.chave === chave && x.decisao.motivo === MOTIVO_SEM_MENSAGEM_MINHA);
+    if (!a || a.contato.duplicado) return;
+    salvarPreferencia('textoBase', base);
+    const baseItens =
+      itens ??
+      criarItens(
+        incluidos.map((x) => x.contato),
+        modelos,
+        filtros.contem,
+      ).map((i) => ({ ...i, marcado: true }));
+    if (baseItens.some((i) => i.chave === chave)) {
+      setItens(baseItens.map((i) => (i.chave === chave ? { ...i, marcado: true } : i)));
+    } else {
+      setItens([...baseItens, ...criarItens([a.contato], modelos, filtros.contem).map((i) => ({ ...i, marcado: true }))]);
+    }
   }
 
   function incluirTodosRevisar() {
-    if (!itens) return;
-    const novos = revisar
-      .filter((a) => !a.contato.duplicado && !naPrevia.has(a.contato.chave))
-      .map((a) => a.contato);
-    if (novos.length === 0) return;
-    setItens([...itens, ...criarItens(novos, modelos, filtros.contem)]);
+    const alvos = revisar.filter((a) => !a.contato.duplicado).map((a) => a.contato);
+    if (alvos.length === 0) return;
+    salvarPreferencia('textoBase', base);
+    const baseItens =
+      itens ??
+      criarItens(
+        incluidos.map((a) => a.contato),
+        modelos,
+        filtros.contem,
+      ).map((i) => ({ ...i, marcado: true }));
+    const alvosChaves = new Set(alvos.map((c) => c.chave));
+    const existentes = new Set(baseItens.map((i) => i.chave));
+    const atualizados = baseItens.map((i) => (alvosChaves.has(i.chave) ? { ...i, marcado: true } : i));
+    const aAdicionar = alvos.filter((c) => !existentes.has(c.chave));
+    const novos = criarItens(aAdicionar, modelos, filtros.contem).map((i) => ({ ...i, marcado: true }));
+    setItens([...atualizados, ...novos]);
+  }
+
+  function incluirTodosSemMensagemSua() {
+    const alvos = semMensagemSua.filter((a) => !a.contato.duplicado).map((a) => a.contato);
+    if (alvos.length === 0) return;
+    salvarPreferencia('textoBase', base);
+    const baseItens =
+      itens ??
+      criarItens(
+        incluidos.map((a) => a.contato),
+        modelos,
+        filtros.contem,
+      ).map((i) => ({ ...i, marcado: true }));
+    const alvosChaves = new Set(alvos.map((c) => c.chave));
+    const existentes = new Set(baseItens.map((i) => i.chave));
+    const atualizados = baseItens.map((i) => (alvosChaves.has(i.chave) ? { ...i, marcado: true } : i));
+    const aAdicionar = alvos.filter((c) => !existentes.has(c.chave));
+    const novos = criarItens(aAdicionar, modelos, filtros.contem).map((i) => ({ ...i, marcado: true }));
+    setItens([...atualizados, ...novos]);
   }
 
   function atualizarItem(chave: string, mudanca: Partial<ItemCampanha>) {
@@ -308,7 +368,7 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
 
   async function aprovar() {
     if (!itens) return;
-    const erros = [...errosTexto, ...validarParaAprovar({ itens, modelos })];
+    const erros = [...errosTexto, ...validarParaAprovar({ itens: itensMarcados, modelos })];
     setErrosAprovacao(erros);
     if (erros.length > 0 || desatualizada) return;
     setSalvando(true);
@@ -324,7 +384,7 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
         modelos,
         status: 'pausada',
         motivoPausa: 'Aprovada. Clique em Iniciar quando estiver pronto.',
-        itens,
+        itens: itensMarcados,
         problemasSeguidos: 0,
         ultimoEnvioEm: null,
         intervaloAtualSeg: null,
@@ -798,6 +858,11 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
           />
           <span>Só contatos com conversa já feita por mim (atendente)</span>
         </label>
+        {contatosLegados > 0 && (
+          <p className="aviso" style={{ fontSize: 12, margin: '6px 0 0 0' }}>
+            ⚠️ {contatosLegados} contato{contatosLegados > 1 ? 's foram varridos' : ' foi varrido'} antes da 0.7.21; varra de novo para o filtro 'conversa feita por mim' funcionar.
+          </p>
+        )}
         <p className="info">
           {incluidos.length} entram · {revisar.length} para revisar · {excluidos.length} fora
         </p>
@@ -805,11 +870,61 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
           <div style={{ marginTop: 8, padding: '8px 10px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, color: '#991b1b' }}>
             <strong>Por que nenhum contato entrou ({excluidos.length} fora):</strong>
             <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
-              {motivosExclusao.slice(0, 3).map(([motivo, qtd]) => (
-                <li key={motivo}><b>{qtd}</b> contato{qtd > 1 ? 's' : ''}: <i>{motivo}</i></li>
+              {motivosExclusao.map(([motivo, qtd]) => (
+                <li key={motivo} style={{ marginBottom: 4 }}>
+                  <b>{qtd}</b> contato{qtd > 1 ? 's' : ''}: <i>{motivo}</i>
+                  {motivo.includes('sem mensagem sua') && (
+                    <>
+                      {soMinha && (
+                        <button
+                          type="button"
+                          className="pequeno"
+                          style={{ fontSize: 11, padding: '1px 6px', marginLeft: 6, cursor: 'pointer' }}
+                          onClick={() => {
+                            setSoMinha(false);
+                            salvarSoComConversaMinha(false);
+                          }}
+                        >
+                          Desmarcar 'só conversa minha'
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="pequeno"
+                        style={{ fontSize: 11, padding: '1px 6px', marginLeft: 4, cursor: 'pointer' }}
+                        onClick={incluirTodosSemMensagemSua}
+                      >
+                        Incluir mesmo assim ({qtd})
+                      </button>
+                    </>
+                  )}
+                  {(motivo.includes('última conversa') || motivo.includes('posterior') || motivo.includes('anterior')) && (antesDe || depoisDe) && (
+                    <button
+                      type="button"
+                      className="pequeno"
+                      style={{ fontSize: 11, padding: '1px 6px', marginLeft: 6, cursor: 'pointer' }}
+                      onClick={() => {
+                        setAntesDe('');
+                        setDepoisDe('');
+                      }}
+                    >
+                      Limpar data
+                    </button>
+                  )}
+                  {(motivo.includes('varra de novo') || motivo === MOTIVO_SINAL_DESCONHECIDO) && (
+                    <button
+                      type="button"
+                      className="pequeno"
+                      style={{ fontSize: 11, padding: '1px 6px', marginLeft: 6, cursor: 'pointer' }}
+                      onClick={() => aoIrParaVarredura?.()}
+                    >
+                      Varrer de novo
+                    </button>
+                  )}
+                </li>
               ))}
             </ul>
-            {contem.trim() !== '' && motivosExclusao.some(([m]) => m.includes('não contém')) && (
+            {todosExcluidosPorNome && contem.trim() !== '' && (
               <p style={{ margin: '6px 0 0 0', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <span>👉 Seus contatos não têm "{contem}" no nome.</span>
                 <button
@@ -851,10 +966,17 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
         </label>
         {incluidos.length === 0 && (
           <p className="aviso" style={{ marginBottom: 8, fontSize: 12 }}>
-            O botão <b>Gerar prévia</b> só libera quando pelo menos 1 contato entra na campanha. Ajuste ou limpe os filtros acima.
+            {revisar.length > 0
+              ? `Nenhum contato entrou direto, mas há ${revisar.length} para revisar. Você pode gerar a prévia e marcar quem deseja incluir.`
+              : 'O botão Gerar prévia só libera quando pelo menos 1 contato entra na campanha (ou há contatos para revisar). Ajuste ou limpe os filtros acima.'}
           </p>
         )}
-        <button type="button" className="primario" onClick={gerarPrevia} disabled={errosTexto.length > 0 || incluidos.length === 0}>
+        <button
+          type="button"
+          className="primario"
+          onClick={gerarPrevia}
+          disabled={errosTexto.length > 0 || (incluidos.length === 0 && revisar.length === 0)}
+        >
           {itens ? 'Gerar prévia de novo (novo sorteio)' : 'Gerar prévia'}
         </button>
         <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
@@ -882,17 +1004,41 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
 
       {itens && (
         <div className="cartao">
-          <h3>Prévia · {itens.length} contatos</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
+            <h3 style={{ margin: 0 }}>Prévia · {itensMarcados.length} marcado{itensMarcados.length !== 1 ? 's' : ''} (de {itens.length})</h3>
+            {itens.some((i) => i.marcado === false) && (
+              <button
+                type="button"
+                className="pequeno"
+                style={{ fontSize: 11, padding: '2px 8px', fontWeight: 600, background: '#0288d1', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                onClick={incluirTodosRevisar}
+              >
+                + Incluir todos os para revisar
+              </button>
+            )}
+          </div>
           {desatualizada && <p className="aviso">Filtros ou textos mudaram depois da prévia. Gere a prévia de novo antes de aprovar.</p>}
           <ul className="lista">
             {itens.map((i, idx) => (
-              <li key={i.chave}>
+              <li key={i.chave} style={{ opacity: i.marcado === false ? 0.65 : 1 }}>
                 <div className="lista-topo">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <input
+                      type="checkbox"
+                      checked={i.marcado !== false}
+                      onChange={(e) => atualizarItem(i.chave, { marcado: e.target.checked })}
+                      style={{ cursor: 'pointer', width: 15, height: 15 }}
+                      title={i.marcado !== false ? 'Desmarcar contato da campanha' : 'Marcar contato para a campanha'}
+                    />
                     <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--suave)', minWidth: 22 }}>
                       #{idx + 1}
                     </span>
                     <b>{i.nome}</b>
+                    {i.marcado === false && (
+                      <span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontWeight: 600 }}>
+                        Revisar ({motivoPorChave.get(i.chave) ?? 'desmarcado'})
+                      </span>
+                    )}
                     {tagsExibicaoPorChave.get(i.chave)?.map((t) => (
                       <span key={t.nome} style={{ fontSize: 10, background: t.cor, color: '#fff', padding: '1px 6px', borderRadius: 8, fontWeight: 600 }}>
                         {t.nome}
@@ -941,8 +1087,8 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
               {e}
             </p>
           ))}
-          <button type="button" className="primario" onClick={() => void aprovar()} disabled={salvando || desatualizada || itens.length === 0}>
-            Aprovar campanha ({itens.length})
+          <button type="button" className="primario" onClick={() => void aprovar()} disabled={salvando || desatualizada || itensMarcados.length === 0}>
+            Aprovar campanha ({itensMarcados.length})
           </button>
         </div>
       )}
@@ -950,29 +1096,26 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
       {revisar.length > 0 && (
         <details className="cartao" open>
           <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
-            <span>Revisar ({revisar.length}) — sem data na lista da busca</span>
-            {itens && (
-              <button
-                type="button"
-                className="pequeno"
-                style={{ fontSize: 11, padding: '2px 8px', fontWeight: 600, background: '#0288d1', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  incluirTodosRevisar();
-                }}
-              >
-                + Incluir todos ({revisar.length})
-              </button>
-            )}
+            <span>Revisar ({revisar.length}) — sem data ou sinal desconhecido</span>
+            <button
+              type="button"
+              className="pequeno"
+              style={{ fontSize: 11, padding: '2px 8px', fontWeight: 600, background: '#0288d1', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                incluirTodosRevisar();
+              }}
+            >
+              + Incluir todos os para revisar ({revisar.length})
+            </button>
           </summary>
           <ul className="lista">
             {revisar.map((a) => (
               <li key={a.contato.chave}>
                 <div className="lista-topo">
                   <b>{a.contato.nome}</b>
-                  {/* Nome repetido não pode entrar: não há como saber qual conversa abrir. */}
-                  {itens && !a.contato.duplicado && !naPrevia.has(a.contato.chave) && (
+                  {!a.contato.duplicado && (!naPrevia.has(a.contato.chave) || itens?.find((x) => x.chave === a.contato.chave)?.marcado === false) && (
                     <button type="button" className="pequeno" onClick={() => incluirManual(a.contato.chave)}>
                       Incluir mesmo assim
                     </button>
@@ -988,13 +1131,29 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
       )}
 
       <details className="cartao" open={incluidos.length === 0}>
-        <summary>Fora da campanha ({excluidos.length})</summary>
+        <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+          <span>Fora da campanha ({excluidos.length})</span>
+          {semMensagemSua.length > 0 && (
+            <button
+              type="button"
+              className="pequeno"
+              style={{ fontSize: 11, padding: '2px 8px', fontWeight: 600, background: '#4b5563', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                incluirTodosSemMensagemSua();
+              }}
+            >
+              + Incluir mesmo assim ({semMensagemSua.length} sem mensagem sua)
+            </button>
+          )}
+        </summary>
         <ul className="lista">
           {excluidos.map((a) => (
             <li key={a.contato.chave}>
               <b>{a.contato.nome}</b> <small>— {a.decisao.motivo}</small>
               {a.contato.ultimaConversa && <small> · {formatarDataBr(a.contato.ultimaConversa)}</small>}
-              {itens && a.decisao.motivo === MOTIVO_SEM_MENSAGEM_MINHA && !a.contato.duplicado && !naPrevia.has(a.contato.chave) && (
+              {a.decisao.motivo === MOTIVO_SEM_MENSAGEM_MINHA && !a.contato.duplicado && (!naPrevia.has(a.contato.chave) || itens?.find((x) => x.chave === a.contato.chave)?.marcado === false) && (
                 <>
                   {' '}
                   <button type="button" className="pequeno" onClick={() => incluirManual(a.contato.chave)}>

@@ -19,6 +19,8 @@ export interface ItemCampanha {
   motivo: string | null;
   atualizadoEm: string | null;
   ultimaConversa?: string | null;
+  /** Se marcado para envio na prévia (padrão true para incluídos; contatos de revisar entram false). */
+  marcado?: boolean;
 }
 
 /**
