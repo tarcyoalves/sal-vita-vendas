@@ -11,6 +11,7 @@ import { foldText, searchTerms, SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../share
 import { ACOMPANHANDO_LIMITE, buscaDoVincularVeTodos, ETIQUETA_ACOMPANHAR, etiquetasAoConverter, extrairTermosBusca, findForWhatsappInput, FIND_WHATSAPP_LIMITE, phoneVariants, trechoDasNotas } from '../lib/whatsappLead';
 import { validarDocumentoDaTarefa } from '../lib/taskDocumento';
 import { isNewContact } from '../lib/taskNotes';
+import { emailDoWhatsappInput, planejarEmail } from '../lib/emailDoWhatsapp';
 import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento, deduplicarNoArquivo, janelaLembretes } from '../lib/taskImport';
 
 // Tag aplicada/removida automaticamente junto com tasks.emailConfirmed (ver
@@ -632,6 +633,41 @@ export const tasksRouter = router({
         }
       }
 
+      return updated;
+    }),
+
+  // Extensão Vita Zap: o atendente digita/salva o e-mail do lead no WhatsApp. DECISÃO DO DONO: digitar e salvar
+  // é a confirmação (emailConfirmed=true + tag "Email Confirmado", como confirmEmail), com nota datada.
+  // Dono: admin em qualquer tarefa; os demais só nos leads próprios (meusLeadsFilter, o mesmo do findForWhatsapp).
+  // Não conta como contato (não mexe em lastContactedAt/contactCount).
+  setEmailFromWhatsapp: protectedProcedure
+    .input(emailDoWhatsappInput)
+    .mutation(async ({ input, ctx }) => {
+      const ownerFilter = ctx.user.role === 'admin'
+        ? eq(tasks.id, input.taskId)
+        : and(eq(tasks.id, input.taskId), await meusLeadsFilter(ctx.user.id, ctx.user.name ?? ''));
+      const [task] = await db.select().from(tasks).where(ownerFilter).limit(1);
+      if (!task) throw new TRPCError({ code: 'NOT_FOUND', message: 'Tarefa não encontrada ou sem permissão' });
+
+      const plano = planejarEmail(task, input.email, new Date(), ctx.user.name ?? ctx.user.email);
+      if (!plano.mudou) return task;
+
+      const [updated] = await db.update(tasks).set(plano.set).where(ownerFilter).returning();
+      if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Tarefa não encontrada ou sem permissão' });
+
+      // Trocou de e-mail: as sequências pendentes do antigo não podem continuar.
+      if (plano.emailAnterior && plano.emailAnterior !== input.email) {
+        try { await cancelAllEnrollments(plano.emailAnterior); } catch (err) {
+          console.error('[tasks.setEmailFromWhatsapp] cancelAllEnrollments failed:', safeErr(err));
+        }
+      }
+      const payload = { id: updated.id, email: input.email, title: updated.title, tags: updated.tags, assignedTo: updated.assignedTo };
+      try { await runTriggerNow('lead_created', payload); } catch (err) {
+        console.error('[tasks.setEmailFromWhatsapp] runTriggerNow(lead_created) failed:', safeErr(err));
+      }
+      try { await runTriggerNow('email_confirmed', payload); } catch (err) {
+        console.error('[tasks.setEmailFromWhatsapp] runTriggerNow(email_confirmed) failed:', safeErr(err));
+      }
       return updated;
     }),
 
