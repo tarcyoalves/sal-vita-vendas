@@ -1,6 +1,6 @@
 // Texto da campanha: validação (sem link na 1ª mensagem), {primeiroNome} e sorteio de variação.
 
-import { MARCADOR_PRIMEIRO_NOME, MAX_VARIACOES, TAMANHO_MAX_TEXTO } from './constantes';
+import { MARCADOR_PRIMEIRO_NOME, MARCADOR_PRIMEIRO_NOME_SNAKE, MARCADORES_PRIMEIRO_NOME, MAX_VARIACOES, TAMANHO_MAX_TEXTO } from './constantes';
 
 // Link explícito, wa.me, encurtadores e "algo.com/.br/..." soltos no texto.
 const PADRAO_LINK =
@@ -21,7 +21,7 @@ export function validarModelo(texto: string): string[] {
   if (t.length > TAMANHO_MAX_TEXTO) erros.push(`texto longo demais (${t.length}/${TAMANHO_MAX_TEXTO} caracteres)`);
   const marcadores = t.match(/\{[^}]*\}/g) ?? [];
   for (const m of marcadores) {
-    if (m !== MARCADOR_PRIMEIRO_NOME) erros.push(`marcador desconhecido ${m} (use só ${MARCADOR_PRIMEIRO_NOME})`);
+    if (!MARCADORES_PRIMEIRO_NOME.includes(m as any)) erros.push(`marcador desconhecido ${m} (use só ${MARCADOR_PRIMEIRO_NOME})`);
   }
   return erros;
 }
@@ -39,13 +39,13 @@ export function validarModelos(base: string, variacoes: string[]): { modelos: st
 }
 
 export function usaPrimeiroNome(modelo: string): boolean {
-  return modelo.includes(MARCADOR_PRIMEIRO_NOME);
+  return modelo.includes(MARCADOR_PRIMEIRO_NOME) || modelo.includes(MARCADOR_PRIMEIRO_NOME_SNAKE);
 }
 
 export function montarMensagem(modelo: string, nome: string): string {
   const m = modelo ?? '';
   const n = (nome ?? '').trim();
-  return m.split(MARCADOR_PRIMEIRO_NOME).join(n).trim();
+  return m.split(MARCADOR_PRIMEIRO_NOME).join(n).split(MARCADOR_PRIMEIRO_NOME_SNAKE).join(n).trim();
 }
 
 /** Sorteia um modelo. `aleatorio` injetável para teste. */

@@ -174,8 +174,8 @@ function avaliarSemFiltroDeMensagemMinha(c: ContatoVarrido, filtros: Filtros, ct
 
   if (usaData) {
     if (c.ultimaConversa == null) {
-      if (filtros.incluirSemConversa) {
-        return { situacao: 'incluido', motivo: 'contato salvo da agenda (data não exibida na busca do WhatsApp)' };
+      if (!c.temConversa) {
+        return { situacao: 'excluido', motivo: 'sem conversa anterior (agenda)' };
       }
       return { situacao: 'revisar', motivo: `data da última conversa incerta (${c.revisarData ?? 'sem data'})` };
     }

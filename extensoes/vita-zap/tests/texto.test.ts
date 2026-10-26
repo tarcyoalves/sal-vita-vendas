@@ -35,10 +35,12 @@ describe('validação do texto', () => {
     expect(validarModelo('a'.repeat(501)).join(' ')).toMatch(/longo demais/);
     expect(validarModelo('Oi {nome}').join(' ')).toMatch(/marcador desconhecido \{nome\}/);
     expect(validarModelo('Oi {primeiroNome}')).toEqual([]);
+    expect(validarModelo('Oi {primeiro_nome}')).toEqual([]);
   });
 
   it('texto não traz linha "responda SAIR" (decisão do dono) — nada é acrescentado', () => {
     expect(montarMensagem('Oi {primeiroNome}, tudo bem?', 'Ana')).toBe('Oi Ana, tudo bem?');
+    expect(montarMensagem('Oi {primeiro_nome}, tudo bem?', 'Ana')).toBe('Oi Ana, tudo bem?');
   });
 
   it('base + até 3 variações; vazias são ignoradas', () => {

@@ -7,7 +7,7 @@ import { aplicarFiltros, type Filtros, MOTIVO_SEM_MENSAGEM_MINHA, MOTIVO_SINAL_D
 import { separarTermos } from '../shared/nomes';
 import { validarModelos } from '../shared/texto';
 import type { DadosLocais } from './App';
-import { carregarRotinasSalvas, lerPreferencia, lerSoComConversaMinha, salvarPreferencia, salvarRotinas, salvarSoComConversaMinha } from './preferencias';
+import { carregarRotinasSalvas, lerPreferencia, salvarPreferencia, salvarRotinas, salvarSoComConversaMinha } from './preferencias';
 import type { CrmPainel } from './crm';
 import { acharContato } from '../shared/crm-contatos';
 import { CORES_ETIQUETA, FASES, type Fase } from '../shared/crm-tipos';
@@ -29,7 +29,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
   const hojeBr = new Date().toLocaleDateString('pt-BR');
   const [nome, setNome] = useState(`Campanha ${hojeBr}`);
   const [contem, setContem] = useState(() => lerPreferencia('termo', 'CLIENTE'));
-  const [incluirSemConversa, setIncluirSemConversa] = useState(true);
+  const [incluirSemConversa, setIncluirSemConversa] = useState(false);
   const [naoContem, setNaoContem] = useState('');
   const [antesDe, setAntesDe] = useState('');
   const [depoisDe, setDepoisDe] = useState('');
@@ -47,7 +47,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
   const [erroTag, setErroTag] = useState<string | null>(null);
   const [fasesSelecionadas, setFasesSelecionadas] = useState<Fase[]>([]);
   const [aguardandoResposta, setAguardandoResposta] = useState(false);
-  const [soMinha, setSoMinha] = useState(() => lerSoComConversaMinha());
+  const [soMinha, setSoMinha] = useState(false);
   const [rotinas, setRotinas] = useState<Rotina[]>(() => carregarRotinasSalvas());
   const [rotinaAtivaId, setRotinaAtivaId] = useState<string | null>(null);
   const [modalCriarRotina, setModalCriarRotina] = useState(false);
@@ -161,16 +161,16 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
     for (const r of rotinas) {
       const antesIso = r.diasSemContato && r.diasSemContato > 0 ? somarDias(hojeIso, -r.diasSemContato) : null;
       const f: Filtros = {
-        contem: [],
+        contem: separarTermos(contem),
         naoContem: [],
         ultimaConversaAntesDe: antesIso,
         ultimaConversaDepoisDe: null,
         excluirContatadosHaDias: DIAS_SEM_REPETIR,
-        incluirSemConversa: !antesIso,
+        incluirSemConversa: false,
         tags: r.tags,
         fases: r.fases,
         aguardandoResposta: r.aguardandoResposta,
-        soComMensagemMinha: soMinha || undefined,
+        soComMensagemMinha: false,
       };
       const av = aplicarFiltros(dados.contatos, f, {
         agora,
@@ -185,7 +185,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       res.set(r.id, qtd);
     }
     return res;
-  }, [rotinas, dados, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente, soMinha]);
+  }, [rotinas, dados, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente, contem]);
   const motivoPorChave = useMemo(() => new Map(avaliados.map((a) => [a.contato.chave, a.decisao.motivo])), [avaliados]);
   const contatoPorChave = useMemo(() => new Map(dados.contatos.map((c) => [c.chave, c])), [dados.contatos]);
 
@@ -1070,9 +1070,11 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
                         ))}
                       </select>
                     )}
-                    {contatoPorChave.get(i.chave)?.ultimaConversa && (
+                    {(i.ultimaConversa || contatoPorChave.get(i.chave)?.ultimaConversa || contatoPorChave.get(i.chave)?.rotuloData) && (
                       <span style={{ fontSize: 11, background: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
-                        {formatarDataBr(contatoPorChave.get(i.chave)!.ultimaConversa)}
+                        {formatarDataBr(i.ultimaConversa ?? contatoPorChave.get(i.chave)?.ultimaConversa) !== '—'
+                          ? formatarDataBr(i.ultimaConversa ?? contatoPorChave.get(i.chave)?.ultimaConversa)
+                          : contatoPorChave.get(i.chave)?.rotuloData}
                       </span>
                     )}
                   </div>

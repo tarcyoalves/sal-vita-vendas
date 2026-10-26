@@ -31,6 +31,8 @@ export const TAMANHO_MAX_TEXTO = 500;
 
 /** Placeholder do primeiro nome no texto. */
 export const MARCADOR_PRIMEIRO_NOME = '{primeiroNome}';
+export const MARCADOR_PRIMEIRO_NOME_SNAKE = '{primeiro_nome}';
+export const MARCADORES_PRIMEIRO_NOME = ['{primeiroNome}', '{primeiro_nome}'] as const;
 
 /**
  * Horário permitido (hora local de Fortaleza). `fim` é exclusivo: 18 significa até 17:59.
