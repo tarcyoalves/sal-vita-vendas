@@ -40,9 +40,14 @@ describe('sem JID: individual exige sinal positivo', () => {
     expect(classificar({ titulo: 'Ana Cliente' }, [msg('a', { minha: true }), msg('b', { minha: true })])).toBe('individual');
   });
 
-  it('"tem mensagens" NÃO basta: recebida sem autor legível (mídia, figurinha) → desconhecido', () => {
+  it('"tem mensagens" NÃO basta: se todas as recebidas são sem autor legível (mídia, figurinha) → desconhecido', () => {
     expect(classificar({ titulo: 'Ana Cliente' }, [msg('a')])).toBe('desconhecido');
-    expect(classificar({ titulo: 'Ana Cliente' }, [msg('a', { autor: 'Ana Cliente' }), msg('b')])).toBe('desconhecido');
+  });
+
+  it('recebida com autor legível + mídia/anexo sem autor → individual (anexo de cliente não quebra classificação)', () => {
+    expect(classificar({ titulo: 'Ana Cliente' }, [msg('a', { autor: 'Ana Cliente' }), msg('b')])).toBe('individual');
+    // Caso real: título truncado com reticências no cabeçalho ("Victor Luan Cliente ...") e anexo
+    expect(classificar({ titulo: 'Victor Luan Cliente ...' }, [msg('a', { autor: 'Victor Luan Cliente Bom Repouso Mg' }), msg('b')])).toBe('individual');
   });
 
   it('sem nenhuma mensagem, ou sem título → desconhecido', () => {

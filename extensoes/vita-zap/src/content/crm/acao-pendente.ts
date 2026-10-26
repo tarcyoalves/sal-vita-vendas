@@ -7,6 +7,7 @@ import { renderizarModelo } from '../../shared/crm-modelos';
 import type { RepositorioContatos } from '../../shared/repositorio';
 import { abrirConversaPorTelefoneSemRecarregar } from '../abrir-por-telefone';
 import { abrirEPrepararRascunho } from '../execucao';
+import { extrairTermosLead } from '../../shared/crm-termos';
 import { ErroSeletor } from '../lista';
 import { mostrarAviso } from './popover';
 import { memorizarTelefone } from './telefone-conhecido';
@@ -55,14 +56,42 @@ export async function abrirConversaComRascunho(nome: string, rascunho?: string, 
   ocupado = true;
   try {
     const texto = rascunho ? renderizarModelo(rascunho, nome) : null;
-    const r = await abrirEPrepararRascunho(nome, texto);
-    if (!r.ok) {
-      mostrarAviso(r.erro, 'erro');
-      return false;
+
+    // 1. Tenta abrir pelo nome informado
+    let r = await abrirEPrepararRascunho(nome, texto);
+    if (r.ok) {
+      memorizarTelefone(nome, telefone);
+      mostrarAviso(texto ? `Conversa de ${nome} aberta com o rascunho na caixa. Confira e aperte Enter.` : `Conversa de ${nome} aberta.`);
+      return true;
     }
-    memorizarTelefone(nome, telefone); // conversa aberta pelo nome de um contato que já tem telefone no CRM
-    mostrarAviso(texto ? `Conversa de ${nome} aberta com o rascunho na caixa. Confira e aperte Enter.` : `Conversa de ${nome} aberta.`);
-    return true;
+
+    // 2. Se tem telefone e não achou pelo nome, tenta abrir por telefone
+    if (telefone && r.codigo === 'nao_encontrado') {
+      const rTel = await abrirConversaPorTelefoneSemRecarregar(telefone, nome);
+      if (rTel.ok) {
+        if (texto) await abrirEPrepararRascunho(rTel.nome ?? nome, texto);
+        memorizarTelefone(rTel.nome ?? nome, telefone);
+        mostrarAviso(texto ? `Conversa de ${nome} aberta com o rascunho na caixa. Confira e aperte Enter.` : `Conversa de ${nome} aberta.`);
+        return true;
+      }
+    }
+
+    // 3. Se não achou na busca e o nome é longo (título do CRM com CNPJ, LTDA, cidade...), tenta os termos limpos do lead
+    if (r.codigo === 'nao_encontrado') {
+      const termos = extrairTermosLead(nome);
+      for (const termo of termos) {
+        if (termo.toLowerCase() === nome.toLowerCase()) continue;
+        const rTermo = await abrirEPrepararRascunho(termo, texto);
+        if (rTermo.ok) {
+          memorizarTelefone(termo, telefone);
+          mostrarAviso(texto ? `Conversa de ${nome} aberta com o rascunho na caixa. Confira e aperte Enter.` : `Conversa de ${nome} aberta.`);
+          return true;
+        }
+      }
+    }
+
+    mostrarAviso(r.erro, 'erro');
+    return false;
   } catch (e) {
     if (e instanceof ErroSeletor) mostrarAviso(e.message, 'erro');
     else avisarUmaVez('abrir-conversa', 'Falha ao abrir a conversa do lembrete.', e);

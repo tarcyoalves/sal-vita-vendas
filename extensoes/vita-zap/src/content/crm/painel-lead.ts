@@ -146,11 +146,37 @@ export function abrirReagendar(ancora: HTMLElement, ctx: ContextoLead, ref: RefC
 
 const RESERVADAS = ['ativo', 'Email Confirmado'];
 
+const TAGS_PADRAO_CRM: Array<{ name: string; color: string }> = [
+  { name: 'sal grosso', color: '#2563eb' },
+  { name: 'sal fino', color: '#0284c7' },
+  { name: 'sal moído 25 kg', color: '#059669' },
+  { name: 'sal micronizado', color: '#10b981' },
+  { name: 'agro', color: '#84cc16' },
+  { name: 'distribuidor', color: '#f59e0b' },
+  { name: 'varejo', color: '#d97706' },
+  { name: 'indústria', color: '#6366f1' },
+  { name: 'Cliente compra muito', color: '#8b5cf6' },
+  { name: 'Cliente Ativo', color: '#16a34a' },
+  { name: 'Acompanhar', color: '#0284c7' },
+  { name: 'Quente', color: '#ef4444' },
+  { name: 'reativar', color: '#ea580c' },
+];
+
 export function abrirEtiquetas(ancora: HTMLElement, ctx: ContextoLead, ref: RefContato, lead: LeadCrm): void {
-  const pop = abrirPopover({ ancora, titulo: 'Etiquetas do lead', largura: 340 });
+  const pop = abrirPopover({ ancora, titulo: 'Etiquetas do lead', largura: 360 });
   const msg = h('div', { class: 'msg' });
-  const lista = h('div', { class: 'linha2' });
+  const lista = h('div', { class: 'linha2', style: 'display: flex; flex-wrap: wrap; gap: 4px;' });
+  const catalogoEl = h('div', { style: 'margin-top: 8px;' });
   let atuais = [...lead.etiquetas];
+  let catalogo: Array<{ name: string; color: string }> = [...TAGS_PADRAO_CRM];
+
+  // Carrega catálogo atualizado do CRM se disponível
+  void ctx.leads.catalogoTags?.().then((r) => {
+    if (r?.ok && Array.isArray(r.tags) && r.tags.length > 0) {
+      catalogo = r.tags.map((s) => ({ name: s.name, color: s.color || '#6366f1' }));
+      desenhar();
+    }
+  }).catch(() => undefined);
 
   const mudar = async (mudanca: { adicionar?: string[]; remover?: string[] }): Promise<void> => {
     msg.textContent = '';
@@ -160,31 +186,71 @@ export function abrirEtiquetas(ancora: HTMLElement, ctx: ContextoLead, ref: RefC
       desenhar();
     }
   };
+
   const desenhar = (): void => {
     lista.replaceChildren(
       ...(atuais.length === 0 ? [h('span', { class: 'dica' }, 'Nenhuma etiqueta.')] : []),
-      ...atuais.map((t) =>
-        RESERVADAS.includes(t)
-          ? h('span', { class: 'tag neutra', title: 'Controlada pelo CRM' }, t)
-          : h('button', { class: 'btn', type: 'button', title: 'Tirar esta etiqueta', onclick: () => void mudar({ remover: [t] }) }, `${t}  ×`),
+      ...atuais.map((t) => {
+        if (RESERVADAS.includes(t)) {
+          return h('span', { class: 'tag neutra', title: 'Controlada pelo CRM' }, t);
+        }
+        const itemCat = catalogo.find((c) => c.name.toLowerCase() === t.toLowerCase());
+        const cor = itemCat?.color || '#6366f1';
+        return h(
+          'span',
+          { class: 'tag', style: `background: ${cor};` },
+          t,
+          h('button', {
+            type: 'button',
+            title: 'Tirar esta etiqueta',
+            style: 'background: transparent; border: none; color: #fff; cursor: pointer; padding: 0 0 0 4px; font-weight: bold;',
+            onclick: () => void mudar({ remover: [t] }),
+          }, '×'),
+        );
+      }),
+    );
+
+    const disponiveis = catalogo.filter(
+      (c) => !atuais.some((a) => a.toLowerCase() === c.name.toLowerCase()) && !RESERVADAS.includes(c.name),
+    );
+
+    catalogoEl.replaceChildren(
+      h('div', { class: 'dica', style: 'margin-bottom: 4px; font-weight: 500;' }, 'Catálogo de tags do CRM:'),
+      h(
+        'div',
+        { class: 'linha2', style: 'display: flex; flex-wrap: wrap; gap: 4px; max-height: 100px; overflow-y: auto;' },
+        ...disponiveis.map((c) =>
+          h(
+            'button',
+            {
+              class: 'btn',
+              type: 'button',
+              style: 'font-size: 11px; padding: 2px 7px; display: inline-flex; align-items: center; gap: 4px;',
+              title: `Adicionar "${c.name}"`,
+              onclick: () => void mudar({ adicionar: [c.name] }),
+            },
+            h('span', { style: `width: 8px; height: 8px; border-radius: 50%; background: ${c.color}; display: inline-block;` }),
+            `+ ${c.name}`,
+          ),
+        ),
       ),
     );
     pop.reposicionar();
   };
-  const campo = h('input', { class: 'campo', type: 'text', maxlength: 40, placeholder: 'Nova etiqueta (ex.: atacado)', 'aria-label': 'Nova etiqueta' });
+
+  const campo = h('input', { class: 'campo', type: 'text', maxlength: 40, placeholder: 'Outra etiqueta (ex.: atacado)', 'aria-label': 'Nova etiqueta' });
   const adicionar = (): void => {
     const t = campo.value.trim();
     if (!t) return;
     campo.value = '';
     void mudar({ adicionar: [t] });
   };
-  // <form>: o navegador trata a tecla de confirmar sozinho (sem nenhum código de teclado nosso).
-  const form = h('form', { class: 'linha2' }, campo, h('button', { class: 'btn pri', type: 'submit' }, 'Adicionar'));
+  const form = h('form', { class: 'linha2', style: 'margin-top: 8px;' }, campo, h('button', { class: 'btn pri', type: 'submit' }, 'Adicionar'));
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     adicionar();
   });
-  pop.corpo.append(lista, form, msg);
+  pop.corpo.append(lista, catalogoEl, form, msg);
   desenhar();
 }
 

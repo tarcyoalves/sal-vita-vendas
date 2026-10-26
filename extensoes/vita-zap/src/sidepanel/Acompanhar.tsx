@@ -3,7 +3,8 @@
 // Nenhuma consulta periódica. Abrir conversa usa a busca do WhatsApp, sem recarregar a página. Nada é enviado.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { abrirConversaPorTelefone, textoDaAbertura } from '../shared/crm-acoes';
+import { abrirConversaNoWhatsApp, abrirConversaPorTelefone, textoDaAbertura } from '../shared/crm-acoes';
+import { normalizarTelefone } from '../shared/telefone';
 import { lembreteVencido, ordenarAcompanhando, resumoAcompanhando, textoSemContato, type ResumoAcompanhando } from '../shared/crm-acompanhar';
 import { formatarVencimento, lerDataHoraLocal, PRAZOS_RAPIDOS, prazoRapido, textoAtualizadoHa } from '../shared/crm-lembretes';
 import { LIMITE_TEXTO_CONTATO, type LeadCrm } from '../shared/crm-remoto';
@@ -90,8 +91,16 @@ function Cartao({ lead, crm, avisar }: { lead: LeadCrm; crm: CrmPainel; avisar: 
   async function abrir() {
     avisar('');
     try {
-      const r = lead.telefone ? await abrirConversaPorTelefone(lead.telefone, lead.titulo) : null;
-      avisar(r ? textoDaAbertura(r, lead.titulo) : 'Este lead não tem um telefone válido no CRM para abrir a conversa.');
+      const tel = lead.telefone ?? normalizarTelefone(lead.titulo);
+      if (tel) {
+        const r = await abrirConversaPorTelefone(tel, lead.titulo);
+        if (r) {
+          avisar(textoDaAbertura(r, lead.titulo));
+          return;
+        }
+      }
+      await abrirConversaNoWhatsApp(crm.repo, { nome: lead.titulo, telefone: tel ?? undefined });
+      avisar(`Abrindo a conversa de "${lead.titulo}" no WhatsApp Web.`);
     } catch {
       avisar('Não consegui falar com a aba do WhatsApp Web. Abra web.whatsapp.com e recarregue a aba (F5).');
     }

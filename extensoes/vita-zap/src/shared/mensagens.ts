@@ -14,6 +14,7 @@ export type PedidoConteudo =
   | { tipo: 'abrirPorTelefone'; telefone: string; nomeDica?: string }
   | { tipo: 'limparCaixa'; texto: string }
   | { tipo: 'pararObservacao' }
+  | { tipo: 'pararVarredura' }
   /** Batimento do painel: sem ele por ~45 s o content script não clica no envio automático. */
   | { tipo: 'batimento' }
   /** Abre a conversa e diz se há mensagem NOSSA nova (id fora de `idsAntes`) com exatamente `texto`. Só leitura. */

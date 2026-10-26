@@ -30,10 +30,16 @@ function lembrete(p: Partial<Lembrete> & { id: string }): Lembrete {
 }
 
 describe('prazos rápidos e data personalizada', () => {
-  it('amanhã 9h, 3 dias e 1 semana (sempre às 9h de Fortaleza)', () => {
+  it('amanhã 9h, 3 dias, 1 semana, 30 dias, 45 dias e 60 dias (sempre às 9h de Fortaleza)', () => {
     expect(prazoRapido('amanha9h', AGORA)).toBe(Date.parse('2026-10-22T12:00:00Z'));
     expect(prazoRapido('3dias', AGORA)).toBe(Date.parse('2026-10-24T12:00:00Z'));
     expect(prazoRapido('1semana', AGORA)).toBe(Date.parse('2026-10-28T12:00:00Z'));
+    // AGORA = 2026-10-21 (Fortaleza). +30d = 2026-11-20T12:00:00Z
+    expect(prazoRapido('30dias', AGORA)).toBe(Date.parse('2026-11-20T12:00:00Z'));
+    // +45d = 2026-12-05T12:00:00Z
+    expect(prazoRapido('45dias', AGORA)).toBe(Date.parse('2026-12-05T12:00:00Z'));
+    // +60d = 2026-12-20T12:00:00Z
+    expect(prazoRapido('60dias', AGORA)).toBe(Date.parse('2026-12-20T12:00:00Z'));
   });
 
   it('"amanhã" vale pelo dia de Fortaleza, mesmo perto da meia-noite UTC', () => {

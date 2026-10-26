@@ -13,12 +13,15 @@ export function instanteNoFuso(iso: string, hora: number, minuto = 0): number {
   return Date.UTC(a, m - 1, d, hora + DESLOCAMENTO_FUSO_H, minuto);
 }
 
-export type PrazoRapido = 'amanha9h' | '3dias' | '1semana';
+export type PrazoRapido = 'amanha9h' | '3dias' | '1semana' | '30dias' | '45dias' | '60dias';
 
 export const PRAZOS_RAPIDOS: ReadonlyArray<{ id: PrazoRapido; rotulo: string }> = [
   { id: 'amanha9h', rotulo: 'Amanhã 9h' },
   { id: '3dias', rotulo: 'Em 3 dias' },
   { id: '1semana', rotulo: 'Em 1 semana' },
+  { id: '30dias', rotulo: 'Em 30 dias' },
+  { id: '45dias', rotulo: 'Em 45 dias' },
+  { id: '60dias', rotulo: 'Em 60 dias' },
 ];
 
 /** Os prazos rápidos caem sempre às 9h (de Fortaleza) do dia escolhido. */
@@ -32,7 +35,7 @@ export function textoAtualizadoHa(em: number | null, agora: number): string {
 }
 
 export function prazoRapido(id: PrazoRapido, agora: Date): number {
-  const dias = id === 'amanha9h' ? 1 : id === '3dias' ? 3 : 7;
+  const dias = id === 'amanha9h' ? 1 : id === '3dias' ? 3 : id === '1semana' ? 7 : id === '30dias' ? 30 : id === '45dias' ? 45 : 60;
   return instanteNoFuso(somarDias(hojeNoFuso(agora), dias), 9, 0);
 }
 

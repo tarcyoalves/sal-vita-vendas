@@ -100,6 +100,7 @@ export interface LeadsCRM {
   registrarContatoNoLead(ref: RefContato, texto: string): Promise<ResultadoAcao>;
   reagendar(ref: RefContato, em: number): Promise<ResultadoAcao>;
   alterarEtiquetas(ref: RefContato, mudanca: { adicionar?: string[]; remover?: string[] }): Promise<ResultadoAcao>;
+  catalogoTags?(): Promise<{ ok: true; tags: Array<{ id: number; name: string; color: string }> } | { ok: false; erro: ErroCrm }>;
   marcarConvertido(ref: RefContato, valor?: number): Promise<ResultadoAcao>;
   /** Como registrarContatoNoLead, mas pela task (a aba Acompanhar do painel não tem a conversa aberta). */
   registrarContatoNaTask(taskId: number, texto: string): Promise<ResultadoAcao>;

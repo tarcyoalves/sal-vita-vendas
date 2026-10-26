@@ -28,7 +28,7 @@ const TEXTO_EXEMPLO = `Boa tarde, ${MARCADOR_PRIMEIRO_NOME}, tudo bem? Como estÃ
 export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) {
   const hojeBr = new Date().toLocaleDateString('pt-BR');
   const [nome, setNome] = useState(`Campanha ${hojeBr}`);
-  const [contem, setContem] = useState('');
+  const [contem, setContem] = useState(() => lerPreferencia('termo', 'CLIENTE'));
   const [incluirSemConversa, setIncluirSemConversa] = useState(true);
   const [naoContem, setNaoContem] = useState('');
   const [antesDe, setAntesDe] = useState('');
@@ -257,11 +257,15 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
     const novasVar = Array.from({ length: MAX_VARIACOES }, (_, i) => r.variacoes[i] ?? '');
     setVariacoes(novasVar);
 
-    setContem('');
+    const termoAtual = contem.trim() || lerPreferencia('termo', 'CLIENTE');
+    setContem(termoAtual);
+    const termos = termoAtual ? termoAtual.split(',').map((s) => s.trim()).filter(Boolean) : [];
     setNaoContem('');
+    setSoMinha(false);
+    salvarSoComConversaMinha(false);
 
     const filtrosRotina: Filtros = {
-      contem: [],
+      contem: termos,
       naoContem: [],
       ultimaConversaAntesDe: antesIso ? antesIso : null,
       ultimaConversaDepoisDe: null,
@@ -270,7 +274,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       tags: r.tags,
       fases: r.fases,
       aguardandoResposta: r.aguardandoResposta,
-      soComMensagemMinha: soMinha || undefined,
+      soComMensagemMinha: false,
     };
     const { modelos: mods } = validarModelos(r.textoBase, novasVar);
     const av = aplicarFiltros(dados.contatos, filtrosRotina, {
@@ -283,7 +287,10 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       comRegistroDoAtendente,
     });
     const contatosInc = av.filter((x) => x.decisao.situacao === 'incluido').map((x) => x.contato);
-    setItens(criarItens(contatosInc, mods, []));
+    const contatosRev = av.filter((x) => x.decisao.situacao === 'revisar' && !x.contato.duplicado).map((x) => x.contato);
+    const itensInc = criarItens(contatosInc, mods, termos).map((i) => ({ ...i, marcado: true }));
+    const itensRev = criarItens(contatosRev, mods, termos).map((i) => ({ ...i, marcado: false }));
+    setItens([...itensInc, ...itensRev]);
     setAssinaturaPrevia(JSON.stringify({ filtros: filtrosRotina, modelos: mods }));
     setErrosAprovacao([]);
   }

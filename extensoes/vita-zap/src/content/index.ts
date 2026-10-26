@@ -11,7 +11,7 @@ import { iniciarCrm } from './crm';
 import { iniciarBarraFormatacao } from './barra-formatacao';
 import { avisarUmaVez } from './crm/ui';
 import { encontrar } from './selectors';
-import { varrerLista } from './varredura';
+import { pararVarredura, varrerLista } from './varredura';
 
 declare global {
   interface Window { __vitaZapCarregado?: boolean }
@@ -55,6 +55,9 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
       return verificar();
     case 'pararObservacao':
       pararObservacao();
+      return { ok: true };
+    case 'pararVarredura':
+      pararVarredura();
       return { ok: true };
     case 'limparCaixa':
       return limparCaixa(pedido.texto);

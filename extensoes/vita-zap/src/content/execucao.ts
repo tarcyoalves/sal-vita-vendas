@@ -97,11 +97,18 @@ export function classificarConversa(dataIds: string[], raiz: ParentNode = docume
   const autores = new Set<string>();
   for (const r of recebidas) {
     const a = autorDaMensagem(r);
-    if (a === null) return 'desconhecido'; // recebida sem autor legível (mídia, figurinha...): não dá para provar
-    autores.add(normalizarTexto(a));
+    if (a !== null) {
+      autores.add(normalizarTexto(a));
+    }
   }
   if (autores.size > 1) return 'grupo';
-  return autores.has(normalizarTexto(tituloLido)) ? 'individual' : 'grupo'; // autor diferente do título
+  if (autores.size === 1) {
+    const autor = Array.from(autores)[0].replace(/\.{2,}|…/g, '').trim();
+    const tit = normalizarTexto(tituloLido).replace(/\.{2,}|…/g, '').trim();
+    const bate = autor === tit || autor.startsWith(tit) || tit.startsWith(autor) || autor.includes(tit) || tit.includes(autor);
+    return bate ? 'individual' : 'grupo';
+  }
+  return 'desconhecido';
 }
 
 function tituloAberto(): string | null {

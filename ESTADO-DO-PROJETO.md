@@ -1,6 +1,6 @@
 # ⚠️ LEIA ESTE ARQUIVO ANTES DE QUALQUER COISA
 
-**Última atualização:** 24/09/2026
+**Última atualização:** 26/10/2026
 **Este é o ponto de entrada do estado do projeto.** Junto com ele, leia
 **`HANDOFF-HERMES.md`**: regras de trabalho, portões de qualidade e os erros reais já
 cometidos por IA neste repositório. Várias sessões de IA paralelas já se atrapalharam
@@ -454,11 +454,10 @@ saíram desta lista e estão no registro `coordenacao/registro/2026-10-07-claude
     aceita telefone completo como alternativa ao token; rate limit em memória (por
     instância serverless); dinheiro em float/texto; carrinhos abandonados sem pedido nunca
     são apagados (LGPD — apagar dado é decisão do dono).
-12. **Vita Zap (extensão do WhatsApp Web), fase 1** *(19/10/2026)* — implementada em
-    `extensoes/vita-zap/` (projeto separado; o CRM ignora a pasta). **Seletores do WhatsApp
-    Web não validados contra o site real**: rodar o checklist manual do
-    `extensoes/vita-zap/README.md` antes da primeira campanha. Fase 2 (IA Gemini via proxy no
-    servidor) não começou. Plano: `docs/PLANO-CAMPANHAS-WHATSAPP.md`.
+12. **Vita Zap (extensão do WhatsApp Web)** *(versão 0.7.26, 26/10/2026)* — implementada em
+    extensoes/vita-zap/ (projeto separado; CRM na barra do WhatsApp Web, lembretes de follow-up,
+    campanhas, atalhos de reagendamento 30d/45d/60d, tags do CRM, busca limpa de contatos e pausa na varredura).
+    Publicada no site do CRM em /vita-zap. Plano: docs/PLANO-CAMPANHAS-WHATSAPP.md.
 
 ### 🔵 Operacional
 12. Pedidos com PIX inline (sem `mpPreferenceId`) não aparecem em `listOrders`.

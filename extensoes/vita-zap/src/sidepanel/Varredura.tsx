@@ -18,6 +18,7 @@ export function Varredura({ db, dados, aoMudar, aoContinuar }: Props) {
   const [termo, setTermo] = useState(() => lerPreferencia('termo', 'CLIENTE'));
   const [soMinha, setSoMinha] = useState(() => lerSoComConversaMinha());
   const [rodando, setRodando] = useState(false);
+  const [pausando, setPausando] = useState(false);
   const [progresso, setProgresso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [avisos, setAvisos] = useState<string[]>([]);
@@ -115,9 +116,29 @@ export function Varredura({ db, dados, aoMudar, aoContinuar }: Props) {
           <small className="ajuda" style={{ display: 'block', fontWeight: 400 }}>{TEXTO_AJUDA_SO_MINHA}</small>
         </span>
       </label>
-      <button type="button" className="primario" onClick={() => void varrer()} disabled={rodando}>
-        {rodando ? 'Varrendo…' : 'Varrer conversas'}
-      </button>
+      <div style={{ display: 'flex', gap: 8, margin: '8px 0' }}>
+        <button type="button" className="primario" onClick={() => void varrer()} disabled={rodando}>
+          {rodando ? 'Varrendo…' : 'Varrer conversas'}
+        </button>
+        {rodando && (
+          <button
+            type="button"
+            className="pequeno perigo"
+            style={{ padding: '6px 12px' }}
+            onClick={async () => {
+              setPausando(true);
+              try {
+                await pedir({ tipo: 'pararVarredura' });
+              } catch {
+                setPausando(false);
+              }
+            }}
+            disabled={pausando}
+          >
+            {pausando ? 'Pausando…' : '⏸ Pausar varredura'}
+          </button>
+        )}
+      </div>
       {progresso && <p className="info">{progresso}</p>}
       {erro && <p className="erro">{erro}</p>}
       {avisos.map((a) => (

@@ -688,6 +688,16 @@ export class ServicoCrm implements LeadsCRM {
     });
   }
 
+  async catalogoTags(): Promise<{ ok: true; tags: Array<{ id: number; name: string; color: string }> } | { ok: false; erro: ErroCrm }> {
+    const c = await this.lerConta();
+    if (!c.usuario) return { ok: true, tags: [] };
+    const r = await this.chamar(() => this.consultar<Array<{ id: number; name: string; color: string }>>('tags.list'));
+    if (!r.ok) return { ok: false, erro: r.erro };
+    const tags = Array.isArray(r.valor) ? r.valor : [];
+    await this.arm.gravarChave('vz.crm.catalogoTags', tags);
+    return { ok: true, tags };
+  }
+
   alterarEtiquetas(ref: RefContato, mudanca: { adicionar?: string[]; remover?: string[] }): Promise<ResultadoAcao> {
     return this.exclusivo('etiquetas (ação do usuário)', async () => {
       const limpa = (l?: string[]) => [...new Set((l ?? []).map((t) => t.trim().slice(0, 40)).filter(Boolean))];

@@ -1,3 +1,9 @@
+let interromper = false;
+
+export function pararVarredura(): void {
+  interromper = true;
+}
+
 // Varredura da lista de conversas — SÓ LEITURA. Não abre conversa, não escreve mensagem.
 // Rola a lista com pausas (ritmo calmo) e devolve as linhas lidas; a deduplicação e a
 // interpretação das datas acontecem no painel (shared/contatos.ts).
@@ -12,6 +18,7 @@ const MAX_PASSOS = 400; // ~ alguns milhares de conversas
 const MAX_LINHAS = 5000;
 
 export async function varrerLista(termo: string, aoProgredir: (lidas: number, unicas: number) => void): Promise<{ linhas: LinhaBruta[]; avisos: string[] }> {
+  interromper = false;
   exigir(encontrar(document, 'painelLateral'), 'lista de conversas');
   await buscar(termo);
 
@@ -45,6 +52,10 @@ export async function varrerLista(termo: string, aoProgredir: (lidas: number, un
       nomes.add(l.nome);
     }
     aoProgredir(todas.length, nomes.size);
+    if (interromper) {
+      avisos.push('Varredura pausada pelo usuário.');
+      break;
+    }
     if (!rolavel || todas.length >= MAX_LINHAS) break;
 
     const antes = rolavel.scrollTop;
