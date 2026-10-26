@@ -25,6 +25,7 @@ import { abrirConversaComRascunho, abrirConversaPorTelefoneNaPagina, consumirAca
 import { ligarTelefones } from './telefone-conhecido';
 import { lerTelefoneDosDadosDoContato } from './dados-do-contato';
 import { FaixaLead, type AcoesFaixa } from './faixa-lead';
+import { abrirEmail } from './painel-email';
 import { abrirConverter, abrirCriarLead, alternarAcompanhar, abrirEtiquetas, abrirReagendar, abrirRegistrarContato, abrirVincular, type ContextoLead } from './painel-lead';
 import { ehLeadsCRM, type Acompanhamento, type EstadoLead, type LeadsCRM, type MotivoAcompanhando } from '../../shared/leads';
 import { Barra } from './barra';
@@ -206,6 +207,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       },
       vincular: sobre((a) => abrirVincular(a, ctxLead, ref)),
       criar: sobre((a) => abrirCriarLead(a, ctxLead, ref)),
+      email: sobre((a) => lead && abrirEmail(a, ctxLead, lead)),
       escolher: sobre((a) => abrirVincular(a, ctxLead, ref, leadCache.estado?.tipo === 'varios' ? leadCache.estado.candidatos : [])),
     };
     faixa.atualizar(header, leadCache.estado, agora, acoes);

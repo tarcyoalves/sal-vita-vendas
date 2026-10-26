@@ -19,6 +19,7 @@ export interface AcoesFaixa {
   vincular: (ancora: HTMLElement) => void;
   criar: (ancora: HTMLElement) => void;
   escolher: (ancora: HTMLElement) => void;
+  email: (ancora: HTMLElement) => void;
 }
 
 const STATUS: Record<string, string> = { pending: 'Pendente', completed: 'Concluído', cancelled: 'Cancelado' };
@@ -113,6 +114,7 @@ export class FaixaLead {
       linha2.append(h('span', { class: 'dica' }, 'Sem lembrete'));
     }
     if (lead.ultimoContatoEm) linha2.append(h('span', { class: 'dica' }, `Último contato: ${dataCurta(lead.ultimoContatoEm)} (${lead.contatos}x)`));
+    linha2.append(this.botao('E-mail', a.email));
     const nota = ultimaNota(lead.notas);
     const linha3 = nota ? h('div', { class: 'faixa-nota', title: lead.notas }, `Notas: ${nota}`) : null;
     const avisos = h('div', { class: 'faixa-linha' });

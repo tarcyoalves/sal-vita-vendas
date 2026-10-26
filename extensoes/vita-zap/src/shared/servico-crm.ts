@@ -40,6 +40,7 @@ import { hojeNoFuso, somarDias } from './datas';
 import { novoId } from './id';
 import type { Acompanhamento, ArmazemChaves, EstadoConta, EstadoLead, FalhaFila, LeadsCRM, MotivoAcompanhando, MotivoSync, ResultadoAcao, ResultadoAcompanhando, ResultadoBusca, ResultadoConta, ResultadoLead } from './leads';
 import { normalizarTelefone } from './telefone';
+import * as email from './servico-email';
 
 const MAX_FILA = 200;
 const MAX_FALHAS = 20;
@@ -720,6 +721,45 @@ export class ServicoCrm implements LeadsCRM {
       await this.sincronizarInterno();
       return { ok: true as const };
     });
+  }
+
+  // ── E-mail do lead (lógica em servico-email.ts) ────────────────────────────
+
+  private apoioEmail(): email.ApoioEmail {
+    return {
+      consultar: (c, e) => this.consultar(c, e),
+      alterar: (c, e) => this.alterar(c, e),
+      chamar: (fn) => this.chamar(fn),
+      guardarNoCache: (l) => this.guardarNoCache(l),
+    };
+  }
+
+  emailDoLead(taskId: number) {
+    return this.exclusivo('e-mail do lead: abrir popover (ação do usuário)', () => email.emailDoLead(this.apoioEmail(), taskId));
+  }
+
+  salvarEmailDoLead(taskId: number, endereco: string) {
+    return this.exclusivo('e-mail do lead: salvar (ação do usuário)', () => email.salvarEmailDoLead(this.apoioEmail(), taskId, endereco));
+  }
+
+  modelosEmail() {
+    return this.exclusivo('e-mail do lead: listar modelos (ação do usuário)', () => email.modelosEmail(this.apoioEmail()));
+  }
+
+  sequenciasEmail() {
+    return this.exclusivo('e-mail do lead: listar sequências (ação do usuário)', () => email.sequenciasEmail(this.apoioEmail()));
+  }
+
+  inscricoesDoLead(taskId: number) {
+    return this.exclusivo('e-mail do lead: sequências do lead (ação do usuário)', () => email.inscricoesDoLead(this.apoioEmail(), taskId));
+  }
+
+  mandarApresentacao(pedido: email.PedidoApresentacao) {
+    return this.exclusivo('e-mail do lead: enviar apresentação (ação do usuário)', () => email.enviarApresentacao(this.apoioEmail(), pedido));
+  }
+
+  inscreverNaSequencia(sequenceId: number, taskId: number) {
+    return this.exclusivo('e-mail do lead: inscrever em sequência (ação do usuário)', () => email.inscreverNaSequencia(this.apoioEmail(), sequenceId, taskId));
   }
 
   // ── Fila ───────────────────────────────────────────────────────────────────

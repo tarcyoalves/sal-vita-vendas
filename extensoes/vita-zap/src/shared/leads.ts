@@ -5,7 +5,9 @@
 
 import type { ErroCrm } from './crm-rede';
 import type { LeadCrm, UsuarioCrm } from './crm-remoto';
+import type { InscricaoLead, ModeloEmail, ResultadoInscricao, SequenciaEmail } from './crm-email';
 import type { RefContato } from './crm-tipos';
+import type { EmailDoLead, EnvioApresentacao, PedidoApresentacao, ResultadoEmail } from './servico-email';
 
 /** Chaves e valores guardados pela integração (só o RepositorioLocal toca em chrome.storage). */
 export interface ArmazemChaves {
@@ -109,11 +111,22 @@ export interface LeadsCRM {
   /** Busca tasks.reminders e atualiza o cache que a central e os alarmes usam (sem motivo = botão "Atualizar do CRM"). */
   sincronizarLembretes(motivo?: MotivoSync): Promise<{ ok: true; quantidade: number } | { ok: false; erro: ErroCrm }>;
   reenviarFila(): Promise<{ enviados: number; restantes: number }>;
+
+  // E-mail do lead (botão "E-mail" da faixa). Cada método é UMA ação do usuário; nada periódico.
+  emailDoLead(taskId: number): Promise<ResultadoEmail<EmailDoLead>>;
+  /** Salvar = confirmar (decisão do dono). Devolve o lead com a nota nova. */
+  salvarEmailDoLead(taskId: number, email: string): Promise<ResultadoLead>;
+  modelosEmail(): Promise<ResultadoEmail<ModeloEmail[]>>;
+  sequenciasEmail(): Promise<ResultadoEmail<SequenciaEmail[]>>;
+  inscricoesDoLead(taskId: number): Promise<ResultadoEmail<InscricaoLead>>;
+  mandarApresentacao(pedido: PedidoApresentacao): Promise<ResultadoEmail<EnvioApresentacao>>;
+  inscreverNaSequencia(sequenceId: number, taskId: number): Promise<ResultadoEmail<ResultadoInscricao>>;
 }
 
 export const METODOS_LEADS = [
   'conta', 'definirUrl', 'entrar', 'conectarPelaSessao', 'verificarSessao', 'sair', 'leadDoContato', 'procurarLeads', 'vincularLead', 'desvincularLead',
   'criarLead', 'registrarContatoNoLead', 'reagendar', 'alterarEtiquetas', 'marcarConvertido', 'registrarContatoNaTask', 'acompanhando', 'reagendarTask', 'sincronizarLembretes', 'reenviarFila',
+  'emailDoLead', 'salvarEmailDoLead', 'modelosEmail', 'sequenciasEmail', 'inscricoesDoLead', 'mandarApresentacao', 'inscreverNaSequencia',
 ] as const satisfies ReadonlyArray<keyof LeadsCRM>;
 
 export function ehLeadsCRM(r: unknown): r is LeadsCRM {
