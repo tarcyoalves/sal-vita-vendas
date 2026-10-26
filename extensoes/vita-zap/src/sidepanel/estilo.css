@@ -79,6 +79,11 @@ body {
   border-radius: 6px;
 }
 
+.abas button.alerta {
+  color: var(--erro);
+  font-weight: 700;
+}
+
 .abas button.ativa {
   background: var(--azul);
   border-color: var(--azul);

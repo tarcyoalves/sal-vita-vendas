@@ -19,6 +19,8 @@ export interface AbaTopo {
   ativa: boolean;
   /** Ponto verde: mais conversas do que na última vez que o usuário clicou nesta aba. */
   novidade: boolean;
+  /** Contador em vermelho: há algo vencido (aba Acompanhar com lembrete vencido). */
+  alerta?: boolean;
   tipo: 'fixa' | 'funil' | 'personalizada';
   /** Cor da fase (funil). */
   cor?: string;
@@ -153,12 +155,12 @@ export class BarraSuperior {
         h(
           'button',
           {
-            class: `taba${t.ativa ? ' ativa' : ''}`,
+            class: `taba${t.ativa ? ' ativa' : ''}${t.alerta ? ' alerta' : ''}`,
             type: 'button',
             role: 'tab',
             'aria-selected': t.ativa ? 'true' : 'false',
             'data-aba': t.id,
-            title: t.dica,
+            title: t.alerta ? `${t.dica ?? t.rotulo} (há lembrete vencido)` : t.dica,
             onclick: () => a.escolherAba(t.id),
           },
           t.tipo === 'funil' && t.cor ? h('span', { class: 'fase', style: `background:${t.cor}` }) : null,

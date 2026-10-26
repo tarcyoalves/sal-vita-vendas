@@ -5,7 +5,7 @@
 // Nada aqui envia mensagem de WhatsApp.
 
 import { formatarVencimento } from '../../shared/crm-lembretes';
-import type { LeadCrm } from '../../shared/crm-remoto';
+import { ETIQUETA_ACOMPANHAR, type LeadCrm } from '../../shared/crm-remoto';
 import type { EstadoLead } from '../../shared/leads';
 import { criarHost, h, isolarCliques, sincronizarTema } from './ui';
 
@@ -14,6 +14,8 @@ export interface AcoesFaixa {
   reagendar: (ancora: HTMLElement) => void;
   etiquetas: (ancora: HTMLElement) => void;
   converter: (ancora: HTMLElement) => void;
+  /** Põe/tira a etiqueta "Acompanhar" (um clique, sem painel). */
+  acompanhar: (ancora: HTMLElement) => void;
   vincular: (ancora: HTMLElement) => void;
   criar: (ancora: HTMLElement) => void;
   escolher: (ancora: HTMLElement) => void;
@@ -94,12 +96,15 @@ export class FaixaLead {
   }
 
   private montarLead(faixa: HTMLElement, lead: LeadCrm, estado: Extract<EstadoLead, { tipo: 'lead' }>, agora: Date, a: AcoesFaixa): HTMLElement {
+    const acompanhando = lead.etiquetas.includes(ETIQUETA_ACOMPANHAR);
+    const etiquetas = lead.etiquetas.filter((t) => t !== ETIQUETA_ACOMPANHAR); // o selo "Em acompanhamento" já a representa
     const linha1 = h('div', { class: 'faixa-linha' });
     linha1.append(
       h('strong', { class: 'faixa-titulo', title: lead.titulo }, `Lead: ${lead.titulo}`),
       h('span', { class: lead.convertidoEm ? 'tag ok' : 'tag neutra' }, lead.convertidoEm ? `Convertido ${dataCurta(lead.convertidoEm)}` : (STATUS[lead.status] ?? lead.status)),
-      ...lead.etiquetas.slice(0, 6).map((t) => h('span', { class: 'tag neutra' }, t)),
-      ...(lead.etiquetas.length > 6 ? [h('span', { class: 'dica' }, `+${lead.etiquetas.length - 6}`)] : []),
+      ...(acompanhando ? [h('span', { class: 'tag acomp', title: 'Etiqueta "Acompanhar": este cliente está na aba Acompanhar até o fechamento' }, 'Em acompanhamento')] : []),
+      ...etiquetas.slice(0, 6).map((t) => h('span', { class: 'tag neutra' }, t)),
+      ...(etiquetas.length > 6 ? [h('span', { class: 'dica' }, `+${etiquetas.length - 6}`)] : []),
     );
     const linha2 = h('div', { class: 'faixa-linha' });
     if (lead.lembreteEm && lead.lembreteAtivo) {
@@ -113,7 +118,7 @@ export class FaixaLead {
     const avisos = h('div', { class: 'faixa-linha' });
     if (estado.pendentes > 0) avisos.append(h('span', { class: 'aviso-mini' }, `${estado.pendentes} ação(ões) guardada(s), enviando quando a conexão voltar`));
     if (estado.desatualizado) avisos.append(h('span', { class: 'aviso-mini' }, estado.aviso ? `Dados salvos, não atualizados: ${estado.aviso.mensagem}` : 'Dados salvos, não atualizados.'));
-    const acoes = h('div', { class: 'faixa-linha' }, this.botao('Registrar contato', a.registrarContato, 'btn pri'), this.botao('Reagendar lembrete', a.reagendar), this.botao('Etiquetas', a.etiquetas), lead.convertidoEm ? null : this.botao('Marcar convertido', a.converter));
+    const acoes = h('div', { class: 'faixa-linha' }, this.botao('Registrar contato', a.registrarContato, 'btn pri'), this.botao('Reagendar lembrete', a.reagendar), this.botao('Etiquetas', a.etiquetas), lead.convertidoEm && !acompanhando ? null : this.botao(acompanhando ? 'Parar de acompanhar' : 'Acompanhar', a.acompanhar, acompanhando ? 'btn' : 'btn acomp'), lead.convertidoEm ? null : this.botao('Marcar convertido', a.converter));
     faixa.append(linha1, linha2, ...(linha3 ? [linha3] : []), ...(avisos.childElementCount > 0 ? [avisos] : []), acoes);
     return faixa;
   }

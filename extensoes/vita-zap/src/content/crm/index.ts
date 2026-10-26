@@ -10,6 +10,7 @@ import { instanteDaUltima } from '../../shared/crm-clientes';
 import { repositorioPadrao } from '../../shared/repositorio-local';
 import type { ItemVisto, RepositorioContatos } from '../../shared/repositorio';
 import type { ConfigCrm, Conversa, PedidoPainel, RefContato } from '../../shared/crm-tipos';
+import { resumoAcompanhando } from '../../shared/crm-acompanhar';
 import { abaEfetiva, abasVisiveis, contarAbas, filtroDaConfig, filtroLigado as haFiltro, idDaPersonalizada, temNovidade, todasAsAbas } from '../../shared/crm-abas';
 import { novoId } from '../../shared/crm-store';
 import { normalizarTexto } from '../../shared/nomes';
@@ -24,8 +25,8 @@ import { abrirConversaComRascunho, abrirConversaPorTelefoneNaPagina, consumirAca
 import { ligarTelefones } from './telefone-conhecido';
 import { lerTelefoneDosDadosDoContato } from './dados-do-contato';
 import { FaixaLead, type AcoesFaixa } from './faixa-lead';
-import { abrirConverter, abrirCriarLead, abrirEtiquetas, abrirReagendar, abrirRegistrarContato, abrirVincular, type ContextoLead } from './painel-lead';
-import { ehLeadsCRM, type EstadoLead, type LeadsCRM } from '../../shared/leads';
+import { abrirConverter, abrirCriarLead, alternarAcompanhar, abrirEtiquetas, abrirReagendar, abrirRegistrarContato, abrirVincular, type ContextoLead } from './painel-lead';
+import { ehLeadsCRM, type Acompanhamento, type EstadoLead, type LeadsCRM, type MotivoAcompanhando } from '../../shared/leads';
 import { Barra } from './barra';
 import { BarraSuperior, iniciaisDe, type ContaTopo } from './barra-superior';
 import { abrirAjuda, abrirAjustesFiltro, abrirMenuConta, abrirNovaAba, type ContextoAbas } from './painel-abas';
@@ -100,6 +101,10 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   // Estado da barra superior: conta do CRM (leitura local no service worker, sem rede), última contagem por aba, base do ponto verde.
   let contaTopo: ContaTopo = { tipo: 'oculta' };
   let contaEm = 0;
+  // Lista "Acompanhar" (etiqueta do CRM): só o que o service worker já guardou; ir ao CRM só ao clicar na aba (máx. 1 a cada 15 min).
+  let acomp: Acompanhamento | null = null;
+  let chavesAcomp: ReadonlySet<string> = new Set();
+  let acompOcupado = false;
   let contagensAtuais: Record<string, number> = {};
   const baseNovidade = new Map<string, number>();
 
@@ -119,6 +124,19 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       void abrirConversaComRascunho(nome, rascunho, telefone);
     },
   };
+
+  /** `cache` = leitura local no service worker (sem rede). `aba` = clique na aba Acompanhar (o serviço limita a 1 consulta por 15 min). */
+  function lerAcompanhando(motivo: MotivoAcompanhando): void {
+    if (!leads || encerrado) return;
+    leads.acompanhando(motivo).then(
+      (r) => {
+        acomp = r.ok ? r : null;
+        chavesAcomp = new Set(r.ok ? r.chaves : []);
+        if (!encerrado) ciclo();
+      },
+      () => undefined,
+    );
+  }
 
   function buscarLead(ref: RefContato, chave: string): void {
     if (!leads) return;
@@ -167,6 +185,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       aplicar: (lead, pendente) => {
         const atual = leadCache.estado?.tipo === 'lead' ? leadCache.estado.pendentes : 0;
         leadCache.estado = { tipo: 'lead', lead, desatualizado: false, pendentes: pendente ? atual + 1 : 0 };
+        lerAcompanhando('cache'); // a ação pode ter posto/tirado o lead da lista (leitura local, sem rede)
         ciclo();
       },
       // A ação do usuário já devolveu o lead atualizado (aplicar): não há nova consulta.
@@ -178,6 +197,13 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       reagendar: sobre((a) => lead && abrirReagendar(a, ctxLead, ref, lead)),
       etiquetas: sobre((a) => lead && abrirEtiquetas(a, ctxLead, ref, lead)),
       converter: sobre((a) => abrirConverter(a, ctxLead, ref)),
+      acompanhar: () => {
+        if (!lead || acompOcupado) return;
+        acompOcupado = true;
+        void alternarAcompanhar(ctxLead, ref, lead).finally(() => {
+          acompOcupado = false;
+        });
+      },
       vincular: sobre((a) => abrirVincular(a, ctxLead, ref)),
       criar: sobre((a) => abrirCriarLead(a, ctxLead, ref)),
       escolher: sobre((a) => abrirVincular(a, ctxLead, ref, leadCache.estado?.tipo === 'varios' ? leadCache.estado.candidatos : [])),
@@ -214,7 +240,8 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   }
 
   const barraSuperiorLigada = (): boolean => estado.dados.config.barraSuperior !== false;
-  const filtroAtual = (): FiltroLista => filtroDaConfig(estado.dados.config, !barraSuperiorLigada());
+  const logadoNoCrm = (): boolean => contaTopo.tipo === 'logado';
+  const filtroAtual = (): FiltroLista => filtroDaConfig(estado.dados.config, !barraSuperiorLigada(), logadoNoCrm() ? chavesAcomp : null);
 
   function mudarConfig(parcial: Partial<ConfigCrm>): void {
     estado.dados.config = { ...estado.dados.config, ...parcial };
@@ -230,6 +257,11 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
     leads.conta().then(
       (c) => {
         contaTopo = c.usuario ? { tipo: 'logado', nome: c.usuario.name, email: c.usuario.email, iniciais: iniciaisDe(c.usuario.name, c.usuario.email) } : { tipo: 'sem-login' };
+        if (c.usuario) lerAcompanhando('cache');
+        else {
+          acomp = null;
+          chavesAcomp = new Set();
+        }
         if (!encerrado) ciclo();
       },
       () => undefined,
@@ -288,6 +320,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   function escolherAbaTopo(id: string): void {
     const n = contagensAtuais[id] ?? 0;
     baseNovidade.set(id, n);
+    if (id === 'acompanhar') lerAcompanhando('aba');
     mudarConfig({ aba: id, abasVistas: { ...(estado.dados.config.abasVistas ?? {}), [id]: n } });
   }
 
@@ -378,19 +411,20 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       botaoRespostas.posicionar(encontrar(document, 'caixaMensagem'));
 
       const cfg = dados.config;
-      contagensAtuais = contarAbas(conversas, contatoDe, cfg);
+      contagensAtuais = { ...contarAbas(conversas, contatoDe, cfg), acompanhar: acomp?.leads.length ?? 0 };
+      const acompVencidos = acomp ? resumoAcompanhando(acomp.leads, agora).vencidos : 0;
       const vencidos = contarVencidos(dados.lembretes, agora);
       if (barraSuperiorLigada()) {
         topo.garantirNoLugar();
-        const ativa = abaEfetiva(cfg);
+        const ativa = abaEfetiva(cfg, false, logadoNoCrm());
         topo.render(
           {
-            abas: abasVisiveis(cfg).map((a) => {
+            abas: abasVisiveis(cfg, logadoNoCrm()).map((a) => {
               const n = contagensAtuais[a.id] ?? 0;
               const salva = cfg.abasVistas?.[a.id];
               const base = salva === undefined ? undefined : Math.min(baseNovidade.get(a.id) ?? salva, salva, n);
               if (base !== undefined) baseNovidade.set(a.id, base);
-              return { ...a, n, ativa: a.id === ativa, novidade: temNovidade(n, base) };
+              return { ...a, n, ativa: a.id === ativa, novidade: temNovidade(n, base), ...(a.id === 'acompanhar' && acompVencidos > 0 ? { alerta: true } : {}) };
             }),
             vencidos,
             conta: contaTopo,

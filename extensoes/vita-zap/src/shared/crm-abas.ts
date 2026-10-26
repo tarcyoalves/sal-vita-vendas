@@ -21,6 +21,9 @@ export const ABAS_FIXAS: ReadonlyArray<DefAba> = [
   { id: 'precisa', rotulo: 'Precisa de resposta', tipo: 'fixa', dica: 'O cliente falou por último (sem grupos nem arquivadas)' },
 ];
 
+/** Leads com a etiqueta "Acompanhar" do CRM: filtra a lista do WhatsApp pelas conversas desses leads. Só existe com login no CRM. */
+export const ABA_ACOMPANHAR: DefAba = { id: 'acompanhar', rotulo: 'Acompanhar', tipo: 'fixa', dica: 'Clientes prestes a fechar que você marcou para não esquecer, até o fechamento' };
+
 export const idDaFase = (fase: string): string => `fase:${fase}`;
 export const idDaPersonalizada = (id: string): string => `p:${id}`;
 
@@ -29,13 +32,13 @@ export const ABAS_DE_FUNIL: ReadonlyArray<DefAba> = FASES.map((f) => ({ id: idDa
 /** Todas as abas que existem (as escondidas também), na ordem em que aparecem. */
 export function todasAsAbas(config: ConfigCrm): DefAba[] {
   const proprias = (config.abasPersonalizadas ?? []).map<DefAba>((a) => ({ id: idDaPersonalizada(a.id), rotulo: a.nome, tipo: 'personalizada' }));
-  return [...ABAS_FIXAS, ...ABAS_DE_FUNIL, ...proprias];
+  return [...ABAS_FIXAS, ABA_ACOMPANHAR, ...ABAS_DE_FUNIL, ...proprias];
 }
 
 /** "Todas" nunca some: é o caminho de volta ao normal. */
-export function abasVisiveis(config: ConfigCrm): DefAba[] {
+export function abasVisiveis(config: ConfigCrm, comAcompanhar = true): DefAba[] {
   const ocultas = new Set(config.abasOcultas ?? []);
-  return todasAsAbas(config).filter((a) => a.id === 'todas' || !ocultas.has(a.id));
+  return todasAsAbas(config).filter((a) => a.id === 'todas' || (!ocultas.has(a.id) && (comAcompanhar || a.id !== ABA_ACOMPANHAR.id)));
 }
 
 export function personalizadaDaAba(config: ConfigCrm, id: string): AbaPersonalizada | undefined {
@@ -50,22 +53,23 @@ export function itensDaAba(config: ConfigCrm, id: string): string[] | null {
 }
 
 /** A aba ativa de verdade: uma aba apagada ou escondida volta para "Todas". `soFixas` = layout antigo, que só tem as 4 abas fixas. */
-export function abaEfetiva(config: ConfigCrm, soFixas = false): string {
+export function abaEfetiva(config: ConfigCrm, soFixas = false, comAcompanhar = true): string {
   const id = config.aba;
-  const visiveis = soFixas ? ABAS_FIXAS : abasVisiveis(config);
+  const visiveis = soFixas ? ABAS_FIXAS : abasVisiveis(config, comAcompanhar);
   return visiveis.some((a) => a.id === id) ? id : 'todas';
 }
 
 /** Filtro das linhas da lista para a configuração atual (aba ativa + chip de etiquetas + ocultar grupos). */
-export function filtroDaConfig(config: ConfigCrm, soFixas = false): FiltroLista {
-  const id = abaEfetiva(config, soFixas);
+export function filtroDaConfig(config: ConfigCrm, soFixas = false, acompanhar: ReadonlySet<string> | null = new Set()): FiltroLista {
+  const id = abaEfetiva(config, soFixas, acompanhar !== null);
   const itens = itensDaAba(config, id);
-  const fixa: AbaId = id === 'naoLidas' || id === 'precisa' || id === 'aguardando' ? id : 'todas';
+  const fixa: AbaId = id === 'naoLidas' || id === 'precisa' || id === 'aguardando' || id === 'acompanhar' ? id : 'todas';
   return {
     aba: fixa,
     diasSemResposta: config.diasSemResposta,
     etiquetas: config.filtroEtiquetas,
     ...(itens ? { abaFiltro: itens } : {}),
+    ...(fixa === 'acompanhar' && acompanhar ? { acompanhar } : {}),
     ...(config.ocultarGrupos ? { ocultarGrupos: true } : {}),
   };
 }

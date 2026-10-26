@@ -61,7 +61,12 @@ export const CHAVES_CRM = {
   avisados: 'vz.crm.avisados',
   /** ids de lembrete do CRM que o usuário concluiu/excluiu na extensão (some só aqui; o CRM não muda). */
   dispensados: 'vz.crm.dispensados',
+  /** Leads com a etiqueta "Acompanhar": { em = última consulta bem-sucedida (0 = nunca), tentouEm, leads }. Só cache. */
+  acompanhando: 'vz.crm.acompanhando',
 } as const;
+
+/** Etiqueta do CRM dos clientes prestes a fechar que não podem ser esquecidos (botão "Acompanhar"). */
+export const ETIQUETA_ACOMPANHAR = 'Acompanhar';
 
 export const LIMITE_NOTAS = 5000;
 export const LIMITE_TEXTO_CONTATO = 1000;

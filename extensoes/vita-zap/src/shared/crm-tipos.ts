@@ -25,7 +25,7 @@ export function ehFase(v: unknown): v is Fase {
 /** Paleta de etiquetas (todas legíveis com texto branco). */
 export const CORES_ETIQUETA = ['#00a884', '#0288d1', '#8e24aa', '#d84315', '#c62828', '#c77800', '#455a64', '#ad1457'] as const;
 
-export type AbaId = 'todas' | 'naoLidas' | 'precisa' | 'aguardando';
+export type AbaId = 'todas' | 'naoLidas' | 'precisa' | 'aguardando' | 'acompanhar';
 
 export const ABAS: ReadonlyArray<{ id: AbaId; rotulo: string }> = [
   { id: 'todas', rotulo: 'Todas' },

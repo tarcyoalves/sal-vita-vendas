@@ -5,6 +5,7 @@ import { normalizarTexto } from './nomes';
 import { telefoneDoNomeExibido } from './telefone';
 import type { AbaId, Contato, Conversa } from './crm-tipos';
 import { ABAS } from './crm-tipos';
+import { chavesDoVinculo } from './crm-remoto';
 
 const DIA_MS = 86_400_000;
 
@@ -158,6 +159,8 @@ export interface FiltroLista {
   abaFiltro?: string[];
   /** Esconde grupos. */
   ocultarGrupos?: boolean;
+  /** Só na aba "acompanhar": chaves de vínculo (tel:/nome:) das conversas dos leads com a etiqueta "Acompanhar". */
+  acompanhar?: ReadonlySet<string>;
   /** Só na aba "aguardando": mínimo de dias sem resposta. */
   diasSemResposta: number | null;
   /** Ids de etiqueta; vale também "fase:<id>". Vazio = sem filtro. */
@@ -187,6 +190,9 @@ export function passaNoFiltro(c: Conversa, contato: Contato | undefined, f: Filt
       break;
     case 'aguardando':
       ok = k.aguardando && (f.diasSemResposta == null || idadeDaUltima(c, agora).dias >= f.diasSemResposta);
+      break;
+    case 'acompanhar':
+      ok = !c.grupo && chavesDoVinculo({ nome: c.nome, telefone: c.telefone }).some((k) => f.acompanhar?.has(k) === true);
       break;
   }
   if (!ok) return false;

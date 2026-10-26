@@ -3,6 +3,7 @@ import { abrirBanco, listarCampanhas, listarContatos, listarEnvios, listarNaoEnv
 import type { Campanha } from '../shared/campanha';
 import type { ContatoVarrido } from '../shared/contatos';
 import type { Envio, NaoEnviar } from '../shared/exportar';
+import { Acompanhar, resumoDoPainel, rotuloDaAbaAcompanhar, useAcompanhando } from './Acompanhar';
 import { Clientes } from './Clientes';
 import { AvisoVersao } from './AvisoVersao';
 import { conectarAutomaticamente, dependenciasPadrao } from './conexao';
@@ -13,7 +14,7 @@ import { Lembretes } from './Lembretes';
 import { Previa } from './Previa';
 import { Varredura } from './Varredura';
 
-type Aba = 'lembretes' | 'clientes' | 'varredura' | 'previa' | 'execucao' | 'dados';
+type Aba = 'lembretes' | 'acompanhar' | 'clientes' | 'varredura' | 'previa' | 'execucao' | 'dados';
 
 export interface DadosLocais {
   contatos: ContatoVarrido[];
@@ -24,6 +25,7 @@ export interface DadosLocais {
 
 const ABAS: Array<{ id: Aba; rotulo: string }> = [
   { id: 'lembretes', rotulo: 'Lembretes' },
+  { id: 'acompanhar', rotulo: 'Acompanhar' },
   { id: 'clientes', rotulo: 'Clientes' },
   { id: 'varredura', rotulo: '1. Varredura' },
   { id: 'previa', rotulo: '2. Prévia' },
@@ -36,6 +38,8 @@ export function App() {
   const [erro, setErro] = useState<string | null>(null);
   const [aba, setAba] = useState<Aba>('lembretes');
   const crm = useCrm();
+  const acompanhando = useAcompanhando(crm);
+  const resumoAcomp = resumoDoPainel(acompanhando, crm.agora);
   const pedidoAtendido = useRef(0);
   const [dados, setDados] = useState<DadosLocais>({ contatos: [], campanhas: [], envios: [], naoEnviar: [] });
   const [campanhaAtiva, setCampanhaAtiva] = useState<string | null>(null);
@@ -88,13 +92,20 @@ export function App() {
       <AvisoVersao />
       <nav className="abas">
         {ABAS.map((a) => (
-          <button key={a.id} type="button" className={a.id === aba ? 'ativa' : ''} onClick={() => setAba(a.id)}>
-            {a.rotulo}
+          <button
+            key={a.id}
+            type="button"
+            className={`${a.id === aba ? 'ativa' : ''}${a.id === 'acompanhar' && (resumoAcomp?.vencidos ?? 0) > 0 ? ' alerta' : ''}`.trim()}
+            title={a.id === 'acompanhar' && (resumoAcomp?.vencidos ?? 0) > 0 ? 'Há cliente em acompanhamento com lembrete vencido' : undefined}
+            onClick={() => setAba(a.id)}
+          >
+            {a.id === 'acompanhar' ? rotuloDaAbaAcompanhar(resumoAcomp) : a.rotulo}
           </button>
         ))}
       </nav>
       <main>
         {aba === 'lembretes' && <Lembretes crm={crm} />}
+        {aba === 'acompanhar' && <Acompanhar crm={crm} acompanhando={acompanhando} />}
         {aba === 'clientes' && <Clientes crm={crm} />}
         {aba === 'varredura' && <Varredura db={db} dados={dados} aoMudar={recarregar} aoContinuar={() => setAba('previa')} />}
         {aba === 'previa' && (

@@ -3,7 +3,7 @@
 // se algo der errado o texto digitado fica no campo e o erro aparece em português. Nada envia mensagem.
 
 import { lerDataHoraLocal, paraInputDataHora, prazoRapido, PRAZOS_RAPIDOS, formatarVencimento, type PrazoRapido } from '../../shared/crm-lembretes';
-import { LIMITE_TEXTO_CONTATO, type LeadCrm } from '../../shared/crm-remoto';
+import { ETIQUETA_ACOMPANHAR, LIMITE_TEXTO_CONTATO, type LeadCrm } from '../../shared/crm-remoto';
 import type { RefContato } from '../../shared/crm-tipos';
 import type { LeadsCRM, ResultadoAcao, ResultadoLead } from '../../shared/leads';
 import { abrirPopover, fecharPopover, mostrarAviso } from './popover';
@@ -41,6 +41,33 @@ function resultado(r: ResultadoAcao | null, msg: HTMLElement, ctx: ContextoLead,
   ctx.aplicar(r.lead, r.pendente);
   mostrarAviso(r.pendente ? 'Sem conexão com o CRM: guardei a ação e reenvio sozinho quando a internet voltar.' : okTexto);
   return true;
+}
+
+// ── Acompanhar ───────────────────────────────────────────────────────────────
+
+/**
+ * Botão "Acompanhar" / "Parar de acompanhar" da faixa do lead: põe ou tira a etiqueta "Acompanhar" do CRM pelo
+ * mesmo alterarEtiquetas das Etiquetas. Um clique, uma ação: nada de consulta extra ao CRM.
+ */
+export async function alternarAcompanhar(ctx: ContextoLead, ref: RefContato, lead: LeadCrm): Promise<void> {
+  const parar = lead.etiquetas.includes(ETIQUETA_ACOMPANHAR);
+  try {
+    const r = await ctx.leads.alterarEtiquetas(ref, parar ? { remover: [ETIQUETA_ACOMPANHAR] } : { adicionar: [ETIQUETA_ACOMPANHAR] });
+    if (!r.ok) {
+      mostrarAviso(r.guardado ? `${r.erro.mensagem} A ação foi guardada e será enviada quando a sessão voltar.` : r.erro.mensagem, 'erro');
+      return;
+    }
+    ctx.aplicar(r.lead, r.pendente);
+    mostrarAviso(
+      r.pendente
+        ? 'Sem conexão com o CRM: guardei a ação e reenvio sozinho quando a internet voltar.'
+        : parar
+          ? 'Deixei de acompanhar este lead.'
+          : 'Lead em acompanhamento. Ele aparece na aba Acompanhar até o fechamento.',
+    );
+  } catch (e) {
+    mostrarAviso(e instanceof Error && e.message ? e.message : SEM_RESPOSTA, 'erro');
+  }
 }
 
 // ── Registrar contato ────────────────────────────────────────────────────────

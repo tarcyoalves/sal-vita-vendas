@@ -45,6 +45,10 @@ export interface CrmFalso {
   forcarStatus: number | null;
   /** O login passa, mas a sessão não é reconhecida depois (IP restrito / cookie não enviado). */
   sessaoInvisivel: boolean;
+  /** Servidor da 0.7.23: converter já tira a etiqueta "Acompanhar" na mesma chamada. Falso = servidor anterior. */
+  conversaoTiraAcompanhar: boolean;
+  /** tasks.acompanhando não existe (servidor anterior). */
+  semProcedureAcompanhando: boolean;
   fetch: typeof fetch;
   transporte: Transporte;
   chamadas(caminho: string): Requisicao[];
@@ -66,6 +70,8 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
     semRede: false,
     forcarStatus: null,
     sessaoInvisivel: false,
+    conversaoTiraAcompanhar: true,
+    semProcedureAcompanhando: false,
     fetch: undefined as unknown as typeof fetch,
     transporte: undefined as unknown as Transporte,
     chamadas: (c) => crm.requisicoes.filter((r) => r.url.pathname === `/api/trpc/${c}`),
@@ -134,6 +140,7 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
       if (!t) return erroTrpc(403, 'FORBIDDEN', 'Tarefa não encontrada ou sem permissão');
       t.convertedAt ??= new Date(agora());
       if (!t.tags.includes('ativo')) t.tags = [...t.tags, 'ativo'];
+      if (crm.conversaoTiraAcompanhar) t.tags = t.tags.filter((x) => x !== 'Acompanhar');
       if (d.orderValue !== undefined) t.orderValue = d.orderValue.toFixed(2);
       return ok(t);
     }
@@ -142,6 +149,9 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
       const nova = task({ id: 1000 + crm.tasks.length, title: d.title, phone: d.phone?.replace(/^55/, '') ?? null, reminderDate: d.reminderDate });
       crm.tasks.push(nova);
       return ok(nova);
+    }
+    if (caminho === 'tasks.acompanhando' && !crm.semProcedureAcompanhando) {
+      return ok(crm.tasks.filter((t) => t.tags.includes('Acompanhar') && t.status === 'pending' && !t.convertedAt).map((t) => ({ ...t, notes: (t.notes ?? '').slice(-500) })));
     }
     if (caminho === 'tasks.reminders') {
       return ok(crm.tasks.filter((t) => t.reminderDate && t.reminderEnabled && t.status === 'pending').map((t) => ({ id: t.id, title: t.title, reminderDate: t.reminderDate, reminderEnabled: t.reminderEnabled, status: t.status, notes: null, assignedTo: null, phone: t.phone })));

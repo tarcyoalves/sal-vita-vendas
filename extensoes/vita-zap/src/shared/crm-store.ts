@@ -152,7 +152,7 @@ function sanearAbaPersonalizada(v: unknown): AbaPersonalizada | null {
 
 function sanearConfig(v: unknown): ConfigCrm {
   const o = obj(v);
-  const abas: AbaId[] = ['todas', 'naoLidas', 'precisa', 'aguardando'];
+  const abas: AbaId[] = ['todas', 'naoLidas', 'precisa', 'aguardando', 'acompanhar'];
   const aba = typeof o?.aba === 'string' && (abas.includes(o.aba as AbaId) || /^(fase|p):.+/.test(o.aba)) ? o.aba : 'todas';
   const vistas: Record<string, number> = {};
   for (const [k, n] of Object.entries(obj(o?.abasVistas) ?? {})) if (typeof n === 'number' && Number.isFinite(n)) vistas[k] = n;

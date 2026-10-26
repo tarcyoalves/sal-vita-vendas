@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.22: CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.23: CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -276,6 +276,34 @@ abrem se o nome do contato bate com o do lead (evita abrir outra pessoa com o me
 **Responsável** de cada um; os demais usuários continuam vendo só os próprios. A faixa do lead (consulta por
 telefone) e os lembretes seguem individuais, inclusive para o admin.
 
+**Acompanhar (v0.7.23).** Para o cliente que está **prestes a fechar** e **não pode ser esquecido**:
+
+- **Botão "Acompanhar"** na faixa do lead (ao lado de Registrar contato, Reagendar lembrete, Etiquetas e Marcar
+  convertido). Um clique põe a etiqueta **"Acompanhar"** no lead do CRM, pelo mesmo `alterarEtiquetas` das
+  Etiquetas (não há rota nova para isso). A faixa mostra o selo **"Em acompanhamento"** e o botão vira
+  **"Parar de acompanhar"** (tira só essa etiqueta). Só o clique chama o CRM.
+- **"Marcar convertido" tira a etiqueta** "Acompanhar" na mesma chamada (`tasks.toggleConverted` do servidor
+  passou a tirá-la junto com a conversão). Se o servidor for de uma versão anterior e a etiqueta sobrar, a
+  extensão faz **uma** segunda chamada só nesse caso.
+- **Aba "Acompanhar" no painel lateral** (ao lado de Lembretes e Clientes): nome, próximo lembrete, último contato
+  e **"há N dias sem falar"**, ordenados por **lembrete vencido primeiro** e depois **mais dias sem contato**
+  (quem nunca teve contato registrado fica no topo do grupo). Ações: **Abrir conversa** (busca por telefone, **sem
+  recarregar** o WhatsApp Web, como na 0.7.21), **Registrar contato** e **Reagendar**, sem sair do painel.
+- **Aba "Acompanhar" na barra superior do WhatsApp**: filtra a lista de conversas só pelos clientes em
+  acompanhamento, até o fechamento. Só aparece com login no CRM. Os dois lugares têm **contador** e, havendo lembrete
+  vencido, o contador/aba fica **em vermelho**.
+- **Consumo do CRM (Neon):** a lista vem do **cache local** (todo lead visto ou alterado pela extensão) e de **1
+  consulta** `tasks.acompanhando` quando você **abre a aba** (no máximo **1 a cada 15 min**, contando também as que
+  falharam) ou clica **Atualizar** (sempre consulta). **Não há polling**: abrir conversa, o ciclo de 30 s e o foco
+  da janela só leem o cache. Falhou (sem rede, servidor antigo)? Mostra a lista guardada com o aviso.
+- **Servidor:** `tasks.acompanhando` (só leitura, `meusLeadsFilter`: só os leads do próprio atendente, inclusive
+  admin; pendentes, não convertidos, com a etiqueta; até 100) e `toggleConverted` tirando "Acompanhar". É a única
+  mudança no servidor; o `api/bundle.js` foi refeito. A extensão funciona com o servidor antigo, só sem buscar do
+  CRM leads etiquetados fora dela.
+- Limite conhecido: a lista da aba da barra superior casa as conversas do WhatsApp com os leads pelo vínculo
+  (telefone ou nome) já feito pela extensão; um lead etiquetado só no site, sem conversa vinculada, conta no número
+  mas não acende nenhuma linha até a conversa dele ser aberta uma vez.
+
 **Entrar:** painel lateral → **Dados** → **CRM Lembretes**. Digite o e-mail e a senha do CRM e clique
 em **Entrar**. Na primeira vez o Chrome pede permissão para acessar o endereço do CRM (aceite; é
 permissão opcional, pedida só aqui). A **senha não é guardada**: só a sessão do CRM (cookie de 7 dias do
@@ -429,6 +457,11 @@ grupo (`data-testid="author"`); o subtítulo do cabeçalho em conversa individua
 como "aviso/janela" do WhatsApp (`role="dialog"` etc. — um falso positivo permanente bloquearia o envio automático);
 emoji como `<img alt>` na caixa e nas mensagens; `visibilitychange` do painel lateral do Chrome.
 
+Da v0.7.23, também **não verificado no WhatsApp real** (só em HTML sintético e CRM falso): o botão Acompanhar e o
+selo na faixa do lead real; o filtro da lista pela aba Acompanhar (linhas do WhatsApp real com `translateY`); a procedure
+`tasks.acompanhando` e a mudança em `toggleConverted` rodando contra o Postgres do Neon em produção (testadas
+só por inspeção do código e pelo CRM falso); o desempenho da consulta `tags @> ARRAY['Acompanhar']` (sem índice).
+
 **Rode o checklist abaixo antes da primeira campanha real** e a cada atualização do
 WhatsApp Web. Se algo falhar, ajuste só `selectors.ts` (ou o sinal correspondente) e rode
 `npm test` de novo.
@@ -508,6 +541,13 @@ número salvo como "CLIENTE TESTE").
 - [ ] (0.7.21) Como **admin**: Vincular a um lead → a busca acha leads de outros atendentes e mostra "Responsável: ...".
 - [ ] (0.7.21) Aba Varredura: o campo "Só contatos com conversa já feita por mim" vem marcado; na Prévia, quem nunca
       recebeu mensagem sua aparece em *Fora da campanha* como "sem mensagem sua"; desmarcar os devolve.
+- [ ] (0.7.23) Faixa do lead → **Acompanhar**: aparece "Em acompanhamento" e o botão vira "Parar de acompanhar"; no
+      CRM (site) o lead ganhou a etiqueta "Acompanhar". **Parar de acompanhar** tira só essa etiqueta.
+- [ ] (0.7.23) Painel → aba **Acompanhar**: lista os leads com a etiqueta, vencidos primeiro, com "há N dias sem falar";
+      **Abrir conversa** abre sem recarregar; Registrar contato e Reagendar refletem no CRM. Reabrir a aba em menos de
+      15 min não consulta de novo (Atualizar consulta).
+- [ ] (0.7.23) Barra superior → aba **Acompanhar** (só com login): o contador bate com o painel e a lista do WhatsApp
+      mostra só esses clientes; **Marcar convertido** num deles o tira da aba.
 - [ ] Sair: a faixa some e o selo/central voltam a mostrar só os lembretes locais.
 
 **Dados**
@@ -557,10 +597,11 @@ extensoes/vita-zap/
 │   │   ├── repositorio.ts             interface única de dados (RepositorioContatos)
 │   │   ├── repositorio-local.ts       implementação em chrome.storage.local (único que o usa)
 │   │   ├── telefone.ts                telefone: só dígitos, DDI 55
+│   │   ├── crm-acompanhar.ts          aba Acompanhar: quem entra, ordem, "há N dias sem falar" (puro, v0.7.23)
 │   │   ├── crm-*.ts                   CRM: tipos, regras das abas, lembretes, contatos (id, vínculo),
 │   │   │                              modelos, clientes, formato/sanitização e JSON (puros)
 │   │   └── ia.ts                      interface da fase 2 (desligada)
-│   └── sidepanel/                     React: Lembretes, Clientes, Varredura, Prévia, Envio, Dados
+│   └── sidepanel/                     React: Lembretes, Acompanhar, Clientes, Varredura, Prévia, Envio, Dados
 ├── dev/                               harness visual (harness.html + servir.mjs, porta 5288)
 └── tests/                             vitest (npm test)
 ```

@@ -57,6 +57,26 @@ export type ResultadoAcao = { ok: true; lead: LeadCrm; pendente: boolean } | { o
 /** Por que os lembretes estão sendo buscados: `login` e `botao` ignoram o mínimo de 60 min; `painel` e `aba-whatsapp` o respeitam. */
 export type MotivoSync = 'login' | 'painel' | 'aba-whatsapp' | 'botao';
 
+/**
+ * Por que a lista "Acompanhar" é pedida: `cache` nunca vai ao CRM; `aba` (abrir a aba) só consulta se a última
+ * tentativa tem mais de 15 min; `botao` (Atualizar) sempre consulta.
+ */
+export type MotivoAcompanhando = 'cache' | 'aba' | 'botao';
+
+export interface Acompanhamento {
+  /** Leads com a etiqueta "Acompanhar" (sem ordem: quem ordena é ordenarAcompanhando). */
+  leads: LeadCrm[];
+  /** Chaves de vínculo (tel:/nome:/id:) das conversas desses leads, para filtrar a lista do WhatsApp. */
+  chaves: string[];
+  /** Última consulta bem-sucedida ao CRM (null = nunca consultou: só há o que a extensão viu). */
+  atualizadoEm: number | null;
+  /** A consulta falhou: mostra o que estava guardado. */
+  desatualizado: boolean;
+  aviso?: ErroCrm;
+}
+
+export type ResultadoAcompanhando = ({ ok: true } & Acompanhamento) | { ok: false; erro: ErroCrm };
+
 export interface LeadsCRM {
   conta(): Promise<EstadoConta>;
   /** Muda o endereço do CRM (derruba a sessão: o cookie é de outro servidor). */
@@ -79,6 +99,10 @@ export interface LeadsCRM {
   reagendar(ref: RefContato, em: number): Promise<ResultadoAcao>;
   alterarEtiquetas(ref: RefContato, mudanca: { adicionar?: string[]; remover?: string[] }): Promise<ResultadoAcao>;
   marcarConvertido(ref: RefContato, valor?: number): Promise<ResultadoAcao>;
+  /** Como registrarContatoNoLead, mas pela task (a aba Acompanhar do painel não tem a conversa aberta). */
+  registrarContatoNaTask(taskId: number, texto: string): Promise<ResultadoAcao>;
+  /** Leads com a etiqueta "Acompanhar" (cache local + no máximo 1 consulta por vez, ver MotivoAcompanhando). */
+  acompanhando(motivo?: MotivoAcompanhando): Promise<ResultadoAcompanhando>;
   /** Adia o lembrete de uma task do CRM (central: "Adiar"). */
   reagendarTask(taskId: number, em: number): Promise<{ ok: true } | { ok: false; erro: ErroCrm }>;
 
@@ -89,7 +113,7 @@ export interface LeadsCRM {
 
 export const METODOS_LEADS = [
   'conta', 'definirUrl', 'entrar', 'conectarPelaSessao', 'verificarSessao', 'sair', 'leadDoContato', 'procurarLeads', 'vincularLead', 'desvincularLead',
-  'criarLead', 'registrarContatoNoLead', 'reagendar', 'alterarEtiquetas', 'marcarConvertido', 'reagendarTask', 'sincronizarLembretes', 'reenviarFila',
+  'criarLead', 'registrarContatoNoLead', 'reagendar', 'alterarEtiquetas', 'marcarConvertido', 'registrarContatoNaTask', 'acompanhando', 'reagendarTask', 'sincronizarLembretes', 'reenviarFila',
 ] as const satisfies ReadonlyArray<keyof LeadsCRM>;
 
 export function ehLeadsCRM(r: unknown): r is LeadsCRM {

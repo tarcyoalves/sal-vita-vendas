@@ -91,6 +91,8 @@ textarea.campo { resize: vertical; min-height: 60px; }
 .faixa .btn { padding: 3px 10px; font-size: 12px; }
 .tag.neutra { background: var(--fundo); color: var(--texto); border: 1px solid var(--borda); }
 .tag.ok { background: var(--verde); }
+.tag.acomp { background: #c77800; font-weight: 600; }
+.btn.acomp { border-color: #c77800; color: #c77800; }
 .aviso-mini { padding: 1px 8px; border-radius: 10px; background: var(--aviso-fundo); color: var(--aviso); font-size: 11px; }
 /* Barra superior de largura total (48 px) */
 .topo { display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 12px 0 10px; background: var(--fundo); border-bottom: 1px solid var(--borda); font-size: 14px; color: var(--texto-aba); }
@@ -102,6 +104,8 @@ textarea.campo { resize: vertical; min-height: 60px; }
 .taba:hover { background: var(--hover); }
 .taba .n { color: #8696a0; font-weight: 500; }
 .taba.ativa { color: var(--verde); border-bottom-color: var(--verde); font-weight: 600; }
+.taba.alerta .n { color: var(--perigo); font-weight: 700; }
+.taba.alerta.ativa .n { color: var(--perigo); opacity: 1; }
 .taba.ativa .n { color: var(--verde); opacity: .75; }
 .taba .ponto { position: absolute; left: 6px; top: 15px; width: 6px; height: 6px; border-radius: 50%; background: var(--verde); }
 .taba .fase { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }

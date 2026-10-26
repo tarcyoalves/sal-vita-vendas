@@ -15,6 +15,7 @@
 //   console.debug com o motivo, para auditar.
 
 import { URL_CRM_PADRAO } from './constantes';
+import { emAcompanhamento, MINIMO_ACOMPANHANDO_MS } from './crm-acompanhar';
 import { instanteNoFuso } from './crm-lembretes';
 import { criarClienteTrpc, ErroDoCrm, normalizarBaseUrl, type ClienteTrpc, type ErroCrm, type Transporte } from './crm-rede';
 import {
@@ -22,6 +23,7 @@ import {
   CHAVES_CRM,
   chavesDoVinculo,
   erroValidacao,
+  ETIQUETA_ACOMPANHAR,
   leadDeTask,
   lembreteDeTask,
   idLembreteCrm,
@@ -36,7 +38,7 @@ import {
 import type { RefContato } from './crm-tipos';
 import { hojeNoFuso, somarDias } from './datas';
 import { novoId } from './id';
-import type { ArmazemChaves, EstadoConta, EstadoLead, FalhaFila, LeadsCRM, MotivoSync, ResultadoAcao, ResultadoBusca, ResultadoConta, ResultadoLead } from './leads';
+import type { Acompanhamento, ArmazemChaves, EstadoConta, EstadoLead, FalhaFila, LeadsCRM, MotivoAcompanhando, MotivoSync, ResultadoAcao, ResultadoAcompanhando, ResultadoBusca, ResultadoConta, ResultadoLead } from './leads';
 import { normalizarTelefone } from './telefone';
 
 const MAX_FILA = 200;
@@ -68,6 +70,13 @@ export interface ItemFila {
   taskId: number;
   criadoEm: number;
   op: OpFila;
+}
+
+/** O que fica em vz.crm.acompanhando. `em` = última consulta bem-sucedida; `tentouEm` = última tentativa (limita as automáticas). */
+interface GuardadoAcompanhando {
+  em: number;
+  tentouEm: number;
+  leads: LeadCrm[];
 }
 
 interface CacheLead {
@@ -109,7 +118,8 @@ export function aplicarLocal(lead: LeadCrm, item: Pick<ItemFila, 'op' | 'criadoE
   if (op.tipo === 'contato') return { ...lead, notas: anexarNota(lead.notas, op.linha), contatos: lead.contatos + 1, ultimoContatoEm: item.criadoEm };
   if (op.tipo === 'reagendar') return { ...lead, lembreteEm: op.em, lembreteAtivo: true };
   if (op.tipo === 'etiquetas') return { ...lead, etiquetas: calcularEtiquetas(lead.etiquetas, op.adicionar, op.remover) };
-  return { ...lead, convertidoEm: lead.convertidoEm ?? item.criadoEm, etiquetas: calcularEtiquetas(lead.etiquetas, ['ativo'], []) };
+  // Converter encerra o acompanhamento: a etiqueta "Acompanhar" sai junto com a conversão.
+  return { ...lead, convertidoEm: lead.convertidoEm ?? item.criadoEm, etiquetas: calcularEtiquetas(lead.etiquetas, ['ativo'], [ETIQUETA_ACOMPANHAR]) };
 }
 
 export function calcularEtiquetas(atuais: string[], adicionar: string[], remover: string[]): string[] {
@@ -344,6 +354,78 @@ export class ServicoCrm implements LeadsCRM {
       for (const id of ids.sort((a, b) => c[a].em - c[b].em).slice(0, ids.length - MAX_CACHE_LEADS)) delete c[id];
     }
     await this.arm.gravarChave(CHAVES_CRM.leads, c);
+    await this.atualizarAcompanhando(lead);
+  }
+
+  // ── Acompanhar (etiqueta "Acompanhar") ─────────────────────────────────────
+
+  private async lerAcompanhando(): Promise<GuardadoAcompanhando> {
+    return this.ler<GuardadoAcompanhando>(CHAVES_CRM.acompanhando, { em: 0, tentouEm: 0, leads: [] });
+  }
+
+  /** Todo lead que passa pelo cache (conversa aberta, ação do usuário) entra ou sai da lista conforme a etiqueta. */
+  private async atualizarAcompanhando(lead: LeadCrm): Promise<void> {
+    const g = await this.lerAcompanhando();
+    const guardado: LeadCrm = { ...lead, notas: lead.notas.slice(-500) }; // a lista só mostra o essencial: não duplica 5.000 caracteres de notas por lead
+    const existe = g.leads.some((l) => l.id === lead.id);
+    const leads = emAcompanhamento(lead) ? (existe ? g.leads.map((l) => (l.id === lead.id ? guardado : l)) : [...g.leads, guardado]) : g.leads.filter((l) => l.id !== lead.id);
+    if (JSON.stringify(leads) === JSON.stringify(g.leads)) return;
+    await this.arm.gravarChave(CHAVES_CRM.acompanhando, { ...g, leads });
+  }
+
+  /** Lista guardada + o que ainda está na fila offline (etiqueta/conversão/contato que não chegou ao CRM). */
+  private async acompanhandoComFila(g: GuardadoAcompanhando, uid: number): Promise<LeadCrm[]> {
+    const fila = (await this.ler<ItemFila[]>(CHAVES_CRM.fila, [])).filter((i) => i.usuarioId === uid);
+    const porId = new Map(g.leads.map((l) => [l.id, l] as const));
+    for (const i of fila) if (!porId.has(i.taskId)) {
+      const doCache = await this.doCache(i.taskId);
+      if (doCache) porId.set(i.taskId, doCache);
+    }
+    const saida: LeadCrm[] = [];
+    for (const [id, lead] of porId) {
+      const l = fila.filter((i) => i.taskId === id).reduce((acc, i) => aplicarLocal(acc, i), lead);
+      if (emAcompanhamento(l)) saida.push(l);
+    }
+    return saida;
+  }
+
+  private async chavesDosLeads(leads: LeadCrm[]): Promise<string[]> {
+    const ids = new Set(leads.map((l) => l.id));
+    const chaves = new Set<string>();
+    const v = await this.ler<Record<string, number>>(CHAVES_CRM.vinculos, {});
+    for (const [k, id] of Object.entries(v)) if (ids.has(id)) chaves.add(k);
+    for (const l of leads) for (const k of chavesDoVinculo({ nome: '', telefone: l.telefone })) chaves.add(k);
+    return [...chaves];
+  }
+
+  acompanhando(motivo: MotivoAcompanhando = 'cache'): Promise<ResultadoAcompanhando> {
+    return this.exclusivo(`lista Acompanhar (${motivo === 'botao' ? 'botão Atualizar' : motivo === 'aba' ? 'aba aberta' : 'só cache'})`, async () => {
+      const c = await this.lerConta();
+      if (!c.usuario) return { ok: false as const, erro: c.erro ?? { tipo: 'nao-autenticado', mensagem: 'Entre no CRM na aba Dados.' } };
+      const uid = c.usuario.id;
+      let g = await this.lerAcompanhando();
+      let aviso: ErroCrm | undefined;
+      const idade = this.relogio() - g.tentouEm;
+      const consultar = motivo === 'botao' || (motivo === 'aba' && (g.tentouEm === 0 || idade < 0 || idade >= MINIMO_ACOMPANHANDO_MS));
+      if (motivo === 'aba' && !consultar) this.semConsulta('lista Acompanhar consultada há menos de 15 min');
+      if (consultar) {
+        // Ações offline primeiro: a lista do servidor não pode apagar uma etiqueta que o usuário acabou de pôr.
+        if ((await this.ler<ItemFila[]>(CHAVES_CRM.fila, [])).some((i) => i.usuarioId === uid)) await this.reenviarInterno();
+        const r = await this.chamar(() => this.consultar<unknown[]>('tasks.acompanhando'));
+        const agora = this.relogio();
+        if (r.ok) {
+          const leads = (Array.isArray(r.valor) ? r.valor : []).map(leadDeTask).filter((l): l is LeadCrm => l != null).filter(emAcompanhamento);
+          g = { em: agora, tentouEm: agora, leads };
+        } else {
+          g = { ...g, tentouEm: agora };
+          aviso = r.erro;
+        }
+        await this.arm.gravarChave(CHAVES_CRM.acompanhando, g);
+      }
+      const leads = await this.acompanhandoComFila(g, uid);
+      const resposta: Acompanhamento = { leads, chaves: await this.chavesDosLeads(leads), atualizadoEm: g.em || null, desatualizado: aviso != null, ...(aviso ? { aviso } : {}) };
+      return { ok: true as const, ...resposta };
+    });
   }
 
   private async entradaDoCache(taskId: number): Promise<CacheLead | null> {
@@ -522,7 +604,13 @@ export class ServicoCrm implements LeadsCRM {
       const tags = Array.isArray(atual.tags) ? atual.tags.filter((t): t is string => typeof t === 'string') : [];
       return comoLead(await this.alterar<unknown>('tasks.update', { id: taskId, tags: calcularEtiquetas(tags, op.adicionar, op.remover) }));
     }
-    return comoLead(await this.alterar<unknown>('tasks.toggleConverted', { id: taskId, converted: true, ...(op.valor !== undefined ? { orderValue: op.valor } : {}) }));
+    const convertido = comoLead(await this.alterar<unknown>('tasks.toggleConverted', { id: taskId, converted: true, ...(op.valor !== undefined ? { orderValue: op.valor } : {}) }));
+    // O servidor atual já tira "Acompanhar" na própria conversão (uma chamada só). Só se ele for de uma versão
+    // anterior e a etiqueta sobrar é que fazemos a segunda chamada.
+    if (convertido.etiquetas.includes(ETIQUETA_ACOMPANHAR)) {
+      return comoLead(await this.alterar<unknown>('tasks.update', { id: taskId, tags: calcularEtiquetas(convertido.etiquetas, [], [ETIQUETA_ACOMPANHAR]) }));
+    }
+    return convertido;
   }
 
   private async enfileirar(usuarioId: number, taskId: number, op: OpFila): Promise<boolean> {
@@ -538,7 +626,7 @@ export class ServicoCrm implements LeadsCRM {
     const c = await this.lerConta();
     if (!c.usuario) return { ok: false, erro: c.erro ?? { tipo: 'nao-autenticado', mensagem: 'Entre no CRM na aba Dados.' }, guardado: false };
     const uid = c.usuario.id;
-    const cache = (await this.doCache(taskId)) ?? { id: taskId, titulo: '', telefone: null, etiquetas: [], lembreteEm: null, lembreteAtivo: true, status: 'pending', ultimoContatoEm: null, contatos: 0, convertidoEm: null, notas: '' };
+    const cache = (await this.doCache(taskId)) ?? (await this.lerAcompanhando()).leads.find((l) => l.id === taskId) ?? { id: taskId, titulo: '', telefone: null, etiquetas: [], lembreteEm: null, lembreteAtivo: true, status: 'pending', ultimoContatoEm: null, contatos: 0, convertidoEm: null, notas: '' };
     const otimista = (): LeadCrm => aplicarLocal(cache, { op, criadoEm: this.relogio() });
 
     // Mantém a ordem: se já há coisa pendente desta task, tenta esvaziar a fila antes de passar na frente.
@@ -577,6 +665,15 @@ export class ServicoCrm implements LeadsCRM {
       if (t.length > LIMITE_TEXTO_CONTATO) return { ok: false, erro: erroValidacao(`Texto longo demais (máximo ${LIMITE_TEXTO_CONTATO} caracteres).`), guardado: false } as ResultadoAcao;
       const taskId = await this.daTask(ref);
       if (typeof taskId !== 'number') return taskId;
+      return this.executar(taskId, { tipo: 'contato', linha: linhaDeContato(t, new Date(this.relogio())) });
+    });
+  }
+
+  registrarContatoNaTask(taskId: number, texto: string): Promise<ResultadoAcao> {
+    return this.exclusivo('registrar contato pela lista Acompanhar (ação do usuário)', async () => {
+      const t = texto.replace(/\s+/g, ' ').trim();
+      if (!t) return { ok: false, erro: erroValidacao('Escreva o que foi combinado com o cliente.'), guardado: false } as ResultadoAcao;
+      if (t.length > LIMITE_TEXTO_CONTATO) return { ok: false, erro: erroValidacao(`Texto longo demais (máximo ${LIMITE_TEXTO_CONTATO} caracteres).`), guardado: false } as ResultadoAcao;
       return this.executar(taskId, { tipo: 'contato', linha: linhaDeContato(t, new Date(this.relogio())) });
     });
   }

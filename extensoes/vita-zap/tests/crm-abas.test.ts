@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { ABAS_FIXAS, abaEfetiva, abasVisiveis, contarAbas, filtroDaConfig, filtroLigado, itensDaAba, temNovidade, todasAsAbas } from '../src/shared/crm-abas';
+import { chavesDoVinculo } from '../src/shared/crm-remoto';
 import { passaNoFiltro } from '../src/shared/crm-regras';
 import { CONFIG_PADRAO, sanearDados } from '../src/shared/crm-store';
 import type { ConfigCrm, Conversa } from '../src/shared/crm-tipos';
@@ -20,10 +21,32 @@ const contatoDe = (c: Conversa) => [ana, bruno].find((x) => x.nome === c.nome);
 const cfg = (extra: Partial<ConfigCrm> = {}): ConfigCrm => ({ ...CONFIG_PADRAO, ...extra });
 
 describe('abas da barra superior', () => {
-  it('a ordem fixa é Todas, Não lidas, Aguardando resposta, Precisa de resposta, depois o funil e as personalizadas', () => {
+  it('a ordem fixa é Todas, Não lidas, Aguardando resposta, Precisa de resposta, Acompanhar, depois o funil e as personalizadas', () => {
     expect(ABAS_FIXAS.map((a) => a.rotulo)).toEqual(['Todas', 'Não lidas', 'Aguardando resposta', 'Precisa de resposta']);
     const todas = todasAsAbas(cfg({ abasPersonalizadas: [{ id: 'x1', nome: 'Padarias', etiquetas: ['quente'], fases: [] }] })).map((a) => a.rotulo);
-    expect(todas).toEqual(['Todas', 'Não lidas', 'Aguardando resposta', 'Precisa de resposta', 'Novo', 'Orçamento', 'Negociando', 'Fechado', 'Perdido', 'Padarias']);
+    expect(todas).toEqual(['Todas', 'Não lidas', 'Aguardando resposta', 'Precisa de resposta', 'Acompanhar', 'Novo', 'Orçamento', 'Negociando', 'Fechado', 'Perdido', 'Padarias']);
+  });
+
+  it('aba Acompanhar: só existe com login no CRM, filtra pelas conversas dos leads e volta para Todas sem login', () => {
+    const c = cfg({ aba: 'acompanhar' });
+    expect(abasVisiveis(c).map((a) => a.id)).toContain('acompanhar');
+    expect(abasVisiveis(c, false).map((a) => a.id)).not.toContain('acompanhar');
+    expect(abaEfetiva(c)).toBe('acompanhar');
+    expect(abaEfetiva(c, false, false)).toBe('todas');
+    expect(abaEfetiva(c, true)).toBe('todas'); // layout antigo só tem as 4 fixas
+    expect(filtroDaConfig(c, false, null).aba).toBe('todas');
+    const f = filtroDaConfig(c, false, new Set(chavesDoVinculo({ nome: 'Ana', telefone: '5584999990000' })));
+    expect(f.aba).toBe('acompanhar');
+    expect(filtroLigado(f)).toBe(true);
+    expect(passaNoFiltro(conversa('Ana'), ana, f, AGORA)).toBe(true);
+    expect(passaNoFiltro(conversa('Bruno'), bruno, f, AGORA)).toBe(false);
+    expect(passaNoFiltro(conversa('Zé', { telefone: '5584999990000' }), undefined, f, AGORA)).toBe(true); // pelo telefone
+    expect(passaNoFiltro(conversa('Ana', { grupo: true }), ana, f, AGORA)).toBe(false);
+    expect(passaNoFiltro(conversa('Ana', { arquivada: true }), ana, f, AGORA)).toBe(false);
+  });
+
+  it('a configuração guardada com a aba Acompanhar não é descartada', () => {
+    expect(sanearDados({ config: { aba: 'acompanhar' } }).config?.aba).toBe('acompanhar');
   });
 
   it('aba de funil e aba escondida: escondida some da barra e "Todas" nunca some', () => {
