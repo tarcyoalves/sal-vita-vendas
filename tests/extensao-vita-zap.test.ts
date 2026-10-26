@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { csrfRejection } from '../server/lib/csrfGuard';
-import { extrairTermosBusca, findForWhatsappInput, phoneVariants, trechoDasNotas } from '../server/lib/whatsappLead';
+import { buscaDoVincularVeTodos, extrairTermosBusca, findForWhatsappInput, phoneVariants, trechoDasNotas } from '../server/lib/whatsappLead';
 import { EXTENSAO_VITA_ZAP_ID, EXTENSAO_VITA_ZAP_ORIGIN, origensDeExtensao } from '../shared/extensao';
 
 const PROD = ['https://lembretes.salvitarn.com.br', ...origensDeExtensao(undefined)];
@@ -85,11 +85,33 @@ describe('tasks.findForWhatsapp: telefone e notas', () => {
     const i = fonte.indexOf('findForWhatsapp: protectedProcedure');
     const corpo = fonte.slice(i, fonte.indexOf('getById: protectedProcedure', i));
     expect(i).toBeGreaterThan(0);
-    // Individual também para o admin (22/10/2026): sem atalho de admin, sempre o filtro dos próprios leads.
+    // Individual, exceto a busca do vincular feita pelo admin (26/10/2026): decidida SÓ pela função pura abaixo.
     expect(corpo).not.toContain("ctx.user.role === 'admin'");
+    expect(corpo).toContain('buscaDoVincularVeTodos(ctx.user.role, input)');
     expect(corpo).toContain('meusLeadsFilter(ctx.user.id');
     expect(corpo).toContain('.limit(FIND_WHATSAPP_LIMITE)');
-    for (const proibido of ['email', 'cnpj', 'assignedTo', 'orderValue']) expect(corpo).not.toContain(`${proibido}: tasks.`);
+    for (const proibido of ['email', 'cnpj', 'orderValue']) expect(corpo).not.toContain(`${proibido}: tasks.`);
+  });
+});
+
+describe('tasks.findForWhatsapp: vincular lead para o admin', () => {
+  it('admin buscando por texto (q) vê todos os leads', () => {
+    expect(buscaDoVincularVeTodos('admin', { q: 'Padaria' })).toBe(true);
+  });
+  it('admin consultando por telefone (faixa do lead) continua só com os próprios', () => {
+    expect(buscaDoVincularVeTodos('admin', { phone: '5584999990000' })).toBe(false);
+    expect(buscaDoVincularVeTodos('admin', { phone: '5584999990000', q: 'Padaria' })).toBe(false);
+  });
+  it('gerente, atendente e sem papel continuam só com os próprios', () => {
+    for (const role of ['manager', 'user', '', null, undefined]) expect(buscaDoVincularVeTodos(role, { q: 'Padaria' })).toBe(false);
+  });
+  it('o responsável só é devolvido na busca ampliada; lembretes seguem com meusLeadsFilter', () => {
+    const fonte = readFileSync('server/routers/tasks.ts', 'utf8');
+    const i = fonte.indexOf('findForWhatsapp: protectedProcedure');
+    const corpo = fonte.slice(i, fonte.indexOf('getById: protectedProcedure', i));
+    expect(corpo).toContain('assignedTo: tasks.assignedTo');
+    expect(corpo).toMatch(/veTodos \? \{ assignedTo/);
+    expect(fonte).toContain('.where(and(await meusLeadsFilter(ctx.user.id, ctx.user.name ?? \'\'), filtroLembrete))');
   });
 });
 

@@ -23,6 +23,8 @@ export interface TaskFalsa {
   contactCount: number;
   convertedAt: Date | null;
   orderValue?: string | null;
+  /** O servidor só devolve para o admin na busca do vincular. */
+  assignedTo?: string | null;
 }
 
 export interface Requisicao {

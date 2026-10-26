@@ -29,6 +29,8 @@ export interface LeadCrm {
   convertidoEm: number | null;
   /** Notas (a busca devolve só os últimos 500 caracteres). */
   notas: string;
+  /** Dono do lead. O servidor só informa na busca do admin para vincular (admin vê todos os leads). */
+  responsavel?: string | null;
 }
 
 /** Item de tasks.reminders (janela de ontem até +7 dias). */
@@ -93,6 +95,7 @@ export function leadDeTask(bruto: unknown): LeadCrm | null {
     contatos: typeof t.contactCount === 'number' ? t.contactCount : 0,
     convertidoEm: ms(t.convertedAt),
     notas: typeof t.notes === 'string' ? t.notes : '',
+    ...(typeof t.assignedTo === 'string' && t.assignedTo.trim() !== '' ? { responsavel: t.assignedTo.trim() } : {}),
   };
 }
 

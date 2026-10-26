@@ -210,7 +210,7 @@ export function abrirVincular(ancora: HTMLElement, ctx: ContextoLead, ref: RefCo
       ...(leads.length === 0 ? [h('div', { class: 'vazio' }, 'Nenhum lead encontrado.')] : []),
       ...leads.map((l) =>
         h('div', { class: 'item' },
-          h('div', { class: 'txt' }, h('strong', {}, l.titulo), h('div', { class: 'dica' }, [l.telefone, l.etiquetas.join(', ')].filter(Boolean).join(' · '))),
+          h('div', { class: 'txt' }, h('strong', {}, l.titulo), h('div', { class: 'dica' }, [l.telefone, l.etiquetas.join(', '), l.responsavel ? `Responsável: ${l.responsavel}` : ''].filter(Boolean).join(' · '))),
           h('button', { class: 'btn pri', type: 'button', onclick: () => void protegido(() => ctx.leads.vincularLead(ref, l.id), msg).then((r) => aposLead(r, msg, ctx, `Conversa ligada ao lead "${l.titulo}".`)) }, 'Vincular'),
         ),
       ),

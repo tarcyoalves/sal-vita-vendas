@@ -45,3 +45,12 @@ export function trechoDasNotas(notes: string | null | undefined, max = FIND_WHAT
   const t = notes ?? '';
   return t.length > max ? t.slice(t.length - max) : t;
 }
+
+/**
+ * Busca digitada para VINCULAR um lead (só `q`, sem telefone): o admin enxerga todos os leads e vê o
+ * responsável de cada um. A consulta por telefone (faixa do lead) e os demais papéis seguem só com os
+ * próprios leads (`meusLeadsFilter`). Decisão de 26/10/2026, substitui a de 22/10 só para o admin.
+ */
+export function buscaDoVincularVeTodos(role: string | null | undefined, input: { phone?: string; q?: string }): boolean {
+  return role === 'admin' && !!input.q && !input.phone;
+}

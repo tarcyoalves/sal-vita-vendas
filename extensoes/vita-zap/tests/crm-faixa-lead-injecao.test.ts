@@ -141,6 +141,28 @@ describe('faixa do lead', () => {
     await vi.waitFor(() => expect(textoFaixa()).toContain('Lead: Padaria da Ana'));
   });
 
+  it('Vincular (admin): a lista mostra o responsável de cada lead', async () => {
+    crm.tasks[0].phone = '84911112222';
+    crm.tasks[0].assignedTo = 'Maria Atendente';
+    await iniciar(true);
+    await vi.waitFor(() => expect(textoFaixa()).toContain('Sem lead no CRM'));
+    botao(faixa()!, 'Vincular a um lead').click();
+    (overlay().querySelector('input') as HTMLInputElement).value = 'padaria';
+    botao(overlay(), 'Buscar').click();
+    await vi.waitFor(() => expect(overlay().textContent).toContain('Responsável: Maria Atendente'));
+  });
+
+  it('Vincular (atendente): sem responsável na resposta, a lista não mostra "Responsável"', async () => {
+    crm.tasks[0].phone = '84911112222';
+    await iniciar(true);
+    await vi.waitFor(() => expect(textoFaixa()).toContain('Sem lead no CRM'));
+    botao(faixa()!, 'Vincular a um lead').click();
+    (overlay().querySelector('input') as HTMLInputElement).value = 'padaria';
+    botao(overlay(), 'Buscar').click();
+    await vi.waitFor(() => expect(overlay().textContent).toContain('Padaria da Ana'));
+    expect(overlay().textContent).not.toContain('Responsável');
+  });
+
   it('sessão caída: a faixa explica e manda entrar de novo (o resto do CRM local segue)', async () => {
     await iniciar(true);
     await vi.waitFor(() => expect(textoFaixa()).toContain('Lead: Padaria da Ana'));

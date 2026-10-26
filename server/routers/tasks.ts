@@ -8,7 +8,7 @@ import { tasks, sellers, users, taskDeletionLogs } from '../db/schema';
 import { runTriggerNow, cancelAllEnrollments } from '../email/automations';
 import { normalizeBrPhone, phoneOfTask } from '../../shared/phone';
 import { foldText, searchTerms, SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../shared/searchText';
-import { extrairTermosBusca, findForWhatsappInput, FIND_WHATSAPP_LIMITE, phoneVariants, trechoDasNotas } from '../lib/whatsappLead';
+import { buscaDoVincularVeTodos, extrairTermosBusca, findForWhatsappInput, FIND_WHATSAPP_LIMITE, phoneVariants, trechoDasNotas } from '../lib/whatsappLead';
 import { validarDocumentoDaTarefa } from '../lib/taskDocumento';
 import { isNewContact } from '../lib/taskNotes';
 import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento, deduplicarNoArquivo, janelaLembretes } from '../lib/taskImport';
@@ -188,16 +188,18 @@ export const tasksRouter = router({
       }
       if (conds.length === 0) return [];
       const busca = or(...conds)!;
-      // Só os leads do próprio atendente, também para o admin (extensão Vita Zap é individual).
-      const where = and(await meusLeadsFilter(ctx.user.id, ctx.user.name ?? ''), busca);
+      // Só os leads do próprio atendente. Exceção: o admin, ao buscar para VINCULAR (só `q`), vê todos e o responsável.
+      const veTodos = buscaDoVincularVeTodos(ctx.user.role, input);
+      const where = veTodos ? busca : and(await meusLeadsFilter(ctx.user.id, ctx.user.name ?? ''), busca);
       const orderByClauses = score ? [desc(score), desc(tasks.updatedAt)] : [desc(tasks.updatedAt)];
       const rows = await db.select({
         id: tasks.id, title: tasks.title, phone: tasks.phone, tags: tasks.tags,
         reminderDate: tasks.reminderDate, reminderEnabled: tasks.reminderEnabled, status: tasks.status,
         lastContactedAt: tasks.lastContactedAt, contactCount: tasks.contactCount, convertedAt: tasks.convertedAt,
-        notes: tasks.notes,
+        notes: tasks.notes, assignedTo: tasks.assignedTo,
       }).from(tasks).where(where).orderBy(...orderByClauses).limit(FIND_WHATSAPP_LIMITE);
-      return rows.map(({ notes, ...r }) => ({ ...r, notes: trechoDasNotas(notes) }));
+      // O responsável só sai na busca ampliada do admin (o atendente só vê os próprios leads).
+      return rows.map(({ notes, assignedTo, ...r }) => ({ ...r, notes: trechoDasNotas(notes), ...(veTodos ? { assignedTo: assignedTo?.trim() || null } : {}) }));
     }),
 
   getById: protectedProcedure
