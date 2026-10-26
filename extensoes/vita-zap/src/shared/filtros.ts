@@ -2,7 +2,7 @@
 
 import { DIAS_SEM_REPETIR } from './constantes';
 import type { ContatoVarrido } from './contatos';
-import { rotuloDaFase, type Fase } from './crm-tipos';
+import { rotuloDaFase, type Contato, type Fase } from './crm-tipos';
 import { diferencaDias, formatarDataBr, hojeNoFuso, type DataIso } from './datas';
 import { normalizarTexto } from './nomes';
 
@@ -24,6 +24,11 @@ export interface Filtros {
   fases?: Fase[];
   /** Se true, filtra conversas onde o atendente falou por último (aguardando resposta). */
   aguardandoResposta?: boolean;
+  /**
+   * "Só contatos com conversa já feita por mim": fica de fora quem não tem nenhum sinal de que o atendente já
+   * mandou mensagem (ver `falouComOContato`). Ligado por padrão no painel (aba Varredura); aqui o padrão é desligado.
+   */
+  soComMensagemMinha?: boolean;
 }
 
 export const FILTROS_PADRAO: Filtros = {
@@ -36,6 +41,7 @@ export const FILTROS_PADRAO: Filtros = {
   tags: [],
   fases: [],
   aguardandoResposta: false,
+  soComMensagemMinha: false,
 };
 
 export interface ContextoFiltro {
@@ -50,6 +56,8 @@ export interface ContextoFiltro {
   fasePorChave?: ReadonlyMap<string, Fase>;
   /** Mapa chave do contato → boolean indicando se está aguardando resposta do cliente. */
   aguardandoPorChave?: ReadonlyMap<string, boolean>;
+  /** Chaves de contatos com registro do atendente no CRM da extensão (nota, fase ou conversão). */
+  comRegistroDoAtendente?: ReadonlySet<string>;
 }
 
 export type Situacao = 'incluido' | 'excluido' | 'revisar';
@@ -64,7 +72,39 @@ export function diasSemRepetir(filtros: Filtros): number {
   return Math.max(DIAS_SEM_REPETIR, n);
 }
 
+export const MOTIVO_SEM_MENSAGEM_MINHA = 'sem mensagem sua (nenhum sinal de conversa feita por você)';
+
+/** Ajuda do campo "Só contatos com conversa já feita por mim" (aba Varredura). */
+export const TEXTO_AJUDA_SO_MINHA =
+  'Entra quem tem algum sinal de que você já mandou mensagem: a última mensagem da lista é sua (✓, ✓✓, relógio ou "Você:"), o contato está no histórico de envios da extensão ou tem nota/fase/conversão sua no CRM da extensão. ' +
+  'Limites: se o cliente respondeu por último e a lista não mostra nada seu, o contato fica fora (aparece na prévia como "sem mensagem sua" e dá para incluir à mão); contatos varridos antes da versão 0.7.21 precisam ser varridos de novo.';
+
+/** Contato do CRM da extensão em que o atendente já mexeu: nota, fase do funil ou conversão. */
+export function temRegistroDoAtendente(c: Pick<Contato, 'notas' | 'fase' | 'convertidoEm'>): boolean {
+  return c.notas.length > 0 || c.fase != null || c.convertidoEm != null;
+}
+
+/**
+ * O atendente já falou com este contato? Verdade se QUALQUER sinal existir:
+ * (a) a prévia da última mensagem na lista é minha (ícone de entrega/leitura ou "Você:");
+ * (b) o contato está no histórico de envios da extensão;
+ * (c) o contato tem registro do atendente no CRM da extensão (nota, fase ou conversão).
+ * Limite: se a conversa é antiga e o cliente respondeu por último, a lista não mostra nada meu; sem (b) nem (c) o
+ * contato fica de fora (dá para incluir à mão na prévia).
+ */
+export function falouComOContato(c: ContatoVarrido, ctx: ContextoFiltro): boolean {
+  return c.ultimaDeMim === true || ctx.ultimoEnvioPorChave.has(c.chave) || ctx.comRegistroDoAtendente?.has(c.chave) === true;
+}
+
 export function avaliarContato(c: ContatoVarrido, filtros: Filtros, ctx: ContextoFiltro): Decisao {
+  const d = avaliarSemFiltroDeMensagemMinha(c, filtros, ctx);
+  if (filtros.soComMensagemMinha && d.situacao !== 'excluido' && !falouComOContato(c, ctx)) {
+    return { situacao: 'excluido', motivo: MOTIVO_SEM_MENSAGEM_MINHA };
+  }
+  return d;
+}
+
+function avaliarSemFiltroDeMensagemMinha(c: ContatoVarrido, filtros: Filtros, ctx: ContextoFiltro): Decisao {
   const nome = normalizarTexto(c.nome);
 
   if (ctx.naoEnviar.has(c.chave)) return { situacao: 'excluido', motivo: 'marcado "Não enviar mais"' };

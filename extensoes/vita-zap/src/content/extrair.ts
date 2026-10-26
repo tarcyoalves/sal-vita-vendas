@@ -59,6 +59,21 @@ export function rotuloDataDaLinha(el: HTMLElement, titulo: HTMLElement): string 
   return null;
 }
 
+/**
+ * A prévia da última mensagem da linha é minha? `true` com ícone de entrega/leitura/relógio (data-icon ou
+ * <svg><title>, ver TITULOS_ICONE) ou com o prefixo "Você:"/"You:"; `false` com selo de não lida ou prévia sem
+ * esses sinais; `null` sem prévia (contato da agenda, sem conversa).
+ */
+export function ultimaDeMimDaLinha(el: HTMLElement, titulo: HTMLElement): boolean | null {
+  if (existeAlgum(el, 'iconeMinhaMensagem')) return true;
+  for (const f of el.querySelectorAll<HTMLElement>('*')) {
+    if (f.children.length > 0 || titulo.contains(f) || f.contains(titulo)) continue;
+    if (/^(voc[eê]|you)\s*:/i.test(limparMarcas(f.textContent ?? ''))) return true;
+  }
+  if (encontrar(el, 'seloNaoLida')) return false;
+  return previaDaLinha(el, titulo, rotuloDataDaLinha(el, titulo), null) === '' ? null : false;
+}
+
 export function lerLinha(el: HTMLElement): LeituraLinha {
   const titulo = encontrar(el, 'tituloLinha');
   if (!titulo) {
@@ -75,6 +90,7 @@ export function lerLinha(el: HTMLElement): LeituraLinha {
       rotuloData: rotuloDataDaLinha(el, titulo),
       posicao: posicaoDaLinha(el),
       pareceGrupo: encontrar(el, 'iconeGrupo') != null,
+      ultimaDeMim: ultimaDeMimDaLinha(el, titulo),
     },
   };
 }
@@ -175,4 +191,27 @@ export function lerLinhaCrm(el: HTMLElement): LeituraCrm | null {
     grupo,
     digitando,
   };
+}
+
+// ── Resultados da busca (só leitura) ─────────────────────────────────────────
+
+const SECOES_DE_MENSAGENS = ['mensagens', 'messages'];
+
+/**
+ * Linhas de CONVERSA ou CONTATO individual que a busca mostra, em ordem de posição. Para na seção
+ * "Mensagens" (achados dentro de textos, não são contatos) e deixa de fora grupos.
+ */
+export function lerResultadosDaBusca(elementos: HTMLElement[]): Array<{ el: HTMLElement; linha: LinhaBruta }> {
+  const lidas = elementos
+    .map((el, ordem) => ({ el, leitura: lerLinha(el), pos: posicaoDaLinha(el), ordem }))
+    .sort((a, b) => (a.pos != null && b.pos != null ? a.pos - b.pos : a.ordem - b.ordem));
+  const saida: Array<{ el: HTMLElement; linha: LinhaBruta }> = [];
+  for (const { el, leitura } of lidas) {
+    if (leitura.tipo === 'secaoSemConversa') {
+      if (SECOES_DE_MENSAGENS.includes(leitura.texto)) break;
+      continue;
+    }
+    if (leitura.tipo === 'conversa' && !leitura.linha.pareceGrupo) saida.push({ el, linha: leitura.linha });
+  }
+  return saida;
 }

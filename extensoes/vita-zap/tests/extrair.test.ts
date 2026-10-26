@@ -23,7 +23,7 @@ const conversa = (nome: string, data: string, previa = 'Bom dia', extra = '') =>
 describe('lerLinha (HTML sintético)', () => {
   it('lê nome, data e posição', () => {
     const r = lerLinha(linha(conversa('João CLIENTE', 'Ontem'), 144));
-    expect(r).toEqual({ tipo: 'conversa', linha: { nome: 'João CLIENTE', rotuloData: 'Ontem', posicao: 144, pareceGrupo: false } });
+    expect(r).toEqual({ tipo: 'conversa', linha: { nome: 'João CLIENTE', rotuloData: 'Ontem', posicao: 144, pareceGrupo: false, ultimaDeMim: false } });
   });
 
   it('não confunde texto da prévia com data', () => {

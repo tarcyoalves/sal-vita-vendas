@@ -3,6 +3,7 @@
 // Não existe pedido de envio.
 
 import type { EventoConteudo, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
+import { abrirConversaPorTelefoneSemRecarregar } from './abrir-por-telefone';
 import { abrirEColar, limparCaixa, pararObservacao } from './execucao';
 import { ErroSeletor } from './lista';
 import { iniciarCrm } from './crm';
@@ -57,6 +58,8 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
       const r = await varrerLista(pedido.termo, (lidas, unicas) => emitir({ tipo: 'vitaZap:progressoVarredura', lidas, unicas }));
       return { ok: true, linhas: r.linhas, avisos: r.avisos };
     }
+    case 'abrirPorTelefone':
+      return abrirConversaPorTelefoneSemRecarregar(pedido.telefone, pedido.nomeDica);
     case 'abrirEColar':
       return abrirEColar(pedido.nome, pedido.texto, (texto, textoConfere) =>
         emitir({ tipo: 'vitaZap:envioDetectado', nome: pedido.nome, texto, textoConfere }),
@@ -67,7 +70,7 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
 
 if (!jaCarregado) chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo, remetente, responder: (r: RespostaConteudo) => void) => {
   if (remetente.id !== chrome.runtime.id) return false;
-  const longo = mensagem.tipo === 'varrer' || mensagem.tipo === 'abrirEColar';
+  const longo = mensagem.tipo === 'varrer' || mensagem.tipo === 'abrirEColar' || mensagem.tipo === 'abrirPorTelefone';
   if (longo && ocupado) {
     responder({ ok: false, codigo: 'ocupado', erro: 'Outra operação ainda está em andamento.' });
     return false;

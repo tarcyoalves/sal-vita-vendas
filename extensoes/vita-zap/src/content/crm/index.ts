@@ -21,6 +21,8 @@ import { refDaConversaAberta } from './conversa-aberta';
 import { esperarAte } from '../dom';
 import { encontrar, encontrarTodos } from '../selectors';
 import { abrirConversaComRascunho, abrirConversaPorTelefoneNaPagina, consumirAcaoPendente } from './acao-pendente';
+import { ligarTelefones } from './telefone-conhecido';
+import { lerTelefoneDosDadosDoContato } from './dados-do-contato';
 import { FaixaLead, type AcoesFaixa } from './faixa-lead';
 import { abrirConverter, abrirCriarLead, abrirEtiquetas, abrirReagendar, abrirRegistrarContato, abrirVincular, type ContextoLead } from './painel-lead';
 import { ehLeadsCRM, type EstadoLead, type LeadsCRM } from '../../shared/leads';
@@ -84,6 +86,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   const repo = op.repositorio ?? repositorioPadrao();
   const estado = new Estado(repo);
   await estado.iniciar(() => void consumirAcaoPendente(repo));
+  ligarTelefones(estado);
   const barra = new Barra();
   const topo = new BarraSuperior();
   const cabecalho = new Cabecalho();
@@ -109,8 +112,11 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
 
   const ctxLembretes: ContextoLembretes = { estado, agora: agoraFn, abrirConversa: ({ nome, telefone, rascunho, remoto }) => {
       // Lembrete do CRM: pelo telefone (o nome do lead nem sempre é o salvo no WhatsApp). Os locais seguem por nome.
-      if (remoto && telefone && abrirConversaPorTelefoneNaPagina(telefone)) return;
-      void abrirConversaComRascunho(nome, rascunho);
+      if (remoto && telefone) {
+        void abrirConversaPorTelefoneNaPagina(telefone, nome);
+        return;
+      }
+      void abrirConversaComRascunho(nome, rascunho, telefone);
     },
   };
 
@@ -157,6 +163,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
     const ctxLead: ContextoLead = {
       leads,
       agora: agoraFn,
+      lerTelefoneDosDados: lerTelefoneDosDadosDoContato,
       aplicar: (lead, pendente) => {
         const atual = leadCache.estado?.tipo === 'lead' ? leadCache.estado.pendentes : 0;
         leadCache.estado = { tipo: 'lead', lead, desatualizado: false, pendentes: pendente ? atual + 1 : 0 };
@@ -504,6 +511,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
     ciclo,
     parar: () => {
       encerrado = true;
+      ligarTelefones(null);
       observador.disconnect();
       removerOuvinte();
       if (timer) clearTimeout(timer);

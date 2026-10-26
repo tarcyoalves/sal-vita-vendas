@@ -151,8 +151,13 @@ Tudo isso **só lê a tela e anota no seu navegador**; nada manda mensagem. Onde
 **Quem é o contato.** Cada contato tem um **id interno** (não é o nome nem o telefone), o **nome
 exibido**, o **telefone** e os nomes (aliases) pelos quais já foi visto. O telefone é guardado
 **só com dígitos e com DDI 55** (`84 99999-0000` → `5584999990000`) e é lido do HTML quando dá:
-nome exibido que é um número (contato não salvo), id das mensagens da conversa (`...@c.us`) ou
-o painel "Dados do contato" aberto. O WhatsApp mostra números antigos sem o 9 extra do celular;
+nome exibido que é um número (contato não salvo), id das mensagens da conversa (`...@c.us`), o painel
+"Dados do contato" aberto, o **telefone memorizado** (conversa aberta pelo telefone ou por lembrete/cliente do
+CRM) e o índice local de contatos. No WhatsApp de 10/2026 o `data-id` das mensagens **não traz o número** e o
+contato salvo mostra só o nome; por isso, ao abrir **Criar lead** sem telefone, a extensão **abre sozinha o
+painel "Dados do contato"** (clique no nome do cabeçalho da conversa, só leitura de dados), lê o "+55 ...",
+**fecha o painel** (clique no X dele) e preenche o campo com o aviso "Telefone lido dos dados do contato —
+confira". Se não achar, o campo fica vazio com uma dica. Em grupo não faz nada. O WhatsApp mostra números antigos sem o 9 extra do celular;
 a comparação trata as duas formas como a mesma linha. Se o contato for renomeado no WhatsApp,
 o telefone mantém as notas e os lembretes no mesmo registro. Dois contatos com o mesmo nome e
 telefones diferentes são pessoas diferentes. No painel do cliente, **Vincular telefone** grava o
@@ -169,6 +174,16 @@ e salve. Sem isso nenhuma campanha roda. Confira também se o WhatsApp Web está
 1. **Varredura** — digite o termo (ex.: `CLIENTE`) e clique em *Varrer conversas*. A extensão
    escreve o termo na busca do WhatsApp, rola a lista com pausas e lê nome + data da última
    mensagem. Só leitura: não abre conversa nem escreve mensagem.
+   - **"Só contatos com conversa já feita por mim (atendente)"** (v0.7.21): campo **marcado por padrão**; a
+     escolha fica salva. Marcado, a prévia só inclui quem tem **algum** destes sinais de que você já mandou
+     mensagem: (a) a última mensagem da linha da lista é sua (✓, ✓✓, relógio, ou o prefixo "Você:"); (b) o contato
+     está no histórico de envios da extensão; (c) o contato tem registro seu no CRM da extensão (nota, fase do
+     funil ou conversão). Quem não tem nenhum sinal aparece na prévia em **Fora da campanha** com o motivo
+     "sem mensagem sua", com o botão **Incluir mesmo assim**. Desmarcado, tudo volta a ser como antes.
+     **Limites:** se o cliente respondeu por último e você não tem envio, nota nem fase registrados, a lista não
+     mostra nada seu e o contato fica de fora; o "lead vinculado no CRM" só conta quando virou nota/fase/conversão
+     no CRM da extensão (a extensão não consulta o CRM Lembretes na prévia, por causa do banco grátis);
+     contatos varridos antes da 0.7.21 não têm o sinal (a): varra de novo.
 2. **Prévia** — ajuste os filtros (nome contém / não contém, última conversa antes de / depois
    de, dias sem repetir), escreva o texto base com `{primeiroNome}` e até 3 variações. Clique
    em *Gerar prévia*: cada contato aparece com o motivo de inclusão e o texto sorteado. Remova
@@ -195,6 +210,19 @@ Opcional. **Sem login tudo funciona como na v0.4** (dados só neste navegador). 
 usa o mesmo cadastro do CRM (`lembretes.salvitarn.com.br`): cada conversa mostra o lead (task) do CRM e
 os lembretes do CRM aparecem na central e nos alarmes. **Nada envia mensagem de WhatsApp**: continua
 valendo "você aperta o Enter".
+
+**Abrir conversa de lembrete do CRM (v0.7.21).** O botão **Abrir conversa** (aba Lembretes, central do
+WhatsApp, clique na notificação) **não recarrega mais o WhatsApp Web**: o painel/service worker pede ao content
+script, que digita o telefone na busca da lista (com DDI 55, sem DDI, com/sem o 9 extra, últimos 9 e 8 dígitos),
+espera os resultados assentarem, abre quando há **um** contato individual (ou um único cujo nome bate com o do
+lead), confere o cabeçalho e limpa a busca. Só se a busca **não achar nada**, achar **mais de um contato** ou a
+página **não responder** ele usa o endereço `/send?phone=` (que recarrega a página) e o painel avisa: "Não achei
+pela busca; abrindo pelo endereço do WhatsApp (recarrega a página)." Formatos curtos (últimos 8/9 dígitos) só
+abrem se o nome do contato bate com o do lead (evita abrir outra pessoa com o mesmo final de número).
+
+**Vincular lead (v0.7.21).** Na busca de **Vincular a um lead**, o **admin** vê **todos** os leads do CRM e o
+**Responsável** de cada um; os demais usuários continuam vendo só os próprios. A faixa do lead (consulta por
+telefone) e os lembretes seguem individuais, inclusive para o admin.
 
 **Entrar:** painel lateral → **Dados** → **CRM Lembretes**. Digite o e-mail e a senha do CRM e clique
 em **Entrar**. Na primeira vez o Chrome pede permissão para acessar o endereço do CRM (aceite; é
@@ -334,6 +362,12 @@ o botão flutuante sobre a caixa de digitação, o recálculo do `translateY` da
 se `execCommand('insertText')` cola o rascunho/modelo no editor, e de onde sai o **telefone**
 (ids `@c.us` das mensagens e o painel "Dados do contato", seletor `painelDadosContato`).
 
+Da v0.7.21, também **não verificado no WhatsApp real** (só em HTML sintético): a busca por telefone abrir o
+contato certo sem recarregar (formatos aceitos pela busca, seções "Contatos"/"Mensagens", linha única), o clique
+no nome do cabeçalho abrir "Dados do contato", onde o painel mostra o "+55 ..." e o X que o fecha (seletores
+`painelDadosContato` e `botaoFecharPainel`), e o ícone de entrega/"Você:" da linha como sinal do filtro
+"só contatos com conversa já feita por mim".
+
 **Rode o checklist abaixo antes da primeira campanha real** e a cada atualização do
 WhatsApp Web. Se algo falhar, ajuste só `selectors.ts` (ou o sinal correspondente) e rode
 `npm test` de novo.
@@ -405,6 +439,14 @@ número salvo como "CLIENTE TESTE").
 - [ ] Reagendar, etiquetas e Marcar convertido refletem no CRM.
 - [ ] Desligar o Wi-Fi, registrar contato: aviso "guardada"; religar: a nota chega ao CRM na próxima ação sua ou em "Atualizar do CRM" (não há timer).
 - [ ] Lembrete do CRM para daqui a 3 minutos: **uma** notificação; clicar abre a conversa pelo telefone **sem enviar**.
+- [ ] (0.7.21) Aba Lembretes → **Abrir conversa** de lembrete do CRM: a conversa abre **sem recarregar** o WhatsApp
+      Web (a barra de abas não pisca e o que estava digitado em outra conversa continua lá); a busca fica limpa.
+      Com um telefone que não existe: aparece "Não achei pela busca; abrindo pelo endereço do WhatsApp (recarrega a página)".
+- [ ] (0.7.21) Contato salvo (só aparece o nome) → **Criar lead**: o painel "Dados do contato" abre e fecha sozinho, o
+      campo Telefone vem preenchido com "Telefone lido dos dados do contato — confira" e nada foi enviado.
+- [ ] (0.7.21) Como **admin**: Vincular a um lead → a busca acha leads de outros atendentes e mostra "Responsável: ...".
+- [ ] (0.7.21) Aba Varredura: o campo "Só contatos com conversa já feita por mim" vem marcado; na Prévia, quem nunca
+      recebeu mensagem sua aparece em *Fora da campanha* como "sem mensagem sua"; desmarcar os devolve.
 - [ ] Sair: a faixa some e o selo/central voltam a mostrar só os lembretes locais.
 
 **Dados**
@@ -438,7 +480,8 @@ extensoes/vita-zap/
 │   │   ├── extrair.ts                 leitura de uma linha da lista (puro)
 │   │   ├── varredura.ts               rolagem com pausas, só leitura
 │   │   ├── execucao.ts                abrir + colar + observar envio
-│   │   ├── abrir-conversa.ts          único clique simulado (linha da lista)
+│   │   ├── abrir-conversa.ts          único arquivo com cliques simulados (linha da lista; nome do cabeçalho e X de "Dados do contato")
+│   │   ├── abrir-por-telefone.ts      abre a conversa de um telefone pela busca, sem recarregar (v0.7.21)
 │   │   ├── dom.ts, lista.ts           utilidades
 │   │   ├── crm/                       CRM injetado em Shadow DOM: barra superior, chips, filtro da lista,
 │   │   │                              cabeçalho (lembrete/cliente), respostas rápidas, estado

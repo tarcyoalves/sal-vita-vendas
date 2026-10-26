@@ -2,7 +2,7 @@
 // COLA o rascunho na caixa (quem envia é você, com Enter).
 
 import { useEffect, useState } from 'react';
-import { abrirConversaNoWhatsApp, abrirConversaPorTelefone } from '../shared/crm-acoes';
+import { abrirConversaNoWhatsApp, abrirConversaPorTelefone, textoDaAbertura } from '../shared/crm-acoes';
 import { ehLembreteCrm } from '../shared/crm-remoto';
 import { agruparLembretes, formatarVencimento, prazoRapido, textoAtualizadoHa } from '../shared/crm-lembretes';
 import type { EstadoConta } from '../shared/leads';
@@ -114,8 +114,9 @@ export function Lembretes({ crm }: { crm: CrmPainel }) {
     setMsg(null);
     try {
       // Lembrete do CRM Lembretes: abre a conversa pelo telefone (não envia nada).
-      if (ehLembreteCrm(l.id) && l.telefone && (await abrirConversaPorTelefone(l.telefone))) {
-        setMsg(`Abrindo a conversa de ${l.nome} pelo telefone no WhatsApp Web. Nada é enviado.`);
+      const porTelefone = ehLembreteCrm(l.id) && l.telefone ? await abrirConversaPorTelefone(l.telefone, l.nome) : null;
+      if (porTelefone) {
+        setMsg(textoDaAbertura(porTelefone, l.nome));
         return;
       }
       await abrirConversaNoWhatsApp(crm.repo, { nome: l.nome, telefone: l.telefone, rascunho: l.rascunho, lembreteId: l.id });

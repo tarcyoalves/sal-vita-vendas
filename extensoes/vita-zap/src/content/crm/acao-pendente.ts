@@ -1,29 +1,53 @@
 // Executa o pedido "abrir a conversa e colar o rascunho" (clique na notificação, central de
 // lembretes). Só abre a conversa e COLA o texto; quem envia é o usuário.
 
+import { AVISO_FALLBACK_ENDERECO } from '../../shared/abrir-por-telefone';
 import { urlDaConversaPorTelefone } from '../../shared/crm-acoes';
 import { renderizarModelo } from '../../shared/crm-modelos';
 import type { RepositorioContatos } from '../../shared/repositorio';
+import { abrirConversaPorTelefoneSemRecarregar } from '../abrir-por-telefone';
 import { abrirEPrepararRascunho } from '../execucao';
 import { ErroSeletor } from '../lista';
 import { mostrarAviso } from './popover';
+import { memorizarTelefone } from './telefone-conhecido';
 import { avisarUmaVez } from './ui';
 
 let ocupado = false;
 
+/** Espera antes de recarregar, para o usuário ler o aviso. */
+const ESPERA_ANTES_DE_RECARREGAR_MS = 1500;
+
 /**
- * Lembrete do CRM Lembretes: abre a conversa do telefone (o WhatsApp Web abre o chat de /send?phone=...).
- * Recarrega a página do WhatsApp Web. Não envia nada e não preenche texto.
+ * Lembrete do CRM Lembretes: abre a conversa do telefone BUSCANDO o número na lista do WhatsApp Web, sem recarregar.
+ * Só se a busca não achar (ou achar mais de um contato) cai no endereço /send?phone=..., que recarrega a página,
+ * e avisa isso. Não envia nada e não preenche texto. `true` = a conversa foi (ou vai ser) aberta.
  */
-export function abrirConversaPorTelefoneNaPagina(telefone: string): boolean {
+export async function abrirConversaPorTelefoneNaPagina(telefone: string, nome?: string): Promise<boolean> {
   const url = urlDaConversaPorTelefone(telefone);
   if (!url) return false;
-  window.location.assign(url);
+  if (ocupado) {
+    mostrarAviso('Ainda estou abrindo a conversa anterior.', 'erro');
+    return true;
+  }
+  ocupado = true;
+  try {
+    const r = await abrirConversaPorTelefoneSemRecarregar(telefone, nome);
+    if (r.ok) {
+      mostrarAviso(`Conversa de ${r.nome ?? nome ?? 'o contato'} aberta pela busca.`);
+      return true;
+    }
+  } catch (e) {
+    if (!(e instanceof ErroSeletor)) avisarUmaVez('abrir-telefone', 'Falha ao buscar a conversa pelo telefone.', e);
+  } finally {
+    ocupado = false;
+  }
+  mostrarAviso(AVISO_FALLBACK_ENDERECO);
+  setTimeout(() => window.location.assign(url), ESPERA_ANTES_DE_RECARREGAR_MS);
   return true;
 }
 
 /** Abre a conversa de `nome` e cola o rascunho (com {nome}/{primeiro_nome} resolvidos). */
-export async function abrirConversaComRascunho(nome: string, rascunho?: string): Promise<boolean> {
+export async function abrirConversaComRascunho(nome: string, rascunho?: string, telefone?: string | null): Promise<boolean> {
   if (ocupado) {
     mostrarAviso('Ainda estou abrindo a conversa anterior.', 'erro');
     return false;
@@ -36,6 +60,7 @@ export async function abrirConversaComRascunho(nome: string, rascunho?: string):
       mostrarAviso(r.erro, 'erro');
       return false;
     }
+    memorizarTelefone(nome, telefone); // conversa aberta pelo nome de um contato que já tem telefone no CRM
     mostrarAviso(texto ? `Conversa de ${nome} aberta com o rascunho na caixa. Confira e aperte Enter.` : `Conversa de ${nome} aberta.`);
     return true;
   } catch (e) {
@@ -56,5 +81,5 @@ export async function consumirAcaoPendente(repo: RepositorioContatos): Promise<v
     return;
   }
   if (!pedido) return;
-  await abrirConversaComRascunho(pedido.nome, pedido.rascunho);
+  await abrirConversaComRascunho(pedido.nome, pedido.rascunho, pedido.telefone);
 }

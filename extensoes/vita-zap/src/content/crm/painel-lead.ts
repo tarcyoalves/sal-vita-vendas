@@ -16,6 +16,8 @@ export interface ContextoLead {
   aplicar: (lead: LeadCrm, pendentes: boolean) => void;
   /** Busca o estado do lead de novo (depois de vincular/criar). */
   recarregar: () => void;
+  /** Lê o telefone no painel "Dados do contato" (abre, lê e fecha o painel). Só leitura de dados. */
+  lerTelefoneDosDados?: () => Promise<string | null>;
 }
 
 const SEM_RESPOSTA = 'A extensão não respondeu. Recarregue a extensão e a aba do WhatsApp.';
@@ -268,6 +270,29 @@ export function abrirCriarLead(ancora: HTMLElement, ctx: ContextoLead, ref: RefC
   const nome = h('input', { class: 'campo', type: 'text', maxlength: 200, value: ref.nome, 'aria-label': 'Nome do lead' });
   const tel = h('input', { class: 'campo', type: 'tel', value: ref.telefone ?? '', placeholder: 'Telefone com DDD (84 99999-0000)', 'aria-label': 'Telefone do lead' });
   const criar = h('button', { class: 'btn pri', type: 'button' }, 'Criar lead');
+  const origemTel = h('div', { class: 'dica' });
+  if (!ref.telefone && ctx.lerTelefoneDosDados) {
+    // Contato salvo: o WhatsApp só mostra o nome. O número fica em "Dados do contato": abre, lê e fecha.
+    tel.placeholder = 'Lendo o telefone nos dados do contato…';
+    const original = 'Telefone com DDD (84 99999-0000)';
+    void ctx.lerTelefoneDosDados().then(
+      (t) => {
+        tel.placeholder = original;
+        if (!tel.isConnected) return;
+        if (t && tel.value.trim() === '') {
+          tel.value = t;
+          origemTel.textContent = 'Telefone lido dos dados do contato — confira.';
+        } else if (!t) {
+          origemTel.textContent = 'Não consegui ler o telefone nos dados do contato. Digite com DDD.';
+        }
+        pop.reposicionar();
+      },
+      () => {
+        tel.placeholder = original;
+        if (tel.isConnected) origemTel.textContent = 'Não consegui ler o telefone nos dados do contato. Digite com DDD.';
+      },
+    );
+  }
   criar.addEventListener('click', () => {
     criar.disabled = true;
     msg.textContent = '';
@@ -283,6 +308,7 @@ export function abrirCriarLead(ancora: HTMLElement, ctx: ContextoLead, ref: RefC
     nome,
     h('h5', {}, 'Telefone'),
     tel,
+    origemTel,
     msg,
     h('div', { class: 'linha2' }, criar),
   );

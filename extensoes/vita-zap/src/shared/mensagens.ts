@@ -9,6 +9,7 @@ export type PedidoConteudo =
   | { tipo: 'verificar' }
   | { tipo: 'varrer'; termo: string }
   | { tipo: 'abrirEColar'; nome: string; texto: string; envioAutomatico?: boolean }
+  | { tipo: 'abrirPorTelefone'; telefone: string; nomeDica?: string }
   | { tipo: 'limparCaixa'; texto: string }
   | { tipo: 'pararObservacao' };
 
@@ -26,7 +27,7 @@ export type CodigoErro =
   | 'interno';
 
 export type RespostaConteudo =
-  | { ok: true; linhas?: LinhaBruta[]; avisos?: string[] }
+  | { ok: true; linhas?: LinhaBruta[]; avisos?: string[]; /** abrirPorTelefone: nome da conversa aberta. */ nome?: string }
   | { ok: false; codigo: CodigoErro; erro: string };
 
 /** Pedido da página do WhatsApp ao service worker: abrir o painel lateral (a aba vem pelo pedido gravado na configuração). */

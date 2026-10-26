@@ -104,7 +104,28 @@ export const SELETORES = {
   cabecalhoConversa: ['#main header'],
 
   /** Painel "Dados do contato" (à direita), quando aberto: pode mostrar o telefone do contato. */
-  painelDadosContato: ['[data-testid="contact-info-drawer"]', 'section[aria-label*="Dados do contato"]', 'section[aria-label*="Contact info"]'],
+  painelDadosContato: [
+    '[data-testid="contact-info-drawer"]',
+    'section[aria-label*="Dados do contato"]',
+    'section[aria-label*="Contact info"]',
+    // O painel lateral direito também aparece como div/aside com rótulo (WhatsApp de 10/2026 varia por conta).
+    'div[aria-label*="Dados do contato"]',
+    'div[aria-label*="Contact info"]',
+    'aside[aria-label*="Dados do contato"]',
+    '[data-testid="chat-info-drawer"]',
+    '#app [role="complementary"]',
+  ],
+
+  /** Botão de fechar (X) do painel lateral "Dados do contato". Procurado DENTRO do painel. */
+  botaoFecharPainel: [
+    'button[aria-label="Fechar"]',
+    'button[aria-label="Close"]',
+    '[role="button"][aria-label="Fechar"]',
+    '[role="button"][aria-label="Close"]',
+    '[data-icon="x"]',
+    '[data-icon="x-alt"]',
+    '[data-icon="close"]',
+  ],
 
   /** Rodapé da conversa aberta (a caixa de digitação mora aqui). */
   rodapeConversa: ['#main footer'],
@@ -131,6 +152,7 @@ export const TITULOS_ICONE: Partial<Record<ChaveSeletor, RegExp>> = {
   iconeGrupo: /^(wds-)?(ic-)?default-(group|community|broadcast)\b/i,
   linhaArquivadas: /^(wds-)?(ic-)?archived?(-chat)?\b/i,
   microfone: /^(wds-)?(ic-)?(ptt|mic|keyboard-voice)\b/i,
+  botaoFecharPainel: /^(wds-)?(ic-)?(x|x-alt|close|clear)$/i,
 };
 
 function svgPorTitulo(raiz: ParentNode, chave: ChaveSeletor): HTMLElement | null {

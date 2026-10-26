@@ -168,17 +168,24 @@ describe('clique na notificação: abre a conversa pelo telefone, não envia nad
     expect(urlDaConversaPorTelefone('5584999990000')).not.toContain('text=');
   });
 
-  it('lembrete do CRM com telefone: leva a aba do WhatsApp Web ao endereço do número', async () => {
+  it('lembrete do CRM com telefone: se a página não responde, cai no endereço do número (recarrega)', async () => {
     await entrar();
     const id = idLembreteCrm(1, AGORA + HORA);
     const atualizacoes: Array<{ id: number; props: Record<string, unknown> }> = [];
     (c.chrome as { tabs: { update: unknown } }).tabs.update = async (tabId: number, props: Record<string, unknown>) => {
       atualizacoes.push({ id: tabId, props });
     };
+    // sem content script na aba: o envio da mensagem rejeita
+    (c.chrome as { tabs: { sendMessage: unknown } }).tabs.sendMessage = async () => {
+      throw new Error('Receiving end does not exist');
+    };
     c.abas.push({ id: 7, windowId: 1, active: true, url: 'https://web.whatsapp.com/' });
     c.notificacoes.set(`vz-${id}`, {});
     await aoClicarNotificacao(`vz-${id}`);
-    expect(atualizacoes).toEqual([{ id: 7, props: { url: 'https://web.whatsapp.com/send?phone=5584999990000', active: true } }]);
+    expect(atualizacoes).toEqual([
+      { id: 7, props: { active: true } },
+      { id: 7, props: { url: 'https://web.whatsapp.com/send?phone=5584999990000', active: true } },
+    ]);
     expect(c.notificacoes.has(`vz-${id}`)).toBe(false);
   });
 

@@ -2,13 +2,15 @@
 // (normalizado, só dígitos com DDI). Fontes, da mais para a menos confiável:
 // 1) o nome exibido, quando o contato não está salvo (aparece o número);
 // 2) o id das mensagens da conversa (xxxxx@c.us);
-// 3) o painel "Dados do contato", se estiver aberto.
+// 3) o painel "Dados do contato", se estiver aberto;
+// 4) o telefone memorizado / do índice local (telefone-conhecido.ts).
 
 import type { RefContato } from '../../shared/crm-tipos';
-import { telefoneDoJid, telefoneDoNomeExibido, normalizarTelefone } from '../../shared/telefone';
-import { limparMarcas } from '../dom';
+import { telefoneDoJid, telefoneDoNomeExibido } from '../../shared/telefone';
 import { nomeDaConversaAberta } from '../execucao';
-import { encontrar, encontrarTodos } from '../selectors';
+import { encontrarTodos } from '../selectors';
+import { telefoneDoPainelDeDados } from './dados-do-contato';
+import { telefoneConhecido } from './telefone-conhecido';
 
 function telefoneDasMensagens(): string | null {
   for (const el of encontrarTodos(document, 'mensagem').slice(0, 20)) {
@@ -18,20 +20,14 @@ function telefoneDasMensagens(): string | null {
   return null;
 }
 
-/** Procura um número de telefone nos textos do painel de dados do contato (se estiver aberto). */
-function telefoneDoPainelDeDados(): string | null {
-  const painel = encontrar(document, 'painelDadosContato');
-  if (!painel) return null;
-  for (const f of painel.querySelectorAll<HTMLElement>('span, div')) {
-    if (f.children.length > 0) continue;
-    const t = limparMarcas(f.textContent ?? '');
-    if (/^\+\d[\d\s().-]{9,}$/.test(t)) return normalizarTelefone(t);
-  }
-  return null;
-}
-
+/**
+ * Telefone da conversa aberta, sem clicar em nada. Fontes, da mais para a menos confiável:
+ * nome exibido (número) → id das mensagens → painel "Dados do contato" já aberto → telefone memorizado
+ * (conversa aberta pelo telefone ou por lembrete/cliente do CRM) → índice local de contatos/conversas.
+ * A leitura ativa do painel (abre e fecha) só acontece ao pedir "Criar lead" sem telefone: dados-do-contato.ts.
+ */
 export function telefoneDaConversaAberta(nome: string): string | null {
-  return telefoneDoNomeExibido(nome) ?? telefoneDasMensagens() ?? telefoneDoPainelDeDados();
+  return telefoneDoNomeExibido(nome) ?? telefoneDasMensagens() ?? telefoneDoPainelDeDados() ?? telefoneConhecido(nome);
 }
 
 /** Referência ao contato da conversa aberta, ou null se não há conversa aberta. */

@@ -4,6 +4,12 @@
 import { criarHost, h, icone, isolarCliques, sincronizarTema, type Host } from './ui';
 
 let overlay: Host | null = null;
+/** Até este instante (ms) o clique fora não fecha o popover: a própria extensão está clicando na página. */
+let ignorarForaAte = 0;
+export function ignorarCliquesForaPor(ms: number): void {
+  ignorarForaAte = Date.now() + ms;
+}
+
 let aberto: { ancora: HTMLElement; el: HTMLElement; aoFechar?: () => void; desligar: () => void } | null = null;
 
 function garantirOverlay(): Host {
@@ -81,6 +87,7 @@ export function abrirPopover(op: OpcoesPopover): PopoverAberto {
   reposicionar();
 
   const aoClicarFora = (e: Event): void => {
+    if (Date.now() < ignorarForaAte) return;
     const caminho = e.composedPath();
     if (caminho.includes(el) || caminho.includes(op.ancora)) return;
     fecharPopover();

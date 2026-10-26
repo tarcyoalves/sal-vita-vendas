@@ -98,6 +98,39 @@ describe('envio humano controlado e isolado', () => {
   });
 });
 
+describe('cliques permitidos em abrir-conversa.ts (v0.7.21): só abrir conversa e ler o telefone dos Dados do contato', () => {
+  const abrir = arquivos.find((a) => a.caminho === 'src/content/abrir-conversa.ts')!.codigo;
+  const exportadas = [...abrir.matchAll(/export function (\w+)/g)].map((m) => m[1]).sort();
+
+  it('o arquivo expõe exatamente três funções de clique, nenhuma com nome ou alvo de envio', () => {
+    expect(exportadas).toEqual(['abrirLinhaDaLista', 'abrirPainelDadosDoContato', 'fecharPainelDadosDoContato']);
+    expect(abrir).not.toMatch(/send|enviar|submit|footer|caixaMensagem|microfone|Enter/i);
+  });
+
+  it('só dados-do-contato.ts clica no cabeçalho e no X do painel; só abrir-por-telefone.ts e execucao.ts abrem linhas da lista', () => {
+    const usa = (nome: string) => arquivos.filter((a) => a.caminho !== 'src/content/abrir-conversa.ts' && new RegExp(`\\b${nome}\\b`).test(a.codigo)).map((a) => a.caminho).sort();
+    expect(usa('abrirPainelDadosDoContato')).toEqual(['src/content/crm/dados-do-contato.ts']);
+    expect(usa('fecharPainelDadosDoContato')).toEqual(['src/content/crm/dados-do-contato.ts']);
+    expect(usa('abrirLinhaDaLista')).toEqual(['src/content/abrir-por-telefone.ts', 'src/content/execucao.ts']);
+  });
+
+  it('o clique no cabeçalho vai no NOME da conversa e o de fechar vai no X DENTRO do painel (nunca no rodapé nem em botão de envio)', () => {
+    const dados = arquivos.find((a) => a.caminho === 'src/content/crm/dados-do-contato.ts')!.codigo;
+    expect(dados).toContain("encontrar(document, 'tituloCabecalho')");
+    expect(dados).toContain("encontrar(painel, 'botaoFecharPainel')");
+    expect(dados).toMatch(/abrirPainelDadosDoContato\(titulo\)/);
+    expect(dados).toMatch(/fecharPainelDadosDoContato\(fechar\)/);
+    expect(dados).not.toMatch(/rodapeConversa|caixaMensagem|microfone/);
+  });
+
+  it('os seletores do botão de fechar nunca apontam para enviar, microfone, anexo ou rodapé', () => {
+    const fonte = readFileSync(join(SRC, 'content/selectors.ts'), 'utf8');
+    const bloco = /botaoFecharPainel: \[([\s\S]*?)\],/.exec(fonte)?.[1] ?? '';
+    expect(bloco).toContain('Fechar');
+    expect(bloco).not.toMatch(/send|enviar|ptt|mic|attach|clip|footer|submit/i);
+  });
+});
+
 describe('o próprio teste pega violações (casos plantados)', () => {
   const amostras = [
     "el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }))",

@@ -80,6 +80,6 @@ export async function aoClicarNotificacao(notificacaoId: string): Promise<void> 
   await chrome.notifications.clear(notificacaoId);
   if (!l) return;
   // Lembrete do CRM Lembretes: abre a conversa pelo telefone (o nome do lead pode não ser o do WhatsApp). Não envia nada.
-  if (ehLembreteCrm(l.id) && l.telefone && (await abrirConversaPorTelefone(l.telefone))) return;
+  if (ehLembreteCrm(l.id) && l.telefone && (await abrirConversaPorTelefone(l.telefone, l.nome))) return;
   await abrirConversaNoWhatsApp(dados(), { nome: l.nome, telefone: l.telefone, rascunho: l.rascunho, lembreteId: l.id });
 }

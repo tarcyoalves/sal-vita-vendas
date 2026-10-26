@@ -3,11 +3,11 @@ import { salvarCampanha, type Banco } from '../shared/banco';
 import { type Campanha, criarItens, type ItemCampanha, novoId, textoDoItem, validarParaAprovar } from '../shared/campanha';
 import { DIAS_SEM_REPETIR, MARCADOR_PRIMEIRO_NOME, MAX_VARIACOES } from '../shared/constantes';
 import { formatarDataBr, lerDataIso, hojeNoFuso, somarDias, diferencaDias } from '../shared/datas';
-import { aplicarFiltros, type Filtros, ultimoEnvioPorChave } from '../shared/filtros';
+import { aplicarFiltros, type Filtros, MOTIVO_SEM_MENSAGEM_MINHA, temRegistroDoAtendente, ultimoEnvioPorChave } from '../shared/filtros';
 import { separarTermos } from '../shared/nomes';
 import { validarModelos } from '../shared/texto';
 import type { DadosLocais } from './App';
-import { carregarRotinasSalvas, lerPreferencia, salvarPreferencia, salvarRotinas } from './preferencias';
+import { carregarRotinasSalvas, lerPreferencia, lerSoComConversaMinha, salvarPreferencia, salvarRotinas, salvarSoComConversaMinha } from './preferencias';
 import type { CrmPainel } from './crm';
 import { acharContato } from '../shared/crm-contatos';
 import { CORES_ETIQUETA, FASES, type Fase } from '../shared/crm-tipos';
@@ -46,6 +46,7 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
   const [erroTag, setErroTag] = useState<string | null>(null);
   const [fasesSelecionadas, setFasesSelecionadas] = useState<Fase[]>([]);
   const [aguardandoResposta, setAguardandoResposta] = useState(false);
+  const [soMinha, setSoMinha] = useState(() => lerSoComConversaMinha());
   const [rotinas, setRotinas] = useState<Rotina[]>(() => carregarRotinasSalvas());
   const [rotinaAtivaId, setRotinaAtivaId] = useState<string | null>(null);
   const [modalCriarRotina, setModalCriarRotina] = useState(false);
@@ -58,12 +59,13 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
   const [novaRotinaTextoBase, setNovaRotinaTextoBase] = useState(base);
   const [erroNovaRotina, setErroNovaRotina] = useState<string | null>(null);
 
-  const { tagsPorChave, tagsExibicaoPorChave, catalogoTags, fasePorChave, aguardandoPorChave } = useMemo(() => {
+  const { tagsPorChave, tagsExibicaoPorChave, catalogoTags, fasePorChave, aguardandoPorChave, comRegistroDoAtendente } = useMemo(() => {
     const mapaNorm = new Map<string, Set<string>>();
     const mapaExibicao = new Map<string, Array<{ nome: string; cor: string }>>();
     const contagemPorTag = new Map<string, number>();
     const mapaFases = new Map<string, Fase>();
     const mapaAguardando = new Map<string, boolean>();
+    const comRegistro = new Set<string>();
 
     const etiquetasCrm = crm?.dados?.etiquetas ?? [];
     const mapaEtqPorId = new Map(etiquetasCrm.map((e) => [e.id, e]));
@@ -76,6 +78,7 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
         const crmC = acharContato(crm.dados, { nome: c.nome });
         if (crmC) {
           if (crmC.fase) mapaFases.set(c.chave, crmC.fase);
+          if (temRegistroDoAtendente(crmC)) comRegistro.add(c.chave);
           for (const etqId of crmC.etiquetas) {
             const etq = mapaEtqPorId.get(etqId);
             if (etq) {
@@ -115,6 +118,7 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
       catalogoTags: catalogo,
       fasePorChave: mapaFases,
       aguardandoPorChave: mapaAguardando,
+      comRegistroDoAtendente: comRegistro,
     };
   }, [crm?.dados, dados.contatos]);
 
@@ -129,8 +133,9 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
       tags: tagsSelecionadas,
       fases: fasesSelecionadas.length > 0 ? fasesSelecionadas : undefined,
       aguardandoResposta: aguardandoResposta || undefined,
+      soComMensagemMinha: soMinha || undefined,
     }),
-    [contem, naoContem, antesDe, depoisDe, dias, incluirSemConversa, tagsSelecionadas, fasesSelecionadas, aguardandoResposta],
+    [contem, naoContem, antesDe, depoisDe, dias, incluirSemConversa, tagsSelecionadas, fasesSelecionadas, aguardandoResposta, soMinha],
   );
 
   const avaliados = useMemo(
@@ -142,8 +147,9 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
         tagsPorChave,
         fasePorChave,
         aguardandoPorChave,
+        comRegistroDoAtendente,
       }),
-    [dados, filtros, tagsPorChave, fasePorChave, aguardandoPorChave],
+    [dados, filtros, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente],
   );
 
   const contagemPorRotina = useMemo(() => {
@@ -163,6 +169,7 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
         tags: r.tags,
         fases: r.fases,
         aguardandoResposta: r.aguardandoResposta,
+        soComMensagemMinha: soMinha || undefined,
       };
       const av = aplicarFiltros(dados.contatos, f, {
         agora,
@@ -171,12 +178,13 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
         tagsPorChave,
         fasePorChave,
         aguardandoPorChave,
+        comRegistroDoAtendente,
       });
       const qtd = av.filter((x) => x.decisao.situacao === 'incluido').length;
       res.set(r.id, qtd);
     }
     return res;
-  }, [rotinas, dados, tagsPorChave, fasePorChave, aguardandoPorChave]);
+  }, [rotinas, dados, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente, soMinha]);
   const motivoPorChave = useMemo(() => new Map(avaliados.map((a) => [a.contato.chave, a.decisao.motivo])), [avaliados]);
   const contatoPorChave = useMemo(() => new Map(dados.contatos.map((c) => [c.chave, c])), [dados.contatos]);
 
@@ -245,6 +253,7 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
       tags: r.tags,
       fases: r.fases,
       aguardandoResposta: r.aguardandoResposta,
+      soComMensagemMinha: soMinha || undefined,
     };
     const { modelos: mods } = validarModelos(r.textoBase, novasVar);
     const av = aplicarFiltros(dados.contatos, filtrosRotina, {
@@ -254,6 +263,7 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
       tagsPorChave,
       fasePorChave,
       aguardandoPorChave,
+      comRegistroDoAtendente,
     });
     const contatosInc = av.filter((x) => x.decisao.situacao === 'incluido').map((x) => x.contato);
     setItens(criarItens(contatosInc, mods, []));
@@ -278,8 +288,8 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
   }
 
   function incluirManual(chave: string) {
-    const a = revisar.find((x) => x.contato.chave === chave);
-    if (!a || !itens) return;
+    const a = revisar.find((x) => x.contato.chave === chave) ?? excluidos.find((x) => x.contato.chave === chave && x.decisao.motivo === MOTIVO_SEM_MENSAGEM_MINHA);
+    if (!a || !itens || a.contato.duplicado || naPrevia.has(chave)) return;
     setItens([...itens, ...criarItens([a.contato], modelos, filtros.contem)]);
   }
 
@@ -777,6 +787,17 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
           />
           <span>Apenas quem está aguardando resposta (você falou por último)</span>
         </label>
+        <label className="check" style={{ margin: '8px 0 0 0', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>
+          <input
+            type="checkbox"
+            checked={soMinha}
+            onChange={(e) => {
+              setSoMinha(e.target.checked);
+              salvarSoComConversaMinha(e.target.checked);
+            }}
+          />
+          <span>Só contatos com conversa já feita por mim (atendente)</span>
+        </label>
         <p className="info">
           {incluidos.length} entram · {revisar.length} para revisar · {excluidos.length} fora
         </p>
@@ -973,6 +994,14 @@ export function Previa({ db, dados, aoAprovar, crm }: Props) {
             <li key={a.contato.chave}>
               <b>{a.contato.nome}</b> <small>— {a.decisao.motivo}</small>
               {a.contato.ultimaConversa && <small> · {formatarDataBr(a.contato.ultimaConversa)}</small>}
+              {itens && a.decisao.motivo === MOTIVO_SEM_MENSAGEM_MINHA && !a.contato.duplicado && !naPrevia.has(a.contato.chave) && (
+                <>
+                  {' '}
+                  <button type="button" className="pequeno" onClick={() => incluirManual(a.contato.chave)}>
+                    Incluir mesmo assim
+                  </button>
+                </>
+              )}
             </li>
           ))}
         </ul>

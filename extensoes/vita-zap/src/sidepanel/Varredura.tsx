@@ -3,7 +3,8 @@ import { limparContatos, salvarContatos, type Banco } from '../shared/banco';
 import { linhasParaContatos } from '../shared/contatos';
 import { ehEventoConteudo } from '../shared/mensagens';
 import type { DadosLocais } from './App';
-import { lerPreferencia, salvarPreferencia } from './preferencias';
+import { lerPreferencia, lerSoComConversaMinha, salvarPreferencia, salvarSoComConversaMinha } from './preferencias';
+import { TEXTO_AJUDA_SO_MINHA } from '../shared/filtros';
 import { pedir } from './whatsapp';
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
 
 export function Varredura({ db, dados, aoMudar, aoContinuar }: Props) {
   const [termo, setTermo] = useState(() => lerPreferencia('termo', 'CLIENTE'));
+  const [soMinha, setSoMinha] = useState(() => lerSoComConversaMinha());
   const [rodando, setRodando] = useState(false);
   const [progresso, setProgresso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -99,6 +101,20 @@ export function Varredura({ db, dados, aoMudar, aoContinuar }: Props) {
           Buscar "CLIENTE"
         </button>
       </div>
+      <label className="check" style={{ display: 'flex', alignItems: 'flex-start', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500, margin: '0 0 8px 0' }}>
+        <input
+          type="checkbox"
+          checked={soMinha}
+          onChange={(e) => {
+            setSoMinha(e.target.checked);
+            salvarSoComConversaMinha(e.target.checked);
+          }}
+        />
+        <span>
+          Só contatos com conversa já feita por mim (atendente)
+          <small className="ajuda" style={{ display: 'block', fontWeight: 400 }}>{TEXTO_AJUDA_SO_MINHA}</small>
+        </span>
+      </label>
       <button type="button" className="primario" onClick={() => void varrer()} disabled={rodando}>
         {rodando ? 'Varrendo…' : 'Varrer conversas'}
       </button>

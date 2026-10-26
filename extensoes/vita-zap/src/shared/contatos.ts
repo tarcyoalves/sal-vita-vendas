@@ -15,6 +15,11 @@ export interface LinhaBruta {
   posicao: number | null;
   /** Ícone de grupo/lista de transmissão na linha. */
   pareceGrupo: boolean;
+  /**
+   * A prévia da última mensagem da linha é MINHA (ícone de entrega/leitura ou "Você:"): true; do cliente: false;
+   * não deu para saber: null/ausente. Só `true` prova que o atendente já falou com o contato.
+   */
+  ultimaDeMim?: boolean | null;
 }
 
 export interface ContatoVarrido {
@@ -27,6 +32,8 @@ export interface ContatoVarrido {
   soNumero: boolean;
   pareceGrupo: boolean;
   temConversa: boolean;
+  /** Ver LinhaBruta.ultimaDeMim. Ausente em contatos varridos antes da 0.7.21. */
+  ultimaDeMim?: boolean | null;
   /** Mais de um chat com o mesmo nome. */
   duplicado: boolean;
   varridoEm: string; // ISO data-hora
@@ -51,6 +58,8 @@ export function deduplicarLinhas(linhas: LinhaBruta[]): Array<LinhaBruta & { dup
     // Mantém o primeiro registro, mas não perde informação de grupo/data.
     if (!atual.linha.rotuloData && linha.rotuloData) atual.linha.rotuloData = linha.rotuloData;
     if (linha.pareceGrupo) atual.linha.pareceGrupo = true;
+    if (linha.ultimaDeMim === true) atual.linha.ultimaDeMim = true;
+    else if (atual.linha.ultimaDeMim == null && linha.ultimaDeMim != null) atual.linha.ultimaDeMim = linha.ultimaDeMim;
   }
   return [...grupos.values()].map(({ linha, posicoes }) => ({ ...linha, duplicado: posicoes.size > 1 }));
 }
@@ -69,6 +78,7 @@ export function linhasParaContatos(linhas: LinhaBruta[], agora: Date): ContatoVa
       pareceGrupo: l.pareceGrupo,
       // Linha sem rótulo de data = contato da agenda sem conversa (seção "Contatos" da busca).
       temConversa: l.rotuloData != null && l.rotuloData.trim() !== '',
+      ...(l.ultimaDeMim !== undefined ? { ultimaDeMim: l.ultimaDeMim } : {}),
       duplicado: l.duplicado,
       varridoEm,
     };

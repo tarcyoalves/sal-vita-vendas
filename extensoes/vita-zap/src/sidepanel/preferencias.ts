@@ -35,3 +35,12 @@ export function carregarRotinasSalvas(): Rotina[] {
 export function salvarRotinas(rotinas: Rotina[]): void {
   salvarPreferencia('rotinas', JSON.stringify(rotinas));
 }
+
+/** "Só contatos com conversa já feita por mim": ligado por padrão; só vira desligado se o usuário desmarcar. */
+export function lerSoComConversaMinha(): boolean {
+  return lerPreferencia('soComConversaMinha', '1') !== '0';
+}
+
+export function salvarSoComConversaMinha(ligado: boolean): void {
+  salvarPreferencia('soComConversaMinha', ligado ? '1' : '0');
+}

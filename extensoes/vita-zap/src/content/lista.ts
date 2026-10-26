@@ -30,3 +30,27 @@ export async function buscar(termo: string): Promise<void> {
   }
   await esperar(1800);
 }
+
+/** Tempos (ms) da busca que espera o resultado "assentar". Exportado para os testes encurtarem. */
+export const TEMPOS_BUSCA = { minimo: 600, passo: 250, estaveis: 2, limite: 4000 };
+
+/**
+ * Escreve na busca e espera os resultados estabilizarem: a assinatura da lista ficou igual em `estaveis` leituras
+ * seguidas (depois do tempo mínimo) ou passou do limite. Devolve a assinatura final.
+ */
+export async function buscarEstabilizando(termo: string, assinatura: () => string): Promise<string> {
+  const caixa = exigir(encontrar(document, 'caixaBusca'), 'caixa de busca');
+  escreverNoCampo(caixa, termo);
+  await esperar(TEMPOS_BUSCA.minimo);
+  const fim = Date.now() + TEMPOS_BUSCA.limite;
+  let ultima = assinatura();
+  let iguais = 0;
+  while (Date.now() < fim) {
+    await esperar(TEMPOS_BUSCA.passo);
+    const atual = assinatura();
+    iguais = atual === ultima ? iguais + 1 : 0;
+    ultima = atual;
+    if (iguais >= TEMPOS_BUSCA.estaveis) break;
+  }
+  return ultima;
+}
