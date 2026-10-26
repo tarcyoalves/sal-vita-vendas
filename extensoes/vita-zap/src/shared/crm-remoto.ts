@@ -153,15 +153,24 @@ export function linhaDeContato(texto: string, agora: Date): string {
   return `[${dois(p.dia)}/${dois(p.mes)}/${p.ano} ${dois(p.hora)}:${dois(p.minuto)}] ${corpo}`;
 }
 
-/** Anexa a linha ao fim das notas; se passar do limite do CRM (5000), descarta as linhas mais antigas. */
+/**
+ * Anexa a linha ao fim das notas; se passar do limite do CRM (5000), descarta do INÍCIO linhas INTEIRAS
+ * (as mais antigas), nunca cortando uma linha no meio. A linha nova é sempre mantida; só se ela sozinha
+ * passar do limite é que o fim do texto dela é encurtado (com "…"), preservando o carimbo de data.
+ *
+ * ⚠️ Risco de sobrescrita concorrente: o CRM só aceita as notas inteiras (`tasks.update` com `notes`), então
+ * isto é ler → anexar → gravar. Se outra pessoa (ou o próprio CRM) alterar as notas dessa task entre a leitura
+ * e a gravação, a edição dela se perde. A extensão sempre relê as notas imediatamente antes de anexar
+ * (aplicarRemoto) para encurtar a janela, mas não elimina o risco. Linhas cortadas do início também somem do CRM.
+ */
 export function anexarNota(notas: string, linha: string, max = LIMITE_NOTAS): string {
   const base = notas.replace(/\s+$/, '');
-  let junto = base ? `${base}\n${linha}` : linha;
+  const junto = base ? `${base}\n${linha}` : linha;
   if (junto.length <= max) return junto;
-  const linhas = junto.split('\n');
+  const nova = linha.length > max ? `${linha.slice(0, Math.max(0, max - 1)).trimEnd()}…` : linha;
+  const linhas = base ? [...base.split('\n'), nova] : [nova];
   while (linhas.length > 1 && linhas.join('\n').length > max) linhas.shift();
-  junto = linhas.join('\n');
-  return junto.length > max ? junto.slice(junto.length - max) : junto;
+  return linhas.join('\n');
 }
 
 // ── Vínculo contato → task ───────────────────────────────────────────────────

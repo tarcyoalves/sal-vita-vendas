@@ -241,7 +241,7 @@ Fatos que importam para a nossa decisão de arquitetura:
 
 ## 4. NÃO COPIAR
 
-Política do projeto: o sistema nunca envia mensagem sozinho. O risco é de banimento do número. Em tudo abaixo, a alternativa é "lembrar e preparar o texto; o usuário confere e aperta Enter". A extensão não deve chamar função interna de envio, não deve clicar o botão de enviar e não deve simular a tecla Enter. A única escrita permitida na caixa de digitação é inserir texto como rascunho.
+Política do projeto: o CRM (abas, lembretes, notas, respostas rápidas) nunca envia mensagem sozinho; nas campanhas o envio é manual por padrão e o envio automático é uma opção desligada de fábrica, isolada em `content/envio-humano.ts` (ver README da extensão). O risco é de banimento do número. Em tudo abaixo, a alternativa é "lembrar e preparar o texto; o usuário confere e aperta Enter". A extensão não deve chamar função interna de envio, não deve clicar o botão de enviar e não deve simular a tecla Enter. A única escrita permitida na caixa de digitação é inserir texto como rascunho.
 
 | Item da ER | Por que não | Alternativa segura |
 |---|---|---|

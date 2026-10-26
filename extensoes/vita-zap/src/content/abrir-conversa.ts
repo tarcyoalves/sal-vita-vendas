@@ -1,9 +1,9 @@
 // ÚNICO arquivo que simula clique: numa LINHA DA LISTA DE CONVERSAS (abrir o chat) e, só para ler o telefone,
 // no nome do cabeçalho da conversa e no botão de fechar do painel "Dados do contato".
 //
-// Abrir uma conversa não envia nada. Clique no botão de enviar, Enter ou qualquer evento de
-// teclado são proibidos em toda a extensão (tests/sem-envio-automatico.test.ts falha se
-// aparecerem). O envio é sempre do usuário.
+// Abrir uma conversa não envia nada. Evento de teclado (Enter) é proibido em toda a extensão e o
+// clique no botão Enviar só existe em envio-humano.ts, no envio automático OPCIONAL (desligado por
+// padrão); tests/envio-isolado.test.ts falha se aparecer em outro lugar.
 
 /**
  * Clique de pessoa (pointer + mouse: down → up → click) no elemento que está no centro de `base`. O WhatsApp de
@@ -37,7 +37,7 @@ export function abrirLinhaDaLista(linha: HTMLElement): void {
 }
 
 // Os dois cliques abaixo existem SÓ para ler o telefone no painel "Dados do contato" (leitura de dados).
-// Não enviam nada. tests/sem-envio-automatico.test.ts trava a lista de funções que clicam neste arquivo.
+// Não enviam nada. tests/envio-isolado.test.ts trava a lista de funções que clicam neste arquivo.
 
 /** Abre o painel "Dados do contato": clique no NOME do cabeçalho da conversa aberta. */
 export function abrirPainelDadosDoContato(nomeNoCabecalho: HTMLElement): void {

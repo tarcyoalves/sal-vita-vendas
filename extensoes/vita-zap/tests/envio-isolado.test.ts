@@ -1,7 +1,8 @@
-// Teste de CÓDIGO-FONTE: envio humano automático isolado e controlado (pedido do dono em 22/10/2026).
-//
-// O envio automático é isolado e restrito exclusivamente a `src/content/envio-humano.ts`.
-// Nenhum outro arquivo da extensão pode conter cliques ou eventos de envio não autorizados.
+// Teste de CÓDIGO-FONTE: o envio automático OPCIONAL (desligado por padrão; pedido do dono em 22/10/2026)
+// é isolado e restrito exclusivamente a `src/content/envio-humano.ts`.
+// Nenhum outro arquivo da extensão pode conter cliques ou eventos de envio, e NENHUM arquivo pode ter
+// evento de teclado (o Enter sintético foi removido na 0.7.22). O comportamento do envio fica em
+// tests/envio-seguro.test.ts.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -37,12 +38,12 @@ describe('envio humano controlado e isolado', () => {
     expect(conteudo.map((a) => a.caminho)).toContain('src/content/envio-humano.ts');
   });
 
-  it('nenhum evento de teclado fora de envio-humano.ts', () => {
-    expect(ocorrencias(/KeyboardEvent|InputEvent|initKeyEvent|keyCode|charCode|\bwhich\s*:/)).toEqual(['src/content/envio-humano.ts']);
+  it('nenhum evento de teclado em NENHUM arquivo (nem em envio-humano.ts)', () => {
+    expect(ocorrencias(/KeyboardEvent|InputEvent|initKeyEvent|keyCode|charCode|\bwhich\s*:/)).toEqual([]);
   });
 
-  it('content script não fala em Enter fora de envio-humano.ts', () => {
-    expect(ocorrencias(/['"`]Enter['"`]|keydown|keyup|keypress|beforeinput/i, conteudo)).toEqual(['src/content/envio-humano.ts']);
+  it('content script não fala em Enter nem em eventos de teclado', () => {
+    expect(ocorrencias(/['"`]Enter['"`]|keydown|keyup|keypress|beforeinput/i, conteudo)).toEqual([]);
   });
 
   it('menção ao envio no content script só em envio-humano.ts e execucao.ts (chamada controlada)', () => {

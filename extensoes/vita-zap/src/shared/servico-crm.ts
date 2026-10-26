@@ -509,6 +509,9 @@ export class ServicoCrm implements LeadsCRM {
       const atual = await ler();
       const notas = typeof atual.notes === 'string' ? atual.notes : '';
       if (notas.includes(op.linha)) return comoLead(atual); // reenvio de algo que já chegou: não duplica a linha
+      // ⚠️ ler → anexar → gravar as notas inteiras: edição de outra pessoa entre a leitura acima e o update
+      // abaixo é sobrescrita (o CRM não tem "anexar"). A leitura é refeita a cada tentativa para encurtar a janela.
+      // Se passar de 5000, saem do início linhas INTEIRAS (ver anexarNota).
       return comoLead(await this.alterar<unknown>('tasks.update', { id: taskId, notes: anexarNota(notas, op.linha) }));
     }
     if (op.tipo === 'reagendar') {

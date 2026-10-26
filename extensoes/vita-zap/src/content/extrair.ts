@@ -74,6 +74,16 @@ export function ultimaDeMimDaLinha(el: HTMLElement, titulo: HTMLElement): boolea
   return previaDaLinha(el, titulo, rotuloDataDaLinha(el, titulo), null) === '' ? null : false;
 }
 
+/**
+ * A linha da lista denuncia grupo/comunidade/transmissão? Ícone padrão (default-group/community/broadcast, em
+ * data-icon ou no <title> do svg) OU id da conversa exposto pelo WhatsApp com @g.us/@broadcast/@newsletter.
+ * Falso aqui NÃO prova conversa individual: quem decide isso é classificarConversa, ao abrir (sinal positivo).
+ */
+export function linhaPareceGrupo(el: HTMLElement): boolean {
+  if (existeAlgum(el, 'iconeGrupo')) return true;
+  return /@(g\.us|broadcast|newsletter)\b/.test(idDaLinha(el));
+}
+
 export function lerLinha(el: HTMLElement): LeituraLinha {
   const titulo = encontrar(el, 'tituloLinha');
   if (!titulo) {
@@ -89,7 +99,7 @@ export function lerLinha(el: HTMLElement): LeituraLinha {
       nome,
       rotuloData: rotuloDataDaLinha(el, titulo),
       posicao: posicaoDaLinha(el),
-      pareceGrupo: encontrar(el, 'iconeGrupo') != null,
+      pareceGrupo: linhaPareceGrupo(el),
       ultimaDeMim: ultimaDeMimDaLinha(el, titulo),
     },
   };

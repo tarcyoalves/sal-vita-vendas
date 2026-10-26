@@ -1,6 +1,6 @@
 {
   "name": "vita-zap",
-  "version": "0.7.21",
+  "version": "0.7.22",
   "private": true,
   "description": "Vita Zap — copiloto comercial no WhatsApp Web (fase 1, sem IA). Projeto separado do CRM.",
   "type": "module",

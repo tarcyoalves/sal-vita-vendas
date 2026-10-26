@@ -8,6 +8,7 @@ import type { DadosLocais } from './App';
 import type { CrmPainel } from './crm';
 import { acharContato } from '../shared/crm-contatos';
 import { type EstadoExecutor, Executor } from './executor';
+import { iniciarBatimento, protegerContraFechamento } from './protecao';
 import { pedir } from './whatsapp';
 
 interface Props {
@@ -55,7 +56,7 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
   );
   const [estado, setEstado] = useState<EstadoExecutor | null>(null);
   const [agora, setAgora] = useState(Date.now());
-  const [filtroLista, setFiltroLista] = useState<'todos' | 'pendente' | 'problema' | 'enviado' | 'pulado'>('todos');
+  const [filtroLista, setFiltroLista] = useState<'todos' | 'pendente' | 'problema' | 'revisar' | 'enviado' | 'pulado'>('todos');
 
   useEffect(() => {
     if (!executor) {
@@ -67,12 +68,22 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
       if (ehEventoConteudo(msg)) void executor.aoReceberEvento(msg);
     };
     chrome.runtime.onMessage.addListener(ouvir);
+    const desproteger = protegerContraFechamento(executor);
+    // Painel reaberto com mensagem "em voo": confere a conversa em vez de colar de novo.
+    void executor.reconciliar();
     return () => {
+      desproteger();
       sair();
       chrome.runtime.onMessage.removeListener(ouvir);
       if (executor.atual.fase !== 'parada' && executor.atual.fase !== 'concluida') void executor.pausar('painel trocou de campanha');
     };
   }, [executor]);
+
+  const rodandoAgora = estado != null && estado.fase !== 'parada' && estado.fase !== 'concluida';
+  useEffect(() => {
+    if (!rodandoAgora) return;
+    return iniciarBatimento(pedir);
+  }, [rodandoAgora]);
 
   useEffect(() => {
     void aoMudar();
@@ -156,6 +167,7 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
           <li><b>{r.pendente}</b> pendentes</li>
           <li><b>{r.pulado}</b> pulados</li>
           <li><b>{r.problema}</b> problemas</li>
+          <li><b>{r.revisar}</b> a revisar</li>
           <li><b>{r.nao_cliente + r.nao_enviar}</b> não enviar</li>
         </ul>
         {r.problema > 0 && !rodando && (
@@ -229,7 +241,11 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
         )}
         {podeAgir && (
           <p className="ajuda">
-            Clique na caixa de mensagem do WhatsApp, confira e aperte <b>Enter</b>. A extensão percebe o envio e segue sozinha.
+            {estado.envioAutomatico ? (
+              <>Janela de conferência: confira o texto no WhatsApp. Para impedir o envio, use <b>Pular</b> ou <b>Pausar</b> agora.</>
+            ) : (
+              <>Clique na caixa de mensagem do WhatsApp, confira e aperte <b>Enter</b>. A extensão percebe o envio e segue sozinha.</>
+            )}
           </p>
         )}
 
@@ -264,26 +280,26 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
             checked={estado.envioAutomatico}
             onChange={(e) => executor.setEnvioAutomatico(e.target.checked)}
           />
-          <span>Envio 100% automático (clica em Enviar sozinho)</span>
+          <span>Envio automático (opcional): a extensão clica em Enviar depois da janela de conferência</span>
         </label>
         <p style={{ margin: '4px 0 0 24px', fontSize: 11, color: 'var(--suave)' }}>
           {estado.envioAutomatico
-            ? 'Ativado: espera de 2 a 4 segundos após digitar (para parecer humano) e clica no botão Enviar.'
-            : 'Desativado: a mensagem é digitada e aguarda você apertar a tecla Enter.'}
+            ? 'Ligado: depois de colar, há uma janela de conferência de 2 a 4 segundos. Imediatamente antes do clique a extensão reconfere a conversa, o texto exato e a caixa; se algo mudar, não clica e pausa. Só conta como enviado se a mensagem aparecer no chat em até 20 s. Se o painel fechar, a campanha pausa e nada é clicado.'
+            : 'Desligado (padrão): a mensagem é colada e você confere e aperta Enter.'}
         </p>
       </div>
 
       <details className="cartao" open>
         <summary>Contatos da campanha ({c.itens.length})</summary>
         <div className="botoes" style={{ margin: '8px 0', gap: 4 }}>
-          {(['todos', 'pendente', 'problema', 'enviado', 'pulado'] as const).map((st) => (
+          {(['todos', 'pendente', 'problema', 'revisar', 'enviado', 'pulado'] as const).map((st) => (
             <button
               key={st}
               type="button"
               className={filtroLista === st ? 'primario pequeno' : 'pequeno'}
               onClick={() => setFiltroLista(st)}
             >
-              {st === 'todos' ? `Todos (${c.itens.length})` : `${st === 'pendente' ? 'Pendentes' : st === 'problema' ? 'Problemas' : st === 'enviado' ? 'Enviados' : 'Pulados'} (${r[st] ?? 0})`}
+              {st === 'todos' ? `Todos (${c.itens.length})` : `${st === 'pendente' ? 'Pendentes' : st === 'problema' ? 'Problemas' : st === 'revisar' ? 'Revisar' : st === 'enviado' ? 'Enviados' : 'Pulados'} (${r[st] ?? 0})`}
             </button>
           ))}
         </div>
@@ -332,7 +348,7 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
                   </small>
                 </div>
                 <div style={{ display: 'flex', gap: 4 }}>
-                  {(i.status === 'pendente' || i.status === 'problema') && (
+                  {(i.status === 'pendente' || i.status === 'problema' || i.status === 'revisar') && (
                     <button type="button" className="pequeno" title="Pular este contato (não enviar nesta campanha)" onClick={() => void executor.pularItem(i.chave)}>
                       Pular
                     </button>
@@ -342,12 +358,22 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
                       Tentar de novo
                     </button>
                   )}
+                  {i.status === 'revisar' && (
+                    <button
+                      type="button"
+                      className="pequeno"
+                      title="Só use depois de conferir no WhatsApp que a mensagem NÃO saiu"
+                      onClick={() => void executor.recolocarPendente(i.chave)}
+                    >
+                      Conferi: não saiu
+                    </button>
+                  )}
                   {i.status === 'pulado' && (
                     <button type="button" className="pequeno" onClick={() => void executor.recolocarPendente(i.chave)}>
                       Recolocar
                     </button>
                   )}
-                  {(i.status === 'pendente' || i.status === 'problema') && (
+                  {(i.status === 'pendente' || i.status === 'problema' || i.status === 'revisar') && (
                     <button type="button" className="pequeno perigo" title="Bloquear (não enviar mais nenhuma campanha)" onClick={() => void executor.bloquearItem(i.chave)}>
                       Não enviar
                     </button>

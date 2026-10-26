@@ -11,8 +11,8 @@
 // Cada entrada é uma lista de alternativas, tentadas em ordem. Se nenhuma bater, a operação
 // para com erro 'seletor' (falha fechada) — nunca "tenta outra coisa".
 //
-// PROIBIDO: seletor do botão de enviar. A extensão não toca nele (teste em
-// tests/sem-envio-automatico.test.ts).
+// PROIBIDO aqui: seletor do botão de enviar. Os (poucos) seletores do envio automático opcional
+// ficam isolados em envio-humano.ts (teste em tests/envio-isolado.test.ts).
 
 export const SELETORES = {
   /** Coluna da esquerda inteira (cabeçalho + busca + lista ou resultados da busca). */
@@ -70,6 +70,18 @@ export const SELETORES = {
 
   /** Texto de uma mensagem. */
   textoMensagem: ['span.selectable-text', '.copyable-text span[dir]'],
+
+  /**
+   * Elemento com o NOME DO AUTOR dentro de uma mensagem recebida. Só aparece em grupo (em conversa
+   * individual o autor é óbvio). Presença = sinal de grupo.
+   */
+  autorMensagem: ['[data-testid="author"]', '[data-testid="msg-author"]', '[data-testid="author-name"]'],
+
+  /** Mensagem minha pela classe estável do WhatsApp (message-out); as recebidas são message-in. */
+  mensagemMinhaClasse: ['.message-out'],
+
+  /** Janela/aviso aberto sobre a conversa (erro, confirmação, "não foi possível...") */
+  avisoWhatsApp: ['[role="alertdialog"]', '[role="dialog"]', '[data-animate-modal-popup="true"]', '[role="alert"]', '[data-testid="popup-contents"]'],
 
   // ── CRM (barra de abas, lembretes, notas, respostas rápidas) ─────────────────
 

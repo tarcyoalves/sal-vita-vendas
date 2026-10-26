@@ -86,9 +86,11 @@ describe('classificarConversa (data-id das mensagens)', () => {
     expect(classificarConversa(['true_558499990000@c.us_A', 'false_120363@g.us_B_5584@c.us'])).toBe('grupo');
   });
 
-  it('novo formato do WhatsApp (10/2026): hashes sem JID usam a estrutura do cabeçalho', () => {
+  it('novo formato do WhatsApp (10/2026): hashes sem JID exigem sinal positivo (autores = só o título, ou só mensagens minhas)', () => {
     const individual = document.createElement('div');
-    individual.innerHTML = '<main id="main"><header><div><span dir="auto" title="Evandro">Evandro</span></div><div><span>Conta comercial</span></div></header></main>';
+    individual.innerHTML =
+      '<main id="main"><header><div><span dir="auto" title="Evandro">Evandro</span></div><div><span>Conta comercial</span></div></header>' +
+      '<div data-id="ACEF999B99FB9999E9F99CC999999DF9"><div data-pre-plain-text="[10:30, 26/10/2026] Evandro: ">oi</div></div></main>';
     expect(classificarConversa(['ACEF999B99FB9999E9F99CC999999DF9'], individual)).toBe('individual');
 
     const grupo = document.createElement('div');

@@ -1,10 +1,11 @@
 // Content script do WhatsApp Web: recebe pedidos do painel lateral e responde.
-// Pedidos possíveis: verificar, varrer (só leitura), abrirEColar, limparCaixa, pararObservacao.
-// Não existe pedido de envio.
+// Pedidos possíveis: verificar, varrer (só leitura), abrirEColar, limparCaixa, pararObservacao,
+// batimento (o painel está vivo) e consultarEnvio (só leitura). Não existe pedido de "enviar" avulso:
+// o envio automático opcional é parte do abrirEColar (envioAutomatico) e mora em envio-humano.ts.
 
 import type { EventoConteudo, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
 import { abrirConversaPorTelefoneSemRecarregar } from './abrir-por-telefone';
-import { abrirEColar, limparCaixa, pararObservacao } from './execucao';
+import { abrirEColar, consultarEnvio, limparCaixa, pararObservacao, registrarBatimento } from './execucao';
 import { ErroSeletor } from './lista';
 import { iniciarCrm } from './crm';
 import { iniciarBarraFormatacao } from './barra-formatacao';
@@ -44,7 +45,12 @@ function verificar(): RespostaConteudo {
 }
 
 async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
+  registrarBatimento(); // qualquer pedido do painel prova que ele está vivo
   switch (pedido.tipo) {
+    case 'batimento':
+      return { ok: true };
+    case 'consultarEnvio':
+      return consultarEnvio(pedido.nome, pedido.texto, pedido.idsAntes);
     case 'verificar':
       return verificar();
     case 'pararObservacao':
@@ -64,13 +70,14 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
       return abrirEColar(pedido.nome, pedido.texto, (texto, textoConfere) =>
         emitir({ tipo: 'vitaZap:envioDetectado', nome: pedido.nome, texto, textoConfere }),
         pedido.envioAutomatico,
+        emitir,
       );
   }
 }
 
 if (!jaCarregado) chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo, remetente, responder: (r: RespostaConteudo) => void) => {
   if (remetente.id !== chrome.runtime.id) return false;
-  const longo = mensagem.tipo === 'varrer' || mensagem.tipo === 'abrirEColar' || mensagem.tipo === 'abrirPorTelefone';
+  const longo = mensagem.tipo === 'varrer' || mensagem.tipo === 'abrirEColar' || mensagem.tipo === 'abrirPorTelefone' || mensagem.tipo === 'consultarEnvio';
   if (longo && ocupado) {
     responder({ ok: false, codigo: 'ocupado', erro: 'Outra operação ainda está em andamento.' });
     return false;

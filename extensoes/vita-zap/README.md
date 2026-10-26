@@ -1,8 +1,8 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.6.0: barra superior do CRM + integração com o CRM Lembretes + campanhas "uma tecla", sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.22: CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
-texto pronto. **Quem envia é você, apertando Enter.** Especificação completa:
+texto pronto. **Por padrão quem envia é você, apertando Enter**; o envio automático é uma opção das campanhas, desligada de fábrica (seção 3.2.1). Especificação completa:
 [`docs/PLANO-CAMPANHAS-WHATSAPP.md`](../../docs/PLANO-CAMPANHAS-WHATSAPP.md).
 
 Desde a v0.4 ela também é um **CRM dentro do WhatsApp Web**: abas de triagem (quem espera
@@ -15,15 +15,19 @@ Projeto **separado do CRM**: tem `package.json`, dependências e testes próprio
 banco, servidor nem chave de IA. O build e os testes do CRM (raiz do repositório) ignoram
 esta pasta.
 
-> ## ⚠️ Por que você precisa apertar Enter
+> ## ⚠️ Envio manual por padrão; envio automático opcional (e arriscado)
 >
 > Enviar mensagens automaticamente pelo WhatsApp Web (extensão clicando sozinha, robôs,
 > Baileys/Evolution) **viola os Termos de Serviço do WhatsApp** e pode levar ao **banimento
-> do número** — e com ele vai o histórico com todos os clientes. Por isso a extensão **não
-> tem código que envie**: ela cola o texto e para. Um teste automático
-> (`tests/sem-envio-automatico.test.ts`) reprova o build se aparecer qualquer clique no botão
-> de enviar ou evento de teclado. A política de proteção abaixo **reduz** o risco; ela **não
-> garante** que o número não será restringido.
+> do número** — e com ele vai o histórico com todos os clientes. Por isso o **padrão é o envio
+> manual**: a extensão cola o texto e para, e você aperta Enter. O **envio automático** (caixa
+> "Envio automático (opcional)" na aba Execução) vem **desligado** a cada vez que o painel abre;
+> quem liga assume o risco. Ele existe a pedido do dono e mora isolado em
+> `src/content/envio-humano.ts`; um teste automático (`tests/envio-isolado.test.ts`) reprova o
+> build se aparecer clique no botão de enviar ou evento de teclado em qualquer outro lugar (e o
+> Enter sintético não existe mais). O CRM (abas, lembretes, notas, respostas rápidas) **nunca**
+> envia. A política de proteção abaixo **reduz** o risco; ela **não garante** que o número não
+> será restringido.
 
 ---
 
@@ -193,9 +197,10 @@ e salve. Sem isso nenhuma campanha roda. Confira também se o WhatsApp Web está
      à mão; nome repetido não (não dá para saber qual conversa abrir).
 3. **Envio** — clique em *Iniciar*. Para cada contato a extensão:
    1. procura o nome na busca, abre a conversa e confere o nome no cabeçalho;
-   2. confere que é conversa individual (não grupo/transmissão);
+   2. confere que é conversa individual (não grupo/transmissão) por **sinal positivo** (ver 3.2.2);
    3. cola o texto na caixa de mensagem (se já houver rascunho seu, não mexe e marca problema);
-   4. **para e espera**. Você clica na caixa do WhatsApp, confere e aperta **Enter**;
+   4. **para e espera**. Você clica na caixa do WhatsApp, confere e aperta **Enter** (com o envio automático
+      desligado, que é o padrão; ver 3.2.1);
    5. percebe a mensagem nova no chat, registra o envio, espera 60–120 s e abre o próximo.
 
    Botões durante a espera: **Pular**, **Não é cliente**, **Problema**, **Não enviar mais**,
@@ -204,12 +209,59 @@ e salve. Sem isso nenhuma campanha roda. Confira também se o WhatsApp Web está
 
 **Feche o painel = campanha pausada.** A lógica roda no painel; ao reabrir, use *Retomar*.
 
+#### 3.2.1 Envio automático (opcional, desligado por padrão) — v0.7.22
+
+Caixa **"Envio automático (opcional)"** na aba Execução. Desligada, nada muda: a extensão cola e você aperta Enter.
+Ligada, para cada contato:
+
+1. **Janela de conferência** de 2,2 a 3,8 s depois de colar (use *Pular* ou *Pausar* para impedir);
+2. **Reconferência imediatamente antes do clique** (de novo, logo depois do tempo de pressão do mouse): o título da
+   conversa é exatamente o nome do item; é conversa individual pelo **mesmo critério** de 3.2.2; a caixa contém
+   **exatamente** o texto colado (normalizado, emoji incluído) e não está vazia; nenhum aviso/janela do WhatsApp
+   aberto; o painel deu sinal de vida nos últimos 45 s. Se algo falhar: **não clica**, apaga a caixa se o texto ainda é
+   o nosso, marca o item como *problema* com o motivo e **pausa** a campanha;
+3. **Botão Enviar**: só dentro de `#main footer`, só com a caixa **não vazia** (vazia, o botão ali é o microfone) e só
+   por `aria-label` "Enviar"/"Send" ou ícone `send`/`wds-ic-send-filled`. O seletor amplo `*="end"` e o "último botão
+   à direita" foram removidos; o **microfone nunca é clicado**. Sem botão: erro `botao_enviar_ausente`, nada clicado,
+   campanha pausada. **Não há envio pelo teclado** (o Enter sintético foi removido: sem botão confiável, cancela);
+4. **Confirmação**: depois do clique o detector tem **20 s** para ver a mensagem sair. Não viu: evento
+   `envio_nao_confirmado` ao painel, o item vira **revisar** (pode ter saído; nunca é reenviado sozinho), conta no
+   freio e a campanha pausa. Um clique só, sem repetir.
+
+**Marcador "em voo".** Antes de colar, o painel grava na campanha (IndexedDB) o contato, o texto e, assim que a
+conversa abre, a foto dos ids das mensagens. Se o painel fechar ou travar com o marcador presente, ao reabrir
+(ou em *Retomar*) a extensão **não cola de novo**: consulta a conversa; se há mensagem **nossa** nova com o texto,
+registra como enviado; senão marca **revisar** ("o painel fechou com esta mensagem em andamento; não reenviei").
+Se o WhatsApp não estiver aberto, a campanha não anda e avisa. O marcador só some quando o desfecho é conhecido
+(envio detectado, decisão sua, caixa limpa de fato).
+
+**Painel some = nada é clicado.** Fechar ou esconder o painel (`pagehide`/`visibilitychange`) pausa a campanha. Além
+disso o painel manda um *batimento* ao content script a cada 10 s; **sem batimento por 45 s o content script não
+clica** (cobre painel travado ou fechado sem conseguir pausar).
+
+**Detecção de envio** (vale para os dois modos): só conta como nossa a mensagem que tenha sinal de ser **minha**
+(ícone de status ✓/✓✓/relógio, `<svg><title>` equivalente, `.message-out` ou `data-id` com `true_`) **e** texto igual
+ao colado **e** id novo (fora da foto tirada antes de colar). Mensagem recebida com o mesmo texto não conta. Se você
+editar o texto antes de enviar na mão, o envio não é reconhecido: após 30 min o observador emite
+`observacaoExpirada` e o item vai para **revisar** (antes ele desistia em silêncio).
+
+#### 3.2.2 Conversa individual exige sinal positivo — v0.7.22
+
+Com JID no `data-id` (`@c.us`/`@lid` = individual; `@g.us`/`@broadcast`/`@newsletter` = grupo) vale o JID. **Sem JID**
+(o WhatsApp de 10/2026 usa hashes) "tem mensagens" não basta: é **individual** só se **não há sinal de grupo** E (os
+autores das mensagens recebidas, lidos do `data-pre-plain-text`, são só o título da conversa, OU só há mensagens
+minhas). Sinais de grupo: ícone `default-group`/`default-community` no cabeçalho ou na linha da lista, id `@g.us` na
+linha, subtítulo do cabeçalho com lista de nomes / "participantes" / "dados do grupo", elemento de autor dentro das
+mensagens, mais de um autor do outro lado, autor diferente do título. Na dúvida o resultado é `desconhecido`: **não
+cola**, o item vai para **revisar** e **não conta** no freio. Um item em *revisar* só volta à fila pelo botão
+**"Conferi: não saiu"**.
+
 ### 3.3 Conectar ao CRM Lembretes (v0.5)
 
 Opcional. **Sem login tudo funciona como na v0.4** (dados só neste navegador). Com login, a extensão
 usa o mesmo cadastro do CRM (`lembretes.salvitarn.com.br`): cada conversa mostra o lead (task) do CRM e
-os lembretes do CRM aparecem na central e nos alarmes. **Nada envia mensagem de WhatsApp**: continua
-valendo "você aperta o Enter".
+os lembretes do CRM aparecem na central e nos alarmes. **O CRM nunca envia mensagem de WhatsApp**: continua
+valendo "você aperta o Enter" (o envio automático é só das campanhas, opcional, ver 3.2.1).
 
 **Abrir conversa de lembrete do CRM (v0.7.21).** O botão **Abrir conversa** (aba Lembretes, central do
 WhatsApp, clique na notificação) **não recarrega mais o WhatsApp Web**: o painel/service worker pede ao content
@@ -242,7 +294,9 @@ as ações que estão esperando a internet e as que o CRM recusou. O endereço d
   escolhe;
 - **Registrar contato**: anexa às notas do lead uma linha `[21/10/2026 14:30] texto` (fuso de Fortaleza).
   Como no CRM, nota nova com mais de 15 caracteres conta como contato (data do último contato e
-  contador). Se as notas passarem de 5000 caracteres, as linhas mais antigas saem;
+  contador). Se as notas passarem de 5000 caracteres, saem do início **linhas inteiras** (as mais antigas; nunca
+  uma linha cortada no meio). **Risco:** o CRM só aceita as notas inteiras, então registrar contato é ler → anexar →
+  gravar; se outra pessoa editar as notas dessa task entre a leitura e a gravação, a edição dela é sobrescrita;
 - **Reagendar lembrete** (amanhã 9h, 3 dias, 1 semana ou data/hora), **Etiquetas** (adicionar/tirar;
   `ativo` e `Email Confirmado` são do CRM e não mudam aqui) e **Marcar convertido** (valor do pedido
   opcional).
@@ -311,7 +365,7 @@ exportar backup (JSON), importar (mesclar ou substituir) e exportar campanhas em
 | Intervalo | 60–120 s sorteado após cada envio. Pode ser aumentado, nunca reduzido | `shared/politica.ts` |
 | Repetição | uma mensagem por contato por campanha; quem recebeu campanha há < 14 dias fica fora (piso fixo) | `shared/campanha.ts`, `shared/banco.ts` |
 | Texto | sem link na 1ª mensagem (bloqueado), até 500 caracteres, só o marcador `{primeiroNome}`; sem mídia (a extensão só cola texto). **Sem** linha "responda SAIR" (decisão do dono) | `shared/texto.ts` |
-| Freio | 3 problemas seguidos pausam a campanha; erro de seletor pausa na hora | `shared/politica.ts`, `sidepanel/executor.ts` |
+| Freio | 3 problemas seguidos pausam a campanha; erro de seletor pausa na hora. No envio automático, bloqueio antes do clique e `envio_nao_confirmado` contam no freio **e** pausam na hora; "revisar" por conversa sem sinal positivo não conta | `shared/politica.ts`, `sidepanel/executor.ts` |
 | Número novo | sem a confirmação "mais de 30 dias de uso", nada roda | `shared/politica.ts` |
 
 Opt-out: botão **Não enviar mais** (e **Não é cliente**). A detecção automática de pedido
@@ -330,15 +384,15 @@ Outros sinais usados (todos isolados e testados com HTML sintético):
   mesmo chat entre rolagens e detecta dois chats com o mesmo nome.
 - **Grupo:** ícone padrão de grupo na linha e, ao abrir, o `data-id` das mensagens
   (`@g.us` = grupo, `@broadcast` = transmissão, `@newsletter` = canal; `@c.us`/`@lid` =
-  individual). Sem sinal → não cola (falha fechada).
+  individual). Sem JID, exige sinal positivo (3.2.2). Sem sinal → não cola (falha fechada).
 - **CRM, última mensagem é minha?** A linha da lista só mostra o ícone de entrega/leitura
   (`data-icon` com `check`, `dblcheck`, `time`) quando a última mensagem foi sua. Sem esse ícone
   a conversa conta como "do cliente". Se **nenhuma** mensagem sua for reconhecida em 15+
   conversas, a barra avisa que "Precisa de resposta" pode estar inflada.
 - **CRM, não lida:** selo com `aria-label` "não lida(s)". **Arquivadas:** título da coluna
   esquerda. **Tema escuro:** classe `dark` no `body`. Tudo em `selectors.ts` (seção "CRM").
-- **Envio detectado:** a última mensagem do chat é sua (`data-id` começa com `true_`), não
-  existia antes de colar, e a caixa ficou vazia.
+- **Envio detectado:** existe mensagem **nossa** (ícone de status, `.message-out` ou `data-id` com `true_`)
+  com id novo (não existia antes de colar), texto igual ao colado, e a caixa ficou vazia (3.2.1).
 
 ## 6. ⚠️ O que NÃO foi validado
 
@@ -367,6 +421,13 @@ contato certo sem recarregar (formatos aceitos pela busca, seções "Contatos"/"
 no nome do cabeçalho abrir "Dados do contato", onde o painel mostra o "+55 ..." e o X que o fecha (seletores
 `painelDadosContato` e `botaoFecharPainel`), e o ícone de entrega/"Você:" da linha como sinal do filtro
 "só contatos com conversa já feita por mim".
+
+Da v0.7.22, também **não verificado no WhatsApp real** (só em HTML sintético): o rótulo/ícone exato do botão Enviar
+(`aria-label` "Enviar"/"Send", `data-icon="send"`, `<svg><title>` `send`/`wds-ic-send-filled`) e o que ele vira com a caixa
+vazia; o `data-pre-plain-text` com o nome do autor nas mensagens recebidas; o elemento de autor dentro de mensagens de
+grupo (`data-testid="author"`); o subtítulo do cabeçalho em conversa individual x grupo; `.message-out`; o que conta
+como "aviso/janela" do WhatsApp (`role="dialog"` etc. — um falso positivo permanente bloquearia o envio automático);
+emoji como `<img alt>` na caixa e nas mensagens; `visibilitychange` do painel lateral do Chrome.
 
 **Rode o checklist abaixo antes da primeira campanha real** e a cada atualização do
 WhatsApp Web. Se algo falhar, ajuste só `selectors.ts` (ou o sinal correspondente) e rode
@@ -401,7 +462,7 @@ número salvo como "CLIENTE TESTE").
 
 **Envio (uma tecla)**
 - [ ] *Iniciar*: a conversa certa abre (nome no cabeçalho) e o texto aparece na caixa.
-- [ ] A extensão **não envia sozinha** — espere 1 minuto sem apertar nada.
+- [ ] Com o envio automático **desligado** (padrão) a extensão **não envia sozinha** — espere 1 minuto sem apertar nada.
 - [ ] Aperte Enter no WhatsApp: o painel registra "enviado" e mostra a contagem do intervalo.
 - [ ] Após o intervalo, abre o próximo sozinho.
 - [ ] *Pular* tira o texto da caixa e abre o próximo.

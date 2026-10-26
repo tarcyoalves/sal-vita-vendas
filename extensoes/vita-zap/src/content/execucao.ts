@@ -1,49 +1,107 @@
-// Modo "uma tecla": abre a conversa, cola o texto e PARA. Quem envia é o usuário (Enter).
-// Depois, só observa o chat para perceber que a mensagem saiu e avisa o painel.
+// Modo "uma tecla": abre a conversa, cola o texto e PARA. Quem envia é o usuário (Enter), a menos que o
+// ENVIO AUTOMÁTICO opcional esteja ligado no painel (desligado por padrão): aí, depois de uma janela de
+// conferência de 2 a 4 s, o clique é feito por envio-humano.ts, sempre depois de reconferir conversa,
+// texto e caixa, e só vale como enviado se o detector vir a mensagem sair.
 //
-// Este arquivo não tem — e não pode ter — nada que envie: nem clique no botão de enviar,
-// nem evento de teclado. tests/sem-envio-automatico.test.ts falha se aparecer.
+// Este arquivo não clica nem usa teclado: o único clique no botão Enviar mora em envio-humano.ts.
+// tests/envio-isolado.test.ts falha se aparecer outro lugar.
 
-import type { RespostaConteudo } from '../shared/mensagens';
+import type { EventoConteudo, RespostaConteudo } from '../shared/mensagens';
+import { normalizarTexto } from '../shared/nomes';
 import { normalizarParaComparar } from '../shared/texto';
 import { abrirLinhaDaLista } from './abrir-conversa';
-import { escreverNoCampo, esperar, esperarAte, limparCampo, limparMarcas, textoDoCampo } from './dom';
+import { escreverNoCampo, esperar, esperarAte, limparCampo, limparMarcas, textoComEmoji, textoDoCampoComEmoji } from './dom';
 import { lerConversasVisiveis } from './extrair';
 import { buscar, exigir, linhasDaLista } from './lista';
-import { encontrar, encontrarTodos, existeAlgum } from './selectors';
-import { agendarEnvioHumano, enviarHumano } from './envio-humano';
+import { encontrar, encontrarTodos, existeAlgum, SELETORES } from './selectors';
+import { agendarEnvioHumano, enviarHumano, PRAZO_CONFIRMACAO_MS } from './envio-humano';
 
 export type TipoConversa = 'individual' | 'grupo' | 'desconhecido';
 
+const JID_GRUPO = /@g\.us$|@broadcast$|@newsletter$/;
+const JID_INDIVIDUAL = /@c\.us$|@lid$|@s\.whatsapp\.net$/;
+const TITULO_COM_PALAVRA_DE_GRUPO = /\b(grupo|group|comunidade|community|canal|channel)\b/i;
+const SUBTITULO_DE_GRUPO = /\b(participantes?|participants?|membros?|members?)\b|dados do grupo|group info|informa[cç][oõ]es do grupo/i;
+const SUBTITULO_DE_PRESENCA = /visto|last seen|online|digitando|typing|gravando|recording|hoje|today|ontem|yesterday|dispon[ií]vel|available/i;
+
+/** A mensagem é MINHA? Sinais positivos: data-id "true_", classe message-out ou ícone de status (✓/✓✓/relógio). */
+export function mensagemEhMinha(el: HTMLElement): boolean {
+  if ((el.getAttribute('data-id') ?? '').startsWith('true_')) return true;
+  if (el.matches('.message-out') || el.closest('.message-out') || existeAlgum(el, 'mensagemMinhaClasse')) return true;
+  return existeAlgum(el, 'iconeMinhaMensagem');
+}
+
+/** Autor lido do data-pre-plain-text ("[10:30, 26/10/2026] Ana Cliente: "), ou null. */
+function autorDaMensagem(el: HTMLElement): string | null {
+  const dono = el.hasAttribute('data-pre-plain-text') ? el : el.querySelector<HTMLElement>('[data-pre-plain-text]');
+  const m = /^\s*\[[^\]]*\]\s*(.*?)\s*:\s*$/s.exec(dono?.getAttribute('data-pre-plain-text') ?? '');
+  const autor = m ? limparMarcas(m[1]) : '';
+  return autor === '' ? null : autor;
+}
+
+/** Textos folha do cabeçalho que não são o título: o subtítulo ("online", "Ana, Pedro, você"...). */
+function subtituloDoCabecalho(cabecalho: HTMLElement, titulo: HTMLElement | null): string {
+  const partes: string[] = [];
+  for (const f of cabecalho.querySelectorAll<HTMLElement>('*')) {
+    if (f.children.length > 0 || (titulo && (titulo.contains(f) || f.contains(titulo)))) continue;
+    const t = limparMarcas(f.textContent ?? '');
+    if (t) partes.push(t);
+  }
+  return partes.join(' | ');
+}
+
+/** Primeiro sinal de GRUPO no cabeçalho ou nas mensagens, ou null. */
+function sinalDeGrupo(raiz: ParentNode, mensagens: HTMLElement[]): string | null {
+  const cabecalho = encontrar(raiz, 'cabecalhoConversa');
+  if (cabecalho) {
+    if (existeAlgum(cabecalho, 'iconeGrupo')) return 'ícone de grupo/comunidade no cabeçalho';
+    const sub = subtituloDoCabecalho(cabecalho, encontrar(raiz, 'tituloCabecalho'));
+    if (SUBTITULO_DE_GRUPO.test(sub)) return 'subtítulo do cabeçalho fala em grupo/participantes';
+    const nomes = sub.split(/[,|]/).map((x) => x.trim()).filter(Boolean);
+    if (sub.includes(',') && nomes.length >= 2 && !SUBTITULO_DE_PRESENCA.test(sub)) return 'subtítulo do cabeçalho é uma lista de nomes';
+  }
+  if (mensagens.some((m) => existeAlgum(m, 'autorMensagem'))) return 'mensagem com nome de autor (só existe em grupo)';
+  return null;
+}
+
 /**
- * Classifica a conversa aberta pelo data-id das mensagens ("true_5584...@c.us_ABC").
- * Qualquer sinal de grupo/transmissão/canal vence; sem sinal nenhum → desconhecido.
+ * Classifica a conversa aberta. `individual` exige SINAL POSITIVO; na dúvida é `desconhecido` (não cola).
+ *
+ * 1. data-id com JID ("true_5584...@c.us_ABC"): @g.us/@broadcast/@newsletter = grupo; @c.us/@lid = individual.
+ *    Qualquer sinal de grupo (ícone, subtítulo, autor dentro da mensagem) vence, mesmo com JID individual.
+ * 2. Sem JID (WhatsApp de 10/2026 usa hashes): individual só se NÃO há sinal de grupo E (os autores das
+ *    mensagens recebidas, lidos do data-pre-plain-text, são só o título da conversa, OU só há mensagens minhas).
+ *    Mais de um autor, autor diferente do título ou mensagem recebida sem autor legível → grupo/desconhecido.
  */
-export function classificarConversa(dataIds: string[], raiz: ParentNode = document): TipoConversa {
+export function classificarConversa(dataIds: string[], raiz: ParentNode = document, titulo?: string | null): TipoConversa {
   let individual = false;
   let teveJid = false;
   for (const id of dataIds) {
     const m = /^(?:true|false)_([^_]+)_/.exec(id);
     if (!m) continue;
     teveJid = true;
-    const jid = m[1];
-    if (/@g\.us$|@broadcast$|@newsletter$/.test(jid)) return 'grupo';
-    if (/@c\.us$|@lid$|@s\.whatsapp\.net$/.test(jid)) individual = true;
+    if (JID_GRUPO.test(m[1])) return 'grupo';
+    if (JID_INDIVIDUAL.test(m[1])) individual = true;
   }
-  if (teveJid) {
-    return individual ? 'individual' : 'desconhecido';
-  }
+  const mensagens = encontrarTodos(raiz, 'mensagem');
+  if (sinalDeGrupo(raiz, mensagens)) return 'grupo';
+  if (teveJid) return individual ? 'individual' : 'desconhecido';
 
-  const cabecalho = encontrar(raiz, 'cabecalhoConversa');
-  if (cabecalho) {
-    if (existeAlgum(cabecalho, 'iconeGrupo')) return 'grupo';
-    const textoCabecalho = (cabecalho.textContent ?? '').toLowerCase();
-    if (/\b(participantes?|participants?|membros?|members?)\b/i.test(textoCabecalho)) return 'grupo';
-    if (/\b(grupo|group|comunidade|community|canal|channel)\b/i.test(textoCabecalho)) return 'grupo';
-    if (dataIds.length > 0) return 'individual';
+  // Sem JID: precisa de sinal positivo.
+  const tituloEl = encontrar(raiz, 'tituloCabecalho');
+  const tituloLido = limparMarcas(titulo ?? tituloEl?.getAttribute('title') ?? tituloEl?.textContent ?? '');
+  if (tituloLido === '' || TITULO_COM_PALAVRA_DE_GRUPO.test(tituloLido)) return 'desconhecido';
+  if (mensagens.length === 0) return 'desconhecido';
+  const recebidas = mensagens.filter((m) => !mensagemEhMinha(m));
+  if (recebidas.length === 0) return 'individual'; // só mensagens minhas e nenhum sinal de grupo
+  const autores = new Set<string>();
+  for (const r of recebidas) {
+    const a = autorDaMensagem(r);
+    if (a === null) return 'desconhecido'; // recebida sem autor legível (mídia, figurinha...): não dá para provar
+    autores.add(normalizarTexto(a));
   }
-
-  return 'desconhecido';
+  if (autores.size > 1) return 'grupo';
+  return autores.has(normalizarTexto(tituloLido)) ? 'individual' : 'grupo'; // autor diferente do título
 }
 
 function tituloAberto(): string | null {
@@ -62,7 +120,25 @@ function erro(codigo: Extract<RespostaConteudo, { ok: false }>['codigo'], mensag
   return { ok: false, codigo, erro: mensagem };
 }
 
-// ── Observação do envio ──────────────────────────────────────────────────────
+// ── Detecção e observação do envio ───────────────────────────────────────────
+
+/**
+ * Procura, na conversa aberta, uma mensagem que seja NOSSO envio: id novo (fora da foto `antes`, e não vazio)
+ * + sinal de mensagem minha (ícone de status, message-out ou data-id true_) + texto igual ao colado.
+ * Mensagem recebida nunca conta, nem com o mesmo texto.
+ */
+export function acharMensagemEnviada(textoColado: string, antes: ReadonlySet<string>): string | null {
+  const alvo = normalizarParaComparar(textoColado);
+  for (const el of encontrarTodos(document, 'mensagem')) {
+    const id = el.getAttribute('data-id') ?? '';
+    if (id === '' || antes.has(id)) continue;
+    if (!mensagemEhMinha(el)) continue;
+    const textoEl = encontrar(el, 'textoMensagem');
+    const texto = limparMarcas(textoEl ? textoComEmoji(textoEl) : '');
+    if (normalizarParaComparar(texto) === alvo) return texto;
+  }
+  return null;
+}
 
 interface Observacao {
   observador: MutationObserver;
@@ -72,7 +148,19 @@ interface Observacao {
 
 let observacao: Observacao | null = null;
 let cancelarEnvioAuto: (() => void) | null = null;
-const LIMITE_OBSERVACAO_MS = 30 * 60 * 1000;
+let batimentoEm = 0;
+export const LIMITE_OBSERVACAO_MS = 30 * 60 * 1000;
+/** Sem batimento do painel por este tempo, o content script não clica mais (painel fechado/travado). */
+export const PRAZO_BATIMENTO_MS = 45_000;
+
+/** O painel avisa que está vivo. Chamado a cada pedido do painel e a cada `batimento`. */
+export function registrarBatimento(agora: number = Date.now()): void {
+  batimentoEm = agora;
+}
+
+function painelVivo(): boolean {
+  return Date.now() - batimentoEm <= PRAZO_BATIMENTO_MS;
+}
 
 export function pararObservacao(): void {
   if (cancelarEnvioAuto) {
@@ -86,34 +174,32 @@ export function pararObservacao(): void {
   observacao = null;
 }
 
-/**
- * Detecta "a mensagem saiu": na conversa de `nome`, a ÚLTIMA mensagem é sua (data-id true_),
- * é nova (não estava na foto tirada antes de colar) e a caixa de texto ficou vazia.
- */
-function observarEnvio(nome: string, textoColado: string, antes: Set<string>, aoDetectarEnvio: (texto: string, confere: boolean) => void): void {
+/** Detecta "a mensagem saiu" (ver acharMensagemEnviada) com a caixa vazia, na conversa de `nome`. */
+function detectarEnvio(nome: string, textoColado: string, antes: ReadonlySet<string>): string | null {
+  if (tituloAberto() !== nome) return null; // usuário está em outra conversa
+  const caixa = encontrar(document, 'caixaMensagem');
+  if (caixa && textoDoCampoComEmoji(caixa).trim() !== '') return null;
+  return acharMensagemEnviada(textoColado, antes);
+}
+
+function observarEnvio(nome: string, textoColado: string, antes: ReadonlySet<string>, aoDetectar: (texto: string) => void, aoExpirar: () => void): void {
   pararObservacao();
   const verificar = (): void => {
     if (!observacao) return;
     observacao.timer = null;
-    if (tituloAberto() !== nome) return; // usuário está em outra conversa; segue observando
-    const mensagens = encontrarTodos(document, 'mensagem');
-    const ultima = mensagens[mensagens.length - 1];
-    const id = ultima?.getAttribute('data-id') ?? '';
-    if (antes.has(id)) return;
-    const caixa = encontrar(document, 'caixaMensagem');
-    if (caixa && textoDoCampo(caixa).trim() !== '') return;
-    const textoEl = encontrar(ultima, 'textoMensagem');
-    const texto = limparMarcas(textoEl?.innerText ?? textoEl?.textContent ?? '');
-    const confere = normalizarParaComparar(texto) === normalizarParaComparar(textoColado);
-    const ehMinha = id.startsWith('true_') || existeAlgum(ultima, 'iconeMinhaMensagem') || confere;
-    if (!ehMinha) return;
-    pararObservacao();
-    aoDetectarEnvio(texto, confere);
+    const texto = detectarEnvio(nome, textoColado, antes);
+    if (texto === null) return;
+    aoDetectar(texto);
   };
   const observador = new MutationObserver(() => {
     if (observacao && !observacao.timer) observacao.timer = setTimeout(verificar, 400);
   });
-  observacao = { observador, timer: null, limite: setTimeout(pararObservacao, LIMITE_OBSERVACAO_MS) };
+  const expirar = (): void => {
+    if (!observacao) return;
+    pararObservacao();
+    aoExpirar(); // não desiste em silêncio: o painel precisa saber
+  };
+  observacao = { observador, timer: null, limite: setTimeout(expirar, LIMITE_OBSERVACAO_MS) };
   observador.observe(document.body, { childList: true, subtree: true });
 }
 
@@ -136,16 +222,16 @@ async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promi
   // 1. Achar a conversa pela busca: exatamente uma linha com este nome e com conversa.
   await buscar(nome);
   const candidatas = await esperarAte(() => {
-    const achadas = lerConversasVisiveis(linhasDaLista())
-      .conversas.filter((c) => c.linha.nome === nome && c.linha.rotuloData)
-      .map((c) => c.el);
+    const achadas = lerConversasVisiveis(linhasDaLista()).conversas.filter((c) => c.linha.nome === nome && c.linha.rotuloData);
     return achadas.length > 0 ? achadas : null;
   }, 5000);
   if (!candidatas) return erro('nao_encontrado', `"${nome}" não apareceu entre as conversas da busca.`);
   if (candidatas.length > 1) return erro('ambiguo', `Há ${candidatas.length} conversas chamadas "${nome}".`);
+  // A própria linha da lista já pode denunciar grupo (ícone, id @g.us): nem abre.
+  if (candidatas[0].linha.pareceGrupo) return erro('grupo', `"${nome}" é grupo, comunidade ou lista de transmissão.`);
 
   // 2. Abrir e conferir o cabeçalho.
-  abrirLinhaDaLista(candidatas[0]);
+  abrirLinhaDaLista(candidatas[0].el);
   const abriu = await esperarAte(() => tituloAberto() === nome, 6000);
   if (!abriu) {
     if (!encontrar(document, 'painelConversa')) return erro('seletor', 'Painel da conversa não encontrado (seletor #main).');
@@ -154,69 +240,155 @@ async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promi
   return null;
 }
 
-export async function abrirEColar(nome: string, texto: string, aoDetectarEnvio: (texto: string, confere: boolean) => void, envioAutomatico = false): Promise<RespostaConteudo> {
+/** Existe uma janela/aviso do WhatsApp aberto sobre a conversa? */
+function avisoDoWhatsAppAberto(): boolean {
+  for (const el of document.querySelectorAll<HTMLElement>(SELETORES.avisoWhatsApp.join(','))) {
+    if (!el.hidden && el.getAttribute('aria-hidden') !== 'true') return true;
+  }
+  return false;
+}
+
+/**
+ * Reconferência imediatamente antes do clique do envio automático. Devolve o motivo do veto, ou null se tudo
+ * confere: painel vivo, título da conversa === nome, conversa individual (MESMO critério da hora de colar),
+ * caixa com EXATAMENTE o texto colado (normalizado, emoji incluído) e nenhum aviso do WhatsApp na tela.
+ */
+export function reconferirAntesDoClique(nome: string, textoColado: string): string | null {
+  if (!painelVivo()) return 'o painel parou de responder (fechado ou travado)';
+  if (tituloAberto() !== nome) return `a conversa aberta mudou: não é mais "${nome}"`;
+  const tipo = classificarConversa(idsDasMensagens(), document, nome);
+  if (tipo === 'grupo') return `"${nome}" parece grupo, comunidade ou transmissão`;
+  if (tipo === 'desconhecido') return `não consegui confirmar que "${nome}" é conversa individual`;
+  const caixa = encontrar(document, 'caixaMensagem');
+  if (!caixa) return 'a caixa de mensagem sumiu';
+  const atual = textoDoCampoComEmoji(caixa);
+  if (atual.trim() === '') return 'a caixa de mensagem está vazia';
+  if (normalizarParaComparar(atual) !== normalizarParaComparar(textoColado)) return 'o texto da caixa não é mais exatamente o que foi colado';
+  if (avisoDoWhatsAppAberto()) return 'o WhatsApp está mostrando um aviso/janela';
+  return null;
+}
+
+type Emitir = (evento: EventoConteudo) => void;
+
+/** Apaga a caixa SÓ se o texto dela ainda é exatamente o nosso. */
+function limparSeForNosso(texto: string): boolean {
+  const caixa = encontrar(document, 'caixaMensagem');
+  if (!caixa) return false;
+  const atual = textoDoCampoComEmoji(caixa);
+  if (atual.trim() === '' || normalizarParaComparar(atual) !== normalizarParaComparar(texto)) return false;
+  limparCampo(caixa);
+  return true;
+}
+
+export async function abrirEColar(
+  nome: string,
+  texto: string,
+  aoDetectarEnvio: (texto: string, confere: boolean) => void,
+  envioAutomatico = false,
+  emitir: Emitir = () => undefined,
+): Promise<RespostaConteudo> {
   pararObservacao();
+  registrarBatimento(); // o próprio pedido do painel prova que ele está vivo
   const falha = await abrirConversaPorNome(nome);
   if (falha) return falha;
 
-  // 3. Só conversa individual.
-  const ids = await esperarAte(() => {
-    const v = idsDasMensagens();
-    return v.length > 0 ? v : null;
-  }, 5000);
-  const tipo = classificarConversa(ids ?? []);
+  // 3. Só conversa individual, com sinal positivo (ver classificarConversa).
+  await esperarAte(() => (idsDasMensagens().length > 0 ? true : null), 5000);
+  const tipo = classificarConversa(idsDasMensagens());
   if (tipo === 'grupo') return erro('grupo', `"${nome}" é grupo, comunidade ou lista de transmissão.`);
-  if (tipo === 'desconhecido') return erro('nao_confirmado', `Não consegui confirmar que "${nome}" é conversa individual.`);
+  if (tipo === 'desconhecido') return erro('nao_confirmado', `Não consegui confirmar que "${nome}" é conversa individual. Não colei nada.`);
 
   // 4. Colar o texto (sem sobrescrever rascunho do usuário).
   const caixa = encontrar(document, 'caixaMensagem');
   if (!caixa) return erro('seletor', 'Caixa de mensagem não encontrada.');
-  if (textoDoCampo(caixa).trim() !== '') return erro('caixa_ocupada', `A conversa de "${nome}" já tem um rascunho na caixa. Não mexi nele.`);
+  if (textoDoCampoComEmoji(caixa).trim() !== '') return erro('caixa_ocupada', `A conversa de "${nome}" já tem um rascunho na caixa. Não mexi nele.`);
   await esperar(800); // deixa o histórico carregar antes da "foto"
-  const antes = new Set(idsDasMensagens());
+  const idsAntes = idsDasMensagens();
+  const antes = new Set(idsAntes);
   escreverNoCampo(caixa, texto);
   await esperar(300);
-  if (normalizarParaComparar(textoDoCampo(caixa)) !== normalizarParaComparar(texto)) {
+  if (normalizarParaComparar(textoDoCampoComEmoji(caixa)) !== normalizarParaComparar(texto)) {
     limparCampo(caixa);
     return erro('colar_falhou', 'O texto não ficou na caixa de mensagem.');
   }
   caixa.focus();
 
-  // 5. Esperar o envio (observador).
-  observarEnvio(nome, texto, antes, (textoEnviado, confere) => {
-    if (cancelarEnvioAuto) {
-      cancelarEnvioAuto();
-      cancelarEnvioAuto = null;
-    }
-    aoDetectarEnvio(textoEnviado, confere);
+  // 5. Esperar o envio (observador). Cada desfecho é entregue UMA vez.
+  let resolvido = false;
+  const detectado = (textoEnviado: string): void => {
+    if (resolvido) return;
+    resolvido = true;
+    pararObservacao(); // também cancela o envio automático ainda agendado
+    aoDetectarEnvio(textoEnviado, true);
+  };
+  observarEnvio(nome, texto, antes, detectado, () => {
+    if (resolvido) return;
+    resolvido = true;
+    emitir({ tipo: 'vitaZap:observacaoExpirada', nome });
   });
 
-  // 6. Envio humano automático (quando ativado).
+  // 6. Envio automático OPCIONAL: janela de conferência → reconferência → clique → confirmação.
   if (envioAutomatico) {
-    let enviado = false;
+    let disparou = false;
     cancelarEnvioAuto = agendarEnvioHumano(async () => {
       cancelarEnvioAuto = null;
-      if (enviado || tituloAberto() !== nome) return;
-      enviado = true;
-      await enviarHumano(document);
+      if (disparou || resolvido) return;
+      disparou = true;
+      const r = await enviarHumano(document, {
+        reconferir: () => reconferirAntesDoClique(nome, texto),
+        confirmar: () => {
+          if (resolvido) return true; // o observador já entregou a detecção
+          const t = detectarEnvio(nome, texto, antes);
+          if (t === null) return false;
+          detectado(t);
+          return true;
+        },
+        prazoConfirmacaoMs: PRAZO_CONFIRMACAO_MS,
+      });
+      if (r.ok || resolvido) return;
+      resolvido = true;
+      pararObservacao();
+      if (r.codigo === 'envio_nao_confirmado') {
+        emitir({ tipo: 'vitaZap:envioNaoConfirmado', nome, motivo: r.motivo });
+        return;
+      }
+      const limpou = limparSeForNosso(texto);
+      const codigo = r.codigo === 'botao_enviar_ausente' ? 'botao_enviar_ausente' : /painel parou/.test(r.motivo) ? 'painel_ausente' : 'reconferencia_falhou';
+      emitir({ tipo: 'vitaZap:envioBloqueado', nome, codigo, motivo: r.motivo, limpou });
     });
   }
 
-  return { ok: true };
+  return { ok: true, idsAntes };
 }
 
-/** Tira o texto colado da caixa (ao Pular/Pausar), se ele ainda for exatamente o nosso. */
+/**
+ * Consulta só-leitura para o painel que reabriu com mensagem "em voo": abre a conversa de `nome` (sem mexer na
+ * caixa) e diz se há mensagem NOSSA nova (id fora de `idsAntes`) com exatamente `texto`. Sem a foto `idsAntes`
+ * não dá para provar que a mensagem é nova: devolve `nao_encontrado` (o painel manda para "revisar").
+ */
+export async function consultarEnvio(nome: string, texto: string, idsAntes: string[] | null): Promise<RespostaConteudo> {
+  const falha = await abrirConversaPorNome(nome, true);
+  if (falha) return falha;
+  await esperar(800);
+  if (idsAntes === null) return { ok: true, situacao: 'nao_encontrado', avisos: ['sem a foto das mensagens: não dá para provar que é nova'] };
+  return { ok: true, situacao: acharMensagemEnviada(texto, new Set(idsAntes)) !== null ? 'enviado' : 'nao_encontrado' };
+}
+
+/**
+ * Tira o texto colado da caixa (ao Pular/Pausar), se ele ainda for exatamente o nosso.
+ * `limpou` só é true se apagou agora: o painel usa isso para saber que nada ficou em voo.
+ */
 export function limparCaixa(texto: string): RespostaConteudo {
   pararObservacao();
   const caixa = encontrar(document, 'caixaMensagem');
-  if (!caixa) return { ok: true, avisos: ['caixa de mensagem não encontrada'] };
-  const atual = textoDoCampo(caixa);
-  if (atual.trim() === '') return { ok: true };
+  if (!caixa) return { ok: true, limpou: false, avisos: ['caixa de mensagem não encontrada'] };
+  const atual = textoDoCampoComEmoji(caixa);
+  if (atual.trim() === '') return { ok: true, limpou: false };
   if (normalizarParaComparar(atual) !== normalizarParaComparar(texto)) {
-    return { ok: true, avisos: ['o texto da caixa foi editado; deixei como está'] };
+    return { ok: true, limpou: false, avisos: ['o texto da caixa foi editado; deixei como está'] };
   }
   limparCampo(caixa);
-  return { ok: true };
+  return { ok: true, limpou: true };
 }
 
 /**
@@ -232,10 +404,10 @@ export async function abrirEPrepararRascunho(nome: string, rascunho: string | nu
   if (!rascunho || rascunho.trim() === '') return { ok: true };
   const caixa = await esperarAte(() => encontrar(document, 'caixaMensagem'), 4000);
   if (!caixa) return erro('seletor', 'Caixa de mensagem não encontrada.');
-  if (textoDoCampo(caixa).trim() !== '') return erro('caixa_ocupada', `A conversa de "${nome}" já tem um rascunho na caixa. Não mexi nele.`);
+  if (textoDoCampoComEmoji(caixa).trim() !== '') return erro('caixa_ocupada', `A conversa de "${nome}" já tem um rascunho na caixa. Não mexi nele.`);
   escreverNoCampo(caixa, rascunho);
   await esperar(300);
-  if (normalizarParaComparar(textoDoCampo(caixa)) !== normalizarParaComparar(rascunho)) {
+  if (normalizarParaComparar(textoDoCampoComEmoji(caixa)) !== normalizarParaComparar(rascunho)) {
     limparCampo(caixa);
     return erro('colar_falhou', 'O texto não ficou na caixa de mensagem.');
   }

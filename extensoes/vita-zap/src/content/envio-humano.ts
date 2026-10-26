@@ -1,59 +1,81 @@
-// Módulo de envio humano automático (ativado a pedido do dono).
-//
-// Simula o comportamento de um usuário real:
-// 1. Pausa humana entre 2.2s e 3.8s após digitar (tempo de leitura e conferência).
-// 2. Movimentação e clique do ponteiro com coordenadas realistas e tempo de pressão (80-160ms).
-// 3. Fallback de Enter no campo se o clique no botão não esvaziar a caixa.
+import { textoComEmoji } from './dom';
 
-/** Sorteia uma pausa humana em ms. */
+// Módulo do envio automático OPCIONAL (desligado por padrão; ativado a pedido do dono).
+//
+// É o ÚNICO lugar da extensão que clica no botão Enviar. Regras (testes em tests/envio-seguro.test.ts):
+// 1. Janela de conferência: pausa de 2,2 s a 3,8 s depois de colar o texto (o atendente ainda pode intervir).
+// 2. Reconferência imediatamente antes do clique (conversa, texto exato, caixa não vazia, sem aviso).
+// 3. O botão só é procurado dentro de '#main footer', só com a caixa NÃO vazia (com a caixa vazia o botão
+//    do mesmo lugar é o MICROFONE) e só por rótulo/ícone exato de "Enviar"/"Send". Nada de adivinhar
+//    "o último botão à direita".
+// 4. Sem confirmação não há sucesso: depois do clique o detector tem 20 s para ver a mensagem sair.
+// 5. Não existe envio pelo teclado (Enter sintético): sem botão confiável, o envio é cancelado.
+
+/** Prazo para o detector confirmar que a mensagem saiu depois do clique. */
+export const PRAZO_CONFIRMACAO_MS = 20_000;
+
+/** Sorteia a pausa da janela de conferência em ms. */
 export function sortearPausaHumana(minMs = 2200, maxMs = 3800): number {
   return minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
 }
 
-/** Localiza o botão de enviar no rodapé do WhatsApp Web de forma resiliente. */
-export function encontrarBotaoEnviar(raiz: ParentNode = document): HTMLElement | null {
-  const footer = raiz.querySelector('#main footer') ?? raiz;
+const ROTULOS_BOTAO = new Set(['enviar', 'send']);
+const ICONES_BOTAO = new Set(['send', 'wds-ic-send-filled']);
+const ROTULO_MICROFONE = /voz|voice|microfone|microphone|\bmic\b|\bptt\b/i;
 
-  // 1. Por aria-label ou data-tab
-  const porAria = footer.querySelector<HTMLElement>(
-    'button[aria-label*="nviar" i], button[aria-label*="end" i], button[data-tab="11"]',
-  );
-  if (porAria) return porAria;
-
-  // 2. Por data-icon="send"
-  const iconeSend = footer.querySelector<HTMLElement>('[data-icon="send"], [data-icon*="send"]');
-  if (iconeSend) {
-    return iconeSend.closest('button') ?? iconeSend;
-  }
-
-  // 3. Por <svg><title> contendo send ou enviar (ex.: wds-ic-send de 10/2026)
-  for (const t of footer.querySelectorAll('svg > title')) {
-    const txt = (t.textContent ?? '').trim().toLowerCase();
-    if (txt.includes('send') || txt.includes('enviar')) {
-      const btn = t.closest('button');
-      if (btn) return btn;
-      return (t.parentElement?.parentElement as HTMLElement) ?? null;
-    }
-  }
-
-  // 4. Fallback estrutural: no rodapé do WhatsApp, o único botão à direita da caixa de texto é o Enviar
-  const caixa = footer.querySelector('div[contenteditable="true"]');
-  if (caixa) {
-    const botoes = [...footer.querySelectorAll<HTMLElement>('button')];
-    const botoesADireita = botoes.filter((b) => {
-      const pos = b.compareDocumentPosition(caixa);
-      return (pos & Node.DOCUMENT_POSITION_PRECEDING) !== 0;
-    });
-    if (botoesADireita.length > 0) {
-      return botoesADireita[botoesADireita.length - 1];
-    }
-  }
-
-  return null;
+function ehMicrofone(el: HTMLElement): boolean {
+  if (ROTULO_MICROFONE.test(el.getAttribute('aria-label') ?? '')) return true;
+  if (el.querySelector('[data-icon="ptt"], [data-icon*="mic"]')) return true;
+  for (const t of el.querySelectorAll('svg > title')) if (/^(wds-)?(ic-)?(ptt|mic|keyboard-voice)\b/i.test((t.textContent ?? '').trim())) return true;
+  return false;
 }
 
-/** Simula um clique de mouse humano com coordenadas e tempo de pressão realista. */
-export async function clicarBotaoEnviarHumano(botao: HTMLElement): Promise<void> {
+function botaoDe(el: Element): HTMLElement | null {
+  return el.closest<HTMLElement>('button, [role="button"]');
+}
+
+/** Caixa de digitação do rodapé da conversa aberta. */
+function caixaDoRodape(footer: Element): HTMLElement | null {
+  return footer.querySelector<HTMLElement>('div[contenteditable="true"]');
+}
+
+/**
+ * Localiza o botão Enviar. Só no rodapé da conversa aberta ('#main footer'), só se a caixa NÃO está vazia
+ * (vazia, o botão ali é o microfone) e só por rótulo ("Enviar"/"Send") ou ícone ("send"/"wds-ic-send-filled")
+ * exatos. Nunca devolve o microfone. Sem candidato confiável → null (o envio é cancelado).
+ */
+export function encontrarBotaoEnviar(raiz: ParentNode = document): HTMLElement | null {
+  const footer = raiz.querySelector('#main footer');
+  if (!footer) return null;
+  const caixa = caixaDoRodape(footer);
+  if (!caixa || textoComEmoji(caixa).trim() === '') return null;
+
+  const candidatos: HTMLElement[] = [];
+  for (const b of footer.querySelectorAll<HTMLElement>('button, [role="button"]')) {
+    if (ROTULOS_BOTAO.has((b.getAttribute('aria-label') ?? '').trim().toLowerCase())) candidatos.push(b);
+  }
+  for (const ic of footer.querySelectorAll<HTMLElement>('[data-icon]')) {
+    if (ICONES_BOTAO.has((ic.getAttribute('data-icon') ?? '').toLowerCase())) {
+      const b = botaoDe(ic);
+      if (b) candidatos.push(b);
+    }
+  }
+  for (const t of footer.querySelectorAll('svg > title')) {
+    if (ICONES_BOTAO.has((t.textContent ?? '').trim().toLowerCase())) {
+      const b = botaoDe(t);
+      if (b) candidatos.push(b);
+    }
+  }
+  return candidatos.find((b) => !ehMicrofone(b) && footer.contains(b)) ?? null;
+}
+
+/**
+ * Simula um clique de mouse humano com coordenadas e tempo de pressão realista. `vetar` roda antes de qualquer
+ * evento e de novo imediatamente antes do clique; se devolver um motivo, NÃO clica e devolve o motivo.
+ */
+export async function clicarBotaoEnviarHumano(botao: HTMLElement, vetar: () => string | null = () => null): Promise<string | null> {
+  const veto0 = vetar();
+  if (veto0) return veto0;
   const r = botao.getBoundingClientRect();
   const x = r.left + r.width * (0.35 + Math.random() * 0.3);
   const y = r.top + r.height * (0.35 + Math.random() * 0.3);
@@ -94,6 +116,11 @@ export async function clicarBotaoEnviarHumano(botao: HTMLElement): Promise<void>
   // Tempo de pressão de um dedo humano real no botão
   await new Promise((resolve) => setTimeout(resolve, 80 + Math.floor(Math.random() * 80)));
 
+  // Reconferência IMEDIATAMENTE antes do clique: nada pode ter mudado nem o botão ter sumido.
+  const veto = vetar();
+  if (veto) return veto;
+  if (!botao.isConnected) return 'o botão Enviar saiu da tela';
+
   if (temPointer) botao.dispatchEvent(new PointerEvent('pointerup', ponteiro));
   botao.dispatchEvent(new MouseEvent('mouseup', base));
 
@@ -103,36 +130,47 @@ export async function clicarBotaoEnviarHumano(botao: HTMLElement): Promise<void>
   } catch {
     botao.dispatchEvent(new MouseEvent('click', base));
   }
+  return null;
+}
+
+export type ResultadoEnvio =
+  | { ok: true }
+  | { ok: false; codigo: 'reconferencia_falhou' | 'botao_enviar_ausente' | 'envio_nao_confirmado'; motivo: string };
+
+export interface OpcoesEnvioHumano {
+  /** Devolve o motivo do veto (não clicar) ou null se tudo confere. Roda antes de procurar o botão e de novo logo antes do clique. */
+  reconferir: () => string | null;
+  /** O detector viu a mensagem sair? Chamado em intervalos depois do clique. */
+  confirmar: () => boolean;
+  prazoConfirmacaoMs?: number;
+  passoMs?: number;
 }
 
 /**
- * Executa um ÚNICO envio humano.
- * Encontra o botão de enviar e clica nele uma única vez.
- * Se o botão não existir no layout, envia pelo teclado na caixa.
- * Nunca dispara duas vezes.
+ * Executa um ÚNICO envio. `ok: true` SÓ depois que `confirmar()` viu a mensagem sair dentro do prazo.
+ * Nunca clica duas vezes, nunca usa o teclado e nunca devolve sucesso sem confirmação.
  */
-export async function enviarHumano(raiz: ParentNode = document): Promise<boolean> {
+export async function enviarHumano(raiz: ParentNode = document, opcoes: OpcoesEnvioHumano): Promise<ResultadoEnvio> {
+  const veto = opcoes.reconferir();
+  if (veto) return { ok: false, codigo: 'reconferencia_falhou', motivo: veto };
   const botao = encontrarBotaoEnviar(raiz);
-  if (botao) {
-    await clicarBotaoEnviarHumano(botao);
-    return true;
-  }
-  const caixa = (raiz.querySelector('#main footer div[contenteditable="true"]') ??
-    raiz.querySelector('div[contenteditable="true"]')) as HTMLElement | null;
-  if (caixa) {
-    enviarPeloTecladoHumano(caixa);
-    return true;
-  }
-  return false;
-}
+  if (!botao) return { ok: false, codigo: 'botao_enviar_ausente', motivo: 'Não achei o botão Enviar no rodapé da conversa (com a caixa preenchida). Não cliquei em nada.' };
+  const vetoDoClique = await clicarBotaoEnviarHumano(botao, opcoes.reconferir);
+  if (vetoDoClique) return { ok: false, codigo: 'reconferencia_falhou', motivo: vetoDoClique };
 
-/** Envia pressionando Enter na caixa de digitação caso o botão não reaja. */
-export function enviarPeloTecladoHumano(caixa: HTMLElement): void {
-  caixa.focus();
-  const opcoes = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
-  caixa.dispatchEvent(new KeyboardEvent('keydown', opcoes));
-  caixa.dispatchEvent(new KeyboardEvent('keypress', opcoes));
-  caixa.dispatchEvent(new KeyboardEvent('keyup', opcoes));
+  const prazo = opcoes.prazoConfirmacaoMs ?? PRAZO_CONFIRMACAO_MS;
+  const passo = opcoes.passoMs ?? 250;
+  const fim = Date.now() + prazo;
+  for (;;) {
+    if (opcoes.confirmar()) return { ok: true };
+    if (Date.now() >= fim) break;
+    await new Promise((resolve) => setTimeout(resolve, passo));
+  }
+  return {
+    ok: false,
+    codigo: 'envio_nao_confirmado',
+    motivo: `Cliquei em Enviar, mas não vi a mensagem sair em ${Math.round(prazo / 1000)} s. Ela PODE ter saído: confira a conversa.`,
+  };
 }
 
 /** Agenda o envio automático com pausa humana e devolve a função para cancelar. */

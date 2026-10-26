@@ -1,7 +1,8 @@
 // Utilidades de DOM do content script: esperar, escrever texto num campo e limpá-lo.
 //
-// Escrever texto NÃO envia nada: o envio do WhatsApp só acontece com Enter/botão, que são
-// sempre do usuário. Aqui não existe evento de teclado (ver tests/sem-envio-automatico.test.ts).
+// Escrever texto NÃO envia nada: o envio do WhatsApp só acontece com Enter (do usuário) ou com o
+// clique do envio automático opcional, que mora isolado em envio-humano.ts. Aqui não existe
+// evento de teclado nem clique (ver tests/envio-isolado.test.ts).
 
 export function esperar(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -28,6 +29,35 @@ function ehInput(el: HTMLElement): el is HTMLInputElement | HTMLTextAreaElement 
 
 export function textoDoCampo(el: HTMLElement): string {
   return ehInput(el) ? el.value : (el.innerText ?? el.textContent ?? '');
+}
+
+const BLOCOS = new Set(['DIV', 'P', 'LI', 'PRE', 'BLOCKQUOTE']);
+
+/**
+ * Texto de um campo/mensagem COM emoji. O WhatsApp troca cada emoji por <img alt="😀"> (ou
+ * data-plain-text), e `innerText`/`textContent` ignoram imagens: sem isto, qualquer texto com emoji
+ * pareceria diferente do colado. <br> e blocos viram quebra de linha (a comparação colapsa espaços).
+ */
+export function textoComEmoji(el: Node): string {
+  if (el.nodeType === 3 /* Node.TEXT_NODE */) return el.textContent ?? '';
+  if (el.nodeType !== 1 /* Node.ELEMENT_NODE */) return '';
+  const e = el as HTMLElement;
+  if (e.tagName === 'IMG') return e.getAttribute('alt') || e.getAttribute('data-plain-text') || '';
+  if (e.tagName === 'BR') return '\n';
+  const plain = e.getAttribute('data-plain-text');
+  if (plain && e.children.length === 0 && (e.textContent ?? '') === '') return plain;
+  let saida = '';
+  for (const filho of e.childNodes) {
+    const t = textoComEmoji(filho);
+    if (filho.nodeType === 1 && BLOCOS.has((filho as HTMLElement).tagName) && saida !== '' && !saida.endsWith('\n')) saida += '\n';
+    saida += t;
+  }
+  return saida;
+}
+
+/** Texto da caixa de digitação/mensagem, emoji incluído (input/textarea: o valor). */
+export function textoDoCampoComEmoji(el: HTMLElement): string {
+  return ehInput(el) ? el.value : textoComEmoji(el);
 }
 
 function selecionarConteudo(el: HTMLElement): void {

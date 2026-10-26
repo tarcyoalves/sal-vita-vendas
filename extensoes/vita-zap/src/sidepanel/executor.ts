@@ -1,12 +1,19 @@
 // Condutor da campanha no modo "uma tecla".
 //
-// Ciclo: checa a política → abre o próximo contato e cola o texto → ESPERA o usuário apertar
-// Enter → o content script avisa que a mensagem saiu → registra → espera o intervalo → próximo.
-// O executor nunca envia nada: ele não tem como (não existe pedido de envio no protocolo).
+// Ciclo: checa a política → grava o marcador "em voo" → abre o próximo contato e cola o texto → ESPERA
+// o usuário apertar Enter (envio manual, o padrão) ou o content script clicar (envio automático
+// OPCIONAL, desligado por padrão) → o content script avisa que a mensagem saiu → registra → espera o
+// intervalo → próximo. O executor nunca clica: não existe pedido "enviar" no protocolo.
+//
+// Marcador "em voo" (Campanha.emVoo): gravado ANTES de colar e apagado só quando o desfecho é conhecido.
+// Se o painel fechar com ele presente, ao reabrir NÃO se cola de novo: consulta-se a conversa (saiu uma
+// mensagem nossa nova com o texto?) → enviado; senão → "revisar". Nunca se reenvia sozinho.
 
 import {
   type Campanha,
+  type EmVoo,
   type ItemCampanha,
+  type StatusItem,
   marcarItem,
   proximoPendente,
   textoDoItem,
@@ -60,7 +67,8 @@ export class Executor {
   private cancelarTimer: (() => void) | null = null;
   private ativo = false;
   private avancando = false;
-  private envioAutomatico = true;
+  /** Envio automático é OPCIONAL: desligado por padrão (envio manual). */
+  private envioAutomatico = false;
 
   constructor(private readonly deps: DependenciasExecutor, campanha: Campanha) {
     this.estado = {
@@ -71,8 +79,53 @@ export class Executor {
       liberaEm: null,
       enviosHoje: 0,
       tetoDiario: 0,
-      envioAutomatico: true,
+      envioAutomatico: false,
     };
+  }
+
+  private async gravarMarcador(emVoo: EmVoo | null): Promise<void> {
+    if ((this.estado.campanha.emVoo ?? null) === emVoo) return;
+    await this.gravar({ ...this.estado.campanha, emVoo });
+  }
+
+  /**
+   * Se o painel foi fechado/travado com uma mensagem em voo, resolve isso ANTES de qualquer colagem:
+   * consulta a conversa; saiu → registra como enviado; não achou → "revisar". Devolve false se não deu para
+   * conferir (WhatsApp fechado etc.): a campanha não anda enquanto o marcador existir.
+   */
+  async reconciliar(): Promise<boolean> {
+    const c = this.estado.campanha;
+    const m = c.emVoo;
+    if (!m) return true;
+    const item = c.itens.find((i) => i.chave === m.chave);
+    if (!item || item.status !== 'pendente') {
+      await this.gravarMarcador(null);
+      return true;
+    }
+    const r = await this.deps.pedir({ tipo: 'consultarEnvio', nome: m.nome, texto: m.texto, idsAntes: m.idsAntes }, true);
+    if (!r.ok) {
+      this.publicar({
+        mensagem: `Havia uma mensagem para "${m.nome}" em andamento quando o painel fechou e não consegui conferir a conversa (${r.erro}). Não colei nada. Abra o WhatsApp Web e use Retomar.`,
+      });
+      return false;
+    }
+    const agora = this.deps.agora();
+    if (r.situacao === 'enviado') {
+      await registrarEnvio(this.deps.db, { campanhaId: c.id, chave: item.chave, nome: item.nome, enviadoEm: agora.toISOString(), textoConfere: true });
+      const cfg = await lerConfig(this.deps.db);
+      await this.gravar({
+        ...marcarItem(c, item.chave, 'enviado', agora, 'confirmado ao reabrir o painel'),
+        emVoo: null,
+        ultimoEnvioEm: agora.toISOString(),
+        intervaloAtualSeg: sortearIntervaloSeg(cfg, this.deps.aleatorio),
+      });
+      return true;
+    }
+    await this.gravar({
+      ...marcarItem(c, item.chave, 'revisar', agora, 'o painel fechou com esta mensagem em andamento e não achei o envio na conversa; não reenviei. Confira no WhatsApp'),
+      emVoo: null,
+    });
+    return true;
   }
 
   setEnvioAutomatico(ativo: boolean): void {
@@ -109,6 +162,10 @@ export class Executor {
   async iniciar(): Promise<void> {
     if (this.ativo || this.estado.campanha.status === 'concluida') return;
     this.ativo = true;
+    if (!(await this.reconciliar())) {
+      this.ativo = false;
+      return;
+    }
     await this.gravar({ ...this.estado.campanha, status: 'em_execucao', motivoPausa: null, problemasSeguidos: 0 });
     this.publicar({ mensagem: null });
     await this.avancar();
@@ -118,18 +175,47 @@ export class Executor {
     const estavaAguardando = this.estado.fase === 'aguardando_envio' ? this.estado.itemAtual : null;
     this.ativo = false;
     this.limparTimer();
-    if (estavaAguardando) await this.deps.pedir({ tipo: 'limparCaixa', texto: textoDoItem(estavaAguardando) });
-    else await this.deps.pedir({ tipo: 'pararObservacao' });
+    if (estavaAguardando) {
+      const r = await this.deps.pedir({ tipo: 'limparCaixa', texto: textoDoItem(estavaAguardando) });
+      // Só some o marcador se o texto era exatamente o nosso e foi apagado agora: nada ficou em voo.
+      // Caixa vazia/editada = pode ter saído; o marcador fica e, ao retomar, a conversa é consultada.
+      if (r.ok && r.limpou) await this.gravarMarcador(null);
+    } else await this.deps.pedir({ tipo: 'pararObservacao' });
     const c = this.estado.campanha;
     if (c.status !== 'concluida') await this.gravar({ ...c, status: 'pausada', motivoPausa: motivo });
     this.publicar({ fase: c.status === 'concluida' ? 'concluida' : 'parada', mensagem: motivo, itemAtual: null, liberaEm: null });
   }
 
-  /** Evento do content script: a mensagem do contato atual apareceu no chat. */
+  /** Evento do content script: envio detectado, bloqueado antes do clique, não confirmado ou observação expirada. */
   async aoReceberEvento(ev: EventoConteudo): Promise<void> {
-    if (ev.tipo !== 'vitaZap:envioDetectado') return;
+    if (ev.tipo === 'vitaZap:progressoVarredura') return;
     const item = this.estado.itemAtual;
     if (!this.ativo || this.estado.fase !== 'aguardando_envio' || !item || ev.nome !== item.nome) return;
+
+    if (ev.tipo === 'vitaZap:envioBloqueado') {
+      // Nada foi clicado. Conta como problema (freio) e a campanha pausa para o atendente olhar.
+      const motivo = `envio automático cancelado antes do clique (${ev.codigo}): ${ev.motivo}`;
+      await this.gravarMarcador(null);
+      await this.marcarComo(item, 'problema', motivo, true);
+      if (this.ativo) await this.pausar(motivo);
+      return;
+    }
+    if (ev.tipo === 'vitaZap:envioNaoConfirmado') {
+      // Clicou e não viu sair: PODE ter saído. Revisar (nunca reenviar sozinho), conta no freio e pausa.
+      const motivo = `envio_nao_confirmado: ${ev.motivo}`;
+      await this.gravarMarcador(null);
+      await this.marcarComo(item, 'revisar', motivo, true);
+      if (this.ativo) await this.pausar(motivo);
+      return;
+    }
+    if (ev.tipo === 'vitaZap:observacaoExpirada') {
+      const motivo = `sem confirmação do envio de "${item.nome}" depois de 30 min: confira no WhatsApp se saiu`;
+      await this.gravarMarcador(null);
+      await this.marcarComo(item, 'revisar', motivo, false);
+      if (this.ativo) await this.pausar(motivo);
+      return;
+    }
+
     const agora = this.deps.agora();
     const c = this.estado.campanha;
     await registrarEnvio(this.deps.db, {
@@ -143,6 +229,7 @@ export class Executor {
     const cfg = await lerConfig(this.deps.db);
     await this.gravar({
       ...marcada,
+      emVoo: null,
       ultimoEnvioEm: agora.toISOString(),
       intervaloAtualSeg: sortearIntervaloSeg(cfg, this.deps.aleatorio),
     });
@@ -155,6 +242,7 @@ export class Executor {
     const item = this.estado.itemAtual;
     if (!item || this.estado.fase !== 'aguardando_envio') return;
     await this.deps.pedir({ tipo: 'limparCaixa', texto: textoDoItem(item) });
+    await this.gravarMarcador(null); // decisão explícita do atendente: nada mais em voo
     if (await this.marcar(item, tipo, motivo)) await this.avancar();
   }
 
@@ -162,7 +250,7 @@ export class Executor {
   async pularItem(chave: string, motivo: string = 'removido por você da lista'): Promise<void> {
     const c = this.estado.campanha;
     const novosItens = c.itens.map((i) =>
-      i.chave === chave && (i.status === 'pendente' || i.status === 'problema')
+      i.chave === chave && (i.status === 'pendente' || i.status === 'problema' || i.status === 'revisar')
         ? { ...i, status: 'pulado' as const, motivo, atualizadoEm: this.deps.agora().toISOString() }
         : i,
     );
@@ -182,7 +270,7 @@ export class Executor {
     }
     const c = this.estado.campanha;
     const novosItens = c.itens.map((i) =>
-      i.chave === chave && (i.status === 'pendente' || i.status === 'problema')
+      i.chave === chave && (i.status === 'pendente' || i.status === 'problema' || i.status === 'revisar')
         ? { ...i, status: 'nao_enviar' as const, motivo, atualizadoEm: this.deps.agora().toISOString() }
         : i,
     );
@@ -204,7 +292,7 @@ export class Executor {
   async recolocarPendente(chave: string): Promise<void> {
     const c = this.estado.campanha;
     const novosItens = c.itens.map((i) =>
-      i.chave === chave && (i.status === 'problema' || i.status === 'pulado')
+      i.chave === chave && (i.status === 'problema' || i.status === 'pulado' || i.status === 'revisar')
         ? { ...i, status: 'pendente' as const, motivo: null, atualizadoEm: this.deps.agora().toISOString() }
         : i,
     );
@@ -248,7 +336,13 @@ export class Executor {
         motivo: tipo === 'nao_cliente' ? 'não é cliente' : 'não enviar mais',
       });
     }
-    const c = marcarItem(this.estado.campanha, item.chave, tipo, agora, motivo);
+    return this.marcarComo(item, tipo, motivo);
+  }
+
+  /** Grava o status do item e aplica o freio. Devolve false se a campanha parou (freio acionado). */
+  private async marcarComo(item: ItemCampanha, status: Exclude<StatusItem, 'pendente' | 'enviado'>, motivo: string | null, contaNoFreio?: boolean): Promise<boolean> {
+    const agora = this.deps.agora();
+    const c = marcarItem(this.estado.campanha, item.chave, status, agora, motivo, contaNoFreio);
     await this.gravar(c);
     this.publicar({ itemAtual: null });
     if (c.status === 'pausada') {
@@ -330,15 +424,40 @@ export class Executor {
 
     this.publicar({ fase: 'abrindo', itemAtual: item, liberaEm: null, mensagem: null });
     const envioAuto = this.deps.obterEnvioAutomatico ? this.deps.obterEnvioAutomatico() : this.envioAutomatico;
-    const r = await this.deps.pedir({ tipo: 'abrirEColar', nome: item.nome, texto: textoDoItem(item), envioAutomatico: envioAuto }, true);
-    if (!this.ativo) return; // pausado enquanto abria
+    const texto = textoDoItem(item);
+    // Marcador "em voo": ANTES de colar. A foto dos ids chega na resposta (a conversa só abre lá dentro).
+    const marcador: EmVoo = { chave: item.chave, nome: item.nome, texto, idsAntes: null, desde: agora.toISOString() };
+    await this.gravarMarcador(marcador);
+    let r: RespostaConteudo;
+    try {
+      r = await this.deps.pedir({ tipo: 'abrirEColar', nome: item.nome, texto, envioAutomatico: envioAuto }, true);
+    } catch (e) {
+      r = { ok: false, codigo: 'interno', erro: e instanceof Error ? e.message : String(e) };
+    }
+    if (!this.ativo) {
+      // Pausado enquanto abria: se colou, tira o texto; o marcador só some se a caixa foi mesmo limpa.
+      if (r.ok) {
+        const l = await this.deps.pedir({ tipo: 'limparCaixa', texto });
+        if (l.ok && l.limpou) await this.gravarMarcador(null);
+      } else if (r.codigo !== 'interno') await this.gravarMarcador(null);
+      return;
+    }
     if (r.ok) {
+      await this.gravarMarcador({ ...marcador, idsAntes: r.idsAntes ?? null });
       this.publicar({ fase: 'aguardando_envio', itemAtual: item, mensagem: null });
       return;
     }
+    // Erro 'interno' pode ter acontecido depois de colar: o marcador fica (a retomada consulta a conversa).
+    // Qualquer outro erro é anterior à colagem (ou o content script já limpou a caixa).
+    if (r.codigo !== 'interno') await this.gravarMarcador(null);
     if (ERROS_GERAIS.has(r.codigo)) {
       this.publicar({ itemAtual: null });
       await this.pausar(r.erro);
+      return;
+    }
+    // Sem sinal positivo de conversa individual: não colou, vai para "revisar" e NÃO conta no freio.
+    if (r.codigo === 'nao_confirmado') {
+      if (await this.marcarComo(item, 'revisar', r.erro)) await this.passo();
       return;
     }
     if (await this.marcar(item, 'problema', r.erro)) await this.passo();

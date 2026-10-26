@@ -90,7 +90,7 @@ export default function VitaZap() {
     <Page>
       <PageHeader
         title="Vita Zap"
-        description="O CRM dentro do WhatsApp Web: abas de triagem, lembretes e notas, ligados ao seu login do CRM. A extensão nunca envia mensagem sozinha; quem aperta Enter é você."
+        description="O CRM dentro do WhatsApp Web: abas de triagem, lembretes e notas, ligados ao seu login do CRM. Envio manual por padrão (quem aperta Enter é você); o envio automático das campanhas é opcional e vem desligado."
       />
 
       <Panel>

@@ -67,7 +67,7 @@ const itemSchema = z.object({
   nome: z.string(),
   primeiroNome: z.string(),
   modelo: z.string(),
-  status: z.enum(['pendente', 'enviado', 'pulado', 'nao_cliente', 'problema', 'nao_enviar']),
+  status: z.enum(['pendente', 'enviado', 'pulado', 'nao_cliente', 'problema', 'nao_enviar', 'revisar']),
   motivo: z.string().nullable(),
   atualizadoEm: z.string().nullable(),
 });
@@ -86,6 +86,10 @@ const campanhaSchema = z.object({
   problemasSeguidos: z.number(),
   ultimoEnvioEm: z.string().nullable(),
   intervaloAtualSeg: z.number().nullable(),
+  emVoo: z
+    .object({ chave: z.string(), nome: z.string(), texto: z.string(), idsAntes: z.array(z.string()).nullable(), desde: z.string() })
+    .nullable()
+    .optional(),
 });
 
 const envioSchema = z.object({
@@ -155,6 +159,7 @@ const ROTULO_STATUS: Record<string, string> = {
   nao_cliente: 'não é cliente',
   problema: 'problema',
   nao_enviar: 'não enviar mais',
+  revisar: 'revisar (conferir no WhatsApp)',
 };
 
 /** Uma linha por contato de cada campanha. Não inclui telefone (a extensão não guarda). */
