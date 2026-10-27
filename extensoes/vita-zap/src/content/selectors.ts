@@ -32,6 +32,11 @@ export const SELETORES = {
 
   /** Caixa de busca da lista de conversas (input novo ou contenteditable antigo). */
   caixaBusca: [
+    // DOM real (out/2026): o aria-label some (fica "") quando há texto na busca, e é assim que a lista fica depois da
+    // varredura ou de abrir um contato pela busca. Só o data-tab="3" e o role continuam: por isso vêm PRIMEIRO.
+    '#side input[role="textbox"][data-tab="3"]',
+    '#side input[data-tab="3"]',
+    '#side div[contenteditable="true"][data-tab="3"]',
     'input[role="textbox"][aria-label*="esquisar"]',
     'input[aria-label*="esquisar"]',
     'div[contenteditable="true"][role="textbox"][aria-label*="esquisar"]',

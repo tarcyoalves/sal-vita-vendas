@@ -73,6 +73,7 @@ export function diasSemRepetir(filtros: Filtros): number {
 }
 
 export const MOTIVO_SEM_MENSAGEM_MINHA = 'sem mensagem sua (nenhum sinal de conversa feita por você)';
+export const MOTIVO_POSSIVEL_GRUPO = 'pode ser grupo (a prévia da lista começa com "Fulano:") — confira antes de incluir';
 export const MOTIVO_SINAL_DESCONHECIDO = 'sinal de conversa sua desconhecido — varra de novo';
 
 /** Ajuda do campo "Só contatos com conversa já feita por mim" (aba Varredura). */
@@ -100,6 +101,8 @@ export function falouComOContato(c: ContatoVarrido, ctx: ContextoFiltro): boolea
 export function avaliarContato(c: ContatoVarrido, filtros: Filtros, ctx: ContextoFiltro): Decisao {
   const d = avaliarSemFiltroDeMensagemMinha(c, filtros, ctx);
   if (filtros.soComMensagemMinha && d.situacao !== 'excluido') {
+    // Possível grupo (grupo com foto): fica em "revisar" mesmo sem sinal meu; nunca vira "sem mensagem sua + incluir".
+    if (c.possivelGrupo && d.situacao === 'revisar') return d;
     if (falouComOContato(c, ctx)) {
       return d;
     }
@@ -210,6 +213,9 @@ function avaliarSemFiltroDeMensagemMinha(c: ContatoVarrido, filtros: Filtros, ct
   if (filtros.aguardandoResposta) {
     partes.push('aguardando resposta');
   }
+
+  // Grupo com foto não tem o ícone padrão: só a prévia "Fulano: texto" denuncia. Nunca entra sozinho.
+  if (c.possivelGrupo) return { situacao: 'revisar', motivo: MOTIVO_POSSIVEL_GRUPO };
 
   return { situacao: 'incluido', motivo: partes.length ? partes.join('; ') : 'contato salvo com conversa' };
 }

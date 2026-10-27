@@ -10,7 +10,7 @@ export function pararVarredura(): void {
 
 import type { LinhaBruta } from '../shared/contatos';
 import { aleatorioEntre, ancestralRolavel, esperar } from './dom';
-import { lerLinhasVisiveis } from './extrair';
+import { lerLinhasDaVarredura, type EstadoSecaoMensagens } from './extrair';
 import { buscar, ErroSeletor, exigir, linhasDaLista } from './lista';
 import { encontrar } from './selectors';
 
@@ -42,11 +42,12 @@ export async function varrerLista(termo: string, aoProgredir: (lidas: number, un
   if (rolavel) rolavel.scrollTop = 0;
   await esperar(600);
 
+  const secaoMensagens: EstadoSecaoMensagens = { posicao: null };
   let tentativasSemMover = 0;
   for (let passo = 0; passo < MAX_PASSOS; passo += 1) {
     linhas = linhasDaLista();
-    // cortarEmSecaoSemConversa = false: continua lendo todos os contatos e mensagens da lista!
-    const { linhas: lidas } = lerLinhasVisiveis(linhas, false);
+    // Não corta nas seções: lê também os contatos da agenda. As linhas da seção "Mensagens" vêm marcadas (deMensagem).
+    const lidas = lerLinhasDaVarredura(linhas, secaoMensagens);
     for (const l of lidas) {
       todas.push(l);
       nomes.add(l.nome);

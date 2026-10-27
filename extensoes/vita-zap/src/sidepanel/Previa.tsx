@@ -7,7 +7,7 @@ import { aplicarFiltros, type Filtros, MOTIVO_SEM_MENSAGEM_MINHA, MOTIVO_SINAL_D
 import { separarTermos } from '../shared/nomes';
 import { validarModelos } from '../shared/texto';
 import type { DadosLocais } from './App';
-import { carregarRotinasSalvas, lerPreferencia, salvarPreferencia, salvarRotinas, salvarSoComConversaMinha } from './preferencias';
+import { carregarRotinasSalvas, lerPreferencia, lerSoComConversaMinha, salvarPreferencia, salvarRotinas, salvarSoComConversaMinha } from './preferencias';
 import type { CrmPainel } from './crm';
 import { acharContato } from '../shared/crm-contatos';
 import { CORES_ETIQUETA, FASES, type Fase } from '../shared/crm-tipos';
@@ -47,7 +47,8 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
   const [erroTag, setErroTag] = useState<string | null>(null);
   const [fasesSelecionadas, setFasesSelecionadas] = useState<Fase[]>([]);
   const [aguardandoResposta, setAguardandoResposta] = useState(false);
-  const [soMinha, setSoMinha] = useState(false);
+  // Mesma preferência do painel Varredura (ligada por padrão): as duas telas têm de mostrar a mesma escolha.
+  const [soMinha, setSoMinha] = useState(() => lerSoComConversaMinha());
   const [rotinas, setRotinas] = useState<Rotina[]>(() => carregarRotinasSalvas());
   const [rotinaAtivaId, setRotinaAtivaId] = useState<string | null>(null);
   const [modalCriarRotina, setModalCriarRotina] = useState(false);
@@ -332,7 +333,8 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
   }
 
   function incluirTodosRevisar() {
-    const alvos = revisar.filter((a) => !a.contato.duplicado).map((a) => a.contato);
+    // Possível grupo (grupo com foto) nunca entra em lote: só um a um, depois de conferir.
+    const alvos = revisar.filter((a) => !a.contato.duplicado && !a.contato.possivelGrupo).map((a) => a.contato);
     if (alvos.length === 0) return;
     salvarPreferencia('textoBase', base);
     const baseItens =

@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.27: CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.29: CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -193,8 +193,16 @@ e salve. Sem isso nenhuma campanha roda. Confira também se o WhatsApp Web está
    em *Gerar prévia*: cada contato aparece com o motivo de inclusão e o texto sorteado. Remova
    quem quiser, corrija o primeiro nome se preciso e clique em **Aprovar**.
    - **Revisar**: contatos com data incerta ("segunda-feira" ambígua, formato desconhecido) ou
-     nome repetido em duas conversas. **Nunca entram sozinhos.** Data incerta pode ser incluída
-     à mão; nome repetido não (não dá para saber qual conversa abrir).
+     nome repetido em duas conversas ou **possível grupo** (v0.7.29: a prévia da linha começa com
+     "Fulano:", assim o WhatsApp mostra a última mensagem de um grupo, também o que tem foto e por isso
+     não tem o ícone padrão). **Nunca entram sozinhos.** Data incerta pode ser incluída à mão; nome
+     repetido não (não dá para saber qual conversa abrir); possível grupo só um a um (fora do "Incluir
+     todos"), e mesmo assim a conversa é conferida de novo ao abrir (3.2.2).
+   - **Achados da seção "Mensagens" da busca** (v0.7.29): a varredura lê também essa seção (é onde aparecem
+     números não salvos e chats sem o termo no nome), mas marca as linhas como *achado em mensagem*: a data e o
+     ícone delas são os da mensagem achada, não os da última mensagem do chat. Elas não viram "nome repetido"
+     do chat que já está em "Conversas", não emprestam data nem "última é minha" e, se aparecem sozinhas,
+     ficam sem data (motivo: "achado dentro de uma mensagem").
 3. **Envio** — clique em *Iniciar*. Para cada contato a extensão:
    1. procura o nome na busca, abre a conversa e confere o nome no cabeçalho;
    2. confere que é conversa individual (não grupo/transmissão) por **sinal positivo** (ver 3.2.2);
@@ -462,6 +470,29 @@ selo na faixa do lead real; o filtro da lista pela aba Acompanhar (linhas do Wha
 `tasks.acompanhando` e a mudança em `toggleConverted` rodando contra o Postgres do Neon em produção (testadas
 só por inspeção do código e pelo CRM falso); o desempenho da consulta `tags @> ARRAY['Acompanhar']` (sem índice).
 
+Da v0.7.29, **testado só contra HTML sintético montado com o DOM real coletado em campo** (`tests/e2e-varredura-previa.test.ts`
+e `tests/ajuda/whatsapp-web-2026.ts`) e **não visto no WhatsApp real**: os cabeçalhos de seção "Contatos" e "Mensagens" da busca (o
+texto exato e se existem); em qual elemento fica o `data-id` (o teste usa o filho `conv-msg-<ID>`); o subtítulo do cabeçalho
+da conversa (individual x grupo); o tempo de carga do histórico; `#side input[role="textbox"][data-tab="3"]` ser sempre a busca.
+
+## 6.1 Limites conhecidos (campanhas e varredura)
+
+- **Grupo com foto não tem sinal certo na lista.** Sem o ícone padrão, só a prévia "Fulano: texto" denuncia (v0.7.29 manda
+  esses para "revisar", nunca marcados). Falso positivo possível: um individual cuja última mensagem começa com uma palavra
+  e dois-pontos ("Obs: ...", "Pedido: ...") também cai em revisar (o dono inclui à mão). Falso negativo possível: grupo com foto
+  cuja última mensagem é **minha** ("Você: ...") parece individual na lista; a barreira, nesse caso, é só a conferência ao
+  abrir (ícone/subtítulo de participantes, autores diferentes do título), que continua valendo para manual e automático.
+  Prévia com número no nome do autor ("+55 84 ...: oi") também não é indício (a regra ignora dígitos).
+- **A lista só mostra a última mensagem.** Se o cliente respondeu por último e você não tem envio, nota nem fase registrados
+  na extensão, a linha não mostra nada seu: com "só conversa minha" marcado o contato fica fora ("sem mensagem sua").
+- **Data da lista é a da última mensagem** em "Conversas"; em achados da seção "Mensagens" a data é da mensagem achada e é
+  descartada. Dia da semana que coincide com hoje/ontem continua indo para "revisar".
+- **Contatos varridos antes da 0.7.29** não têm o indício de grupo com foto nem a marca de achado em mensagem: varra de novo.
+- **Nome repetido** (dois chats com o mesmo nome salvo) nunca entra: a busca por nome não distingue qual abrir.
+- **Mensagens de sistema com `data-id`** (não observadas em campo) contariam como "recebida sem autor" e, no envio automático
+  (regra estrita), deixariam a conversa em dúvida: a extensão não cola nem clica. No envio manual não atrapalham.
+- **O E2E é sintético.** Ele prova a lógica contra o DOM coletado; não prova que o WhatsApp de amanhã continua igual.
+
 **Rode o checklist abaixo antes da primeira campanha real** e a cada atualização do
 WhatsApp Web. Se algo falhar, ajuste só `selectors.ts` (ou o sinal correspondente) e rode
 `npm test` de novo.
@@ -541,6 +572,9 @@ número salvo como "CLIENTE TESTE").
 - [ ] (0.7.21) Como **admin**: Vincular a um lead → a busca acha leads de outros atendentes e mostra "Responsável: ...".
 - [ ] (0.7.21) Aba Varredura: o campo "Só contatos com conversa já feita por mim" vem marcado; na Prévia, quem nunca
       recebeu mensagem sua aparece em *Fora da campanha* como "sem mensagem sua"; desmarcar os devolve.
+- [ ] (0.7.29) Varra com o termo CLIENTE e SEM limpar a busca; na aba 3, Iniciar: a conversa abre e o texto é colado (antes
+      dava "Não encontrei caixa de busca"). Um grupo **com foto** cuja prévia é "Fulano: texto" aparece em *Revisar* ('pode ser
+      grupo'), não marcado; a Prévia abre com "só conversa minha" igual ao painel Varredura.
 - [ ] (0.7.23) Faixa do lead → **Acompanhar**: aparece "Em acompanhamento" e o botão vira "Parar de acompanhar"; no
       CRM (site) o lead ganhou a etiqueta "Acompanhar". **Parar de acompanhar** tira só essa etiqueta.
 - [ ] (0.7.23) Painel → aba **Acompanhar**: lista os leads com a etiqueta, vencidos primeiro, com "há N dias sem falar";

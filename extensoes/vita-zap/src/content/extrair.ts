@@ -8,6 +8,8 @@ import { chaveDaConversa, telefoneDoNome, type LeituraConversa } from '../shared
 import { telefoneDoJid } from '../shared/telefone';
 import { encontrar, existeAlgum, SECOES_SEM_CONVERSA } from './selectors';
 
+const SECOES_DE_MENSAGENS = ['mensagens', 'messages'];
+
 export type LeituraLinha =
   | { tipo: 'conversa'; linha: LinhaBruta }
   | { tipo: 'secaoSemConversa'; texto: string }
@@ -84,6 +86,24 @@ export function linhaPareceGrupo(el: HTMLElement): boolean {
   return /@(g\.us|broadcast|newsletter)\b/.test(idDaLinha(el));
 }
 
+/** "Ana:" / "Ana Souza: oi" no começo de um texto (autor + dois-pontos), sem ser "Você:". Hora ("14:32") não conta. */
+const PREFIXO_DE_AUTOR = /^[\p{L}~+][^:\n\d]{0,28}:(\s|$)/u;
+
+/**
+ * A prévia da linha começa com o nome de quem falou ("Ana: oi")? É assim que o WhatsApp mostra a última mensagem de
+ * um GRUPO, também quando o grupo tem foto (sem o ícone padrão). Só indício, nunca prova: um individual cuja última
+ * mensagem é "Pedido: 10 sacos" também bate. Por isso só manda o contato para "revisar" (ver filtros.ts).
+ */
+export function previaTemAutor(el: HTMLElement, titulo: HTMLElement): boolean {
+  for (const f of el.querySelectorAll<HTMLElement>('*')) {
+    if (f.children.length > 0 || titulo.contains(f) || f.contains(titulo)) continue;
+    const t = limparMarcas(f.textContent ?? '');
+    if (!PREFIXO_DE_AUTOR.test(t) || /^(voc[eê]|you)\s*:/i.test(t) || pareceRotuloData(t)) continue;
+    return true;
+  }
+  return false;
+}
+
 export function lerLinha(el: HTMLElement): LeituraLinha {
   const titulo = encontrar(el, 'tituloLinha');
   if (!titulo) {
@@ -101,8 +121,41 @@ export function lerLinha(el: HTMLElement): LeituraLinha {
       posicao: posicaoDaLinha(el),
       pareceGrupo: linhaPareceGrupo(el),
       ultimaDeMim: ultimaDeMimDaLinha(el, titulo),
+      ...(previaTemAutor(el, titulo) ? { possivelGrupo: true } : {}),
     },
   };
+}
+
+/** Estado da varredura entre as leituras (a lista é virtualizada: o cabeçalho "Mensagens" some do DOM ao rolar). */
+export interface EstadoSecaoMensagens {
+  /** Posição (translateY) do cabeçalho "Mensagens" já visto; linhas abaixo dela são achados dentro de mensagens. */
+  posicao: number | null;
+}
+
+/**
+ * Lê as linhas visíveis para a VARREDURA: como lerLinhasVisiveis (sem cortar nas seções, para ler também os contatos
+ * da agenda), mas marca `deMensagem` nas linhas da seção "Mensagens". Elas são achados dentro de mensagens: repetem
+ * chats que já estão em "Conversas" (com a data da mensagem achada) e trazem chats que nem têm o termo no nome.
+ */
+export function lerLinhasDaVarredura(elementos: HTMLElement[], estado: EstadoSecaoMensagens): LinhaBruta[] {
+  const lidas = elementos
+    .map((el, ordem) => ({ leitura: lerLinha(el), pos: posicaoDaLinha(el), ordem }))
+    .sort((a, b) => (a.pos != null && b.pos != null ? a.pos - b.pos : a.ordem - b.ordem));
+  const linhas: LinhaBruta[] = [];
+  let depoisDoCabecalho = false; // sem posição (lista não virtualizada), vale a ordem do DOM
+  for (const { leitura, pos } of lidas) {
+    if (leitura.tipo === 'secaoSemConversa') {
+      if (SECOES_DE_MENSAGENS.includes(leitura.texto)) {
+        depoisDoCabecalho = true;
+        if (pos != null && (estado.posicao == null || pos < estado.posicao)) estado.posicao = pos;
+      }
+      continue;
+    }
+    if (leitura.tipo !== 'conversa') continue;
+    const abaixo = depoisDoCabecalho || (pos != null && estado.posicao != null && pos > estado.posicao);
+    linhas.push(abaixo ? { ...leitura.linha, deMensagem: true } : leitura.linha);
+  }
+  return linhas;
 }
 
 /**
@@ -205,7 +258,6 @@ export function lerLinhaCrm(el: HTMLElement): LeituraCrm | null {
 
 // ── Resultados da busca (só leitura) ─────────────────────────────────────────
 
-const SECOES_DE_MENSAGENS = ['mensagens', 'messages'];
 
 /**
  * Linhas de CONVERSA ou CONTATO individual que a busca mostra, em ordem de posição. Para na seção
