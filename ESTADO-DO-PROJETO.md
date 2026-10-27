@@ -1,6 +1,6 @@
 # ⚠️ LEIA ESTE ARQUIVO ANTES DE QUALQUER COISA
 
-**Última atualização:** 26/10/2026
+**Última atualização:** 27/10/2026
 **Este é o ponto de entrada do estado do projeto.** Junto com ele, leia
 **`HANDOFF-HERMES.md`**: regras de trabalho, portões de qualidade e os erros reais já
 cometidos por IA neste repositório. Várias sessões de IA paralelas já se atrapalharam
@@ -347,6 +347,14 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
 - Continua valendo: `SCHEMA_VERSION` + caminho rápido, `migrate:build` e `/api/orders-health`
   (força `ensureOrdersTablesExist(true)`). `/api/health` não acorda banco; `/api/db-health` acorda
   o CRM de propósito (`SELECT 1`).
+
+**Pós-venda e confirmação de entrega da Loja Premium (27/10/2026)**
+- E-mail de pós-venda humanizado ("Chegou tudo bem com seu Sal Vita, {nome}?") disparado automaticamente quando o pedido atinge status `delivered` (via tracking webhook ou ao marcar "Marcar Entregue" no painel).
+- Botões no card do pedido no admin (`SalVitaAdmin.tsx`):
+  - "Enviar pós-venda (e-mail)" com modal de confirmação e disparo transacional imediato via tRPC `shipping.sendPostPurchaseEmail`.
+  - "Pós-venda no WhatsApp" abrindo conversa formatada diretamente no celular do cliente com orientações de uso e zíper zip lock.
+- Respeita regras estritas da ANVISA (sem alegações de saúde, sem alegações de aditivos), com instruções reais de conservação do fecho zip lock e canal de suporte.
+- Testado em `tests/premium-pos-venda.test.ts` (100% dos testes aprovados).
 
 ---
 

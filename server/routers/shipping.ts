@@ -14,7 +14,7 @@ import {
   fetchMeBalance, isBalanceError, eligibleForAutoLabel,
   type MeTrackingInfo, type ShippingEvent,
 } from '../lib/meTracking';
-import { sendEmail, shippingUpdateEmail } from '../email/resend';
+import { sendEmail, shippingUpdateEmail, postPurchaseEmail } from '../email/resend';
 import { confirmOrderPaid, appendReviewNote } from '../lib/orderConfirmation';
 import { quantidadeValida, cupomAtendeMinimo, acharPedidoDuplicado, mesmosDadosDoPedido, IDEMPOTENCIA_PEDIDO_MS } from '../lib/paymentTransition';
 
@@ -126,7 +126,9 @@ export async function notifyShippingEvent(order: NotifiableOrder, event: Shippin
   if (!order.customerEmail) return null;
   const code = order.trackingCode ?? null;
   const link = code ? trackingLink(code) : null;
-  const { subject, html } = shippingUpdateEmail(event, order.customerName, order.id, code, link, ORDER_PAGE_URL());
+  const { subject, html } = event === 'delivered'
+    ? postPurchaseEmail(order.customerName, order.id, ORDER_PAGE_URL())
+    : shippingUpdateEmail(event, order.customerName, order.id, code, link, ORDER_PAGE_URL());
   const r = await sendEmail(order.customerEmail, subject, html);
   if (r.ok) return 'email';
   console.warn(`[shipping-event] e-mail "${event}" do pedido ${order.id} não saiu (${r.reason})`);
@@ -1069,6 +1071,14 @@ Seja direto e use emojis para facilitar leitura.`;
       if (updated && input.paymentStatus === 'confirmed' && before?.paymentStatus !== 'confirmed') {
         await confirmOrderPaid(updated);
       }
+      // Ao marcar manualmente como entregue no painel, avisa o cliente com o pós-venda
+      if (updated && input.status === 'delivered' && before?.status !== 'delivered') {
+        try {
+          await notifyShippingEvent(updated, 'delivered');
+        } catch (e) {
+          console.error(`[shipping] pós-venda automático do pedido ${updated.id} falhou:`, safeErr(e));
+        }
+      }
       return updated;
     }),
 
@@ -1432,6 +1442,21 @@ Seja direto e use emojis para facilitar leitura.`;
       if (!r.ok) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `E-mail não enviado (${r.reason}).` });
       await claimShippingEvent(order.id, 'posted', null);
       await markShippingEvent(order.id, 'posted', 'email-manual');
+      return { success: true, email: order.customerEmail };
+    }),
+
+  // Admin: e-mail de pós-venda ("Chegou tudo bem?"), enviado à mão no painel.
+  sendPostPurchaseEmail: premiumAdminProcedure
+    .input(z.object({ orderId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const [order] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
+      if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+      if (!order.customerEmail) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Pedido sem e-mail do cliente.' });
+      const { subject, html } = postPurchaseEmail(order.customerName, order.id, ORDER_PAGE_URL());
+      const r = await sendEmail(order.customerEmail, subject, html);
+      if (!r.ok) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `E-mail não enviado (${r.reason}).` });
+      await claimShippingEvent(order.id, 'delivered', null);
+      await markShippingEvent(order.id, 'delivered', 'email-manual-pos-venda');
       return { success: true, email: order.customerEmail };
     }),
 

@@ -48,6 +48,8 @@ import {
   RotateCcw,
   Check,
   ChevronRight,
+  HeartHandshake,
+  MessageCircle,
 } from 'lucide-react';
 
 /* ── Status config ────────────────────────────────────────── */
@@ -356,7 +358,7 @@ function AutoLabelPanel() {
   );
 }
 /* ── Order Card ───────────────────────────────────────────── */
-type CardConfirm = 'pay' | 'cancel' | 'delete' | 'wa' | 'mail' | null;
+type CardConfirm = 'pay' | 'cancel' | 'delete' | 'wa' | 'mail' | 'posvenda' | null;
 
 function OrderCard({
   order,
@@ -400,6 +402,10 @@ function OrderCard({
   const sendMailMut = trpc.shipping.sendTrackingEmail.useMutation({
     onSuccess: (d) => toast.success(`Rastreio enviado por e-mail para ${d.email}.`),
     onError: (e) => toast.error(`E-mail não enviado: ${e.message}`),
+  });
+  const sendPostPurchaseMailMut = trpc.shipping.sendPostPurchaseEmail.useMutation({
+    onSuccess: (d) => toast.success(`E-mail de pós-venda enviado para ${d.email}!`),
+    onError: (e) => toast.error(`E-mail de pós-venda não enviado: ${e.message}`),
   });
   const sendWaDirectMut = trpc.shipping.sendTrackingWhatsApp.useMutation({
     onSuccess: () => toast.success('Rastreio enviado pelo WhatsApp do servidor.'),
@@ -462,10 +468,10 @@ function OrderCard({
         };
       case 'mail':
         return {
-          title: 'Enviar rastreio por e-mail?',
+          title: 'Enviar código de rastreio por e-mail?',
           description: (
             <>
-              <p>Será enviado <strong>1 e-mail</strong> para <strong>{order.customerName}</strong> ({order.customerEmail}) com o código <span className="font-mono">{order.trackingCode}</span> e o link de rastreio.</p>
+              <p>Será enviado <strong>1 e-mail</strong> para <strong>{order.customerName}</strong> ({order.customerEmail}) com o código <span className="font-mono">{order.trackingCode}</span>.</p>
               <p>Se já enviou antes, o cliente recebe de novo.</p>
             </>
           ),
@@ -473,6 +479,20 @@ function OrderCard({
           destructive: false,
           requireText: undefined as string | undefined,
           run: () => sendMailMut.mutate({ orderId: order.id }),
+        };
+      case 'posvenda':
+        return {
+          title: 'Enviar e-mail de pós-venda?',
+          description: (
+            <>
+              <p>Será enviado <strong>1 e-mail de pós-venda</strong> para <strong>{order.customerName}</strong> ({order.customerEmail}) confirmando a entrega e orientando a conservação do produto.</p>
+              <p>Se já enviou antes, o cliente recebe de novo.</p>
+            </>
+          ),
+          confirmLabel: 'Enviar pós-venda',
+          destructive: false,
+          requireText: undefined as string | undefined,
+          run: () => sendPostPurchaseMailMut.mutate({ orderId: order.id }),
         };
       case 'wa':
         return {
@@ -605,6 +625,28 @@ function OrderCard({
                 <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
                 Marcar Entregue
               </button>
+            )}
+
+            {order.status === 'delivered' && (
+              <>
+                {order.customerEmail && (
+                  <button onClick={() => setConfirm('posvenda')} disabled={sendPostPurchaseMailMut.isPending} className={btn.success}>
+                    <HeartHandshake className="w-3.5 h-3.5" aria-hidden="true" />
+                    {sendPostPurchaseMailMut.isPending ? 'Enviando...' : 'Enviar pós-venda (e-mail)'}
+                  </button>
+                )}
+                {order.customerPhone && (
+                  <a
+                    href={`https://wa.me/${(order.customerPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(`🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá ${order.customerName}! Tudo bem?\n\nA transportadora confirmou a entrega do seu pedido! Queremos saber se o pacote chegou tudo certinho com você. 📦\n\n💡 *Dica de conservação:* Após o uso, feche bem o fecho zip lock e guarde em local seco para manter a textura natural do sal.\n\nQualquer dúvida ou se precisar de algo, estamos sempre à disposição aqui no WhatsApp! 🙏`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={btn.secondary}
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                    Pós-venda no WhatsApp
+                  </a>
+                )}
+              </>
             )}
 
             {order.trackingCode && (

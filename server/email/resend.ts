@@ -385,6 +385,58 @@ export function shippingUpdateEmail(
   return { subject, html: layout(subject, body) };
 }
 
+/**
+ * E-mail de pós-venda ("Chegou tudo bem?").
+ * Disparado quando o pedido é entregue ou acionado manualmente no painel admin.
+ */
+export function postPurchaseEmail(
+  name: string,
+  orderId: number,
+  orderPageUrl: string,
+): { subject: string; html: string } {
+  const rawFirst = String(name || '').trim().split(/\s+/)[0] || name;
+  const firstName = escapeHtml(rawFirst);
+  const cleanFirstForSubject = rawFirst.replace(/[<>"']/g, '');
+  const subject = `Chegou tudo bem com seu Sal Vita, ${cleanFirstForSubject}?`;
+  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td>
+        <p style="margin:0 0 4px;font-size:13px;color:#888;">Pedido #${orderId}</p>
+        <h2 style="margin:0 0 12px;font-size:22px;color:#222;">Seu pedido foi entregue!</h2>
+        <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
+          Ol&aacute;, <strong>${firstName}</strong>!
+        </p>
+        <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
+          A transportadora confirmou a entrega do seu pedido <strong>#${orderId}</strong>. Aqui &eacute; da Sal Vita, l&aacute; de Mossor&oacute;/RN, e queremos saber se o seu pacote chegou tudo certinho com voc&ecirc;!
+        </p>
+        <div style="background:#f8fafc;border-left:4px solid ${BRAND};padding:14px 16px;border-radius:6px;margin:20px 0;">
+          <p style="margin:0 0 6px;font-size:14px;font-weight:bold;color:#1e293b;">
+            &#128161; Dica de conserva&ccedil;&atilde;o:
+          </p>
+          <p style="margin:0;font-size:14px;color:#475569;line-height:1.5;">
+            Depois de usar, aperte bem o fecho <em>zip lock</em> para vedar e guarde o pacote em local seco e arejado, longe do calor direto do fog&atilde;o, para preservar a textura natural e a qualidade do sal.
+          </p>
+        </div>
+        <p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">
+          Se algo veio diferente do esperado ou se tiver qualquer d&uacute;vida, &eacute; s&oacute; responder a este e-mail. Aqui quem responde &eacute; gente de verdade, e a gente resolve na hora!
+        </p>
+      </td>
+    </tr>
+    <tr><td>${ctaButton('Acessar Meu Pedido', orderPageUrl)}</td></tr>
+    <tr>
+      <td style="padding-top:20px;">
+        <p style="margin:0;font-size:13px;color:#64748b;line-height:1.5;">
+          WhatsApp de Atendimento: (84) 2140-8212<br />
+          Um abra&ccedil;o,<br />
+          <strong>Equipe Sal Vita &mdash; Mossor&oacute;/RN</strong>
+        </p>
+      </td>
+    </tr>
+  </table>`;
+
+  return { subject, html: layout(subject, body) };
+}
+
 // ── Utility ───────────────────────────────────────────────────────────────────
 
 function escapeHtml(str: string): string {
