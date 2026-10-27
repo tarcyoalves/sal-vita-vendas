@@ -73,7 +73,13 @@ function sinalDeGrupo(raiz: ParentNode, mensagens: HTMLElement[]): string | null
  *    mensagens recebidas, lidos do data-pre-plain-text, são só o título da conversa, OU só há mensagens minhas).
  *    Mais de um autor, autor diferente do título ou mensagem recebida sem autor legível → grupo/desconhecido.
  */
-export function classificarConversa(dataIds: string[], raiz: ParentNode = document, titulo?: string | null): TipoConversa {
+export function classificarConversa(
+  dataIds: string[],
+  raiz: ParentNode = document,
+  titulo?: string | null,
+  /** Envio automático: recebida sem autor legível → desconhecido; autor tem de ser o título (só truncamento "…"). */
+  estrito = false,
+): TipoConversa {
   let individual = false;
   let teveJid = false;
   for (const id of dataIds) {
@@ -95,20 +101,38 @@ export function classificarConversa(dataIds: string[], raiz: ParentNode = docume
   const recebidas = mensagens.filter((m) => !mensagemEhMinha(m));
   if (recebidas.length === 0) return 'individual'; // só mensagens minhas e nenhum sinal de grupo
   const autores = new Set<string>();
+  let semAutor = 0;
   for (const r of recebidas) {
     const a = autorDaMensagem(r);
-    if (a !== null) {
-      autores.add(normalizarTexto(a));
-    }
+    if (a !== null) autores.add(normalizarTexto(a));
+    else semAutor++;
   }
   if (autores.size > 1) return 'grupo';
-  if (autores.size === 1) {
-    const autor = Array.from(autores)[0].replace(/\.{2,}|…/g, '').trim();
-    const tit = normalizarTexto(tituloLido).replace(/\.{2,}|…/g, '').trim();
-    const bate = autor === tit || autor.startsWith(tit) || tit.startsWith(autor) || autor.includes(tit) || tit.includes(autor);
-    return bate ? 'individual' : 'grupo';
-  }
+  // Envio automático (0.7.28, revisão da 0.7.26): recebida sem autor legível volta a ser dúvida.
+  if (estrito && semAutor > 0) return 'desconhecido';
+  if (autores.size === 1) return autorBateComTitulo(Array.from(autores)[0], tituloLido, estrito) ? 'individual' : 'grupo';
   return 'desconhecido';
+}
+
+const SEM_RETICENCIAS = /\.{2,}|…/g;
+const MIN_PREFIXO = 5;
+
+/**
+ * Autor da mensagem recebida (já normalizado) x título da conversa. Igualdade exata depois de normalizar; título ou
+ * autor cortado com "…" aceita prefixo de pelo menos 5 letras. Nunca `includes` (0.7.26 aceitava "Ana" em
+ * "Ana e Equipe" e string vazia batia com tudo). No modo estrito, só o TÍTULO cortado aceita prefixo.
+ */
+export function autorBateComTitulo(autorNormalizado: string, tituloLido: string, estrito: boolean): boolean {
+  const autor = autorNormalizado.replace(SEM_RETICENCIAS, '').trim();
+  const tit = normalizarTexto(tituloLido).replace(SEM_RETICENCIAS, '').trim();
+  if (autor === '' || tit === '') return false;
+  if (autor === tit) return true;
+  const tituloCortado = SEM_RETICENCIAS.test(tituloLido);
+  SEM_RETICENCIAS.lastIndex = 0;
+  if (tituloCortado && tit.length >= MIN_PREFIXO && autor.startsWith(tit)) return true;
+  if (estrito) return false;
+  const autorCortado = /\.{2,}|…/.test(autorNormalizado);
+  return autorCortado && autor.length >= MIN_PREFIXO && tit.startsWith(autor);
 }
 
 function tituloAberto(): string | null {
@@ -263,7 +287,7 @@ function avisoDoWhatsAppAberto(): boolean {
 export function reconferirAntesDoClique(nome: string, textoColado: string): string | null {
   if (!painelVivo()) return 'o painel parou de responder (fechado ou travado)';
   if (tituloAberto() !== nome) return `a conversa aberta mudou: não é mais "${nome}"`;
-  const tipo = classificarConversa(idsDasMensagens(), document, nome);
+  const tipo = classificarConversa(idsDasMensagens(), document, nome, true);
   if (tipo === 'grupo') return `"${nome}" parece grupo, comunidade ou transmissão`;
   if (tipo === 'desconhecido') return `não consegui confirmar que "${nome}" é conversa individual`;
   const caixa = encontrar(document, 'caixaMensagem');
@@ -301,7 +325,7 @@ export async function abrirEColar(
 
   // 3. Só conversa individual, com sinal positivo (ver classificarConversa).
   await esperarAte(() => (idsDasMensagens().length > 0 ? true : null), 5000);
-  const tipo = classificarConversa(idsDasMensagens());
+  const tipo = classificarConversa(idsDasMensagens(), document, undefined, envioAutomatico);
   if (tipo === 'grupo') return erro('grupo', `"${nome}" é grupo, comunidade ou lista de transmissão.`);
   if (tipo === 'desconhecido') return erro('nao_confirmado', `Não consegui confirmar que "${nome}" é conversa individual. Não colei nada.`);
 

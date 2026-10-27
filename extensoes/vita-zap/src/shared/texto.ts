@@ -21,7 +21,7 @@ export function validarModelo(texto: string): string[] {
   if (t.length > TAMANHO_MAX_TEXTO) erros.push(`texto longo demais (${t.length}/${TAMANHO_MAX_TEXTO} caracteres)`);
   const marcadores = t.match(/\{[^}]*\}/g) ?? [];
   for (const m of marcadores) {
-    if (!MARCADORES_PRIMEIRO_NOME.includes(m as any)) erros.push(`marcador desconhecido ${m} (use só ${MARCADOR_PRIMEIRO_NOME})`);
+    if (!(MARCADORES_PRIMEIRO_NOME as readonly string[]).includes(m)) erros.push(`marcador desconhecido ${m} (use só ${MARCADOR_PRIMEIRO_NOME})`);
   }
   return erros;
 }

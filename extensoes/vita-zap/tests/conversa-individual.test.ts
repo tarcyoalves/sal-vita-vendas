@@ -157,3 +157,18 @@ describe('abrirEColar não cola sem sinal positivo', () => {
     }
   });
 });
+
+describe('0.7.28: envio automático usa a regra estrita', () => {
+  const estrito = (cab: Cab, mensagens: string[]) =>
+    classificarConversa(mensagens.map((_, i) => `${HASH}${i}`), conversa(cab, mensagens), undefined, true);
+  it('recebida sem autor legível → desconhecido (não envia sozinho)', () => {
+    expect(estrito({ titulo: 'Ana Cliente' }, [msg('a', { autor: 'Ana Cliente' }), msg('b')])).toBe('desconhecido');
+  });
+  it('autor contido no título não basta ("Ana" em "Ana e Equipe") → grupo', () => {
+    expect(estrito({ titulo: 'Ana e Equipe' }, [msg('a', { autor: 'Ana' })])).toBe('grupo');
+    expect(classificar({ titulo: 'Ana e Equipe' }, [msg('a', { autor: 'Ana' })])).toBe('grupo');
+  });
+  it('autor igual ao título → individual também no estrito', () => {
+    expect(estrito({ titulo: 'Ana Cliente' }, [msg('a', { autor: 'Ana Cliente' }), msg('b', { minha: true })])).toBe('individual');
+  });
+});

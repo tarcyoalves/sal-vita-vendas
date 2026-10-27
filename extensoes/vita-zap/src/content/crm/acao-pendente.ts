@@ -69,8 +69,14 @@ export async function abrirConversaComRascunho(nome: string, rascunho?: string, 
     if (telefone && r.codigo === 'nao_encontrado') {
       const rTel = await abrirConversaPorTelefoneSemRecarregar(telefone, nome);
       if (rTel.ok) {
-        if (texto) await abrirEPrepararRascunho(rTel.nome ?? nome, texto);
         memorizarTelefone(rTel.nome ?? nome, telefone);
+        if (texto) {
+          const rRascunho = await abrirEPrepararRascunho(rTel.nome ?? nome, texto);
+          if (!rRascunho.ok) {
+            mostrarAviso(`Conversa de ${nome} aberta, mas não colei o rascunho: ${rRascunho.erro}`, 'erro');
+            return true;
+          }
+        }
         mostrarAviso(texto ? `Conversa de ${nome} aberta com o rascunho na caixa. Confira e aperte Enter.` : `Conversa de ${nome} aberta.`);
         return true;
       }
@@ -81,6 +87,8 @@ export async function abrirConversaComRascunho(nome: string, rascunho?: string, 
       const termos = extrairTermosLead(nome);
       for (const termo of termos) {
         if (termo.toLowerCase() === nome.toLowerCase()) continue;
+        // Uma palavra só ("Maria", "Comercial") pode ser outra pessoa: sem telefone confirmado, não arrisca.
+        if (!/\s/.test(termo.trim())) continue;
         const rTermo = await abrirEPrepararRascunho(termo, texto);
         if (rTermo.ok) {
           memorizarTelefone(termo, telefone);

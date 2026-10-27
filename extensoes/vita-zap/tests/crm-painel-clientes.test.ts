@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHAVE_ACAO_PENDENTE } from '../src/shared/crm-store';
 import { instanteNoFuso } from '../src/shared/crm-lembretes';
+import { hojeNoFuso, somarDias } from '../src/shared/datas';
 import { Clientes } from '../src/sidepanel/Clientes';
 import { Lembretes } from '../src/sidepanel/Lembretes';
 import { useCrm } from '../src/sidepanel/crm';
@@ -20,11 +21,8 @@ let el: HTMLElement;
 let chrome: ChromeFalso;
 
 // Ontem em ISO local: a expectativa "há 1 dia" não pode depender do dia em que o teste roda.
-const ontem = (() => {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-})();
+// "Ontem" no fuso de Fortaleza (o código usa esse fuso; new Date() local falhava entre 21h e 24h).
+const ontem = somarDias(hojeNoFuso(new Date()), -1);
 
 const conv = (nome: string, dataMsg: string) => ({
   chave: nome.toLowerCase(), nome, ultimaDeMim: false, naoLida: false, naoLidas: 0, grupo: false, arquivada: false,
