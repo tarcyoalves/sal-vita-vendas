@@ -3,7 +3,7 @@ import { expedienteAberto } from '../../../shared/expediente';
 
 /**
  * Config do expediente embutida no build do cliente (VITE_EXPEDIENTE). Mudar exige novo deploy.
- * Vazio = padrão 07:00-19:00; "sempre" = nunca pausa.
+ * Vazio = padrão (seg-sex 07:30-18:30, sáb 08:00-12:00, dom fechado); "sempre" = nunca pausa.
  */
 // Literal `import.meta.env.VITE_*`: é o único formato que o Vite substitui no build.
 // O tsconfig usa module CommonJS (TS1343/TS2339 aqui); o Vite/esbuild entende import.meta.
@@ -16,7 +16,7 @@ export const expedienteAbertoAgora = (agora: Date = new Date()): boolean =>
 
 /**
  * true enquanto o expediente está aberto. Reavalia a cada minuto e quando a aba volta ao foco,
- * só com relógio local (não toca no servidor/banco). Uso: `refetchInterval: aberto ? N : false`.
+ * só com relógio local (não toca no servidor/banco). Uso: `refetchInterval: ativo && expediente ? N : false` (ativo = useUsuarioAtivo).
  */
 export function useExpediente(): boolean {
   const [aberto, setAberto] = useState<boolean>(() => expedienteAbertoAgora());

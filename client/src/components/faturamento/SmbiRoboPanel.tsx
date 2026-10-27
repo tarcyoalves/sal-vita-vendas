@@ -10,6 +10,7 @@ import { useFatStore } from '../../lib/faturamento/store';
 import { contarPendenciasPorMotivo, SMBI_MOTIVO_CURTO } from '../../lib/faturamento/smbiPendencia';
 import { SMBI_MOTIVO_CODIGOS } from '../../../../shared/smbiEstados.js';
 import { useExpediente } from '../../lib/useExpediente';
+import { useUsuarioAtivo } from '../../lib/useUsuarioAtivo';
 
 /** Tempo desde `iso`, sem o "há": "3 h", "25 min", "2 d". */
 function duracao(iso: string): string {
@@ -34,7 +35,8 @@ export default function SmbiRoboPanel() {
   const { user } = useAuth();
   const utils = trpc.useUtils();
   const expediente = useExpediente(); // fora do expediente não há polling (Neon dorme)
-  const { data } = trpc.faturamento.smbiRoboStatus.useQuery(undefined, { refetchInterval: expediente ? 60_000 : false });
+  const ativo = useUsuarioAtivo();
+  const { data } = trpc.faturamento.smbiRoboStatus.useQuery(undefined, { refetchInterval: ativo && expediente ? 300_000 : false });
   const setAtivo = trpc.faturamento.setRoboAtivo.useMutation({
     onSuccess: (r) => {
       toast.success(r.roboAtivo ? 'Robô do SMBI LIGADO.' : 'Robô do SMBI desligado.');

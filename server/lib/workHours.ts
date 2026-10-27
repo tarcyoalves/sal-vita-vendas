@@ -5,8 +5,8 @@ import { spMidnight } from './tz';
 
 /** Folga para o relógio do banco vs. o do servidor: updatedAt <= início + isto não é sinal de vida. */
 const SIGNAL_EPSILON_MS = 60_000;
-/** Sem batimento (a cada 5 min) por este tempo, a sessão de dia anterior é tida como esquecida. */
-export const STALE_SIGNAL_MS = 15 * 60_000;
+/** Sem batimento (a cada 10 min) por este tempo, a sessão de dia anterior é tida como esquecida. */
+export const STALE_SIGNAL_MS = 25 * 60_000;
 
 type D = Date | string | number;
 
@@ -61,7 +61,7 @@ export function heartbeatAccepted(
 /**
  * Fim efetivo da sessão. Sessão aberta cujo dia de início (São Paulo) já passou é
  * esquecida (a pessoa fechou a aba e foi embora) e não conta até "agora":
- *  - COM sinal de vida (`updatedAt` depois do início: batimento a cada 5 min enquanto
+ *  - COM sinal de vida (`updatedAt` depois do início: batimento a cada 10 min enquanto
  *    a aba está visível, pausa ou retomada) o fim é esse último sinal;
  *  - SEM nenhum sinal (updatedAt == início; ex.: nunca clicou em "Finalizar" e a aba
  *    ficou oculta) o fim é o menor entre o fim do dia de SP em que começou e

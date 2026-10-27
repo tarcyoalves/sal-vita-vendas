@@ -115,9 +115,9 @@ describe('heartbeatAccepted (R4-1): batimento não ressuscita sessão esquecida'
   it('sessão de hoje: aceita mesmo sem batimento anterior', () => {
     expect(heartbeatAccepted({ status: 'active', startedAt: sp('2026-10-06T07:00:00'), updatedAt: sp('2026-10-06T07:00:00') }, now)).toBe(true);
   });
-  it('virou a meia-noite com a aba aberta (sinal < 15 min): aceita; passou de 15 min: recusa', () => {
-    expect(heartbeatAccepted({ ...ontem, updatedAt: sp('2026-10-06T08:50:00') }, now)).toBe(true);
-    expect(heartbeatAccepted({ ...ontem, updatedAt: sp('2026-10-06T08:44:00') }, now)).toBe(false);
+  it('virou a meia-noite com a aba aberta (sinal < 25 min): aceita; passou de 25 min: recusa', () => {
+    expect(heartbeatAccepted({ ...ontem, updatedAt: sp('2026-10-06T08:40:00') }, now)).toBe(true);
+    expect(heartbeatAccepted({ ...ontem, updatedAt: sp('2026-10-06T08:34:00') }, now)).toBe(false);
   });
   it('concorda com isForgottenSession para qualquer sessão aberta', () => {
     const casos = [

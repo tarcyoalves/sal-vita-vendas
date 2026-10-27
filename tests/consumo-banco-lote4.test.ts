@@ -106,9 +106,6 @@ describe('item 5 — polling do cadastro SMBI respeita o expediente', () => {
     const f = ler('client/src/components/faturamento/SmbiCadastroClienteDialog.tsx');
     expect(f).toContain("import { useExpediente } from '../../lib/useExpediente'");
     expect(f).toContain('const expediente = useExpediente()');
-    expect(f).toContain('refetchInterval: open && expediente ? 15_000 : false');
-  });
-  it('expediente padrão não foi alterado', () => {
-    expect(ler('shared/expediente.ts')).toBeTruthy();
+    expect(f).toContain('refetchInterval: open && ativo && expediente ? 15_000 : false');
   });
 });

@@ -5,6 +5,10 @@ import { toast } from 'sonner';
 import { Pause, Play, Square, Clock } from 'lucide-react';
 import { ConfirmDialog } from './ConfirmDialog';
 import { useExpediente } from '../lib/useExpediente';
+import { useUsuarioAtivo } from '../lib/useUsuarioAtivo';
+
+/** Heartbeat da sessão de trabalho: 10 min. O servidor tolera 25 min sem sinal (STALE_SIGNAL_MS). */
+const HEARTBEAT_MS = 10 * 60_000;
 
 function fmt(ms: number) {
   const s = Math.floor(ms / 1000);
@@ -34,11 +38,12 @@ export default function ActiveTimer() {
   const [confirmEnd, setConfirmEnd] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const expediente = useExpediente();
+  const ativo = useUsuarioAtivo();
 
-  // Polling ocioso (3 min) só no expediente. O HEARTBEAT abaixo NÃO pausa: ver comentário dele.
+  // Polling ocioso (10 min, só com usuário ativo) só no expediente. O HEARTBEAT abaixo NÃO pausa: ver comentário dele.
   const { data: session, refetch } = trpc.workSessions.current.useQuery(undefined, {
     enabled: !!user,
-    refetchInterval: expediente ? 180_000 : false,
+    refetchInterval: ativo && expediente ? 600_000 : false,
     staleTime: 120_000,
     // refetchOnWindowFocus: política global (main.tsx) — refaz só se passaram >5 min.
   });
@@ -48,12 +53,12 @@ export default function ActiveTimer() {
   const endMut    = trpc.workSessions.end.useMutation();
   const heartbeat = trpc.workSessions.heartbeat.useMutation();
 
-  // Batimento a cada 5 min (sessão ativa + aba visível): é o "último sinal de vida"
+  // Batimento a cada 10 min (sessão ativa + aba visível): é o "último sinal de vida"
   // que o servidor usa para fechar uma sessão esquecida sem zerar as horas. O servidor só
   // atualiza sessão não esquecida; se não atualizou nada (`updated: 0`), a sessão atual
   // mudou (esquecida/encerrada) e recarregamos para o relógio sumir em vez de contar a noite.
   // NÃO pausa fora do expediente (decisão consciente): o servidor fecha sessão esquecida no
-  // ÚLTIMO sinal de vida (effectiveEndMs) e o heartbeat rejeita sessão sem sinal há >15 min.
+  // ÚLTIMO sinal de vida (effectiveEndMs) e o heartbeat rejeita sessão sem sinal há >25 min.
   // Se parássemos às 19:00, quem trabalha até mais tarde teria as horas cortadas às 19:00 e a
   // sessão tratada como esquecida. Só roda com sessão 'active' e aba visível, ou seja, alguém
   // trabalhando de fato; o polling ocioso (workSessions.current acima) é o que pausa.
@@ -76,7 +81,7 @@ export default function ActiveTimer() {
         if (data?.status === 'active') beat();
       } catch { /* sem rede: o próximo ciclo tenta de novo */ }
     };
-    const id = setInterval(beat, 5 * 60_000);
+    const id = setInterval(beat, HEARTBEAT_MS);
     document.addEventListener('visibilitychange', onVisible);
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible); };
   }, [sessionStatus]);

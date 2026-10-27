@@ -101,10 +101,10 @@ export const workSessionsRouter = router({
       return session;
     }),
 
-  // Batimento: o cliente chama a cada 5 min com a aba visível e a sessão ativa. Só
+  // Batimento: o cliente chama a cada 10 min com a aba visível e a sessão ativa. Só
   // atualiza updatedAt (último sinal de vida) — é o que impede uma sessão esquecida
   // aberta de virar 0 h ao ser encerrada (ver effectiveEndMs em lib/workHours.ts).
-  // Sessão esquecida (de dia anterior, sem sinal há mais de 15 min) NÃO é atualizada:
+  // Sessão esquecida (de dia anterior, sem sinal há mais de 25 min) NÃO é atualizada:
   // o notebook que acorda no dia seguinte dispara o setInterval atrasado e, sem esta
   // condição, "ressuscitaria" a sessão e contaria a noite como trabalho. `updated: 0`
   // avisa o cliente para recarregar a sessão atual.

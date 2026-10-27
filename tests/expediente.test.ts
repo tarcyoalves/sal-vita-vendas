@@ -5,14 +5,24 @@ import { expedienteAberto, EXPEDIENTE_PADRAO } from '../shared/expediente';
 // Fortaleza = UTC-3 o ano todo (sem horário de verão).
 const fz = (hhmm: string, dia = '2026-10-19') => new Date(`${dia}T${hhmm}:00-03:00`);
 
-describe('expedienteAberto (padrão 07:00-19:00)', () => {
-  it('padrão documentado', () => expect(EXPEDIENTE_PADRAO).toBe('07:00-19:00'));
+describe('expedienteAberto (padrão seg-sex 07:30-18:30, sáb 08:00-12:00, dom fechado)', () => {
+  it('padrão documentado', () => expect(EXPEDIENTE_PADRAO).toContain('07:30-18:30'));
 
   it.each([
-    ['00:00', false], ['06:59', false], ['07:00', true], ['12:00', true],
-    ['18:59', true], ['19:00', false], ['23:59', false],
-  ])('%s => %s', (h, esperado) => {
+    ['00:00', false], ['07:29', false], ['07:30', true], ['12:00', true],
+    ['18:29', true], ['18:30', false], ['19:00', false], ['23:59', false],
+  ])('segunda %s => %s', (h, esperado) => {
     expect(expedienteAberto(fz(h))).toBe(esperado);
+  });
+
+  it.each([
+    ['07:59', false], ['08:00', true], ['11:59', true], ['12:00', false], ['15:00', false],
+  ])('sábado %s => %s', (h, esperado) => {
+    expect(expedienteAberto(fz(h, '2026-10-17'))).toBe(esperado);
+  });
+
+  it('domingo fechado o dia todo', () => {
+    for (const h of ['00:00', '08:00', '10:00', '15:00']) expect(expedienteAberto(fz(h, '2026-10-18'))).toBe(false);
   });
 
   it('meia-noite local é fechado', () => {
@@ -21,16 +31,16 @@ describe('expedienteAberto (padrão 07:00-19:00)', () => {
 
   it('usa a hora LOCAL: 02:00 UTC de 20/10 ainda é 23:00 de 19/10 em Fortaleza', () => {
     expect(expedienteAberto(new Date('2026-10-20T02:00:00Z'))).toBe(false);
-    // 10:00 UTC = 07:00 local abre; 21:59 UTC = 18:59 local aberto; 22:00 UTC = 19:00 fechado
-    expect(expedienteAberto(new Date('2026-10-19T10:00:00Z'))).toBe(true);
-    expect(expedienteAberto(new Date('2026-10-19T21:59:00Z'))).toBe(true);
-    expect(expedienteAberto(new Date('2026-10-19T22:00:00Z'))).toBe(false);
+    // 10:30 UTC = 07:30 local abre; 21:29 UTC = 18:29 local aberto; 21:30 UTC = 18:30 fechado
+    expect(expedienteAberto(new Date('2026-10-19T10:30:00Z'))).toBe(true);
+    expect(expedienteAberto(new Date('2026-10-19T21:29:00Z'))).toBe(true);
+    expect(expedienteAberto(new Date('2026-10-19T21:30:00Z'))).toBe(false);
   });
 
   it('vazio/undefined/null = padrão', () => {
     for (const c of [undefined, null, '', '   ']) {
-      expect(expedienteAberto(fz('06:59'), c)).toBe(false);
-      expect(expedienteAberto(fz('07:00'), c)).toBe(true);
+      expect(expedienteAberto(fz('07:29'), c)).toBe(false);
+      expect(expedienteAberto(fz('07:30'), c)).toBe(true);
     }
   });
 
@@ -52,16 +62,16 @@ describe('expedienteAberto (padrão 07:00-19:00)', () => {
     warn.mockRestore();
   });
 
-  it('todos os dias por padrão (sábado e domingo)', () => {
-    expect(expedienteAberto(fz('09:00', '2026-10-17'))).toBe(true); // sábado
-    expect(expedienteAberto(fz('09:00', '2026-10-18'))).toBe(true); // domingo
+  it('VITE_EXPEDIENTE com faixas vale todos os dias (sobrescreve o padrão)', () => {
+    expect(expedienteAberto(fz('09:00', '2026-10-18'), '07:00-19:00')).toBe(true); // domingo
+    expect(expedienteAberto(fz('18:45', '2026-10-19'), '07:00-19:00')).toBe(true);
   });
 
   it('parâmetro de dias: só seg-sex fecha o fim de semana', () => {
     const util = [1, 2, 3, 4, 5];
-    expect(expedienteAberto(fz('09:00', '2026-10-19'), undefined, util)).toBe(true);  // segunda
-    expect(expedienteAberto(fz('09:00', '2026-10-17'), undefined, util)).toBe(false); // sábado
-    expect(expedienteAberto(fz('09:00', '2026-10-18'), undefined, util)).toBe(false); // domingo
+    expect(expedienteAberto(fz('09:00', '2026-10-19'), '07:00-19:00', util)).toBe(true);  // segunda
+    expect(expedienteAberto(fz('09:00', '2026-10-17'), '07:00-19:00', util)).toBe(false); // sábado
+    expect(expedienteAberto(fz('09:00', '2026-10-18'), '07:00-19:00', util)).toBe(false); // domingo
     expect(expedienteAberto(fz('09:00', '2026-10-18'), 'sempre', util)).toBe(true);   // sem portão
   });
 
@@ -75,25 +85,56 @@ describe('expedienteAberto (padrão 07:00-19:00)', () => {
 // Fixa os pontos de polling: quem remover o portão do expediente reprova o build.
 const src = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
-describe('pontos de polling usam o expediente', () => {
+describe('pontos de polling usam usuário ativo E expediente', () => {
   it.each([
-    ['client/src/components/faturamento/SmbiRoboPanel.tsx', /refetchInterval: expediente \? 60_000 : false/],
-    ['client/src/components/AppShell.tsx', /refetchInterval: expediente \? 120_000 : false/],
-    ['client/src/components/AppShell.tsx', /refetchInterval: expediente \? 60_000 : false/],
-    ['client/src/pages/AdminDashboard.tsx', /refetchInterval: expediente \? 60_000 : false/],
-    ['client/src/components/ActiveTimer.tsx', /refetchInterval: expediente \? 180_000 : false/],
-    ['client/src/_core/hooks/useReminderNotifications.ts', /refetchInterval: expediente \? 300_000 : 900_000/],
-    ['client/src/pages/TvDashboard.tsx', /refetchInterval: consulta \? 120_000 : false/],
-    ['client/src/pages/TvDashboard.tsx', /refetchInterval: consulta \? 600_000 : false/],
+    ['client/src/components/faturamento/SmbiRoboPanel.tsx', /refetchInterval: ativo && expediente \? 300_000 : false/],
+    ['client/src/components/AppShell.tsx', /refetchInterval: ativo && expediente \? 600_000 : false/],
+    ['client/src/components/AppShell.tsx', /refetchInterval: ativo && expediente \? 300_000 : false/],
+    ['client/src/pages/AdminDashboard.tsx', /refetchInterval: ativo && expediente \? 300_000 : false/],
+    ['client/src/components/ActiveTimer.tsx', /refetchInterval: ativo && expediente \? 600_000 : false/],
+    ['client/src/_core/hooks/useReminderNotifications.ts', /refetchInterval: ativo && expediente \? 600_000 : false/],
+    ['client/src/components/faturamento/SmbiCadastroClienteDialog.tsx', /refetchInterval: open && ativo && expediente \? 15_000 : false/],
   ])('%s', (arq, re) => {
-    expect(src(arq)).toMatch(re);
-    expect(src(arq)).toContain('useExpediente');
+    const f = src(arq);
+    expect(f).toMatch(re);
+    expect(f).toContain('useExpediente');
+    expect(f).toContain('useUsuarioAtivo');
   });
 
-  it('heartbeat do ActiveTimer NÃO é pausado pelo expediente (protege sessão ativa)', () => {
+  it('TV segue o expediente próprio (desligada por padrão)', () => {
+    expect(src('client/src/pages/TvDashboard.tsx')).toMatch(/refetchInterval: consulta \? 120_000 : false/);
+  });
+
+  it('nenhum polling do CRM abaixo de 5 min (exceto diálogo de cadastro aberto, 15 s)', () => {
+    for (const arq of ['client/src/components/AppShell.tsx', 'client/src/pages/AdminDashboard.tsx',
+      'client/src/components/faturamento/SmbiRoboPanel.tsx', 'client/src/components/ActiveTimer.tsx',
+      'client/src/_core/hooks/useReminderNotifications.ts']) {
+      for (const m of src(arq).matchAll(/refetchInterval: ativo && expediente \? ([\d_]+)/g)) {
+        expect(Number(m[1].replace(/_/g, ''))).toBeGreaterThanOrEqual(300_000);
+      }
+    }
+  });
+
+  it('AppShell monta o refetch imediato ao reativar', () => {
+    expect(src('client/src/components/AppShell.tsx')).toContain('useRefetchAoReativar()');
+  });
+
+  it('tasks.list e faturamento.getAll não rodam em polling', () => {
+    const todos = ['client/src/pages/Tasks.tsx', 'client/src/pages/AdminDashboard.tsx', 'client/src/pages/ClientsManagement.tsx',
+      'client/src/pages/AttendantProgress.tsx', 'client/src/components/faturamento/AttendantBilling.tsx'];
+    for (const arq of todos) {
+      for (const linha of src(arq).split('\n')) {
+        if (/tasks\.list\.useQuery|faturamento\.getAll\.useQuery/.test(linha)) expect(linha).not.toContain('refetchInterval');
+      }
+    }
+  });
+
+  it('heartbeat do ActiveTimer a cada 10 min, só com sessão ativa e aba visível, sem exigir expediente', () => {
     const t = src('client/src/components/ActiveTimer.tsx');
-    expect(t).toMatch(/setInterval\(beat, 5 \* 60_000\)/);
+    expect(t).toMatch(/const HEARTBEAT_MS = 10 \* 60_000/);
+    expect(t).toMatch(/setInterval\(beat, HEARTBEAT_MS\)/);
     expect(t).toMatch(/if \(sessionStatus !== 'active'\) return;/);
+    expect(t).toMatch(/if \(document\.visibilityState !== 'visible'\) return;/);
   });
 
   it('Painel TV é desligado por padrão (só VITE_TV_PAINEL_ATIVO=1 liga)', () => {

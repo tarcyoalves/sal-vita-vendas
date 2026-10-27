@@ -43,6 +43,7 @@ import { OrderDialog } from '../components/faturamento/OrderDialog';
 import { InvoiceDialog } from '../components/faturamento/InvoiceDialog';
 import { DeleteOrderDialog } from '../components/faturamento/DeleteOrderDialog';
 import { useExpediente } from '../lib/useExpediente';
+import { useUsuarioAtivo } from '../lib/useUsuarioAtivo';
 
 // Sellers created before dailyGoal was wired up still carry the old default of 10
 // while the gamification has always targeted 100 — treat 10 as "not customized".
@@ -450,9 +451,10 @@ export default function AdminDashboard() {
   // acesso completo ao Faturamento, mesmo padrão de permissão do módulo.
   const canManageFaturamento = user?.role === "admin" || user?.role === "manager";
   const expediente = useExpediente(); // fora do expediente não há polling
+  const ativo = useUsuarioAtivo();
   const { data: pendingPedidos = [], refetch: refetchPendingPedidos } = trpc.faturamento.pendingApproval.useQuery(
     undefined,
-    { staleTime: 30_000, refetchInterval: expediente ? 60_000 : false, enabled: canManageFaturamento }
+    { staleTime: 30_000, refetchInterval: ativo && expediente ? 300_000 : false, enabled: canManageFaturamento }
   );
   const [showPendingPedidos, setShowPendingPedidos] = useState(false);
   const [pedidoDetailId, setPedidoDetailId] = useState<string | null>(null);

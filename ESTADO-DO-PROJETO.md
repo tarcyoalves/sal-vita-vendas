@@ -146,18 +146,37 @@ minerais. Até lá, não.
 
 ## 5. O que está feito
 
-**Expediente das telas e Painel TV desligado (19/10/2026 — CRM Lembretes)** — Para o Neon dormir à noite,
-o cliente para o polling periódico fora do expediente (padrão 07:00–19:00, todos os dias, America/Fortaleza;
-fim exclusivo). A primeira carga ao abrir a tela continua normal; o polling retoma sozinho (reavalia a cada
+**Consumo do Neon: regras (27/10/2026 — CRM Lembretes; plano grátis = 100 CU-h/mês, banco dorme após 5 min SEM consulta)**
+- **Expediente padrão** (`shared/expediente.ts`, America/Fortaleza, fim exclusivo): seg–sex 07:30–18:30, sáb 08:00–12:00,
+  domingo fechado. `VITE_EXPEDIENTE` (`07:00-19:00` = faixas todos os dias; `sempre` = nunca pausa; inválido = não pausa)
+  sobrescreve. `VITE_*` é embutida no build: mudar exige novo deploy.
+- **Polling só com usuário ativo E expediente aberto:** `refetchInterval: ativo && expediente ? N : false`. Ativo
+  (`shared/usuarioAtivo.ts`, `client/src/lib/useUsuarioAtivo.ts`) = mouse/teclado/toque/scroll/foco nos últimos 10 min E aba
+  visível. Aba esquecida aberta não faz polling. Ao voltar a ficar ativo, `useRefetchAoReativar` (AppShell) invalida as queries
+  principais (um refetch imediato).
+- **Intervalos (nunca < 5 min, salvo o diálogo de cadastro SMBI aberto, 15 s):** `pendingApproval` (AppShell, AdminDashboard) e
+  `smbiRoboStatus` 5 min; `deletionLogs`, `workSessions.current` e `tasks.reminders` 10 min. **Efeito:** aprovações pendentes
+  podem aparecer com até 5 min de atraso se ninguém der foco/clique (mutações relevantes e o foco na aba invalidam). Fora do
+  expediente/inativo não há polling de lembretes; os já carregados seguem disparando pelo relógio local e a aba recarrega ao reativar.
+- **Heartbeat da sessão de trabalho:** a cada 10 min (sessão ativa + aba visível, não exige expediente); o servidor trata como
+  esquecida a sessão de dia anterior sem sinal há > 25 min (`STALE_SIGNAL_MS` em `server/lib/workHours.ts`).
+- `tasks.list` e `faturamento.getAll` NÃO rodam em polling (abrir tela / foco após 5 min / mutação). Robô SMBI: só 08–11 e 14–17
+  (`SMBI_JANELA`). Painel TV desligado. `/api/db-health` não toca o banco. Migração lazy.
+- **Pendente (não mexido, para medir):** webhooks de e-mail Resend/Brevo (`api/index.ts`) escrevem no banco a qualquer hora, inclusive
+  de madrugada; cada evento acorda o compute por >= 5 min (0,25 CU x ~5 min).
+- **Painel Neon (grátis):** compute min = max = 0,25 CU (sem autoscaling); "Suspend compute after" no padrão 5 min (não desativar);
+  sem réplicas de leitura nem branches com compute ativo.
+
+**Expediente das telas e Painel TV desligado (19/10/2026 — CRM Lembretes; padrão de horário e intervalos atualizados acima)** — Para o Neon dormir à noite,
+o cliente para o polling periódico fora do expediente. A primeira
+carga ao abrir a tela continua normal; o polling retoma sozinho (reavalia a cada
 minuto e ao voltar o foco da aba, sem chamar o servidor). Código: `shared/expediente.ts`,
-`client/src/lib/useExpediente.ts`. Env do cliente `VITE_EXPEDIENTE` (`07:00-19:00`; vazio = padrão;
-`sempre` = nunca pausa; inválido = não pausa). **`VITE_*` é embutida no build: mudar exige novo deploy.**
+`client/src/lib/useExpediente.ts`.
 - **Pausam fora do expediente:** `smbiRoboStatus` (SmbiRoboPanel), contadores do AppShell
-  (`pendingApproval`, `deletionLogs`), `pendingApproval` do AdminDashboard, `workSessions.current` (ActiveTimer).
-- **NÃO pausam, de propósito:** (1) o heartbeat de `workSessions` do ActiveTimer — roda só com sessão ATIVA e aba
-  visível; o servidor fecha sessão esquecida no último sinal de vida e rejeita sessão sem sinal há >15 min, então
-  parar às 19:00 cortaria as horas de quem trabalha mais tarde; (2) `tasks.reminders` (notificações): fora do
-  expediente o polling só espaça de 5 para 15 min, para um lembrete das 19:30 ainda notificar quem deixou a aba aberta.
+  (`pendingApproval`, `deletionLogs`), `pendingApproval` do AdminDashboard, `workSessions.current` (ActiveTimer), `tasks.reminders`.
+- **NÃO pausa, de propósito:** o heartbeat de `workSessions` do ActiveTimer — roda só com sessão ATIVA e aba
+  visível; o servidor fecha sessão esquecida no último sinal de vida e rejeita sessão sem sinal há >25 min, então
+  parar no fim do expediente cortaria as horas de quem trabalha mais tarde.
 - **Painel TV desligado por padrão:** `/tv` mostra "Painel TV desligado" e não consulta nada. Para religar,
   defina `VITE_TV_PAINEL_ATIVO=1` na Vercel e faça novo deploy; ligado, ainda só consulta no expediente. As rotas
   `tv.*` do servidor e o código do painel continuam intactos.

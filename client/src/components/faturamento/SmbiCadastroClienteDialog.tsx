@@ -10,6 +10,7 @@ import { useConfirm } from '../useConfirm';
 import { useAuth } from '../../_core/hooks/useAuth';
 import { trpc } from '../../lib/trpc';
 import { useExpediente } from '../../lib/useExpediente';
+import { useUsuarioAtivo } from '../../lib/useUsuarioAtivo';
 import { formatCnpj } from '../../../../shared/radar.js';
 import type { Pedido } from '../../lib/faturamento/types';
 import {
@@ -52,9 +53,10 @@ export default function SmbiCadastroClienteDialog({
   const empresa = empresaPorCnpj(empresaCnpj);
 
   const expediente = useExpediente(); // fora do expediente não há polling (Neon dorme)
+  const ativo = useUsuarioAtivo();
   const status = trpc.faturamento.cadastroSmbiStatus.useQuery(
     { pedidoId: pedido.id, ...(empresaCnpj ? { empresaCnpj } : {}) },
-    { enabled: open, refetchInterval: open && expediente ? 15_000 : false },
+    { enabled: open, refetchInterval: open && ativo && expediente ? 15_000 : false },
   );
   const cadastro = status.data?.cadastro ?? null;
   const gates = status.data?.gates;

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { trpc } from "../../lib/trpc";
 import { toast } from "sonner";
 import { useExpediente } from "../../lib/useExpediente";
+import { useUsuarioAtivo } from "../../lib/useUsuarioAtivo";
 
 function playBeep() {
   try {
@@ -25,13 +26,14 @@ const markFired = (key: string) => {
 };
 
 export function useReminderNotifications(enabled: boolean, userName: string = '', isAdmin: boolean = false) {
-  // Fora do expediente NÃO desligamos: um lembrete agendado para 19:30 precisa notificar quem
-  // deixou a aba aberta. O polling apenas se espaça (15 min em vez de 5), o que deixa o Neon
-  // dormir entre uma consulta e outra (suspende após ~5 min).
+  // Polling só no expediente E com usuário ativo (10 min). Fora disso não há consulta: os
+  // lembretes já carregados continuam disparando pelo relógio local (checkRef) e, ao voltar a
+  // ficar ativo, useRefetchAoReativar (AppShell) recarrega. Assim o Neon dorme à noite.
   const expediente = useExpediente();
+  const ativo = useUsuarioAtivo();
   const { data: reminders } = trpc.tasks.reminders.useQuery(undefined, {
     enabled,
-    refetchInterval: expediente ? 300_000 : 900_000,
+    refetchInterval: ativo && expediente ? 600_000 : false,
     staleTime: 120_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
