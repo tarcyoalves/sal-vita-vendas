@@ -121,6 +121,18 @@ describe('filtros', () => {
     expect(d.motivo).toMatch(/ambíguo/);
   });
 
+  it('contato da agenda (sem conversa) com filtro de data: excluído por padrão, vai para revisar se incluirSemConversa=true', () => {
+    const fPadrao = filtros({ ultimaConversaAntesDe: '2026-09-10' });
+    const cAgenda = contato('Cliente Agenda', { temConversa: false, ultimaConversa: null, rotuloData: null });
+    expect(avaliarContato(cAgenda, fPadrao, ctxVazio).situacao).toBe('excluido');
+    expect(avaliarContato(cAgenda, fPadrao, ctxVazio).motivo).toMatch(/sem conversa anterior/);
+
+    const fComAgenda = filtros({ ultimaConversaAntesDe: '2026-09-10', incluirSemConversa: true });
+    const res = avaliarContato(cAgenda, fComAgenda, ctxVazio);
+    expect(res.situacao).toBe('revisar');
+    expect(res.motivo).toMatch(/contato da agenda/);
+  });
+
   it('exclui só número, grupo, sem conversa e "não enviar mais"', () => {
     expect(avaliarContato(contato('+55 84 9999-0000', { soNumero: true }), filtros(), ctxVazio).situacao).toBe('excluido');
     expect(avaliarContato(contato('Clientes Sal', { pareceGrupo: true }), filtros(), ctxVazio).situacao).toBe('excluido');

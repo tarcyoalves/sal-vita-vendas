@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { salvarCampanha, type Banco } from '../shared/banco';
 import { type Campanha, criarItens, type ItemCampanha, novoId, textoDoItem, validarParaAprovar } from '../shared/campanha';
 import { DIAS_SEM_REPETIR, MARCADOR_PRIMEIRO_NOME, MAX_VARIACOES } from '../shared/constantes';
@@ -52,6 +52,15 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
   const [rotinas, setRotinas] = useState<Rotina[]>(() => carregarRotinasSalvas());
   const [rotinaAtivaId, setRotinaAtivaId] = useState<string | null>(null);
   const [modalCriarRotina, setModalCriarRotina] = useState(false);
+  const [tagsCrmRemotas, setTagsCrmRemotas] = useState<Array<{ id: number | string; nome: string; cor: string }>>([]);
+
+  useEffect(() => {
+    void crm?.repo?.catalogoTags?.().then((r) => {
+      if (r?.ok && Array.isArray(r.tags) && r.tags.length > 0) {
+        setTagsCrmRemotas(r.tags.map((t) => ({ id: t.id, nome: t.name, cor: t.color || '#6366f1' })));
+      }
+    }).catch(() => undefined);
+  }, [crm?.repo]);
 
   const [novaRotinaNome, setNovaRotinaNome] = useState('');
   const [novaRotinaDesc, setNovaRotinaDesc] = useState('');
@@ -107,12 +116,18 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       }
     }
 
-    const catalogo = etiquetasCrm.map((e) => ({
-      id: e.id,
-      nome: e.nome,
-      cor: e.cor,
-      contagem: contagemPorTag.get(normalizarTexto(e.nome)) ?? 0,
-    }));
+    const catalogoMapa = new Map<string, { id: string; nome: string; cor: string; contagem: number }>();
+    for (const e of etiquetasCrm) {
+      const k = normalizarTexto(e.nome);
+      catalogoMapa.set(k, { id: e.id, nome: e.nome, cor: e.cor, contagem: contagemPorTag.get(k) ?? 0 });
+    }
+    for (const rem of tagsCrmRemotas) {
+      const k = normalizarTexto(rem.nome);
+      if (!catalogoMapa.has(k)) {
+        catalogoMapa.set(k, { id: String(rem.id), nome: rem.nome, cor: rem.cor, contagem: contagemPorTag.get(k) ?? 0 });
+      }
+    }
+    const catalogo = Array.from(catalogoMapa.values());
 
     return {
       tagsPorChave: mapaNorm,
@@ -215,6 +230,10 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
     excluidos.every((a) => a.decisao.motivo.startsWith('nome não contém') || a.decisao.motivo.startsWith('nome contém'));
   const semMensagemSua = useMemo(
     () => excluidos.filter((a) => a.decisao.motivo === MOTIVO_SEM_MENSAGEM_MINHA),
+    [excluidos],
+  );
+  const agendaExcluidos = useMemo(
+    () => excluidos.filter((a) => a.decisao.motivo.includes('agenda') || a.decisao.motivo === 'sem conversa anterior'),
     [excluidos],
   );
   const itensMarcados = useMemo(() => (itens ?? []).filter((i) => i.marcado !== false), [itens]);
@@ -685,6 +704,11 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
             <input type="date" value={depoisDe} onChange={(e) => setDepoisDe(e.target.value)} />
           </label>
         </div>
+        {antesDe && (
+          <p style={{ margin: '2px 0 8px 0', fontSize: 11, color: '#0369a1', background: '#f0f9ff', padding: '4px 8px', borderRadius: 4 }}>
+            ℹ️ Filtra contatos cuja última conversa ocorreu até {formatarDataBr(antesDe)} (mais de {diferencaDias(hojeNoFuso(new Date()), antesDe)} dias atrás). Conversas mais recentes ficam de fora.
+          </p>
+        )}
         <label>
           Excluir quem recebeu campanha há menos de (dias, mínimo {DIAS_SEM_REPETIR})
           <input
@@ -875,13 +899,33 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
         <p className="info">
           {incluidos.length} entram · {revisar.length} para revisar · {excluidos.length} fora
         </p>
-        {incluidos.length === 0 && motivosExclusao.length > 0 && (
-          <div style={{ marginTop: 8, padding: '8px 10px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, color: '#991b1b' }}>
-            <strong>Por que nenhum contato entrou ({excluidos.length} fora):</strong>
+        {motivosExclusao.length > 0 && (
+          <div style={{ marginTop: 8, padding: '8px 10px', background: incluidos.length === 0 ? '#fef2f2' : '#f8fafc', border: `1px solid ${incluidos.length === 0 ? '#fecaca' : '#e2e8f0'}`, borderRadius: 6, fontSize: 12, color: incluidos.length === 0 ? '#991b1b' : '#334155' }}>
+            <strong>{incluidos.length === 0 ? `Por que nenhum contato entrou (${excluidos.length} fora):` : `Motivos dos ${excluidos.length} contatos fora da campanha:`}</strong>
             <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
               {motivosExclusao.map(([motivo, qtd]) => (
                 <li key={motivo} style={{ marginBottom: 4 }}>
                   <b>{qtd}</b> contato{qtd > 1 ? 's' : ''}: <i>{motivo}</i>
+                  {(motivo.includes('agenda') || motivo === 'sem conversa anterior') && !incluirSemConversa && (
+                    <button
+                      type="button"
+                      className="pequeno"
+                      style={{ fontSize: 11, padding: '1px 6px', marginLeft: 6, cursor: 'pointer', background: '#0284c7', color: '#fff', border: 'none', borderRadius: 4 }}
+                      onClick={() => setIncluirSemConversa(true)}
+                    >
+                      + Incluir contatos da agenda ({qtd})
+                    </button>
+                  )}
+                  {motivo.includes('nome não contém') && contem.trim() !== '' && (
+                    <button
+                      type="button"
+                      className="pequeno"
+                      style={{ fontSize: 11, padding: '1px 6px', marginLeft: 6, cursor: 'pointer' }}
+                      onClick={() => setContem('')}
+                    >
+                      Limpar filtro de nome
+                    </button>
+                  )}
                   {motivo.includes('sem mensagem sua') && (
                     <>
                       {soMinha && (
@@ -1142,9 +1186,24 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       )}
 
       <details className="cartao" open={incluidos.length === 0}>
-        <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+        <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', flexWrap: 'wrap', gap: 6 }}>
           <span>Fora da campanha ({excluidos.length})</span>
-          {semMensagemSua.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {agendaExcluidos.length > 0 && !incluirSemConversa && (
+              <button
+                type="button"
+                className="pequeno"
+                style={{ fontSize: 11, padding: '2px 8px', fontWeight: 600, background: '#0284c7', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIncluirSemConversa(true);
+                }}
+              >
+                + Incluir agenda ({agendaExcluidos.length})
+              </button>
+            )}
+            {semMensagemSua.length > 0 && (
             <button
               type="button"
               className="pequeno"
@@ -1158,6 +1217,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
               + Incluir mesmo assim ({semMensagemSua.length} sem mensagem sua)
             </button>
           )}
+          </div>
         </summary>
         <ul className="lista">
           {excluidos.map((a) => (

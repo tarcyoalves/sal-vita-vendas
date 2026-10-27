@@ -537,6 +537,16 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   const periodico = op.periodicoMs === 0 ? null : setInterval(ciclo, op.periodicoMs ?? 30_000);
   ciclo();
   lerConta(true);
+  const aoMensagemLembrete = (msg: unknown) => {
+    if (typeof msg === 'object' && msg !== null && (msg as { tipo?: string }).tipo === 'vitaZap:lembreteDisparado') {
+      const lembrete = (msg as { lembrete?: { id: string; nome: string; telefone?: string; rascunho?: string } }).lembrete;
+      if (lembrete) {
+        mostrarAviso(`⏰ Lembrete de ${lembrete.nome}: hora de retomar a conversa.`);
+      }
+    }
+  };
+  chrome.runtime?.onMessage?.addListener?.(aoMensagemLembrete);
+
   // A aba do WhatsApp Web carregou: busca os lembretes do CRM (no máximo 1 por hora; sem login não faz nada).
   if (leads) void leads.sincronizarLembretes('aba-whatsapp').catch(() => undefined);
   // Pedido pendente (clique na notificação com o WhatsApp Web ainda carregando): espera a lista e executa.
@@ -562,6 +572,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       window.removeEventListener('scroll', agendar, true);
       window.removeEventListener('focus', aoVoltar);
       document.removeEventListener('visibilitychange', aoVoltar);
+      chrome.runtime?.onMessage?.removeListener?.(aoMensagemLembrete);
       fecharPopover();
       estado.encerrar();
     },

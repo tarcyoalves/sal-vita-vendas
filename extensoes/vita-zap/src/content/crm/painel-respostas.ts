@@ -134,12 +134,13 @@ export function abrirMenuRespostas(ancora: HTMLElement, ctx: ContextoRespostas, 
         h('button', { class: 'btn pri', type: 'button', onclick: () => void (async () => {
           const erro = await ctx.estado.fazer((r) => r.salvarResposta({ id: atual?.id, titulo: titulo.value, atalho: atalho.value, texto: texto.value }));
           if (erro) { msg.textContent = erro; return; }
+          mostrarAviso('Resposta rápida salva com sucesso!');
           tela = { tipo: 'lista' };
           render();
         })() }, 'Salvar'),
         h('button', { class: 'btn', type: 'button', onclick: () => { tela = { tipo: 'lista' }; render(); } }, 'Cancelar'),
         atual
-          ? h('button', { class: 'btn perigo', type: 'button', onclick: () => void ctx.estado.fazer((r) => r.excluirResposta(atual.id)).then(() => { tela = { tipo: 'lista' }; render(); }) }, 'Excluir')
+          ? h('button', { class: 'btn perigo', type: 'button', onclick: () => void ctx.estado.fazer((r) => r.excluirResposta(atual.id)).then(() => { mostrarAviso('Resposta rápida excluída.'); tela = { tipo: 'lista' }; render(); }) }, 'Excluir')
           : null,
       ),
     ];

@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.29: CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.30: CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o

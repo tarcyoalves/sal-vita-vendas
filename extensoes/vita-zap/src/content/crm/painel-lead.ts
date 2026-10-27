@@ -147,19 +147,10 @@ export function abrirReagendar(ancora: HTMLElement, ctx: ContextoLead, ref: RefC
 const RESERVADAS = ['ativo', 'Email Confirmado'];
 
 const TAGS_PADRAO_CRM: Array<{ name: string; color: string }> = [
-  { name: 'sal grosso', color: '#2563eb' },
-  { name: 'sal fino', color: '#0284c7' },
-  { name: 'sal moído 25 kg', color: '#059669' },
-  { name: 'sal micronizado', color: '#10b981' },
-  { name: 'agro', color: '#84cc16' },
-  { name: 'distribuidor', color: '#f59e0b' },
-  { name: 'varejo', color: '#d97706' },
-  { name: 'indústria', color: '#6366f1' },
-  { name: 'Cliente compra muito', color: '#8b5cf6' },
   { name: 'Cliente Ativo', color: '#16a34a' },
   { name: 'Acompanhar', color: '#0284c7' },
   { name: 'Quente', color: '#ef4444' },
-  { name: 'reativar', color: '#ea580c' },
+  { name: 'Reativar', color: '#ea580c' },
 ];
 
 export function abrirEtiquetas(ancora: HTMLElement, ctx: ContextoLead, ref: RefContato, lead: LeadCrm): void {

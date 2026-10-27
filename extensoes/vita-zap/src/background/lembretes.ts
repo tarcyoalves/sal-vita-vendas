@@ -70,6 +70,19 @@ export async function aoAlarme(nome: string, agora: Date = new Date()): Promise<
     priority: 2,
   });
   await atualizarSelo(agora);
+  try {
+    const abas = await chrome.tabs.query({ url: '*://web.whatsapp.com/*' });
+    for (const aba of abas) {
+      if (aba.id != null) {
+        chrome.tabs.sendMessage(aba.id, {
+          tipo: 'vitaZap:lembreteDisparado',
+          lembrete: { id: l.id, nome: l.nome, telefone: l.telefone, rascunho: l.rascunho },
+        }).catch(() => undefined);
+      }
+    }
+  } catch {
+    // sem abas do WhatsApp ou sem permissão de tabs
+  }
 }
 
 /** Clique na notificação (ou no botão): abre a conversa no WhatsApp Web e cola o rascunho. */

@@ -65,7 +65,7 @@ export function instalarChromeFalso(inicial: Record<string, unknown> = {}): Chro
         removeListener: (f: Ouvinte) => ouvintes.delete(f),
       },
     },
-    runtime: { id: 'teste', sendMessage: () => Promise.resolve(), onMessage: { addListener: () => undefined }, getURL: (p: string) => `chrome-extension://teste/${p}` },
+    runtime: { id: 'teste', sendMessage: () => Promise.resolve(), onMessage: { addListener: () => undefined, removeListener: () => undefined }, getURL: (p: string) => `chrome-extension://teste/${p}` },
     alarms: {
       async create(name: string, info: { when: number }) {
         estado.alarmes.set(name, { name, scheduledTime: info.when });
