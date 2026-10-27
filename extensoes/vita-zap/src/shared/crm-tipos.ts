@@ -179,6 +179,8 @@ export interface AcaoPendente {
   telefone?: string;
   rascunho?: string;
   lembreteId?: string;
+  disparoAutomatico?: boolean;
+  enviarAutomatico?: boolean;
   /** Identifica o pedido (evita executar duas vezes). */
   ts: number;
 }

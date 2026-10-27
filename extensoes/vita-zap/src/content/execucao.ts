@@ -15,6 +15,8 @@ import { lerConversasVisiveis } from './extrair';
 import { buscar, exigir, linhasDaLista } from './lista';
 import { encontrar, encontrarTodos, existeAlgum, SELETORES } from './selectors';
 import { agendarEnvioHumano, enviarHumano, PRAZO_CONFIRMACAO_MS } from './envio-humano';
+import { mesmoNome } from '../shared/abrir-por-telefone';
+import { lerResultadosDaBusca } from './extrair';
 
 export type TipoConversa = 'individual' | 'grupo' | 'desconhecido';
 
@@ -248,25 +250,67 @@ export function nomeDaConversaAberta(): string | null {
  */
 async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promise<RespostaConteudo | null> {
   exigir(encontrar(document, 'painelLateral'), 'lista de conversas');
-  if (usarSeJaAberta && tituloAberto() === nome) return null;
+  if (usarSeJaAberta && (tituloAberto() === nome || (tituloAberto() != null && mesmoNome(tituloAberto()!, nome)))) return null;
 
-  // 1. Achar a conversa pela busca: exatamente uma linha com este nome e com conversa.
+  // 1. Achar a conversa pela busca: tenta exato primeiro, depois por termos e contatos da agenda.
   await buscar(nome);
-  const candidatas = await esperarAte(() => {
-    const achadas = lerConversasVisiveis(linhasDaLista()).conversas.filter((c) => c.linha.nome === nome && c.linha.rotuloData);
-    return achadas.length > 0 ? achadas : null;
+  let viuAmbiguo = false;
+  let qtdAmbiguo = 0;
+  const alvo = await esperarAte(() => {
+    const visiveis = lerConversasVisiveis(linhasDaLista()).conversas;
+    const exatas = visiveis.filter((c) => c.linha.nome === nome && c.linha.rotuloData);
+    if (exatas.length > 1) {
+      viuAmbiguo = true;
+      qtdAmbiguo = exatas.length;
+      return null;
+    }
+    if (exatas.length === 1) return exatas[0];
+
+    // Se não achou exato, busca conversas ativas que batem pelo nome/termo inteligente
+    const batemConversas = visiveis.filter((c) => c.linha.rotuloData && mesmoNome(c.linha.nome, nome));
+    if (batemConversas.length === 1) return batemConversas[0];
+    if (batemConversas.length > 1) {
+      viuAmbiguo = true;
+      qtdAmbiguo = batemConversas.length;
+      return null;
+    }
+
+    // Se ainda não achou, lê todos os resultados (incluindo seção "Contatos" da agenda)
+    const todas = lerResultadosDaBusca(linhasDaLista());
+    const exatasGeral = todas.filter((c) => c.linha.nome === nome);
+    if (exatasGeral.length === 1) return exatasGeral[0];
+    if (exatasGeral.length > 1) {
+      viuAmbiguo = true;
+      qtdAmbiguo = exatasGeral.length;
+      return null;
+    }
+
+    const batemGeral = todas.filter((c) => mesmoNome(c.linha.nome, nome));
+    if (batemGeral.length === 1) return batemGeral[0];
+    if (batemGeral.length > 1) {
+      viuAmbiguo = true;
+      qtdAmbiguo = batemGeral.length;
+      return null;
+    }
+
+    return null;
   }, 5000);
-  if (!candidatas) return erro('nao_encontrado', `"${nome}" não apareceu entre as conversas da busca.`);
-  if (candidatas.length > 1) return erro('ambiguo', `Há ${candidatas.length} conversas chamadas "${nome}".`);
-  // A própria linha da lista já pode denunciar grupo (ícone, id @g.us): nem abre.
-  if (candidatas[0].linha.pareceGrupo) return erro('grupo', `"${nome}" é grupo, comunidade ou lista de transmissão.`);
+
+  if (viuAmbiguo) return erro('ambiguo', `Há ${qtdAmbiguo} conversas chamadas "${nome}".`);
+  if (!alvo) return erro('nao_encontrado', `"${nome}" não apareceu entre as conversas da busca.`);
+  if (alvo.linha.pareceGrupo) return erro('grupo', `"${alvo.linha.nome}" é grupo, comunidade ou lista de transmissão.`);
 
   // 2. Abrir e conferir o cabeçalho.
-  abrirLinhaDaLista(candidatas[0].el);
-  const abriu = await esperarAte(() => tituloAberto() === nome, 6000);
+  abrirLinhaDaLista(alvo.el);
+  const abriu = await esperarAte(() => {
+    const aberto = tituloAberto();
+    if (aberto === alvo.linha.nome || aberto === nome || (aberto != null && mesmoNome(aberto, nome))) return true;
+    return null;
+  }, 6000);
+
   if (!abriu) {
     if (!encontrar(document, 'painelConversa')) return erro('seletor', 'Painel da conversa não encontrado (seletor #main).');
-    return erro('cabecalho', `A conversa aberta não é "${nome}".`);
+    return erro('cabecalho', `A conversa aberta não é "${alvo.linha.nome}".`);
   }
   return null;
 }
@@ -444,4 +488,34 @@ export async function abrirEPrepararRascunho(nome: string, rascunho: string | nu
   }
   caixa.focus();
   return { ok: true };
+}
+
+/**
+ * Executa o envio humano de um lembrete com rascunho:
+ * confere a caixa, aguarda a pausa humana de 2-3s e clica em Enviar.
+ */
+export async function executarDisparoHumanoLembrete(
+  nomeAlvo: string,
+  texto: string,
+  aoConcluir?: () => Promise<void> | void,
+): Promise<{ ok: boolean; motivo?: string }> {
+  const idsAntes = encontrarTodos(document, 'mensagem').map((el) => el.getAttribute('data-id') ?? '').filter(Boolean);
+  return new Promise((resolve) => {
+    agendarEnvioHumano(async () => {
+      const rEnvio = await enviarHumano(document, {
+        reconferir: () => reconferirAntesDoClique(nomeAlvo, texto),
+        confirmar: () => {
+          const idsDepois = encontrarTodos(document, 'mensagem').map((el) => el.getAttribute('data-id') ?? '').filter(Boolean);
+          return idsDepois.length > idsAntes.length || acharMensagemEnviada(texto, new Set(idsAntes)) !== null;
+        },
+        prazoConfirmacaoMs: PRAZO_CONFIRMACAO_MS,
+      });
+      if (rEnvio.ok) {
+        if (aoConcluir) void aoConcluir();
+        resolve({ ok: true });
+      } else {
+        resolve({ ok: false, motivo: rEnvio.motivo });
+      }
+    });
+  });
 }

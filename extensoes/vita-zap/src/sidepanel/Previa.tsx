@@ -244,7 +244,10 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
     const contatosInc = incluidos.map((a) => a.contato);
     const contatosRev = revisar.filter((a) => !a.contato.duplicado).map((a) => a.contato);
     const itensInc = criarItens(contatosInc, modelos, filtros.contem).map((i) => ({ ...i, marcado: true }));
-    const itensRev = criarItens(contatosRev, modelos, filtros.contem).map((i) => ({ ...i, marcado: false }));
+    const itensRev = criarItens(contatosRev, modelos, filtros.contem).map((i) => ({
+      ...i,
+      marcado: filtros.incluirSemConversa && motivoPorChave.get(i.chave)?.includes('agenda') ? true : false,
+    }));
     setItens([...itensInc, ...itensRev]);
     setAssinaturaPrevia(assinatura);
   }

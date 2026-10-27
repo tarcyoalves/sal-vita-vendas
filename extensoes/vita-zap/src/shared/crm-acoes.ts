@@ -93,7 +93,7 @@ export function textoDaAbertura(a: AberturaPorTelefone, nome: string): string {
 }
 
 /** Grava o pedido e leva o usuário à aba do WhatsApp Web (abre uma se não houver). */
-export async function abrirConversaNoWhatsApp(repo: RepositorioContatos, pedido: { nome: string; telefone?: string; rascunho?: string; lembreteId?: string }): Promise<void> {
+export async function abrirConversaNoWhatsApp(repo: RepositorioContatos, pedido: { nome: string; telefone?: string; rascunho?: string; lembreteId?: string; enviarAutomatico?: boolean }): Promise<void> {
   await repo.pedirAbertura(pedido);
   const abas = await chrome.tabs.query({ url: `${URL_WHATSAPP}*` });
   const aba = abas.find((a) => a.active) ?? abas[0];

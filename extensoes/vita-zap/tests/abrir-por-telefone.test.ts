@@ -57,6 +57,21 @@ describe('escolher o resultado da busca', () => {
   it('com dica que não bate e um único resultado (formato completo): abre (o nome do lead pode ser outro)', () => {
     expect(escolherResultado([{ nome: 'Maria da Padaria' }], 'Lead 123')).toEqual({ tipo: 'um', indice: 0 });
   });
+  it('dica de lead com cidade/CNPJ bate com contato contendo os termos principais (D ENERGY e GTEX)', () => {
+    expect(
+      escolherResultado(
+        [{ nome: 'Outro Contato' }, { nome: 'Calixto D ENERGY Brasil Cliente Itaboraí' }],
+        'D ENERGY - RIO DE JANEIRO - RJ'
+      )
+    ).toEqual({ tipo: 'um', indice: 1 });
+
+    expect(
+      escolherResultado(
+        [{ nome: 'Outro Contato' }, { nome: 'Guilherme GTEX' }],
+        'GTEX - GUILHERME / RAILA - ITUPEVA - SP'
+      )
+    ).toEqual({ tipo: 'um', indice: 1 });
+  });
 });
 
 const ANA: ContatoFalso = { nome: 'Ana Souza Cliente', telefone: '5584999990000', conversa: true };
