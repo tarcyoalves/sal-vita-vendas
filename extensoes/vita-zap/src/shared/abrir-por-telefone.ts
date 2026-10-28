@@ -41,9 +41,18 @@ export type Escolha = { tipo: 'um'; indice: number } | { tipo: 'nenhum' } | { ti
 
 export function mesmoNome(a: string, b: string): boolean {
   if (!a || !b) return false;
+  const limpaDots = (s: string) => s.replace(/\.{2,}|…/g, '').trim();
   const normA = normalizarTexto(a);
   const normB = normalizarTexto(b);
   if (normA === normB || normA.includes(normB) || normB.includes(normA)) return true;
+
+  const sA = limpaDots(normA);
+  const sB = limpaDots(normB);
+  if (sA && sB) {
+    if (sA === sB || sA.includes(sB) || sB.includes(sA)) return true;
+    if (sA.length >= 2 && normB.startsWith(sA)) return true;
+    if (sB.length >= 2 && normA.startsWith(sB)) return true;
+  }
 
   // 1. Termos limpos do lead (remove CNPJ, cidade, razão social genérica)
   const termosA = extrairTermosLead(a);

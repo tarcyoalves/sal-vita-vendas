@@ -145,7 +145,8 @@ export function autorBateComTitulo(autorNormalizado: string, tituloLido: string,
   if (autor === tit) return true;
   const tituloCortado = SEM_RETICENCIAS.test(tituloLido);
   SEM_RETICENCIAS.lastIndex = 0;
-  if (tituloCortado && tit.length >= MIN_PREFIXO && autor.startsWith(tit)) return true;
+  const minPref = estrito ? MIN_PREFIXO : 2;
+  if (tituloCortado && tit.length >= minPref && autor.startsWith(tit)) return true;
 
   // Título CRM com delimitador (' - Empresa') ou sufixo de cliente (' Cliente Cidade UF')
   // Ex: "Ismael Roberto - AGROPECUÁRIA PRADAL" (autor "Ismael Roberto")
@@ -180,6 +181,11 @@ export function autorBateComTitulo(autorNormalizado: string, tituloLido: string,
 }
 
 function tituloAberto(): string | null {
+  const comTitle = document.querySelector<HTMLElement>('#main header span[dir="auto"][title], #main header [title]');
+  if (comTitle && comTitle.getAttribute('title')) {
+    const t = limparMarcas(comTitle.getAttribute('title')!);
+    if (t !== '') return t;
+  }
   const el = encontrar(document, 'tituloCabecalho');
   if (!el) return null;
   return limparMarcas(el.getAttribute('title') || el.textContent || '');
@@ -370,12 +376,9 @@ async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promi
 function avisoDoWhatsAppAberto(): boolean {
   for (const el of document.querySelectorAll<HTMLElement>(SELETORES.avisoWhatsApp.join(','))) {
     if (el.hidden || el.getAttribute('aria-hidden') === 'true') continue;
-    // Ignora elementos dentro do menu lateral (#side), dentro da própria extensão ou no rodapé
-    if (el.closest('#side') || el.closest('[data-vita-zap]') || el.closest('#main footer')) continue;
-    // Se for role="alert", só conta se for um modal popup explícito ou estiver dentro de um diálogo modal
-    if (el.getAttribute('role') === 'alert' && !el.matches('[data-animate-modal-popup="true"], [role="alertdialog"], [data-testid="popup-contents"]')) {
-      if (!el.closest('[role="dialog"], [role="alertdialog"], [data-animate-modal-popup="true"]')) continue;
-    }
+    // Ignora elementos dentro do chat (#main), menu lateral (#side) ou da própria extensão.
+    // Modais e alertas de bloqueio reais ficam como overlays fora de #main e #side.
+    if (el.closest('#main') || el.closest('#side') || el.closest('[data-vita-zap]')) continue;
     return true;
   }
   return false;

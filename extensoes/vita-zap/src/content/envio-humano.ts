@@ -28,7 +28,6 @@ function ehRotuloEnviar(label: string): boolean {
   return /^(enviar|send)(\s+(mensagem|message|de texto|text message))?(\s*\(enter\))?$/i.test(l);
 }
 const ROTULO_MICROFONE = /voz|voice|microfone|microphone|\bmic\b|\bptt\b/i;
-
 function ehMicrofone(el: HTMLElement): boolean {
   if (ROTULO_MICROFONE.test(el.getAttribute('aria-label') ?? '')) return true;
   if (el.querySelector('[data-icon="ptt"], [data-icon*="mic"]')) return true;
