@@ -105,8 +105,18 @@ export function classificarConversa(
     if (aceitaSemMensagens && tituloLido !== '' && !TITULO_COM_PALAVRA_DE_GRUPO.test(tituloLido)) return 'individual';
     return 'desconhecido';
   }
-  const recebidas = mensagens.filter((m) => !mensagemEhMinha(m));
-  if (recebidas.length === 0) return 'individual'; // só mensagens minhas e nenhum sinal de grupo
+
+  // Mensagens recebidas do contato (exclui as minhas e avisos do sistema que não têm .message-in nem autor)
+  const recebidas = mensagens.filter((m) => {
+    if (mensagemEhMinha(m)) return false;
+    return m.matches('.message-in') || m.closest('.message-in') != null || m.querySelector('.message-in') != null || autorDaMensagem(m) !== null;
+  });
+
+  if (recebidas.length === 0) {
+    if (mensagens.some((m) => mensagemEhMinha(m)) || aceitaSemMensagens) return 'individual';
+    return 'desconhecido';
+  }
+
   const autores = new Set<string>();
   let semAutor = 0;
   for (const r of recebidas) {
@@ -126,8 +136,7 @@ const MIN_PREFIXO = 5;
 
 /**
  * Autor da mensagem recebida (já normalizado) x título da conversa. Igualdade exata depois de normalizar; título ou
- * autor cortado com "…" aceita prefixo de pelo menos 5 letras. Nunca `includes` (0.7.26 aceitava "Ana" em
- * "Ana e Equipe" e string vazia batia com tudo). No modo estrito, só o TÍTULO cortado aceita prefixo.
+ * autor cortado com "…" aceita prefixo de pelo menos 5 letras.
  */
 export function autorBateComTitulo(autorNormalizado: string, tituloLido: string, estrito: boolean): boolean {
   const autor = autorNormalizado.replace(SEM_RETICENCIAS, '').trim();
@@ -145,6 +154,24 @@ export function autorBateComTitulo(autorNormalizado: string, tituloLido: string,
   if (tit.startsWith(autor)) {
     const resto = tit.slice(autor.length).trim();
     if (/^[-–—|/(]|\bcliente\b|\blead\b/i.test(resto)) return true;
+    if (/^\s+[a-z]/i.test(tit.slice(autor.length)) && !/\b(e|&|equipe|grupo)\b/i.test(tit)) {
+      return true;
+    }
+  }
+
+  // Título com estabelecimento e nome do contato no final (ex.: "Padaria do Carlos" com autor "Carlos")
+  if (tit.endsWith(autor)) {
+    const prefixo = tit.slice(0, -autor.length).trim();
+    if (/\b(do|da|de|dos|das|comercial|supermercado|padaria|mercado|farmacia|posto|loja|drogaria|mercearia)\b/i.test(prefixo)) {
+      return true;
+    }
+  }
+
+  // Correspondência por dígitos de telefone (ex: "+55 84 9999-9999" vs "8499999999")
+  const digitosAutor = autor.replace(/\D/g, '');
+  const digitosTit = tit.replace(/\D/g, '');
+  if (digitosAutor.length >= 8 && digitosTit.length >= 8 && (digitosAutor.endsWith(digitosTit.slice(-8)) || digitosTit.endsWith(digitosAutor.slice(-8)))) {
+    return true;
   }
 
   if (estrito) return false;

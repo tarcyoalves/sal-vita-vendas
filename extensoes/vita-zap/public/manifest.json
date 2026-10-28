@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vita Zap",
-  "version": "0.7.36",
+  "version": "0.7.37",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4wdjGkyt6SSEkeGcp60qOi5bLjJl6UNQ+KSHBf2Za9HV2PtjU9D1SGSQdox5m+7qIGgATLRgIUFSBu56qxokh1uZBnD6HGdmA0dgqk5omzah3DbqFs5lDEYVDVt2hlS/bQBONpdjBd37al0wxDfYzwpP+FfCZLlKhvFBiQgEu85MFSMp+drzyFYaHE2dYo0ymEtyZxN6O6FBqRfXdHGtsMVju3GssWWjk63ADL9tNDvNnqrtL87xdzwfE1ySrc/GAAEuOVsQ9jPZ1ESONxa2UB69cLn8KrcwR9ufPitVxPfVkDLTRilj3AwIPOYOYHOm9lNkxbijsLl76geoolCtOQIDAQAB",
   "description": "CRM dentro do WhatsApp Web: abas de triagem, lembretes de follow-up, notas, etiquetas e respostas rápidas. Envio manual por padrão (você aperta o Enter); envio automático opcional nas campanhas, desligado até você ativar.",
   "minimum_chrome_version": "116",

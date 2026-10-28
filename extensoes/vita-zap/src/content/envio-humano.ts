@@ -19,8 +19,8 @@ export function sortearPausaHumana(minMs = 2200, maxMs = 3800): number {
   return minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
 }
 
-const ROTULOS_BOTAO = new Set(['enviar', 'send']);
-const ICONES_BOTAO = new Set(['send', 'wds-ic-send-filled']);
+const ROTULOS_BOTAO = new Set(['enviar', 'send', 'enviar mensagem', 'send message', 'enviar mensagem de texto', 'send text message']);
+const ICONES_BOTAO = new Set(['send', 'wds-ic-send-filled', 'wds-ic-send', 'send-light', 'send-dark']);
 const ROTULO_MICROFONE = /voz|voice|microfone|microphone|\bmic\b|\bptt\b/i;
 
 function ehMicrofone(el: HTMLElement): boolean {
@@ -51,6 +51,11 @@ export function encontrarBotaoEnviar(raiz: ParentNode = document): HTMLElement |
   if (!caixa || textoComEmoji(caixa).trim() === '') return null;
 
   const candidatos: HTMLElement[] = [];
+  const sendTestId = footer.querySelector<HTMLElement>('[data-testid="send"], [data-testid="compose-btn-send"], [data-tab="11"]');
+  if (sendTestId) {
+    const b = botaoDe(sendTestId) ?? sendTestId;
+    if (!ehMicrofone(b)) candidatos.push(b);
+  }
   for (const b of footer.querySelectorAll<HTMLElement>('button, [role="button"]')) {
     if (ROTULOS_BOTAO.has((b.getAttribute('aria-label') ?? '').trim().toLowerCase())) candidatos.push(b);
   }
