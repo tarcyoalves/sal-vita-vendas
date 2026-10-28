@@ -100,7 +100,7 @@ export interface LeadsCRM {
   registrarContatoNoLead(ref: RefContato, texto: string): Promise<ResultadoAcao>;
   reagendar(ref: RefContato, em: number): Promise<ResultadoAcao>;
   alterarEtiquetas(ref: RefContato, mudanca: { adicionar?: string[]; remover?: string[] }): Promise<ResultadoAcao>;
-  catalogoTags?(): Promise<{ ok: true; tags: Array<{ id: number; name: string; color: string }> } | { ok: false; erro: ErroCrm }>;
+  catalogoTags(): Promise<{ ok: true; tags: Array<{ id: number; name: string; color: string }> } | { ok: false; erro: ErroCrm }>;
   marcarConvertido(ref: RefContato, valor?: number): Promise<ResultadoAcao>;
   /** Como registrarContatoNoLead, mas pela task (a aba Acompanhar do painel não tem a conversa aberta). */
   registrarContatoNaTask(taskId: number, texto: string): Promise<ResultadoAcao>;
@@ -126,7 +126,7 @@ export interface LeadsCRM {
 
 export const METODOS_LEADS = [
   'conta', 'definirUrl', 'entrar', 'conectarPelaSessao', 'verificarSessao', 'sair', 'leadDoContato', 'procurarLeads', 'vincularLead', 'desvincularLead',
-  'criarLead', 'registrarContatoNoLead', 'reagendar', 'alterarEtiquetas', 'marcarConvertido', 'registrarContatoNaTask', 'acompanhando', 'reagendarTask', 'sincronizarLembretes', 'reenviarFila',
+  'criarLead', 'registrarContatoNoLead', 'reagendar', 'alterarEtiquetas', 'catalogoTags', 'marcarConvertido', 'registrarContatoNaTask', 'acompanhando', 'reagendarTask', 'sincronizarLembretes', 'reenviarFila',
   'emailDoLead', 'salvarEmailDoLead', 'modelosEmail', 'sequenciasEmail', 'inscricoesDoLead', 'mandarApresentacao', 'inscreverNaSequencia',
 ] as const satisfies ReadonlyArray<keyof LeadsCRM>;
 

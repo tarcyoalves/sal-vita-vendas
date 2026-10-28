@@ -30,11 +30,27 @@ export class RepositorioCRM {
     if (!cache) return [];
     const avisados = (await this.local.lerChave<Record<string, number>>(CHAVES_CRM.avisados)) ?? {};
     const dispensados = (await this.local.lerChave<Record<string, number>>(CHAVES_CRM.dispensados)) ?? {};
+    const vinculos = (await this.local.lerChave<Record<string, number>>(CHAVES_CRM.vinculos)) ?? {};
     return cache.itens.map((l) => {
+      let tel = l.telefone;
+      let nomeDica: string | undefined;
+      if (!tel) {
+        const achadoTel = Object.entries(vinculos).find(([k, id]) => id === l.taskId && k.startsWith('tel:'));
+        if (achadoTel) tel = achadoTel[0].slice(4);
+      }
+      const achadoNome = Object.entries(vinculos).find(([k, id]) => id === l.taskId && k.startsWith('nome:'));
+      if (achadoNome) nomeDica = achadoNome[0].slice(5);
+
+      const item = tel ? { ...l, telefone: tel } : l;
       const id = idLembreteCrm(l.taskId, l.venceEm);
-      if (id in dispensados) return lembreteParaCentral(l, 'concluido');
-      if (id in avisados) return lembreteParaCentral(l, 'disparado', avisados[id]);
-      return lembreteParaCentral(l, 'pendente');
+      const lemb =
+        id in dispensados
+          ? lembreteParaCentral(item, 'concluido')
+          : id in avisados
+            ? lembreteParaCentral(item, 'disparado', avisados[id])
+            : lembreteParaCentral(item, 'pendente');
+      if (nomeDica) (lemb as any).nomeDica = nomeDica;
+      return lemb;
     });
   }
 

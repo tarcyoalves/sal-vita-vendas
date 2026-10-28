@@ -42,6 +42,7 @@ import { fecharPopover, mostrarAviso, popoverAbertoEm } from './popover';
 import { anotarLinha, removerSelo } from './linha-extra';
 import { rolarELer } from './rolagem';
 import { avisarUmaVez } from './ui';
+import { BloqueioTelaCrm } from './bloqueio-tela';
 
 export interface OpcoesCrm {
   agora?: () => Date;
@@ -51,6 +52,8 @@ export interface OpcoesCrm {
   periodicoMs?: number;
   /** Onde ficam os dados (padrão: chrome.storage.local via RepositorioLocal). */
   repositorio?: RepositorioContatos;
+  /** Bloquear a tela do WhatsApp com vidro embaçado até logar no CRM (padrão: true se o repositório suportar CRM). */
+  bloquearSemLogin?: boolean;
 }
 
 export interface ControladorCrm {
@@ -92,6 +95,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   const barra = new Barra();
   const topo = new BarraSuperior();
   const cabecalho = new Cabecalho();
+  const bloqueio = new BloqueioTelaCrm();
   // Lead do CRM Lembretes (só existe com login; sem login a faixa não aparece e tudo segue local).
   const leads: LeadsCRM | null = ehLeadsCRM(repo) ? repo : null;
   const faixa = new FaixaLead();
@@ -258,11 +262,27 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
     contaEm = Date.now();
     leads.conta().then(
       (c) => {
-        contaTopo = c.usuario ? { tipo: 'logado', nome: c.usuario.name, email: c.usuario.email, iniciais: iniciaisDe(c.usuario.name, c.usuario.email) } : { tipo: 'sem-login' };
+        const logado = !!c.usuario;
+        contaTopo = logado ? { tipo: 'logado', nome: c.usuario!.name, email: c.usuario!.email, iniciais: iniciaisDe(c.usuario!.name, c.usuario!.email) } : { tipo: 'sem-login' };
         if (c.usuario) lerAcompanhando('cache');
         else {
           acomp = null;
           chavesAcomp = new Set();
+        }
+        if (op.bloquearSemLogin !== false) {
+          bloqueio.render({
+            logado,
+            aoEntrar: async (email, senha) => {
+              const r = await leads.entrar(email, senha);
+              if (r.ok) lerConta(true);
+              return r.ok ? { ok: true } : { ok: false, mensagem: r.erro.mensagem };
+            },
+            aoConectarSessao: async () => {
+              const r = await leads.conectarPelaSessao();
+              if (r.ok) lerConta(true);
+              return r.ok ? { ok: true } : { ok: false, mensagem: r.erro.mensagem };
+            },
+          });
         }
         if (!encerrado) ciclo();
       },
@@ -567,6 +587,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
       cabecalho.remover();
       faixa.remover();
       botaoRespostas.remover();
+      bloqueio.remover();
       document.removeEventListener('input', aoDigitar, true);
       window.removeEventListener('resize', ciclo);
       window.removeEventListener('scroll', agendar, true);

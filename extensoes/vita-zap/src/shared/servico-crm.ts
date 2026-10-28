@@ -690,11 +690,22 @@ export class ServicoCrm implements LeadsCRM {
 
   async catalogoTags(): Promise<{ ok: true; tags: Array<{ id: number; name: string; color: string }> } | { ok: false; erro: ErroCrm }> {
     const c = await this.lerConta();
-    if (!c.usuario) return { ok: true, tags: [] };
+    const cache = (await this.arm.lerChave<Array<{ id: number; name: string; color: string }>>('vz.crm.catalogoTags')) ?? [];
+    if (!c.usuario) return { ok: true, tags: cache };
     const r = await this.chamar(() => this.consultar<Array<{ id: number; name: string; color: string }>>('tags.list'));
-    if (!r.ok) return { ok: false, erro: r.erro };
-    const tags = Array.isArray(r.valor) ? r.valor : [];
-    await this.arm.gravarChave('vz.crm.catalogoTags', tags);
+    if (!r.ok) {
+      if (cache.length > 0) return { ok: true, tags: cache };
+      return { ok: false, erro: r.erro };
+    }
+    const tags = Array.isArray(r.valor) ? [...r.valor] : [];
+    for (const ct of cache) {
+      if (!tags.some((t) => t.name.toLowerCase() === ct.name.toLowerCase())) {
+        tags.push(ct);
+      }
+    }
+    if (tags.length > 0) {
+      await this.arm.gravarChave('vz.crm.catalogoTags', tags);
+    }
     return { ok: true, tags };
   }
 
@@ -709,7 +720,20 @@ export class ServicoCrm implements LeadsCRM {
       }
       const taskId = await this.daTask(ref);
       if (typeof taskId !== 'number') return taskId;
-      return this.executar(taskId, { tipo: 'etiquetas', adicionar, remover });
+      const res = await this.executar(taskId, { tipo: 'etiquetas', adicionar, remover });
+      if (res.ok && adicionar.length > 0) {
+        const cache = (await this.arm.lerChave<Array<{ id: number; name: string; color: string }>>('vz.crm.catalogoTags')) ?? [];
+        let alterou = false;
+        let proximoId = cache.reduce((max, t) => Math.max(max, typeof t.id === 'number' ? t.id : 0), 1000) + 1;
+        for (const tagNome of adicionar) {
+          if (!cache.some((t) => t.name.toLowerCase() === tagNome.toLowerCase())) {
+            cache.push({ id: proximoId++, name: tagNome, color: '#6366f1' });
+            alterou = true;
+          }
+        }
+        if (alterou) await this.arm.gravarChave('vz.crm.catalogoTags', cache);
+      }
+      return res;
     });
   }
 

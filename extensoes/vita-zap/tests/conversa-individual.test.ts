@@ -50,6 +50,11 @@ describe('sem JID: individual exige sinal positivo', () => {
     expect(classificar({ titulo: 'Victor Luan Cliente ...' }, [msg('a', { autor: 'Victor Luan Cliente Bom Repouso Mg' }), msg('b')])).toBe('individual');
   });
 
+  it('sem mensagem mas aceitaSemMensagens (contato da agenda recém-aberto) → individual', () => {
+    expect(classificarConversa([], conversa({ titulo: 'Ismael Roberto' }, []), undefined, false, true)).toBe('individual');
+    expect(classificarConversa([], conversa({ titulo: 'Grupo Amigos' }, []), undefined, false, true)).toBe('desconhecido');
+  });
+
   it('sem nenhuma mensagem, ou sem título → desconhecido', () => {
     expect(classificar({ titulo: 'Ana Cliente' }, [], [])).toBe('desconhecido');
     expect(classificar({ titulo: '' }, [msg('a', { minha: true })])).toBe('desconhecido');

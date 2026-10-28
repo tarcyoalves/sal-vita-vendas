@@ -99,7 +99,7 @@ describe('Cenário do Dono: varredura com termo CLIENTE, sem ultimaDeMim e data 
     }
     expect(motivosExclusao.get('nome não contém "CLIENTE"')).toBe(140);
     expect(motivosExclusao.get('não salvo na agenda (aparece só o número)')).toBe(101);
-    expect(motivosExclusao.get('última conversa 10/10/2026 é posterior a 16/09/2026') ?? motivosExclusao.get('última conversa 01/10/2026 é posterior a 16/09/2026')).toBe(231);
+    expect(motivosExclusao.get('última conversa posterior a 16/09/2026')).toBe(231);
 
     // 3. REGRA CRUCIAL (b): A dica "Seus contatos não têm CLIENTE no nome" NÃO pode aparecer!
     // Porque NÃO foram todos os excluídos que caíram pelo nome.

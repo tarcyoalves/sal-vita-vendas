@@ -21,6 +21,11 @@ describe('normalizarTelefone', () => {
     expect(normalizarTelefone('+351 912 345 678')).toBe('351912345678');
   });
 
+  it('CNPJ de 14 dígitos não é interpretado como telefone', () => {
+    expect(normalizarTelefone('10400015000109')).toBeNull();
+    expect(normalizarTelefone('10.400.015/0001-09')).toBeNull();
+  });
+
   it('descarta o que não dá para identificar', () => {
     expect(normalizarTelefone('')).toBeNull();
     expect(normalizarTelefone(null)).toBeNull();

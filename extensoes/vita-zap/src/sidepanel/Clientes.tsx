@@ -137,24 +137,50 @@ export function Clientes({ crm }: { crm: CrmPainel }) {
   return (
     <section>
       <div className="cartao">
-        <div className="filtros">
-          <label>
-            Buscar cliente
-            <input type="search" value={busca} placeholder="nome, telefone, etiqueta ou nota" onChange={(e) => setBusca(e.target.value)} />
-          </label>
-          <label>
-            Ordenar por
-            <select value={ordem} onChange={(e) => setOrdem(e.target.value as OrdemClientes)}>
+        <div className="busca-bloco">
+          <label htmlFor="busca-cliente" className="rotulo-campo">Buscar cliente</label>
+          <div className="campo-com-icone">
+            <span className="icone-busca" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </span>
+            <input
+              id="busca-cliente"
+              type="search"
+              value={busca}
+              placeholder="nome, telefone, etiqueta ou nota"
+              onChange={(e) => setBusca(e.target.value)}
+            />
+            {busca && (
+              <button
+                type="button"
+                className="btn-limpar-busca"
+                onClick={() => setBusca('')}
+                title="Limpar busca"
+                aria-label="Limpar busca"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="filtros-grid">
+          <div className="filtro-campo">
+            <label htmlFor="filtro-ordem">Ordenar por</label>
+            <select id="filtro-ordem" value={ordem} onChange={(e) => setOrdem(e.target.value as OrdemClientes)}>
               {ORDENS.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.rotulo}
                 </option>
               ))}
             </select>
-          </label>
-          <label>
-            Fase
-            <select value={fase} onChange={(e) => setFase(e.target.value as Fase | '')}>
+          </div>
+          <div className="filtro-campo">
+            <label htmlFor="filtro-fase">Fase</label>
+            <select id="filtro-fase" value={fase} onChange={(e) => setFase(e.target.value as Fase | '')}>
               <option value="">todas</option>
               {FASES.map((f) => (
                 <option key={f.id} value={f.id}>
@@ -162,10 +188,10 @@ export function Clientes({ crm }: { crm: CrmPainel }) {
                 </option>
               ))}
             </select>
-          </label>
-          <label>
-            Etiqueta
-            <select value={etiquetaId} onChange={(e) => setEtiquetaId(e.target.value)}>
+          </div>
+          <div className="filtro-campo">
+            <label htmlFor="filtro-etiqueta">Etiqueta</label>
+            <select id="filtro-etiqueta" value={etiquetaId} onChange={(e) => setEtiquetaId(e.target.value)}>
               <option value="">todas</option>
               {dados.etiquetas.map((e) => (
                 <option key={e.id} value={e.id}>
@@ -173,15 +199,26 @@ export function Clientes({ crm }: { crm: CrmPainel }) {
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+
+        <div className="filtros-rodape">
+          <label className="check" style={{ margin: 0 }}>
+            <input type="checkbox" checked={soComDados} onChange={(e) => setSoComDados(e.target.checked)} />
+            <span>Só quem tem fase, etiqueta, nota ou lembrete</span>
           </label>
         </div>
-        <label className="check">
-          <input type="checkbox" checked={soComDados} onChange={(e) => setSoComDados(e.target.checked)} />
-          Só quem tem fase, etiqueta, nota ou lembrete
-        </label>
-        <p className="ajuda">
-          {linhas.length} cliente{linhas.length === 1 ? '' : 's'} · baseado nas {vistas} conversas que a extensão já viu na lista do WhatsApp Web (a lista carrega aos poucos). Só aparecem contatos com "cliente" no nome; grupos ficam de fora.
-        </p>
+
+        <div className="clientes-resumo-barra">
+          <div className="clientes-contagem-destaque">
+            <strong>{linhas.length}</strong> {linhas.length === 1 ? 'cliente' : 'clientes'}
+            <span className="divisor-circulo">•</span>
+            <span className="vistas-sub">{vistas} conversas analisadas</span>
+          </div>
+          <p className="ajuda-curta">
+            Baseado no WhatsApp Web (carrega aos poucos). Grupos e contatos sem &ldquo;cliente&rdquo; ficam de fora.
+          </p>
+        </div>
       </div>
 
       {msg && <p className="erro">{msg}</p>}
@@ -190,43 +227,58 @@ export function Clientes({ crm }: { crm: CrmPainel }) {
         <div className="cartao">{vistas === 0 && Object.keys(dados.contatos).length === 0 ? 'Abra o WhatsApp Web: os clientes aparecem conforme a lista de conversas carrega.' : 'Nenhum cliente com esses filtros.'}</div>
       ) : (
         <ul className="lista" style={{ maxHeight: 'none' }}>
-          {linhas.slice(0, limite).map((c) => (
-            <li key={c.id}>
-              <div className="cliente-topo">
-                <b>{c.nome}</b>
-                <button type="button" className="pequeno primario" onClick={() => void abrir(c.nome, c.telefone)}>
-                  Abrir
-                </button>
-              </div>
-              <div>
-                {c.fase && (
-                  <span className="etq" style={{ background: corDaFase(c.fase) }}>
-                    {rotuloDaFase(c.fase)}
+          {linhas.slice(0, limite).map((c) => {
+            const inicial = (c.nome.trim().charAt(0) || '?').toUpperCase();
+            return (
+              <li key={c.id} className="cliente-item">
+                <div className="cliente-topo">
+                  <div className="cliente-identificacao">
+                    <span className="cliente-avatar" aria-hidden="true">{inicial}</span>
+                    <b title={c.nome}>{c.nome}</b>
+                  </div>
+                  <button type="button" className="btn-abrir-conversa" onClick={() => void abrir(c.nome, c.telefone)}>
+                    Abrir
+                  </button>
+                </div>
+                <div className="cliente-etiquetas">
+                  {c.fase && (
+                    <span className="etq etq-fase" style={{ background: corDaFase(c.fase) }}>
+                      {rotuloDaFase(c.fase)}
+                    </span>
+                  )}
+                  {c.etiquetas.map((e) => (
+                    <span key={e.id} className="etq" style={{ background: e.cor }}>
+                      {e.nome}
+                    </span>
+                  ))}
+                  {c.precisaResposta && (
+                    <span className="badge-precisa-resposta">
+                      <span className="ponto-alerta" aria-hidden="true">●</span> precisa de resposta
+                    </span>
+                  )}
+                </div>
+                <div className="suave cliente-meta">
+                  <span className="meta-interacao">
+                    Última interação: {c.ultimaInteracaoTexto || 'ainda não vista na lista'}
                   </span>
-                )}
-                {c.etiquetas.map((e) => (
-                  <span key={e.id} className="etq" style={{ background: e.cor }}>
-                    {e.nome}
-                  </span>
-                ))}
-                {c.precisaResposta && <span className="etq" style={{ background: '#c77800' }}>precisa de resposta</span>}
-              </div>
-              <div className="suave">
-                Última interação: {c.ultimaInteracaoTexto || 'ainda não vista na lista'}
-                {c.proximoLembrete && (
-                  <>
-                    {' · '}
-                    <span className={c.proximoLembrete.venceEm <= crm.agora.getTime() ? 'vencido' : ''}>Próximo lembrete: {formatarVencimento(c.proximoLembrete.venceEm, crm.agora)}</span>
-                  </>
-                )}
-                {c.notas > 0 && <> · {c.notas} nota{c.notas === 1 ? '' : 's'}</>}
-              </div>
-            </li>
-          ))}
+                  {c.proximoLembrete && (
+                    <span className={`meta-lembrete ${c.proximoLembrete.venceEm <= crm.agora.getTime() ? 'vencido' : ''}`}>
+                      {' · '}Próximo lembrete: {formatarVencimento(c.proximoLembrete.venceEm, crm.agora)}
+                    </span>
+                  )}
+                  {c.notas > 0 && (
+                    <span className="meta-notas">
+                      {' · '}{c.notas} nota{c.notas === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
       {linhas.length > limite && (
-        <button type="button" onClick={() => setLimite(limite + POR_PAGINA)}>
+        <button type="button" className="btn-mostrar-mais" onClick={() => setLimite(limite + POR_PAGINA)}>
           Mostrar mais ({linhas.length - limite})
         </button>
       )}

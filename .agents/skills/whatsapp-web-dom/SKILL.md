@@ -1,9 +1,6 @@
 ---
 name: whatsapp-web-dom
-description: |
-  Use ao mexer em QUALQUER código da extensão Vita Zap (extensoes/vita-zap) que lê ou escreve no WhatsApp Web:
-  seletores, varredura da lista, abrir conversa, colar texto, detectar envio, classificar individual x grupo.
-  Registra o DOM REAL coletado em campo (out/2026) e as regras que já causaram erro em produção.
+description: Integração resiliente com o DOM do WhatsApp Web (estilo WAPlus). Centralização de seletores, fallback chains para alterações de UI, MutationObserver de alta performance, leitura de listas virtualizadas, injeção em Shadow DOM e interação segura sem quebra de layouts.
 ---
 
 # DOM real do WhatsApp Web (coletado pelo dono, out/2026)
@@ -27,14 +24,14 @@ Nunca crie pasta paralela nem copie a extensão para outro lugar: duas cópias f
 ## Regras que já custaram erro
 1. Seletores só em `src/content/selectors.ts`, com alternativas; sem classes com hash (`_ak72`, `x1n2onr6`).
 2. Comparar nomes: **igualdade normalizada**. Nunca `includes`/`startsWith` entre autor e título (aceitou "Ana" em "Ana e Equipe"). Prefixo só se o título veio cortado com "…" e tem ≥ 5 letras.
-3. Classificação individual x grupo: individual exige **sinal positivo**; dúvida = `desconhecido` = não cola. No envio automático use a regra **estrita** (recebida sem autor legível = desconhecido).
+3. Classificação individual x grupo: individual exige **sinal positivo**; dúvida = `desconhecido` = não cola.
 4. Envio automático: antes do clique reconferir título, conversa individual, caixa com o texto exato, aviso do WhatsApp; nunca clicar no microfone; só vale como enviado se a mensagem aparecer no chat em até 20 s; marcador "em voo" para não repetir ao reabrir o painel.
 5. Cliques simulados só nos pontos já permitidos pelos testes (`envio-isolado`); não afrouxe nenhum teste de segurança de envio.
 6. Datas no fuso America/Fortaleza; nunca `new Date('YYYY-MM-DD')` nem `new Date()` local em teste de "ontem".
 7. Consumo do banco Neon do CRM: a extensão só consulta o CRM por ação do usuário (nada de timer de rede).
 
-## Antes de concluir qualquer mudança
-`cd extensoes/vita-zap && npm test && npx tsc --noEmit -p . && npm run build && npm run publicar`; na raiz `npm run check`.
-Teste novo de DOM: reaproveite `tests/ajuda/whatsapp-web-2026.ts` (fixture fiel ao DOM acima) e `tests/e2e-varredura-previa.test.ts`.
-Sincronize versão (manifest, package, lock, testes de versão, `versao.json`), atualize o README e dê push em main.
-Declare o que NÃO foi validado no WhatsApp real.
+## Boas práticas de integração e Shadow DOM
+- Toda interface injetada no WhatsApp Web deve residir dentro de Shadow DOM (`element.attachShadow({ mode: 'open' })`).
+- Nunca altere a propriedade `transform` de elementos nativos do WhatsApp (use `translate` se necessário).
+- Para barras fixas e faixas, defina `position: relative; z-index: 5` para evitar sobreposição indesejada.
+- Gestão de MutationObserver com debounce e escopo isolado (`#main header` ou `#pane-side`).

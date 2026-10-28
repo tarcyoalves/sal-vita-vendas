@@ -55,7 +55,7 @@ function comLimite<T>(p: Promise<T>, ms: number): Promise<T> {
  * Só se a busca não achar nada, achar mais de um contato ou a página não responder, cai no endereço
  * /send?phone=..., que recarrega a aba. Não envia nada. Devolve null se o telefone não serve.
  */
-export async function abrirConversaPorTelefone(telefone: string, nomeDica?: string): Promise<AberturaPorTelefone | null> {
+export async function abrirConversaPorTelefone(telefone: string, nomeDica?: string, recarregarSeNaoAchar = true): Promise<AberturaPorTelefone | null> {
   const url = urlDaConversaPorTelefone(telefone);
   if (!url) return null;
   const abas = await chrome.tabs.query({ url: `${URL_WHATSAPP}*` });
@@ -74,6 +74,7 @@ export async function abrirConversaPorTelefone(telefone: string, nomeDica?: stri
   } catch {
     /* a página não tem o content script (aba antiga) ou não respondeu: cai no endereço */
   }
+  if (!recarregarSeNaoAchar) return null;
   await chrome.tabs.update(aba.id, { url, active: true });
   return { via: 'endereco', aviso: AVISO_FALLBACK_ENDERECO };
 }

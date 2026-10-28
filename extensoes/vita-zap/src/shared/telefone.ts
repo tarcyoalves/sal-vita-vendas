@@ -19,7 +19,9 @@ export function normalizarTelefone(texto: string | null | undefined): string | n
   if (comMais) return d;
   if (d.startsWith('55') && (d.length === 12 || d.length === 13)) return d;
   if (d.length === 10 || d.length === 11) return `55${d}`;
-  return d; // 12 a 15 dígitos que não começam com 55: já traz o DDI (ex.: jid de outro país)
+  if (d.length === 14 && !limpo.startsWith('00')) return null; // CNPJ sem '+' não é telefone
+  if (limpo.startsWith('00') && d.length >= 11) return d;
+  return null;
 }
 
 /**

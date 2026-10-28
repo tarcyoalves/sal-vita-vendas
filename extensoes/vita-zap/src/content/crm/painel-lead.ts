@@ -160,9 +160,14 @@ export function abrirEtiquetas(ancora: HTMLElement, ctx: ContextoLead, ref: RefC
   const catalogoEl = h('div', { style: 'margin-top: 8px;' });
   let atuais = [...lead.etiquetas];
   let catalogo: Array<{ name: string; color: string }> = [...TAGS_PADRAO_CRM];
+  for (const t of atuais) {
+    if (!catalogo.some((c) => c.name.toLowerCase() === t.toLowerCase()) && !RESERVADAS.includes(t)) {
+      catalogo.push({ name: t, color: '#6366f1' });
+    }
+  }
 
   // Carrega catálogo atualizado do CRM se disponível
-  void ctx.leads.catalogoTags?.().then((r) => {
+  void ctx.leads.catalogoTags().then((r) => {
     if (r?.ok && Array.isArray(r.tags) && r.tags.length > 0) {
       catalogo = r.tags.map((s) => ({ name: s.name, color: s.color || '#6366f1' }));
       desenhar();
@@ -174,6 +179,13 @@ export function abrirEtiquetas(ancora: HTMLElement, ctx: ContextoLead, ref: RefC
     const r = await protegido(() => ctx.leads.alterarEtiquetas(ref, mudanca), msg);
     if (resultado(r, msg, ctx, 'Etiquetas atualizadas no CRM.') && r?.ok) {
       atuais = [...r.lead.etiquetas];
+      if (mudanca.adicionar) {
+        for (const add of mudanca.adicionar) {
+          if (!catalogo.some((c) => c.name.toLowerCase() === add.toLowerCase())) {
+            catalogo.push({ name: add, color: '#6366f1' });
+          }
+        }
+      }
       desenhar();
     }
   };

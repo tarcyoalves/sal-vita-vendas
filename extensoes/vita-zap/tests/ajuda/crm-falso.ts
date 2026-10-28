@@ -156,6 +156,14 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
     if (caminho === 'tasks.reminders') {
       return ok(crm.tasks.filter((t) => t.reminderDate && t.reminderEnabled && t.status === 'pending').map((t) => ({ id: t.id, title: t.title, reminderDate: t.reminderDate, reminderEnabled: t.reminderEnabled, status: t.status, notes: null, assignedTo: null, phone: t.phone })));
     }
+    if (caminho === 'tags.list') {
+      return ok([
+        { id: 1, name: 'Cliente Ativo', color: '#16a34a' },
+        { id: 2, name: 'Acompanhar', color: '#0284c7' },
+        { id: 3, name: 'Quente', color: '#ef4444' },
+        { id: 4, name: 'Reativar', color: '#ea580c' },
+      ]);
+    }
     return erroTrpc(404, 'NOT_FOUND', `procedure ${caminho} desconhecida`);
   }) as typeof fetch;
 

@@ -23,4 +23,10 @@ describe('autorBateComTitulo', () => {
     expect(autorBateComTitulo('adriano clien…', 'Adriano Cliente Goiás', false)).toBe(true);
     expect(autorBateComTitulo('adriano clien…', 'Adriano Cliente Goiás', true)).toBe(false);
   });
+  it('título com formato CRM (delimitador ou sufixo Cliente) aceita autor base', () => {
+    expect(autorBateComTitulo('ismael roberto', 'Ismael Roberto - AGROPECUÁRIA PRADAL', true)).toBe(true);
+    expect(autorBateComTitulo('agro comercial penteado', 'Agro Comercial Penteado Cliente Imbituva PR', true)).toBe(true);
+    expect(autorBateComTitulo('robson', 'Robson Cliente Itabela Ba', true)).toBe(true);
+    expect(autorBateComTitulo('robson', 'Robson (Fazenda Sol)', true)).toBe(true);
+  });
 });

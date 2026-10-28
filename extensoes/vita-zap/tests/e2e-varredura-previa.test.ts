@@ -237,10 +237,10 @@ describe('1. varredura com o termo CLIENTE (rolagem virtualizada)', () => {
 // ── 2. Prévia com os filtros do dono ─────────────────────────────────────────
 
 const FORA_COM_SO_MINHA: Record<string, string> = {
-  'Ana CLIENTE Souza': 'última conversa 27/10/2026 é posterior a 16/09/2026',
-  'Bruno CLIENTE Lima': 'última conversa 26/10/2026 é posterior a 16/09/2026',
-  'Carla CLIENTE Dias': 'última conversa 23/10/2026 é posterior a 16/09/2026',
-  'Diego CLIENTE Rocha': 'última conversa 17/09/2026 é posterior a 16/09/2026',
+  'Ana CLIENTE Souza': 'última conversa posterior a 16/09/2026',
+  'Bruno CLIENTE Lima': 'última conversa posterior a 16/09/2026',
+  'Carla CLIENTE Dias': 'última conversa posterior a 16/09/2026',
+  'Diego CLIENTE Rocha': 'última conversa posterior a 16/09/2026',
   'Gil CLIENTE Prado': 'sem mensagem sua (nenhum sinal de conversa feita por você)',
   'Igor CLIENTE Pires': 'recebeu campanha há 5 dia(s) (mínimo 14)',
   'Grupo CLIENTES Mossoró': 'grupo ou lista de transmissão',

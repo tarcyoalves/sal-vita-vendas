@@ -4,7 +4,7 @@
 // Roteiro: digita o telefone na busca (vários formatos), espera os resultados assentarem, abre quando há UM
 // contato individual (ou um único cujo nome bate com a dica), confere o cabeçalho e limpa a busca.
 
-import { escolherResultado, formatoCurto, formatosDeBusca } from '../shared/abrir-por-telefone';
+import { escolherResultado, formatoCurto, formatosDeBusca, mesmoNome } from '../shared/abrir-por-telefone';
 import type { RespostaConteudo } from '../shared/mensagens';
 import { abrirLinhaDaLista } from './abrir-conversa';
 import { memorizarTelefone } from './crm/telefone-conhecido';
@@ -46,7 +46,13 @@ export async function abrirConversaPorTelefoneSemRecarregar(telefone: string, no
 
       const alvo = candidatos[escolha.indice];
       abrirLinhaDaLista(alvo.el);
-      const abriu = await esperarAte(() => nomeDaConversaAberta() === alvo.linha.nome, 6000);
+      const abriu = await esperarAte(() => {
+        const aberto = nomeDaConversaAberta();
+        if (!aberto) return false;
+        if (aberto === alvo.linha.nome || mesmoNome(aberto, alvo.linha.nome)) return true;
+        if (nomeDica && (aberto === nomeDica || mesmoNome(aberto, nomeDica))) return true;
+        return false;
+      }, 6000);
       if (!abriu) {
         if (!encontrar(document, 'painelConversa')) return falha('seletor', 'Painel da conversa não encontrado (seletor #main).');
         return falha('cabecalho', `A conversa aberta não é "${alvo.linha.nome}".`);

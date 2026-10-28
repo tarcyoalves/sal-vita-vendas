@@ -89,8 +89,8 @@ describe('Executor — modo uma tecla', () => {
 
     t.avancarRelogio(90_000);
     t.agendados.at(-1)?.fn();
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 20));
     expect(abertos(t.pedidos)).toEqual(['Ana', 'Bia']);
   });
 

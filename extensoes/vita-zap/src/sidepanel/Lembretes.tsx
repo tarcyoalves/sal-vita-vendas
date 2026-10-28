@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { abrirConversaNoWhatsApp, abrirConversaPorTelefone, textoDaAbertura } from '../shared/crm-acoes';
 import { ehLembreteCrm } from '../shared/crm-remoto';
-import { normalizarTelefone } from '../shared/telefone';
+import { telefoneDoNomeExibido } from '../shared/telefone';
 import { agruparLembretes, formatarVencimento, prazoRapido, textoAtualizadoHa } from '../shared/crm-lembretes';
 import type { EstadoConta } from '../shared/leads';
 import type { Lembrete } from '../shared/crm-tipos';
@@ -114,14 +114,18 @@ export function Lembretes({ crm }: { crm: CrmPainel }) {
   async function abrir(l: Lembrete) {
     setMsg(null);
     try {
-      const tel = l.telefone ?? normalizarTelefone(l.nome) ?? undefined;
-      const porTelefone = ehLembreteCrm(l.id) && tel ? await abrirConversaPorTelefone(tel, l.nome) : null;
-      if (porTelefone) {
-        setMsg(textoDaAbertura(porTelefone, l.nome));
-        return;
+      const tel = l.telefone ?? telefoneDoNomeExibido(l.nome) ?? undefined;
+      const nomeDica = (l as { nomeDica?: string }).nomeDica ?? l.nome;
+      let abriu = false;
+      if (ehLembreteCrm(l.id) && tel) {
+        const porTelefone = await abrirConversaPorTelefone(tel, nomeDica, false);
+        if (porTelefone && porTelefone.via === 'busca') {
+          setMsg(textoDaAbertura(porTelefone, nomeDica));
+          abriu = true;
+        }
       }
-      await abrirConversaNoWhatsApp(crm.repo, { nome: l.nome, telefone: tel, rascunho: l.rascunho, lembreteId: l.id });
-      setMsg(`Abrindo a conversa de ${l.nome} no WhatsApp Web. O rascunho (se houver) será colado na caixa: confira e aperte Enter.`);
+      if (!abriu) await abrirConversaNoWhatsApp(crm.repo, { nome: nomeDica, telefone: tel, rascunho: l.rascunho, lembreteId: l.id });
+      setMsg(`Abrindo a conversa de ${nomeDica} no WhatsApp Web. O rascunho (se houver) será colado na caixa: confira e aperte Enter.`);
     } catch {
       setMsg('Não consegui falar com a aba do WhatsApp Web. Abra web.whatsapp.com e recarregue a aba (F5).');
     }

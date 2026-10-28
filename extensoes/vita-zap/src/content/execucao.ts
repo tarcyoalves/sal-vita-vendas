@@ -81,6 +81,8 @@ export function classificarConversa(
   titulo?: string | null,
   /** Envio automático: recebida sem autor legível → desconhecido; autor tem de ser o título (só truncamento "…"). */
   estrito = false,
+  /** Conversa aberta sem histórico prévio (ex.: contato da agenda sem mensagens anteriores). */
+  aceitaSemMensagens = false,
 ): TipoConversa {
   let individual = false;
   let teveJid = false;
@@ -99,7 +101,10 @@ export function classificarConversa(
   const tituloEl = encontrar(raiz, 'tituloCabecalho');
   const tituloLido = limparMarcas(titulo ?? tituloEl?.getAttribute('title') ?? tituloEl?.textContent ?? '');
   if (tituloLido === '' || TITULO_COM_PALAVRA_DE_GRUPO.test(tituloLido)) return 'desconhecido';
-  if (mensagens.length === 0) return 'desconhecido';
+  if (mensagens.length === 0) {
+    if (aceitaSemMensagens && tituloLido !== '' && !TITULO_COM_PALAVRA_DE_GRUPO.test(tituloLido)) return 'individual';
+    return 'desconhecido';
+  }
   const recebidas = mensagens.filter((m) => !mensagemEhMinha(m));
   if (recebidas.length === 0) return 'individual'; // só mensagens minhas e nenhum sinal de grupo
   const autores = new Set<string>();
@@ -132,6 +137,16 @@ export function autorBateComTitulo(autorNormalizado: string, tituloLido: string,
   const tituloCortado = SEM_RETICENCIAS.test(tituloLido);
   SEM_RETICENCIAS.lastIndex = 0;
   if (tituloCortado && tit.length >= MIN_PREFIXO && autor.startsWith(tit)) return true;
+
+  // Título CRM com delimitador (' - Empresa') ou sufixo de cliente (' Cliente Cidade UF')
+  // Ex: "Ismael Roberto - AGROPECUÁRIA PRADAL" (autor "Ismael Roberto")
+  // Ex: "Agro Comercial Penteado Cliente Imbituva PR" (autor "Agro Comercial Penteado")
+  // Ex: "Robson Cliente Itabela Ba" (autor "Robson")
+  if (tit.startsWith(autor)) {
+    const resto = tit.slice(autor.length).trim();
+    if (/^[-–—|/(]|\bcliente\b|\blead\b/i.test(resto)) return true;
+  }
+
   if (estrito) return false;
   const autorCortado = /\.{2,}|…/.test(autorNormalizado);
   return autorCortado && autor.length >= MIN_PREFIXO && tit.startsWith(autor);
@@ -302,9 +317,18 @@ async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promi
 
   // 2. Abrir e conferir o cabeçalho.
   abrirLinhaDaLista(alvo.el);
+  let tentouRefazer = false;
   const abriu = await esperarAte(() => {
     const aberto = tituloAberto();
     if (aberto === alvo.linha.nome || aberto === nome || (aberto != null && mesmoNome(aberto, nome))) return true;
+    if (!tentouRefazer) {
+      const caixaBusca = encontrar(document, 'caixaBusca');
+      if (caixaBusca && document.activeElement === caixaBusca) {
+        caixaBusca.blur();
+        abrirLinhaDaLista(alvo.el);
+        tentouRefazer = true;
+      }
+    }
     return null;
   }, 6000);
 
@@ -330,8 +354,9 @@ function avisoDoWhatsAppAberto(): boolean {
  */
 export function reconferirAntesDoClique(nome: string, textoColado: string): string | null {
   if (!painelVivo()) return 'o painel parou de responder (fechado ou travado)';
-  if (tituloAberto() !== nome) return `a conversa aberta mudou: não é mais "${nome}"`;
-  const tipo = classificarConversa(idsDasMensagens(), document, nome, true);
+  const aberto = tituloAberto();
+  if (aberto !== nome && (aberto == null || !mesmoNome(aberto, nome))) return `a conversa aberta mudou: não é mais "${nome}"`;
+  const tipo = classificarConversa(idsDasMensagens(), document, nome, false, true);
   if (tipo === 'grupo') return `"${nome}" parece grupo, comunidade ou transmissão`;
   if (tipo === 'desconhecido') return `não consegui confirmar que "${nome}" é conversa individual`;
   const caixa = encontrar(document, 'caixaMensagem');
@@ -368,8 +393,9 @@ export async function abrirEColar(
   if (falha) return falha;
 
   // 3. Só conversa individual, com sinal positivo (ver classificarConversa).
-  await esperarAte(() => (idsDasMensagens().length > 0 ? true : null), 5000);
-  const tipo = classificarConversa(idsDasMensagens(), document, undefined, envioAutomatico);
+  // Dá até 2.5s para o histórico de mensagens carregar no DOM; se não houver histórico (agenda), aceitaSemMensagens=true.
+  await esperarAte(() => (idsDasMensagens().length > 0 ? true : null), 2500);
+  const tipo = classificarConversa(idsDasMensagens(), document, nome, false, true);
   if (tipo === 'grupo') return erro('grupo', `"${nome}" é grupo, comunidade ou lista de transmissão.`);
   if (tipo === 'desconhecido') return erro('nao_confirmado', `Não consegui confirmar que "${nome}" é conversa individual. Não colei nada.`);
 

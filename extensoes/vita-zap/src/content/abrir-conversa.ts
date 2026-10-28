@@ -11,6 +11,7 @@
  * ser o elemento de dentro, como num clique real.
  */
 function cliqueComoPessoa(base: HTMLElement): void {
+  base.scrollIntoView?.({ block: 'nearest' });
   const r = base.getBoundingClientRect();
   const evento: MouseEventInit = {
     bubbles: true,
@@ -29,6 +30,13 @@ function cliqueComoPessoa(base: HTMLElement): void {
   if (temPointer) alvo.dispatchEvent(new PointerEvent('pointerup', ponteiro));
   alvo.dispatchEvent(new MouseEvent('mouseup', evento));
   alvo.dispatchEvent(new MouseEvent('click', evento));
+  if (alvo !== base) {
+    if (temPointer) base.dispatchEvent(new PointerEvent('pointerdown', ponteiro));
+    base.dispatchEvent(new MouseEvent('mousedown', evento));
+    if (temPointer) base.dispatchEvent(new PointerEvent('pointerup', ponteiro));
+    base.dispatchEvent(new MouseEvent('mouseup', evento));
+    base.dispatchEvent(new MouseEvent('click', evento));
+  }
 }
 
 /** Abre a conversa de uma linha da lista de conversas (ou dos resultados da busca). */

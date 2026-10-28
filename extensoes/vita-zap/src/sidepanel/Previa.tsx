@@ -137,7 +137,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       aguardandoPorChave: mapaAguardando,
       comRegistroDoAtendente: comRegistro,
     };
-  }, [crm?.dados, dados.contatos]);
+  }, [crm?.dados, dados.contatos, tagsCrmRemotas]);
 
   const filtros: Filtros = useMemo(
     () => ({
@@ -216,7 +216,10 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
   const motivosExclusao = useMemo(() => {
     const contagem = new Map<string, number>();
     for (const a of excluidos) {
-      contagem.set(a.decisao.motivo, (contagem.get(a.decisao.motivo) ?? 0) + 1);
+      const m = a.decisao.motivo.startsWith('recebeu campanha há')
+        ? 'já recebeu campanha recentemente (intervalo de segurança)'
+        : a.decisao.motivo;
+      contagem.set(m, (contagem.get(m) ?? 0) + 1);
     }
     return Array.from(contagem.entries()).sort((a, b) => b[1] - a[1]);
   }, [excluidos]);
@@ -372,6 +375,28 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
     const aAdicionar = alvos.filter((c) => !existentes.has(c.chave));
     const novos = criarItens(aAdicionar, modelos, filtros.contem).map((i) => ({ ...i, marcado: true }));
     setItens([...atualizados, ...novos]);
+  }
+
+  function incluirContatosAgenda() {
+    setIncluirSemConversa(true);
+    salvarPreferencia('textoBase', base);
+    setErrosAprovacao([]);
+    const f: Filtros = { ...filtros, incluirSemConversa: true };
+    const av = aplicarFiltros(dados.contatos, f, {
+      agora: new Date(),
+      naoEnviar: new Set(dados.naoEnviar.map((n) => n.chave)),
+      ultimoEnvioPorChave: ultimoEnvioPorChave(dados.envios),
+      tagsPorChave,
+      fasePorChave,
+      aguardandoPorChave,
+      comRegistroDoAtendente,
+    });
+    const contatosInc = av.filter((x) => x.decisao.situacao === 'incluido').map((x) => x.contato);
+    const contatosRev = av.filter((x) => x.decisao.situacao === 'revisar' && !x.contato.duplicado).map((x) => x.contato);
+    const itensInc = criarItens(contatosInc, modelos, f.contem).map((i) => ({ ...i, marcado: true }));
+    const itensRev = criarItens(contatosRev, modelos, f.contem).map((i) => ({ ...i, marcado: true }));
+    setItens([...itensInc, ...itensRev]);
+    setAssinaturaPrevia(JSON.stringify({ filtros: f, modelos }));
   }
 
   function incluirTodosSemMensagemSua() {
@@ -907,14 +932,14 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
             <strong>{incluidos.length === 0 ? `Por que nenhum contato entrou (${excluidos.length} fora):` : `Motivos dos ${excluidos.length} contatos fora da campanha:`}</strong>
             <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
               {motivosExclusao.map(([motivo, qtd]) => (
-                <li key={motivo} style={{ marginBottom: 4 }}>
-                  <b>{qtd}</b> contato{qtd > 1 ? 's' : ''}: <i>{motivo}</i>
-                  {(motivo.includes('agenda') || motivo === 'sem conversa anterior') && !incluirSemConversa && (
+                <li key={motivo} style={{ marginBottom: 6, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                  <span><b>{qtd}</b> contato{qtd > 1 ? 's' : ''}: <i>{motivo}</i></span>
+                  {(motivo.includes('agenda') || motivo.includes('sem conversa anterior')) && !incluirSemConversa && (
                     <button
                       type="button"
                       className="pequeno"
                       style={{ fontSize: 11, padding: '1px 6px', marginLeft: 6, cursor: 'pointer', background: '#0284c7', color: '#fff', border: 'none', borderRadius: 4 }}
-                      onClick={() => setIncluirSemConversa(true)}
+                      onClick={incluirContatosAgenda}
                     >
                       + Incluir contatos da agenda ({qtd})
                     </button>
@@ -954,7 +979,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
                       </button>
                     </>
                   )}
-                  {(motivo.includes('última conversa') || motivo.includes('posterior') || motivo.includes('anterior')) && (antesDe || depoisDe) && (
+                  {(motivo.includes('posterior a') || motivo.includes('anterior a')) && (antesDe || depoisDe) && (
                     <button
                       type="button"
                       className="pequeno"
@@ -1026,6 +1051,21 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
               ? `Nenhum contato entrou direto, mas há ${revisar.length} para revisar. Você pode gerar a prévia e marcar quem deseja incluir.`
               : 'O botão Gerar prévia só libera quando pelo menos 1 contato entra na campanha (ou há contatos para revisar). Ajuste ou limpe os filtros acima.'}
           </p>
+        )}
+        {agendaExcluidos.length > 0 && !incluirSemConversa && (
+          <div style={{ background: '#e0f2fe', border: '1px solid #7dd3fc', borderRadius: 6, padding: '10px 12px', margin: '10px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ fontSize: 13, color: '#0369a1' }}>
+              <strong>💡 Dica:</strong> Você tem <b>{agendaExcluidos.length}</b> contatos salvos da agenda que estão de fora por não terem data recente no WhatsApp.
+            </div>
+            <button
+              type="button"
+              className="primario pequeno"
+              style={{ whiteSpace: 'nowrap', fontWeight: 600, padding: '4px 10px' }}
+              onClick={incluirContatosAgenda}
+            >
+              + Incluir {agendaExcluidos.length} contatos da agenda
+            </button>
+          </div>
         )}
         <button
           type="button"

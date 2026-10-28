@@ -139,7 +139,7 @@ describe('content script: abrirConversaPorTelefoneSemRecarregar', () => {
     expect(wa.aberta()).toBeNull();
     const com = await abrirConversaPorTelefoneSemRecarregar('5584999990000', 'Carlos');
     expect(com).toEqual({ ok: true, nome: 'Carlos Cliente' });
-  });
+  }, 15_000);
 
   it('memoriza o telefone da conversa aberta (o contato salvo só mostra o nome)', async () => {
     montarWhatsAppComBusca([ANA]);

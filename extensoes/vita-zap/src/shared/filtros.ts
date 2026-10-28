@@ -188,13 +188,13 @@ function avaliarSemFiltroDeMensagemMinha(c: ContatoVarrido, filtros: Filtros, ct
     if (filtros.ultimaConversaAntesDe && !(diferencaDias(c.ultimaConversa, filtros.ultimaConversaAntesDe) <= 0)) {
       return {
         situacao: 'excluido',
-        motivo: `última conversa ${formatarDataBr(c.ultimaConversa)} é posterior a ${formatarDataBr(filtros.ultimaConversaAntesDe)}`,
+        motivo: `última conversa posterior a ${formatarDataBr(filtros.ultimaConversaAntesDe)}`,
       };
     }
     if (filtros.ultimaConversaDepoisDe && !(diferencaDias(c.ultimaConversa, filtros.ultimaConversaDepoisDe) >= 0)) {
       return {
         situacao: 'excluido',
-        motivo: `última conversa ${formatarDataBr(c.ultimaConversa)} é anterior a ${formatarDataBr(filtros.ultimaConversaDepoisDe)}`,
+        motivo: `última conversa anterior a ${formatarDataBr(filtros.ultimaConversaDepoisDe)}`,
       };
     }
     partes.push(`última conversa ${formatarDataBr(c.ultimaConversa)}`);

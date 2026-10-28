@@ -146,5 +146,5 @@ export async function consumirAcaoPendente(repo: RepositorioContatos): Promise<v
   const aoConcluir = pedido.lembreteId
     ? () => repo.atualizarLembrete(pedido.lembreteId!, { status: 'concluido' })
     : undefined;
-  await abrirConversaComRascunho(pedido.nome, pedido.rascunho, pedido.telefone, Boolean(pedido.disparoAutomatico || pedido.enviarAutomatico), aoConcluir);
+  await abrirConversaComRascunho(pedido.nome, pedido.rascunho, pedido.telefone, Boolean(pedido.disparoAutomatico), aoConcluir);
 }

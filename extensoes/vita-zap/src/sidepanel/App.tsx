@@ -3,8 +3,10 @@ import { abrirBanco, listarCampanhas, listarContatos, listarEnvios, listarNaoEnv
 import type { Campanha } from '../shared/campanha';
 import type { ContatoVarrido } from '../shared/contatos';
 import type { Envio, NaoEnviar } from '../shared/exportar';
+import type { EstadoConta } from '../shared/leads';
 import { Acompanhar, resumoDoPainel, rotuloDaAbaAcompanhar, useAcompanhando } from './Acompanhar';
 import { Clientes } from './Clientes';
+import { ContaCrm } from './ContaCrm';
 import { AvisoVersao } from './AvisoVersao';
 import { conectarAutomaticamente, dependenciasPadrao } from './conexao';
 import { useCrm } from './crm';
@@ -43,6 +45,19 @@ export function App() {
   const pedidoAtendido = useRef(0);
   const [dados, setDados] = useState<DadosLocais>({ contatos: [], campanhas: [], envios: [], naoEnviar: [] });
   const [campanhaAtiva, setCampanhaAtiva] = useState<string | null>(null);
+  const [conta, setConta] = useState<EstadoConta | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    crm.repo.conta().then((c) => {
+      if (vivo) setConta(c);
+    }).catch(() => undefined);
+    return crm.repo.aoMudar(() => {
+      crm.repo.conta().then((c) => {
+        if (vivo) setConta(c);
+      }).catch(() => undefined);
+    });
+  }, [crm.repo]);
 
   // Abriu o painel: se o Chrome já deu acesso ao CRM e o atendente está logado no site, conecta sozinho (sem senha);
   // depois busca os lembretes do CRM (no máximo 1 por hora; sem login não consulta nada).
@@ -85,23 +100,52 @@ export function App() {
 
   return (
     <div className="app">
+      {conta && !conta.usuario && (
+        <div className="painel-bloqueio-overlay" role="dialog" aria-modal="true">
+          <div className="painel-bloqueio-card">
+            <div className="painel-bloqueio-icone" aria-hidden="true">🔒</div>
+            <h2 className="painel-bloqueio-titulo">Acesso Protegido</h2>
+            <p className="painel-bloqueio-desc">
+              Autentique-se com sua conta do CRM Sal Vita para desbloquear os recursos do Vita Zap.
+            </p>
+            <ContaCrm crm={crm} />
+          </div>
+        </div>
+      )}
       <header className="topo">
-        <strong>Vita Zap</strong>
+        <div className="topo-marca">
+          <span className="topo-logo" aria-hidden="true">VZ</span>
+          <strong>Vita Zap</strong>
+        </div>
         <span className="selo">CRM · você aperta o Enter</span>
       </header>
       <AvisoVersao />
-      <nav className="abas">
-        {ABAS.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            className={`${a.id === aba ? 'ativa' : ''}${a.id === 'acompanhar' && (resumoAcomp?.vencidos ?? 0) > 0 ? ' alerta' : ''}`.trim()}
-            title={a.id === 'acompanhar' && (resumoAcomp?.vencidos ?? 0) > 0 ? 'Há cliente em acompanhamento com lembrete vencido' : undefined}
-            onClick={() => setAba(a.id)}
-          >
-            {a.id === 'acompanhar' ? rotuloDaAbaAcompanhar(resumoAcomp) : a.rotulo}
-          </button>
-        ))}
+      <nav className="abas" aria-label="Navegação do painel">
+        <div className="abas-linha abas-linha-crm">
+          {ABAS.slice(0, 3).map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={`${a.id === aba ? 'ativa' : ''}${a.id === 'acompanhar' && (resumoAcomp?.vencidos ?? 0) > 0 ? ' alerta' : ''}`.trim()}
+              title={a.id === 'acompanhar' && (resumoAcomp?.vencidos ?? 0) > 0 ? 'Há cliente em acompanhamento com lembrete vencido' : undefined}
+              onClick={() => setAba(a.id)}
+            >
+              {a.id === 'acompanhar' ? rotuloDaAbaAcompanhar(resumoAcomp) : a.rotulo}
+            </button>
+          ))}
+        </div>
+        <div className="abas-linha abas-linha-campanha">
+          {ABAS.slice(3).map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={`${a.id === aba ? 'ativa' : ''}`.trim()}
+              onClick={() => setAba(a.id)}
+            >
+              {a.rotulo}
+            </button>
+          ))}
+        </div>
       </nav>
       <main>
         {aba === 'lembretes' && <Lembretes crm={crm} />}

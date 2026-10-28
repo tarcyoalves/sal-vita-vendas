@@ -255,4 +255,17 @@ describe('filtros', () => {
     expect(avaliarContato(c2, fAguardando, ctxAguardando).situacao).toBe('excluido');
     expect(avaliarContato(c2, fAguardando, ctxAguardando).motivo).toMatch(/não está aguardando resposta/);
   });
+
+  it('motivo de data posterior a corte é uniforme para agrupar na prévia sem poluir a tela', () => {
+    const f = filtros({ ultimaConversaAntesDe: '2026-09-10' });
+    const c1 = contato('Cliente Outubro', { ultimaConversa: '2026-10-06' });
+    const c2 = contato('Cliente Novembro', { ultimaConversa: '2026-10-20' });
+    const av1 = avaliarContato(c1, f, ctxVazio);
+    const av2 = avaliarContato(c2, f, ctxVazio);
+    expect(av1.situacao).toBe('excluido');
+    expect(av2.situacao).toBe('excluido');
+    expect(av1.motivo).toBe('última conversa posterior a 10/09/2026');
+    expect(av2.motivo).toBe('última conversa posterior a 10/09/2026');
+    expect(av1.motivo).toBe(av2.motivo);
+  });
 });
