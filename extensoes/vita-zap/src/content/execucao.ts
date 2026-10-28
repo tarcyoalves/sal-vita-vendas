@@ -369,7 +369,14 @@ async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promi
 /** Existe uma janela/aviso do WhatsApp aberto sobre a conversa? */
 function avisoDoWhatsAppAberto(): boolean {
   for (const el of document.querySelectorAll<HTMLElement>(SELETORES.avisoWhatsApp.join(','))) {
-    if (!el.hidden && el.getAttribute('aria-hidden') !== 'true') return true;
+    if (el.hidden || el.getAttribute('aria-hidden') === 'true') continue;
+    // Ignora elementos dentro do menu lateral (#side), dentro da própria extensão ou no rodapé
+    if (el.closest('#side') || el.closest('[data-vita-zap]') || el.closest('#main footer')) continue;
+    // Se for role="alert", só conta se for um modal popup explícito ou estiver dentro de um diálogo modal
+    if (el.getAttribute('role') === 'alert' && !el.matches('[data-animate-modal-popup="true"], [role="alertdialog"], [data-testid="popup-contents"]')) {
+      if (!el.closest('[role="dialog"], [role="alertdialog"], [data-animate-modal-popup="true"]')) continue;
+    }
+    return true;
   }
   return false;
 }
@@ -388,9 +395,10 @@ export function reconferirAntesDoClique(nome: string, textoColado: string): stri
   if (tipo === 'desconhecido') return `não consegui confirmar que "${nome}" é conversa individual`;
   const caixa = encontrar(document, 'caixaMensagem');
   if (!caixa) return 'a caixa de mensagem sumiu';
-  const atual = textoDoCampoComEmoji(caixa);
-  if (atual.trim() === '') return 'a caixa de mensagem está vazia';
-  if (normalizarParaComparar(atual) !== normalizarParaComparar(textoColado)) return 'o texto da caixa não é mais exatamente o que foi colado';
+  const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
+  const alvo = normalizarParaComparar(textoColado);
+  if (atual === '') return 'a caixa de mensagem está vazia';
+  if (atual !== alvo) return 'o texto da caixa não é mais exatamente o que foi colado';
   if (avisoDoWhatsAppAberto()) return 'o WhatsApp está mostrando um aviso/janela';
   return null;
 }
@@ -401,8 +409,9 @@ type Emitir = (evento: EventoConteudo) => void;
 function limparSeForNosso(texto: string): boolean {
   const caixa = encontrar(document, 'caixaMensagem');
   if (!caixa) return false;
-  const atual = textoDoCampoComEmoji(caixa);
-  if (atual.trim() === '' || normalizarParaComparar(atual) !== normalizarParaComparar(texto)) return false;
+  const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
+  const alvo = normalizarParaComparar(texto);
+  if (atual === '' || atual !== alvo) return false;
   limparCampo(caixa);
   return true;
 }
@@ -434,8 +443,13 @@ export async function abrirEColar(
   const idsAntes = idsDasMensagens();
   const antes = new Set(idsAntes);
   escreverNoCampo(caixa, texto);
-  await esperar(300);
-  if (normalizarParaComparar(textoDoCampoComEmoji(caixa)) !== normalizarParaComparar(texto)) {
+  const alvo = normalizarParaComparar(texto);
+  const colou = await esperarAte(() => {
+    const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
+    return atual === alvo ? true : null;
+  }, 2500, 100);
+
+  if (!colou) {
     limparCampo(caixa);
     return erro('colar_falhou', 'O texto não ficou na caixa de mensagem.');
   }
@@ -510,9 +524,10 @@ export function limparCaixa(texto: string): RespostaConteudo {
   pararObservacao();
   const caixa = encontrar(document, 'caixaMensagem');
   if (!caixa) return { ok: true, limpou: false, avisos: ['caixa de mensagem não encontrada'] };
-  const atual = textoDoCampoComEmoji(caixa);
-  if (atual.trim() === '') return { ok: true, limpou: false };
-  if (normalizarParaComparar(atual) !== normalizarParaComparar(texto)) {
+  const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
+  const alvo = normalizarParaComparar(texto);
+  if (atual === '') return { ok: true, limpou: false };
+  if (atual !== alvo) {
     return { ok: true, limpou: false, avisos: ['o texto da caixa foi editado; deixei como está'] };
   }
   limparCampo(caixa);
@@ -534,8 +549,13 @@ export async function abrirEPrepararRascunho(nome: string, rascunho: string | nu
   if (!caixa) return erro('seletor', 'Caixa de mensagem não encontrada.');
   if (textoDoCampoComEmoji(caixa).trim() !== '') return erro('caixa_ocupada', `A conversa de "${nome}" já tem um rascunho na caixa. Não mexi nele.`);
   escreverNoCampo(caixa, rascunho);
-  await esperar(300);
-  if (normalizarParaComparar(textoDoCampoComEmoji(caixa)) !== normalizarParaComparar(rascunho)) {
+  const alvoRascunho = normalizarParaComparar(rascunho);
+  const colouRascunho = await esperarAte(() => {
+    const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
+    return atual === alvoRascunho ? true : null;
+  }, 2500, 100);
+
+  if (!colouRascunho) {
     limparCampo(caixa);
     return erro('colar_falhou', 'O texto não ficou na caixa de mensagem.');
   }

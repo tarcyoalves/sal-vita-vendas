@@ -55,7 +55,12 @@ export function sortearModelo(modelos: string[], aleatorio: () => number = Math.
   return modelos[i];
 }
 
-/** Espaços colapsados, para comparar o texto colado com o que saiu no chat. */
+/** Espaços colapsados e marcas invisíveis removidas, para comparar o texto colado com o que está na caixa ou saiu no chat. */
 export function normalizarParaComparar(texto: string): string {
-  return texto.replace(/\s+/g, ' ').trim();
+  return (texto ?? '')
+    .normalize('NFKC')
+    .replace(/[\u200B\u200C\u200E\u200F\u202A-\u202E\u2060\uFEFF]/g, '')
+    .replace(/[‎‏‪-‮]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

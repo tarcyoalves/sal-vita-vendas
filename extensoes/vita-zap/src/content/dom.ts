@@ -114,6 +114,7 @@ export function limparCampo(el: HTMLElement): void {
   }
   selecionarConteudo(el);
   document.execCommand('delete', false);
+  document.execCommand('insertText', false, '');
 }
 
 /** Primeiro ancestral com rolagem vertical. */

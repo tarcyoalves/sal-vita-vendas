@@ -20,7 +20,13 @@ export function sortearPausaHumana(minMs = 2200, maxMs = 3800): number {
 }
 
 const ROTULOS_BOTAO = new Set(['enviar', 'send', 'enviar mensagem', 'send message', 'enviar mensagem de texto', 'send text message']);
-const ICONES_BOTAO = new Set(['send', 'wds-ic-send-filled', 'wds-ic-send', 'send-light', 'send-dark']);
+const ICONES_BOTAO = new Set(['send', 'wds-ic-send-filled', 'wds-ic-send', 'send-light', 'send-dark', 'enviar']);
+
+function ehRotuloEnviar(label: string): boolean {
+  const l = label.trim().toLowerCase();
+  if (ROTULOS_BOTAO.has(l)) return true;
+  return /^(enviar|send)(\s+(mensagem|message|de texto|text message))?(\s*\(enter\))?$/i.test(l);
+}
 const ROTULO_MICROFONE = /voz|voice|microfone|microphone|\bmic\b|\bptt\b/i;
 
 function ehMicrofone(el: HTMLElement): boolean {
@@ -57,7 +63,13 @@ export function encontrarBotaoEnviar(raiz: ParentNode = document): HTMLElement |
     if (!ehMicrofone(b)) candidatos.push(b);
   }
   for (const b of footer.querySelectorAll<HTMLElement>('button, [role="button"]')) {
-    if (ROTULOS_BOTAO.has((b.getAttribute('aria-label') ?? '').trim().toLowerCase())) candidatos.push(b);
+    if (ehRotuloEnviar(b.getAttribute('aria-label') ?? '')) candidatos.push(b);
+  }
+  for (const el of footer.querySelectorAll<HTMLElement>('[aria-label]')) {
+    if (ehRotuloEnviar(el.getAttribute('aria-label') ?? '')) {
+      const b = botaoDe(el) ?? el;
+      candidatos.push(b);
+    }
   }
   for (const ic of footer.querySelectorAll<HTMLElement>('[data-icon]')) {
     if (ICONES_BOTAO.has((ic.getAttribute('data-icon') ?? '').toLowerCase())) {
