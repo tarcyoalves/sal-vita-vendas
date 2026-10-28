@@ -33,6 +33,16 @@ export function mensagemEhMinha(el: HTMLElement): boolean {
   return existeAlgum(el, 'iconeMinhaMensagem');
 }
 
+const PADRAO_MENSAGEM_SISTEMA = /criptografia|end-to-end|servi[cç]o seguro da meta|as mensagens e liga[cç][oõ]es s[aã]o protegidas|messages and calls are end-to-end encrypted/i;
+
+/** Aviso de sistema do WhatsApp (criptografia, aviso da Meta). Não é mensagem enviada nem recebida de contato. */
+export function ehMensagemDoSistema(el: HTMLElement): boolean {
+  if (el.querySelector('[data-icon*="lock"]')) return true;
+  const texto = el.textContent ?? '';
+  return PADRAO_MENSAGEM_SISTEMA.test(texto);
+}
+
+
 /** Autor lido do data-pre-plain-text ("[10:30, 26/10/2026] Ana Cliente: "), ou null. */
 function autorDaMensagem(el: HTMLElement): string | null {
   const dono = el.hasAttribute('data-pre-plain-text') ? el : el.querySelector<HTMLElement>('[data-pre-plain-text]');
@@ -93,7 +103,7 @@ export function classificarConversa(
     if (JID_GRUPO.test(m[1])) return 'grupo';
     if (JID_INDIVIDUAL.test(m[1])) individual = true;
   }
-  const mensagens = encontrarTodos(raiz, 'mensagem');
+  const mensagens = encontrarTodos(raiz, 'mensagem').filter((m) => !ehMensagemDoSistema(m));
   if (sinalDeGrupo(raiz, mensagens)) return 'grupo';
   if (teveJid) return individual ? 'individual' : 'desconhecido';
 
@@ -193,6 +203,7 @@ function tituloAberto(): string | null {
 
 function idsDasMensagens(): string[] {
   return encontrarTodos(document, 'mensagem')
+    .filter((el) => !ehMensagemDoSistema(el))
     .map((el) => el.getAttribute('data-id') ?? '')
     .filter(Boolean);
 }
@@ -441,16 +452,23 @@ export async function abrirEColar(
   // 4. Colar o texto (sem sobrescrever rascunho do usuário).
   const caixa = encontrar(document, 'caixaMensagem');
   if (!caixa) return erro('seletor', 'Caixa de mensagem não encontrada.');
-  if (textoDoCampoComEmoji(caixa).trim() !== '') return erro('caixa_ocupada', `A conversa de "${nome}" já tem um rascunho na caixa. Não mexi nele.`);
+  const existente = normalizarParaComparar(textoDoCampoComEmoji(caixa));
+  const alvo = normalizarParaComparar(texto);
+  if (existente !== '') {
+    if (existente !== alvo && !existente.includes(alvo) && !alvo.includes(existente)) {
+      return erro('caixa_ocupada', `A conversa de "${nome}" já tem um rascunho na caixa. Não mexi nele.`);
+    }
+  }
   await esperar(800); // deixa o histórico carregar antes da "foto"
   const idsAntes = idsDasMensagens();
   const antes = new Set(idsAntes);
-  escreverNoCampo(caixa, texto);
-  const alvo = normalizarParaComparar(texto);
+  if (existente === '' || (!existente.includes(alvo) && existente !== alvo)) {
+    escreverNoCampo(caixa, texto);
+  }
   const colou = await esperarAte(() => {
     const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
-    return atual === alvo ? true : null;
-  }, 2500, 100);
+    return atual === alvo || atual.includes(alvo) || alvo.includes(atual) ? true : null;
+  }, 3500, 100);
 
   if (!colou) {
     limparCampo(caixa);
@@ -550,13 +568,19 @@ export async function abrirEPrepararRascunho(nome: string, rascunho: string | nu
   if (!rascunho || rascunho.trim() === '') return { ok: true };
   const caixa = await esperarAte(() => encontrar(document, 'caixaMensagem'), 4000);
   if (!caixa) return erro('seletor', 'Caixa de mensagem não encontrada.');
-  if (textoDoCampoComEmoji(caixa).trim() !== '') return erro('caixa_ocupada', `A conversa de "${nome}" já tem um rascunho na caixa. Não mexi nele.`);
-  escreverNoCampo(caixa, rascunho);
+  const existente = normalizarParaComparar(textoDoCampoComEmoji(caixa));
   const alvoRascunho = normalizarParaComparar(rascunho);
+  if (existente !== '') {
+    if (existente !== alvoRascunho && !existente.includes(alvoRascunho) && !alvoRascunho.includes(existente)) {
+      return erro('caixa_ocupada', `A conversa de "${nome}" já tem um rascunho na caixa. Não mexi nele.`);
+    }
+  } else {
+    escreverNoCampo(caixa, rascunho);
+  }
   const colouRascunho = await esperarAte(() => {
     const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
-    return atual === alvoRascunho ? true : null;
-  }, 2500, 100);
+    return atual === alvoRascunho || atual.includes(alvoRascunho) || alvoRascunho.includes(atual) ? true : null;
+  }, 3500, 100);
 
   if (!colouRascunho) {
     limparCampo(caixa);

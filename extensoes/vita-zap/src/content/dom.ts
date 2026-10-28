@@ -115,6 +115,12 @@ export function limparCampo(el: HTMLElement): void {
   selecionarConteudo(el);
   document.execCommand('delete', false);
   document.execCommand('insertText', false, '');
+  if (textoDoCampoComEmoji(el).trim() !== '') {
+    try {
+      el.textContent = '';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    } catch {}
+  }
 }
 
 /** Primeiro ancestral com rolagem vertical. */
