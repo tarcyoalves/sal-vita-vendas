@@ -63,8 +63,9 @@ export function textoDoCampoComEmoji(el: HTMLElement): string {
 function selecionarConteudo(el: HTMLElement): void {
   const sel = window.getSelection();
   if (!sel) return;
+  const alvo = el.querySelector('p') ?? el;
   const range = document.createRange();
-  range.selectNodeContents(el);
+  range.selectNodeContents(alvo);
   sel.removeAllRanges();
   sel.addRange(range);
 }
@@ -82,10 +83,24 @@ export function escreverNoCampo(el: HTMLElement, texto: string): void {
   // "inserir texto" na seleção — o mesmo de colar.
   selecionarConteudo(el);
   document.execCommand('insertText', false, texto);
+
+  // Fallback 1: simula evento de colar nativo (ClipboardEvent), que o Lexical do WhatsApp Web processa diretamente
   if (textoDoCampoComEmoji(el).trim() === '') {
     try {
-      el.textContent = texto;
+      const dt = new DataTransfer();
+      dt.setData('text/plain', texto);
+      el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+    } catch {}
+  }
+
+  // Fallback 2: textContent no parágrafo interno + eventos de input e change
+  if (textoDoCampoComEmoji(el).trim() === '') {
+    try {
+      const p = el.querySelector('p');
+      if (p) p.textContent = texto;
+      else el.textContent = texto;
       el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
     } catch {}
   }
 }

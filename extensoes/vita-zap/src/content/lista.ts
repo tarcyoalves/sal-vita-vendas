@@ -25,9 +25,10 @@ export async function buscar(termo: string): Promise<void> {
   const caixa = exigir(encontrar(document, 'caixaBusca'), 'caixa de busca');
   if (termo.trim() === '') {
     if (textoDoCampo(caixa).trim() !== '') limparCampo(caixa);
-  } else {
-    escreverNoCampo(caixa, termo);
+    await esperar(300);
+    return;
   }
+  escreverNoCampo(caixa, termo);
   await esperar(1800);
 }
 

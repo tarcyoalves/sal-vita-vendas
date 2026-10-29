@@ -25,6 +25,6 @@ describe('ID fixo da extensão', () => {
   it('o manifest nunca leva chave privada e o CRM é host permitido', () => {
     expect(JSON.stringify(manifesto)).not.toMatch(/PRIVATE KEY/);
     expect(manifesto.host_permissions).toContain('https://lembretes.salvitarn.com.br/*');
-    expect(manifesto.version).toBe('0.7.41');
+    expect(manifesto.version).toBe('0.7.42');
   });
 });

@@ -144,15 +144,23 @@ export function classificarConversa(
 const SEM_RETICENCIAS = /\.{2,}|…/g;
 const MIN_PREFIXO = 5;
 
+function semEmojis(s: string): string {
+  return s.replace(/\p{Extended_Pictographic}/gu, '').replace(/\s+/g, ' ').trim();
+}
+
 /**
  * Autor da mensagem recebida (já normalizado) x título da conversa. Igualdade exata depois de normalizar; título ou
  * autor cortado com "…" aceita prefixo de pelo menos 5 letras.
  */
 export function autorBateComTitulo(autorNormalizado: string, tituloLido: string, estrito: boolean): boolean {
-  const autor = autorNormalizado.replace(SEM_RETICENCIAS, '').trim();
-  const tit = normalizarTexto(tituloLido).replace(SEM_RETICENCIAS, '').trim();
-  if (autor === '' || tit === '') return false;
-  if (autor === tit) return true;
+  const autorCru = autorNormalizado.replace(SEM_RETICENCIAS, '').trim();
+  const titCru = normalizarTexto(tituloLido).replace(SEM_RETICENCIAS, '').trim();
+  if (autorCru === '' || titCru === '') return false;
+  if (autorCru === titCru) return true;
+
+  const autor = semEmojis(autorCru);
+  const tit = semEmojis(titCru);
+  if (autor !== '' && tit !== '' && autor === tit) return true;
   const tituloCortado = SEM_RETICENCIAS.test(tituloLido);
   SEM_RETICENCIAS.lastIndex = 0;
   const minPref = estrito ? MIN_PREFIXO : 2;
@@ -190,7 +198,7 @@ export function autorBateComTitulo(autorNormalizado: string, tituloLido: string,
   return autorCortado && autor.length >= MIN_PREFIXO && tit.startsWith(autor);
 }
 
-function tituloAberto(): string | null {
+export function tituloAberto(): string | null {
   const comTitle = document.querySelector<HTMLElement>('#main header span[dir="auto"][title], #main header [title]');
   if (comTitle && comTitle.getAttribute('title')) {
     const t = limparMarcas(comTitle.getAttribute('title')!);
@@ -380,6 +388,7 @@ async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promi
     if (!encontrar(document, 'painelConversa')) return erro('seletor', 'Painel da conversa não encontrado (seletor #main).');
     return erro('cabecalho', `A conversa aberta não é "${alvo.linha.nome}".`);
   }
+  await buscar('');
   return null;
 }
 
@@ -439,8 +448,9 @@ export async function abrirEColar(
 ): Promise<RespostaConteudo> {
   pararObservacao();
   registrarBatimento(); // o próprio pedido do painel prova que ele está vivo
-  const falha = await abrirConversaPorNome(nome);
+  const falha = await abrirConversaPorNome(nome, true);
   if (falha) return falha;
+  await buscar('');
 
   // 3. Só conversa individual, com sinal positivo (ver classificarConversa).
   // Dá até 2.5s para o histórico de mensagens carregar no DOM; se não houver histórico (agenda), aceitaSemMensagens=true.
@@ -561,10 +571,18 @@ export function limparCaixa(texto: string): RespostaConteudo {
  * que o usuário já tenha na caixa.
  */
 export async function abrirEPrepararRascunho(nome: string, rascunho: string | null): Promise<RespostaConteudo> {
-  const jaAberta = tituloAberto() === nome;
-  const falha = await abrirConversaPorNome(nome, true);
-  if (falha) return falha;
-  if (!jaAberta) await buscar(''); // limpa a busca que usamos para achar a conversa
+  const aberto = tituloAberto();
+  const jaAberta = aberto === nome || (aberto != null && mesmoNome(aberto, nome));
+  if (!jaAberta) {
+    const falha = await abrirConversaPorNome(nome, true);
+    if (falha) {
+      const abertoDepois = tituloAberto();
+      if (!abertoDepois || (!mesmoNome(abertoDepois, nome) && abertoDepois !== nome)) {
+        return falha;
+      }
+    }
+  }
+  await buscar(''); // limpa a busca que usamos para achar a conversa
   if (!rascunho || rascunho.trim() === '') return { ok: true };
   const caixa = await esperarAte(() => encontrar(document, 'caixaMensagem'), 4000);
   if (!caixa) return erro('seletor', 'Caixa de mensagem não encontrada.');
