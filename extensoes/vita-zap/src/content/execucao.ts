@@ -199,7 +199,7 @@ export function autorBateComTitulo(autorNormalizado: string, tituloLido: string,
 }
 
 export function tituloAberto(): string | null {
-  const comTitle = document.querySelector<HTMLElement>('#main header span[dir="auto"][title], #main header [title]');
+  const comTitle = document.querySelector<HTMLElement>('#main header span[dir="auto"][title]');
   if (comTitle && comTitle.getAttribute('title')) {
     const t = limparMarcas(comTitle.getAttribute('title')!);
     if (t !== '') return t;
@@ -372,7 +372,13 @@ async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promi
   let tentouRefazer = false;
   const abriu = await esperarAte(() => {
     const aberto = tituloAberto();
-    if (aberto === alvo.linha.nome || aberto === nome || (aberto != null && mesmoNome(aberto, nome))) return true;
+    if (
+      aberto === alvo.linha.nome ||
+      aberto === nome ||
+      (aberto != null && (mesmoNome(aberto, nome) || mesmoNome(aberto, alvo.linha.nome)))
+    ) {
+      return true;
+    }
     if (!tentouRefazer) {
       const caixaBusca = encontrar(document, 'caixaBusca');
       if (caixaBusca && document.activeElement === caixaBusca) {
