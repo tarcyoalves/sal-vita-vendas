@@ -112,6 +112,7 @@ export class BloqueioTelaCrm {
             if (res.ok) {
               this.sucessoMsg = 'Autenticado com sucesso! Desbloqueando...';
               this.desenhar();
+              setTimeout(() => this.desbloquear(), 400);
             } else {
               this.erroMsg = res.mensagem || 'E-mail ou senha incorretos.';
               this.ocupado = false;
@@ -178,6 +179,7 @@ export class BloqueioTelaCrm {
             if (res.ok) {
               this.sucessoMsg = 'Sessão do CRM reconhecida! Desbloqueando...';
               this.desenhar();
+              setTimeout(() => this.desbloquear(), 400);
             } else {
               this.erroMsg = res.mensagem || 'Nenhuma sessão ativa encontrada no site do CRM. Use o formulário abaixo.';
               this.ocupado = false;
@@ -215,6 +217,21 @@ export class BloqueioTelaCrm {
       btnSessao,
       h('div', { class: 'bloqueio-divisor' }, h('span', {}, 'ou entre com e-mail e senha')),
       form,
+      h(
+        'div',
+        { class: 'bloqueio-link-wrapper', style: 'text-align: center; margin: 10px 0 4px;' },
+        h(
+          'a',
+          {
+            href: 'https://lembretes.salvitarn.com.br',
+            target: '_blank',
+            rel: 'noreferrer',
+            class: 'bloqueio-link-externo',
+            style: 'color: var(--vz-primaria, #25d366); font-size: 12px; text-decoration: underline;'
+          },
+          'Abrir CRM Sal Vita em outra aba ↗'
+        )
+      ),
       h(
         'div',
         { class: 'bloqueio-rodape' },

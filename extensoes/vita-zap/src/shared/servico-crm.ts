@@ -57,6 +57,7 @@ interface ContaGravada {
   baseUrl: string;
   usuario: UsuarioCrm | null;
   erro?: ErroCrm;
+  token?: string | null;
 }
 
 export type OpFila =
@@ -141,7 +142,11 @@ export class ServicoCrm implements LeadsCRM {
     transporte: Transporte,
     private readonly relogio: () => number = Date.now,
   ) {
-    this.cliente = criarClienteTrpc(transporte, async () => (await this.lerConta()).baseUrl);
+    this.cliente = criarClienteTrpc(
+      transporte,
+      async () => (await this.lerConta()).baseUrl,
+      async () => (await this.lerConta()).token,
+    );
   }
 
   // ── Infraestrutura ─────────────────────────────────────────────────────────
@@ -246,22 +251,28 @@ export class ServicoCrm implements LeadsCRM {
     return this.exclusivo('login', async () => {
       const e = email.trim();
       if (!e || !senha) return this.resultadoConta({ ok: false, erro: erroValidacao('Informe o e-mail e a senha.') });
+      let tokenLogin: string | null = null;
       const r = await this.chamar(async () => {
-        await this.alterar('auth.login', { email: e, password: senha });
+        const loginResp = await this.alterar<{ token?: string }>('auth.login', { email: e, password: senha });
+        if (loginResp && typeof loginResp.token === 'string') tokenLogin = loginResp.token;
         return this.consultar<unknown>('auth.me');
       });
       if (!r.ok) return this.resultadoConta(r);
       const c = await this.lerConta();
       const u = usuarioDe(r.valor);
+      const tokenMe = (typeof r.valor === 'object' && r.valor && 'token' in r.valor && typeof (r.valor as { token: unknown }).token === 'string')
+        ? (r.valor as { token: string }).token
+        : null;
+      const tokenFinal = tokenMe ?? tokenLogin ?? c.token;
       if (!u) {
         const erro: ErroCrm = {
           tipo: 'nao-autenticado',
           mensagem: 'O CRM aceitou o login, mas não reconheceu a sessão em seguida: o seu IP pode não estar liberado para este usuário, ou o Chrome não enviou o cookie da sessão.',
         };
-        await this.gravarConta({ ...c, usuario: null, erro });
+        await this.gravarConta({ ...c, usuario: null, erro, token: null });
         return this.resultadoConta({ ok: false, erro });
       }
-      await this.gravarConta({ baseUrl: c.baseUrl, usuario: u });
+      await this.gravarConta({ baseUrl: c.baseUrl, usuario: u, token: tokenFinal });
       await this.sincronizarInterno();
       await this.reenviarInterno();
       return this.resultadoConta({ ok: true });
@@ -279,14 +290,17 @@ export class ServicoCrm implements LeadsCRM {
       const r = await this.chamar(() => this.consultar<unknown>('auth.me'));
       if (!r.ok) return this.resultadoConta(r);
       const u = usuarioDe(r.valor);
+      const tokenMe = (typeof r.valor === 'object' && r.valor && 'token' in r.valor && typeof (r.valor as { token: unknown }).token === 'string')
+        ? (r.valor as { token: string }).token
+        : null;
       if (!u) {
         const erro: ErroCrm = { tipo: 'nao-autenticado', mensagem: 'Você ainda não entrou no site do CRM neste Chrome.' };
-        if (c.usuario) await this.gravarConta({ ...c, usuario: null, erro });
+        if (c.usuario) await this.gravarConta({ ...c, usuario: null, erro, token: null });
         return this.resultadoConta({ ok: false, erro });
       }
       // Outro usuário no site: o cache do anterior (leads, lembretes) não vale para este (vínculos e fila ficam, como no sair).
       if (c.usuario && c.usuario.id !== u.id) await this.arm.limparChaves('vz.crm.', [CHAVES_CRM.conta, CHAVES_CRM.vinculos, CHAVES_CRM.fila, CHAVES_CRM.falhas]);
-      await this.gravarConta({ baseUrl: c.baseUrl, usuario: u });
+      await this.gravarConta({ baseUrl: c.baseUrl, usuario: u, token: tokenMe ?? c.token });
       if (!c.usuario || c.usuario.id !== u.id) {
         await this.sincronizarInterno();
         await this.reenviarInterno();
@@ -304,10 +318,13 @@ export class ServicoCrm implements LeadsCRM {
       const u = usuarioDe(r.valor);
       if (!u) {
         const erro: ErroCrm = { tipo: 'nao-autenticado', mensagem: 'A sessão no CRM expirou. Entre de novo.' };
-        await this.gravarConta({ ...c, usuario: null, erro });
+        await this.gravarConta({ ...c, usuario: null, erro, token: null });
         return this.resultadoConta({ ok: false, erro });
       }
-      await this.gravarConta({ baseUrl: c.baseUrl, usuario: u });
+      const tokenMe = (typeof r.valor === 'object' && r.valor && 'token' in r.valor && typeof (r.valor as { token: unknown }).token === 'string')
+        ? (r.valor as { token: string }).token
+        : null;
+      await this.gravarConta({ baseUrl: c.baseUrl, usuario: u, token: tokenMe ?? c.token });
       return this.resultadoConta({ ok: true });
     });
   }
@@ -318,7 +335,7 @@ export class ServicoCrm implements LeadsCRM {
       if (c.usuario) await this.chamar(() => this.alterar('auth.logout'));
       // Some o cache do usuário (leads, lembretes). Ficam vínculos e a fila (do usuário certo, para quando ele voltar).
       await this.arm.limparChaves('vz.crm.', [CHAVES_CRM.conta, CHAVES_CRM.vinculos, CHAVES_CRM.fila, CHAVES_CRM.falhas]);
-      await this.gravarConta({ baseUrl: c.baseUrl, usuario: null });
+      await this.gravarConta({ baseUrl: c.baseUrl, usuario: null, token: null });
       return this.estadoConta();
     });
   }

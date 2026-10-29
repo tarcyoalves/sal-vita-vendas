@@ -87,7 +87,7 @@ describe('envio humano controlado e isolado', () => {
     const manifesto = JSON.parse(readFileSync(join(RAIZ, 'public/manifest.json'), 'utf8')) as { permissions?: string[]; host_permissions?: string[] };
     expect(manifesto.permissions ?? []).not.toEqual(expect.arrayContaining(['debugger']));
     for (const p of ['debugger', 'input', 'nativeMessaging']) expect(manifesto.permissions ?? []).not.toContain(p);
-    expect(manifesto.host_permissions).toEqual(['https://web.whatsapp.com/*']);
+    expect(manifesto.host_permissions).toEqual(['https://web.whatsapp.com/*', 'https://lembretes.salvitarn.com.br/*']);
   });
 
   it('sortearPausaHumana gera pausa segura maior ou igual a 2000ms', () => {

@@ -53,8 +53,10 @@ export async function createContext({ req, res }: CreateExpressContextOptions) {
   // (ids colidiriam com os do CRM e abririam rotas do CRM).
   const premiumAdmin = verifyPremiumToken(getCookieFromRequest(req.headers.cookie, PREMIUM_COOKIE_NAME));
   // Requisição só de procedures da loja com sessão da loja válida: não toca no banco do CRM.
+  const authHeader = req.headers.authorization;
+  const bearerToken = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined;
   const skipCrmUser = premiumAdmin !== null && isPremiumOnlyRequest(req.originalUrl ?? req.url);
-  const token = skipCrmUser ? undefined : getCookieFromRequest(req.headers.cookie, COOKIE_NAME);
+  const token = skipCrmUser ? undefined : (getCookieFromRequest(req.headers.cookie, COOKIE_NAME) || bearerToken);
   let user: { id: number; email: string; name: string; role: string; mustChangePassword: boolean } | null = null;
 
   if (token) {
@@ -106,7 +108,7 @@ export async function createContext({ req, res }: CreateExpressContextOptions) {
     }
   }
 
-  return { req, res, user, premiumAdmin, clientIp: getClientIp(req) };
+  return { req, res, user, premiumAdmin, clientIp: getClientIp(req), token: user ? token : undefined };
 }
 
 type Context = Awaited<ReturnType<typeof createContext>>;

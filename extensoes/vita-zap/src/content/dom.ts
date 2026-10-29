@@ -82,6 +82,12 @@ export function escreverNoCampo(el: HTMLElement, texto: string): void {
   // "inserir texto" na seleção — o mesmo de colar.
   selecionarConteudo(el);
   document.execCommand('insertText', false, texto);
+  if (textoDoCampoComEmoji(el).trim() === '') {
+    try {
+      el.textContent = texto;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    } catch {}
+  }
 }
 
 /** Acrescenta `texto` no FIM do que já está no campo (não apaga nada). */

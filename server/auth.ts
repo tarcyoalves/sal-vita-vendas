@@ -63,15 +63,21 @@ export function verifyToken(token: string): any {
 }
 
 /** Mesmo Set-Cookie para login e reemissão (troca de senha). */
-export function sessionCookieHeader(token: string): string {
-  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-  return `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+export function sessionCookieHeader(token: string, sameSiteOverride?: 'Lax' | 'None' | 'Strict'): string {
+  const isProd = process.env.NODE_ENV === 'production';
+  const secure = (isProd || sameSiteOverride === 'None') ? '; Secure' : '';
+  const sameSite = sameSiteOverride ?? 'Lax';
+  const partitioned = sameSite === 'None' ? '; Partitioned' : '';
+  return `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=${sameSite}${partitioned}`;
 }
 
 /** Set-Cookie que apaga a sessão, com os mesmos atributos de segurança do cookie emitido. */
-export function clearSessionCookieHeader(): string {
-  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-  return `${COOKIE_NAME}=; HttpOnly${secure}; Path=/; Max-Age=0; SameSite=Lax`;
+export function clearSessionCookieHeader(sameSiteOverride?: 'Lax' | 'None' | 'Strict'): string {
+  const isProd = process.env.NODE_ENV === 'production';
+  const secure = (isProd || sameSiteOverride === 'None') ? '; Secure' : '';
+  const sameSite = sameSiteOverride ?? 'Lax';
+  const partitioned = sameSite === 'None' ? '; Partitioned' : '';
+  return `${COOKIE_NAME}=; HttpOnly${secure}; Path=/; Max-Age=0; SameSite=${sameSite}${partitioned}`;
 }
 
 export function getCookieFromRequest(cookieHeader: string | undefined, name: string): string | undefined {

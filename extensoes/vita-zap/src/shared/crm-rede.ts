@@ -33,6 +33,7 @@ export interface PedidoTrpc {
   tipo: 'query' | 'mutation';
   caminho: string;
   entrada?: Serializado;
+  token?: string | null;
 }
 
 export type RespostaTrpc = { ok: true; dados?: Serializado } | { ok: false; erro: ErroCrm };
@@ -100,14 +101,17 @@ export async function executarTrpc(fetchImpl: typeof fetch, pedido: PedidoTrpc):
     return { ok: false, erro: { tipo: 'rede', mensagem: 'Endereço do CRM inválido.' } };
   }
   const init: RequestInit = { credentials: 'include', cache: 'no-store' };
+  const headers: Record<string, string> = {};
+  if (pedido.token) headers['Authorization'] = `Bearer ${pedido.token}`;
   if (pedido.tipo === 'query') {
     if (pedido.entrada) url.searchParams.set('input', JSON.stringify(pedido.entrada));
     init.method = 'GET';
   } else {
     init.method = 'POST';
-    init.headers = { 'Content-Type': 'application/json' };
+    headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(pedido.entrada ?? { json: null });
   }
+  if (Object.keys(headers).length > 0) init.headers = headers;
   let resp: Response;
   try {
     resp = await fetchImpl(url.toString(), init);
@@ -132,13 +136,14 @@ export interface ClienteTrpc {
 }
 
 /** Cliente tipado por cima de um transporte. Lança `ErroDoCrm` em qualquer falha. */
-export function criarClienteTrpc(transporte: Transporte, baseUrl: () => Promise<string>): ClienteTrpc {
+export function criarClienteTrpc(transporte: Transporte, baseUrl: () => Promise<string>, token?: () => Promise<string | null | undefined>): ClienteTrpc {
   async function chamar<T>(tipo: PedidoTrpc['tipo'], caminho: string, entrada: unknown): Promise<T> {
     const r = await transporte({
       baseUrl: await baseUrl(),
       tipo,
       caminho,
       ...(entrada !== undefined ? { entrada: superjson.serialize(entrada) as Serializado } : {}),
+      token: token ? await token() : undefined,
     });
     if (!r.ok) throw new ErroDoCrm(r.erro);
     return (r.dados ? superjson.deserialize(r.dados as Parameters<typeof superjson.deserialize>[0]) : undefined) as T;

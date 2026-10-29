@@ -22,9 +22,9 @@ describe('ID fixo da extensão', () => {
     expect(servidor).toContain(`'${ID_DA_EXTENSAO}'`);
   });
 
-  it('o manifest nunca leva chave privada e o CRM é host opcional (pedido ao usuário no login)', () => {
+  it('o manifest nunca leva chave privada e o CRM é host permitido', () => {
     expect(JSON.stringify(manifesto)).not.toMatch(/PRIVATE KEY/);
-    expect(manifesto.optional_host_permissions).toContain('https://lembretes.salvitarn.com.br/*');
-    expect(manifesto.version).toBe('0.7.40');
+    expect(manifesto.host_permissions).toContain('https://lembretes.salvitarn.com.br/*');
+    expect(manifesto.version).toBe('0.7.41');
   });
 });

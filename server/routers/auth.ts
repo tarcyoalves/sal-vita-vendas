@@ -43,6 +43,7 @@ export const authRouter = router({
         name: dbUser.name,
         role: dbUser.role,
         mustChangePassword: dbUser.mustChangePassword,
+        token: ctx.token,
       };
     });
   }),
@@ -73,7 +74,7 @@ export const authRouter = router({
       // de uma promise pendente terminar assim que a resposta é enviada.
       await db.update(users).set({ lastLoginIp: ctx.clientIp, lastLoginAt: new Date() })
         .where(eq(users.id, user.id)).catch(() => {});
-      return { id: user.id, name: user.name, email: user.email, role: user.role };
+      return { id: user.id, name: user.name, email: user.email, role: user.role, token };
     }),
 
   logout: publicProcedure.mutation(({ ctx }) => {

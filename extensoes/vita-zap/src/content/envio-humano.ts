@@ -71,13 +71,15 @@ export function encontrarBotaoEnviar(raiz: ParentNode = document): HTMLElement |
     }
   }
   for (const ic of footer.querySelectorAll<HTMLElement>('[data-icon]')) {
-    if (ICONES_BOTAO.has((ic.getAttribute('data-icon') ?? '').toLowerCase())) {
+    const val = (ic.getAttribute('data-icon') ?? '').toLowerCase();
+    if (ICONES_BOTAO.has(val) || val.includes('send')) {
       const b = botaoDe(ic);
       if (b) candidatos.push(b);
     }
   }
   for (const t of footer.querySelectorAll('svg > title')) {
-    if (ICONES_BOTAO.has((t.textContent ?? '').trim().toLowerCase())) {
+    const val = (t.textContent ?? '').trim().toLowerCase();
+    if (ICONES_BOTAO.has(val) || val.includes('send') || val.includes('enviar')) {
       const b = botaoDe(t);
       if (b) candidatos.push(b);
     }
