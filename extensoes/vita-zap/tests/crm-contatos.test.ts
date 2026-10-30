@@ -49,6 +49,7 @@ describe('achar e criar contatos', () => {
     expect(b.id).not.toBe(a.id);
     expect(Object.keys(d.contatos)).toHaveLength(2);
     expect(acharContato(d, { nome: 'Carlos', telefone: '84 99999-0001' })?.id).toBe(a.id);
+    expect(acharContato(d, { nome: 'Carlos' })).toBeUndefined(); // homônimos sem telefone: não adivinha
   });
 
   it('descobrir o telefone de um contato que só tinha nome grava o telefone no mesmo registro', () => {

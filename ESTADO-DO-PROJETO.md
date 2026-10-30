@@ -481,10 +481,10 @@ saíram desta lista e estão no registro `coordenacao/registro/2026-10-07-claude
     aceita telefone completo como alternativa ao token; rate limit em memória (por
     instância serverless); dinheiro em float/texto; carrinhos abandonados sem pedido nunca
     são apagados (LGPD — apagar dado é decisão do dono).
-12. **Vita Zap (extensão do WhatsApp Web)** *(versão 0.7.44, 29/10/2026)* — implementada em
+12. **Vita Zap (extensão do WhatsApp Web)** *(versão 0.7.45, 30/10/2026)* — implementada em
     extensoes/vita-zap/ (projeto separado; CRM na barra do WhatsApp Web, lembretes de follow-up,
     campanhas, atalhos de reagendamento 30d/45d/60d, tags do CRM, busca limpa de contatos e pausa na varredura).
-    v0.7.44: remoção de fallback síncrono em dom.ts evitando injeção duplicada de texto no Lexical, seleção precisa em p interno.
+    v0.7.45: segurança P0 (restrição de optional_host_permissions), teto de 5.000 contatos únicos na varredura e proteção de homônimos sem telefone.
     Publicada no site do CRM em /vita-zap. Plano: docs/PLANO-CAMPANHAS-WHATSAPP.md.
 
 ### 🔵 Operacional

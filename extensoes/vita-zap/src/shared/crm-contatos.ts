@@ -62,6 +62,7 @@ export function acharNoIndice(ind: Indice, ref: RefContato): Contato | undefined
   const alias = aliasDoNome(ref.nome);
   if (!alias) return undefined;
   const candidatos = (ind.porAlias.get(alias) ?? []).filter((c) => !tel || !c.telefone || chaveDoTelefone(c.telefone) === chaveDoTelefone(tel));
+  if (!tel && candidatos.length > 1) return undefined;
   return candidatos.sort((a, b) => b.atualizadoEm - a.atualizadoEm)[0];
 }
 

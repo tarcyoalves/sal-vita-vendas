@@ -3,6 +3,8 @@ $dests = @(
   "C:\Users\Tarcyo Alves\Downloads\vita-zap",
   "C:\Users\Tarcyo Alves\Downloads\vita-zap (1)",
   "C:\Users\Tarcyo Alves\Downloads\vita-zap (2)",
+  "C:\Users\Tarcyo Alves\Downloads\vita-zap (3)",
+  "C:\Users\Tarcyo Alves\Downloads\vita-zap-0.7.45-corrigido",
   "C:\Users\Tarcyo Alves\Downloads\vita-zap-0.6.0",
   "C:\Users\Tarcyo Alves\AppData\Local\VitaZap\extensao",
   (Join-Path $PSScriptRoot "..\..\..\vita-zap")

@@ -44,6 +44,7 @@ export async function varrerLista(termo: string, aoProgredir: (lidas: number, un
 
   const secaoMensagens: EstadoSecaoMensagens = { posicao: null };
   let tentativasSemMover = 0;
+  let chegouAoFim = false;
   for (let passo = 0; passo < MAX_PASSOS; passo += 1) {
     linhas = linhasDaLista();
     // Não corta nas seções: lê também os contatos da agenda. As linhas da seção "Mensagens" vêm marcadas (deMensagem).
@@ -57,7 +58,7 @@ export async function varrerLista(termo: string, aoProgredir: (lidas: number, un
       avisos.push('Varredura pausada pelo usuário.');
       break;
     }
-    if (!rolavel || todas.length >= MAX_LINHAS) break;
+    if (!rolavel || nomes.size >= MAX_LINHAS) break;
 
     const antes = rolavel.scrollTop;
     rolavel.scrollTop = antes + Math.max(300, Math.floor(rolavel.clientHeight * 0.8));
@@ -69,6 +70,7 @@ export async function varrerLista(termo: string, aoProgredir: (lidas: number, un
       await esperar(1000);
       rolavel.scrollTop = rolavel.scrollHeight;
       if (tentativasSemMover >= 3) {
+        chegouAoFim = true;
         break; // fim real da lista
       }
     } else {
@@ -78,7 +80,9 @@ export async function varrerLista(termo: string, aoProgredir: (lidas: number, un
   if (todas.length > 0 && todas.every((l) => l.rotuloData == null)) {
     avisos.push('Nenhuma data de última mensagem foi reconhecida — todos ficarão fora da campanha. Confira o idioma do WhatsApp (português) e os seletores.');
   }
-  if (todas.length >= MAX_LINHAS) avisos.push(`Varredura limitada a ${MAX_LINHAS} linhas.`);
+  const fim = chegouAoFim || (rolavel ? rolavel.scrollTop + rolavel.clientHeight >= rolavel.scrollHeight - 20 : true);
+  if (nomes.size >= MAX_LINHAS) avisos.push(`Varredura limitada a ${MAX_LINHAS} contatos únicos.`);
+  if (!interromper && !fim && nomes.size < MAX_LINHAS) avisos.push('Atenção: a varredura parou antes do final da lista do WhatsApp. Parte dos contatos pode não ter sido lida.');
   if (rolavel) rolavel.scrollTop = 0;
   return { linhas: todas, avisos };
 }

@@ -1,6 +1,6 @@
 {
   "name": "vita-zap",
-  "version": "0.7.44",
+  "version": "0.7.45",
   "private": true,
   "description": "Vita Zap — copiloto comercial no WhatsApp Web (fase 1, sem IA). Projeto separado do CRM.",
   "type": "module",
@@ -9,25 +9,22 @@
     "check": "tsc --noEmit",
     "publicar": "npm run build && node dev/publicar.mjs",
     "harness": "npm run build && node dev/servir.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "dev": "vite",
+    "test": "vitest run"
   },
   "dependencies": {
-    "idb": "^8.0.4",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "superjson": "^2.2.6",
-    "zod": "^3.25.76"
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.453.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/chrome": "^0.1.4",
-    "@types/node": "^22.2.0",
-    "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0",
-    "@vitejs/plugin-react": "^4.7.0",
-    "fake-indexeddb": "^6.2.6",
-    "jsdom": "^26.1.0",
-    "typescript": "^5.9.3",
+    "@types/chrome": "^0.0.280",
+    "@types/node": "^22.7.5",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "typescript": "^5.6.3",
     "vite": "^6.4.4",
     "vitest": "^4.1.12"
   }

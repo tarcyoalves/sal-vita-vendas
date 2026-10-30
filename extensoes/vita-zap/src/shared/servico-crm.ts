@@ -71,6 +71,7 @@ export interface ItemFila {
   usuarioId: number;
   taskId: number;
   criadoEm: number;
+  tentativas?: number;
   op: OpFila;
 }
 
@@ -634,7 +635,7 @@ export class ServicoCrm implements LeadsCRM {
   private async enfileirar(usuarioId: number, taskId: number, op: OpFila): Promise<boolean> {
     const fila = await this.ler<ItemFila[]>(CHAVES_CRM.fila, []);
     if (fila.length >= MAX_FILA) return false;
-    fila.push({ id: novoId(), usuarioId, taskId, criadoEm: this.relogio(), op });
+    fila.push({ id: novoId(), usuarioId, taskId, criadoEm: this.relogio(), tentativas: 0, op });
     await this.arm.gravarChave(CHAVES_CRM.fila, fila);
     return true;
   }
@@ -825,7 +826,20 @@ export class ServicoCrm implements LeadsCRM {
       const item = fila.find((i) => i.usuarioId === uid);
       if (!item) break;
       const r = await this.chamar(() => this.aplicarRemoto(item.taskId, item.op));
-      if (!r.ok && (r.erro.tipo === 'rede' || r.erro.tipo === 'nao-autenticado' || r.erro.tipo === 'ip')) break;
+      if (!r.ok && (r.erro.tipo === 'rede' || r.erro.tipo === 'nao-autenticado' || r.erro.tipo === 'ip')) {
+        const tentativas = (item.tentativas ?? 0) + 1;
+        if (tentativas >= 5) {
+          const atual = await this.ler<ItemFila[]>(CHAVES_CRM.fila, []);
+          await this.arm.gravarChave(CHAVES_CRM.fila, atual.filter((i) => i.id !== item.id));
+          const falhas = await this.ler<FalhaFila[]>(CHAVES_CRM.falhas, []);
+          falhas.unshift({ em: this.relogio(), taskId: item.taskId, resumo: resumoDaOp(item.op), motivo: `Excedeu 5 tentativas: ${r.erro.mensagem}` });
+          await this.arm.gravarChave(CHAVES_CRM.falhas, falhas.slice(0, MAX_FALHAS));
+        } else {
+          const atual = await this.ler<ItemFila[]>(CHAVES_CRM.fila, []);
+          await this.arm.gravarChave(CHAVES_CRM.fila, atual.map((i) => (i.id === item.id ? { ...i, tentativas } : i)));
+        }
+        break;
+      }
       // Tira só este item (outras partes podem ter acrescentado à fila enquanto isso).
       const atual = await this.ler<ItemFila[]>(CHAVES_CRM.fila, []);
       await this.arm.gravarChave(CHAVES_CRM.fila, atual.filter((i) => i.id !== item.id));
