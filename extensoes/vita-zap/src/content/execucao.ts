@@ -10,7 +10,7 @@ import type { EventoConteudo, RespostaConteudo } from '../shared/mensagens';
 import { normalizarTexto } from '../shared/nomes';
 import { normalizarParaComparar } from '../shared/texto';
 import { abrirLinhaDaLista } from './abrir-conversa';
-import { escreverNoCampo, esperar, esperarAte, limparCampo, limparMarcas, textoComEmoji, textoDoCampoComEmoji } from './dom';
+import { colarComClipboard, colarDiretoNoParagrafo, escreverNoCampo, esperar, esperarAte, limparCampo, limparMarcas, textoComEmoji, textoDoCampoComEmoji } from './dom';
 import { lerConversasVisiveis } from './extrair';
 import { buscar, exigir, linhasDaLista } from './lista';
 import { encontrar, encontrarTodos, existeAlgum, SELETORES } from './selectors';
@@ -481,10 +481,28 @@ export async function abrirEColar(
   if (existente === '' || (!existente.includes(alvo) && existente !== alvo)) {
     escreverNoCampo(caixa, texto);
   }
-  const colou = await esperarAte(() => {
+  let colou = await esperarAte(() => {
     const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
     return atual === alvo || atual.includes(alvo) || alvo.includes(atual) ? true : null;
-  }, 3500, 100);
+  }, 1200, 100);
+
+  // Fallback 1: se o execCommand não colou após 1.2s, tenta via ClipboardEvent
+  if (!colou) {
+    colarComClipboard(caixa, texto);
+    colou = await esperarAte(() => {
+      const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
+      return atual === alvo || atual.includes(alvo) || alvo.includes(atual) ? true : null;
+    }, 1200, 100);
+  }
+
+  // Fallback 2: se ainda não colou, injeta no parágrafo do Lexical
+  if (!colou) {
+    colarDiretoNoParagrafo(caixa, texto);
+    colou = await esperarAte(() => {
+      const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
+      return atual === alvo || atual.includes(alvo) || alvo.includes(atual) ? true : null;
+    }, 1100, 100);
+  }
 
   if (!colou) {
     limparCampo(caixa);

@@ -77,12 +77,36 @@ export function escreverNoCampo(el: HTMLElement, texto: string): void {
     const proto = el instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
     Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(el, texto);
     el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
     return;
   }
   // Editor do WhatsApp (contenteditable): o caminho que o próprio editor entende é o de
   // "inserir texto" na seleção — o mesmo de colar.
   selecionarConteudo(el);
   document.execCommand('insertText', false, texto);
+}
+
+/** Fallback para colar texto via evento de Clipboard (processado nativamente pelo Lexical do WhatsApp Web). */
+export function colarComClipboard(el: HTMLElement, texto: string): void {
+  el.focus();
+  selecionarConteudo(el);
+  try {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', texto);
+    el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+  } catch {}
+}
+
+/** Fallback final para inserir texto diretamente no parágrafo do Lexical caso execCommand e paste falhem. */
+export function colarDiretoNoParagrafo(el: HTMLElement, texto: string): void {
+  el.focus();
+  try {
+    const p = el.querySelector('p');
+    if (p) p.textContent = texto;
+    else el.textContent = texto;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  } catch {}
 }
 
 /** Acrescenta `texto` no FIM do que já está no campo (não apaga nada). */
@@ -92,6 +116,7 @@ export function acrescentarNoCampo(el: HTMLElement, texto: string): void {
     const proto = el instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
     Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(el, el.value + texto);
     el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
     return;
   }
   const sel = window.getSelection();
@@ -111,6 +136,7 @@ export function limparCampo(el: HTMLElement): void {
     const proto = el instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
     Object.getOwnPropertyDescriptor(proto, 'value')?.set?.call(el, '');
     el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
     return;
   }
   selecionarConteudo(el);
@@ -118,8 +144,11 @@ export function limparCampo(el: HTMLElement): void {
   document.execCommand('insertText', false, '');
   if (textoDoCampoComEmoji(el).trim() !== '') {
     try {
-      el.textContent = '';
+      const p = el.querySelector('p');
+      if (p) p.textContent = '';
+      else el.textContent = '';
       el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
     } catch {}
   }
 }

@@ -80,28 +80,35 @@ export function Varredura({ db, dados, aoMudar, aoContinuar }: Props) {
       </p>
       <label>
         Termo de busca no WhatsApp
-        <input value={termo} onChange={(e) => setTermo(e.target.value)} placeholder="ex.: CLIENTE (deixe vazio para varrer TODA a lista de conversas)" disabled={rodando} />
+        <input value={termo} onChange={(e) => setTermo(e.target.value)} placeholder="deixe vazio para varrer TODA a lista de conversas (recomendado)" disabled={rodando} />
       </label>
-      <div style={{ display: 'flex', gap: 8, margin: '2px 0 10px 0' }}>
+      <div style={{ display: 'flex', gap: 8, margin: '2px 0 6px 0', flexWrap: 'wrap' }}>
         <button
           type="button"
           className="pequeno"
-          style={{ fontSize: 11, padding: '3px 8px' }}
+          style={{ fontSize: 11, padding: '4px 8px', fontWeight: 600, background: termo === '' ? '#dcfce7' : '#f3f4f6', color: termo === '' ? '#166534' : '#374151', border: termo === '' ? '1px solid #86efac' : '1px solid #d1d5db' }}
           onClick={() => setTermo('')}
-          disabled={rodando || termo === ''}
+          disabled={rodando}
         >
-          Limpar busca (varrer todas as conversas)
+          {termo === '' ? '✓ Todas as conversas (ativo)' : 'Varrer todas as conversas (recomendado)'}
         </button>
         <button
           type="button"
           className="pequeno"
-          style={{ fontSize: 11, padding: '3px 8px' }}
+          style={{ fontSize: 11, padding: '4px 8px', background: termo === 'CLIENTE' ? '#dcfce7' : '#f3f4f6', color: termo === 'CLIENTE' ? '#166534' : '#374151', border: termo === 'CLIENTE' ? '1px solid #86efac' : '1px solid #d1d5db' }}
           onClick={() => setTermo('CLIENTE')}
-          disabled={rodando || termo === 'CLIENTE'}
+          disabled={rodando}
         >
-          Buscar "CLIENTE"
+          Buscar apenas "CLIENTE"
         </button>
       </div>
+      {termo !== '' && (
+        <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 10px', margin: '4px 0 8px 0', fontSize: 11, color: '#92400e' }}>
+          ⚠️ <strong>Atenção:</strong> Ao buscar "{termo}" no WhatsApp, ele mostra apenas ~6 conversas recentes e o restante como contatos sem data.
+          <br />
+          Para varrer <strong>todas as suas 700+ conversas</strong> e incluir clientes de agosto e meses anteriores, use <strong>"Varrer todas as conversas (recomendado)"</strong>. Na aba <strong>Prévia</strong> você filtra por "{termo}" sem perder ninguém!
+        </div>
+      )}
       <label className="check" style={{ display: 'flex', alignItems: 'flex-start', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500, margin: '0 0 8px 0' }}>
         <input
           type="checkbox"
