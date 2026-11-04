@@ -16,24 +16,7 @@ export type AvisoAdmin = {
 
 export const DIAS_VISIVEIS_APOS = 7;
 
-export const AVISOS_ADMIN: readonly AvisoAdmin[] = [
-  {
-    id: 'neon-revisar-consumo-2026-10-26',
-    data: '2026-10-26',
-    titulo: 'Neon: revisar consumo',
-    texto:
-      'Abra Neon → projeto LEMBRETES VITA → Usage e veja o Compute (CU-h) desde o upgrade para o plano Launch. Se estiver abaixo de ~2,5 CU-h por dia, o plano Free (100 CU-h/mês) comporta.',
-    tom: 'info',
-  },
-  {
-    id: 'neon-decidir-plano-2026-10-29',
-    data: '2026-10-29',
-    titulo: 'Neon: decidir Free ou Launch antes de virar o ciclo',
-    texto:
-      'Confira em Billing a data de renovação do ciclo. Se o consumo cabe no Free, volte ao plano Free antes da virada; se não cabe, mantenha o Launch (autoscaling 0,25–1 CU, suspensão em 5 min). Só o Tarcyo ou a Allyne fazem isso no Neon (conta allyne.rep@gmail.com).',
-    tom: 'info',
-  },
-];
+export const AVISOS_ADMIN: readonly AvisoAdmin[] = [];
 
 const fmtDia = new Intl.DateTimeFormat('en-CA', {
   timeZone: SMBI_JANELA_FUSO, year: 'numeric', month: '2-digit', day: '2-digit',

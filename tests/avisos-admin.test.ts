@@ -29,7 +29,7 @@ describe('avisosVisiveis', () => {
     expect(avisosVisiveis([a('2026-10-26')], '2026-11-02')).toHaveLength(1);
     expect(avisosVisiveis([a('2026-10-26')], '2026-11-03')).toHaveLength(0);
   });
-  it('mostra desde já (futuro)', () => expect(avisosVisiveis(AVISOS_ADMIN, '2026-10-19')).toHaveLength(2));
+  it('lista fixa vazia: nenhum aviso pendente', () => expect(avisosVisiveis(AVISOS_ADMIN, '2026-10-19')).toHaveLength(0));
   it('ids únicos e datas puras', () => {
     expect(new Set(AVISOS_ADMIN.map((x) => x.id)).size).toBe(AVISOS_ADMIN.length);
     for (const x of AVISOS_ADMIN) expect(x.data).toMatch(/^\d{4}-\d{2}-\d{2}$/);
