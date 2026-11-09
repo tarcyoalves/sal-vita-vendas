@@ -33,7 +33,7 @@ export interface LeadCrm {
   responsavel?: string | null;
 }
 
-/** Item de tasks.reminders (janela de ontem até +7 dias). */
+/** Item de tasks.reminders com meus: true (vencidos dos últimos 180 dias até +7 dias). */
 export interface LembreteCrm {
   taskId: number;
   titulo: string;

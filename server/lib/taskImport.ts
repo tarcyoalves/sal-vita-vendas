@@ -75,3 +75,11 @@ export function deduplicarNoArquivo<T extends { cnpj?: string; phone?: string }>
 export function janelaLembretes(agora: Date): { de: Date; ate: Date } {
   return { de: new Date(agora.getTime() - 24 * 3_600_000), ate: new Date(agora.getTime() + 7 * 24 * 3_600_000) };
 }
+
+/** Dias para trás que a extensão Vita Zap busca (`meus: true`): vencidos antigos do próprio atendente. */
+export const DIAS_VENCIDOS_MEUS = 180;
+
+/** Janela dos lembretes da extensão: vencidos dos últimos DIAS_VENCIDOS_MEUS dias até +7 dias. */
+export function janelaLembretesMeus(agora: Date): { de: Date; ate: Date } {
+  return { de: new Date(agora.getTime() - DIAS_VENCIDOS_MEUS * 24 * 3_600_000), ate: janelaLembretes(agora).ate };
+}

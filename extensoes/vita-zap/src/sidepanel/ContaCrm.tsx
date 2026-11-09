@@ -212,7 +212,7 @@ export function ContaCrm({ crm }: { crm: CrmPainel }) {
               onClick={() =>
                 void executar(async () => {
                   const r = await crm.repo.sincronizarLembretes('botao');
-                  setMsg(r.ok ? { erro: false, texto: `${r.quantidade} lembrete(s) do CRM na janela de ontem até +7 dias.` } : { erro: true, texto: r.erro.mensagem });
+                  setMsg(r.ok ? { erro: false, texto: `${r.quantidade} lembrete(s) do CRM (vencidos dos últimos 180 dias até +7 dias).` } : { erro: true, texto: r.erro.mensagem });
                 })
               }
             >

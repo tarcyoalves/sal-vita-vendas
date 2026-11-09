@@ -37564,13 +37564,19 @@ function currentPasswordVersion(passwordHash) {
 function verifyToken(token) {
   return import_jsonwebtoken.default.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
 }
-function sessionCookieHeader(token) {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax`;
+function sessionCookieHeader(token, sameSiteOverride) {
+  const isProd = process.env.NODE_ENV === "production";
+  const secure = isProd || sameSiteOverride === "None" ? "; Secure" : "";
+  const sameSite = sameSiteOverride ?? "Lax";
+  const partitioned = sameSite === "None" ? "; Partitioned" : "";
+  return `${COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly${secure}; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=${sameSite}${partitioned}`;
 }
-function clearSessionCookieHeader() {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${COOKIE_NAME}=; HttpOnly${secure}; Path=/; Max-Age=0; SameSite=Lax`;
+function clearSessionCookieHeader(sameSiteOverride) {
+  const isProd = process.env.NODE_ENV === "production";
+  const secure = isProd || sameSiteOverride === "None" ? "; Secure" : "";
+  const sameSite = sameSiteOverride ?? "Lax";
+  const partitioned = sameSite === "None" ? "; Partitioned" : "";
+  return `${COOKIE_NAME}=; HttpOnly${secure}; Path=/; Max-Age=0; SameSite=${sameSite}${partitioned}`;
 }
 function getCookieFromRequest(cookieHeader, name) {
   if (!cookieHeader) return void 0;
@@ -52582,8 +52588,10 @@ function ipToNum(ip) {
 }
 async function createContext({ req, res }) {
   const premiumAdmin = verifyPremiumToken(getCookieFromRequest(req.headers.cookie, PREMIUM_COOKIE_NAME));
+  const authHeader = req.headers.authorization;
+  const bearerToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : void 0;
   const skipCrmUser = premiumAdmin !== null && isPremiumOnlyRequest(req.originalUrl ?? req.url);
-  const token = skipCrmUser ? void 0 : getCookieFromRequest(req.headers.cookie, COOKIE_NAME);
+  const token = skipCrmUser ? void 0 : getCookieFromRequest(req.headers.cookie, COOKIE_NAME) || bearerToken;
   let user = null;
   if (token) {
     try {
@@ -52631,7 +52639,7 @@ async function createContext({ req, res }) {
     } catch {
     }
   }
-  return { req, res, user, premiumAdmin, clientIp: getClientIp(req) };
+  return { req, res, user, premiumAdmin, clientIp: getClientIp(req), token: user ? token : void 0 };
 }
 function storeProcedure(roles, forbiddenMessage) {
   return t.procedure.use(({ ctx, next, path: path2 }) => {
@@ -53216,6 +53224,48 @@ function shippingUpdateEmail(event, name, orderId, code, link, orderPageUrl) {
     </tr>
   </table>`;
   const subject = c4.subject(orderId, code ?? "");
+  return { subject, html: layout(subject, body) };
+}
+function postPurchaseEmail(name, orderId, orderPageUrl) {
+  const rawFirst = String(name || "").trim().split(/\s+/)[0] || name;
+  const firstName2 = escapeHtml(rawFirst);
+  const cleanFirstForSubject = rawFirst.replace(/[<>"']/g, "");
+  const subject = `Chegou tudo bem com seu Sal Vita, ${cleanFirstForSubject}?`;
+  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td>
+        <p style="margin:0 0 4px;font-size:13px;color:#888;">Pedido #${orderId}</p>
+        <h2 style="margin:0 0 12px;font-size:22px;color:#222;">Seu pedido foi entregue!</h2>
+        <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
+          Ol&aacute;, <strong>${firstName2}</strong>!
+        </p>
+        <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
+          A transportadora confirmou a entrega do seu pedido <strong>#${orderId}</strong>. Aqui &eacute; da Sal Vita, l&aacute; de Mossor&oacute;/RN, e queremos saber se o seu pacote chegou tudo certinho com voc&ecirc;!
+        </p>
+        <div style="background:#f8fafc;border-left:4px solid ${BRAND2};padding:14px 16px;border-radius:6px;margin:20px 0;">
+          <p style="margin:0 0 6px;font-size:14px;font-weight:bold;color:#1e293b;">
+            &#128161; Dica de conserva&ccedil;&atilde;o:
+          </p>
+          <p style="margin:0;font-size:14px;color:#475569;line-height:1.5;">
+            Depois de usar, aperte bem o fecho <em>zip lock</em> para vedar e guarde o pacote em local seco e arejado, longe do calor direto do fog&atilde;o, para preservar a textura natural e a qualidade do sal.
+          </p>
+        </div>
+        <p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">
+          Se algo veio diferente do esperado ou se tiver qualquer d&uacute;vida, &eacute; s&oacute; responder a este e-mail. Aqui quem responde &eacute; gente de verdade, e a gente resolve na hora!
+        </p>
+      </td>
+    </tr>
+    <tr><td>${ctaButton("Acessar Meu Pedido", orderPageUrl)}</td></tr>
+    <tr>
+      <td style="padding-top:20px;">
+        <p style="margin:0;font-size:13px;color:#64748b;line-height:1.5;">
+          WhatsApp de Atendimento: (84) 2140-8212<br />
+          Um abra&ccedil;o,<br />
+          <strong>Equipe Sal Vita &mdash; Mossor&oacute;/RN</strong>
+        </p>
+      </td>
+    </tr>
+  </table>`;
   return { subject, html: layout(subject, body) };
 }
 function escapeHtml(str) {
@@ -65608,7 +65658,7 @@ async function notifyShippingEvent(order, event) {
   if (!order.customerEmail) return null;
   const code = order.trackingCode ?? null;
   const link = code ? trackingLink(code) : null;
-  const { subject, html } = shippingUpdateEmail(event, order.customerName, order.id, code, link, ORDER_PAGE_URL());
+  const { subject, html } = event === "delivered" ? postPurchaseEmail(order.customerName, order.id, ORDER_PAGE_URL()) : shippingUpdateEmail(event, order.customerName, order.id, code, link, ORDER_PAGE_URL());
   const r5 = await sendEmail(order.customerEmail, subject, html);
   if (r5.ok) return "email";
   console.warn(`[shipping-event] e-mail "${event}" do pedido ${order.id} n\xE3o saiu (${r5.reason})`);
@@ -66438,6 +66488,13 @@ Seja direto e use emojis para facilitar leitura.`;
         if (updated && input.paymentStatus === "confirmed" && before?.paymentStatus !== "confirmed") {
           await confirmOrderPaid(updated);
         }
+        if (updated && input.status === "delivered" && before?.status !== "delivered") {
+          try {
+            await notifyShippingEvent(updated, "delivered");
+          } catch (e4) {
+            console.error(`[shipping] p\xF3s-venda autom\xE1tico do pedido ${updated.id} falhou:`, safeErr(e4));
+          }
+        }
         return updated;
       }),
       trackOrder: publicProcedure.input(external_exports.object({
@@ -66735,6 +66792,18 @@ Seja direto e use emojis para facilitar leitura.`;
         if (!r5.ok) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `E-mail n\xE3o enviado (${r5.reason}).` });
         await claimShippingEvent(order.id, "posted", null);
         await markShippingEvent(order.id, "posted", "email-manual");
+        return { success: true, email: order.customerEmail };
+      }),
+      // Admin: e-mail de pós-venda ("Chegou tudo bem?"), enviado à mão no painel.
+      sendPostPurchaseEmail: premiumAdminProcedure.input(external_exports.object({ orderId: external_exports.number() })).mutation(async ({ ctx, input }) => {
+        const [order] = await ordersDb.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
+        if (!order) throw new TRPCError({ code: "NOT_FOUND" });
+        if (!order.customerEmail) throw new TRPCError({ code: "BAD_REQUEST", message: "Pedido sem e-mail do cliente." });
+        const { subject, html } = postPurchaseEmail(order.customerName, order.id, ORDER_PAGE_URL());
+        const r5 = await sendEmail(order.customerEmail, subject, html);
+        if (!r5.ok) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `E-mail n\xE3o enviado (${r5.reason}).` });
+        await claimShippingEvent(order.id, "delivered", null);
+        await markShippingEvent(order.id, "delivered", "email-manual-pos-venda");
         return { success: true, email: order.customerEmail };
       }),
       // Admin: send direct WhatsApp tracking notification via server API
@@ -237934,7 +238003,8 @@ var authRouter = router({
         email: dbUser.email,
         name: dbUser.name,
         role: dbUser.role,
-        mustChangePassword: dbUser.mustChangePassword
+        mustChangePassword: dbUser.mustChangePassword,
+        token: ctx.token
       };
     });
   }),
@@ -237952,7 +238022,7 @@ var authRouter = router({
     ctx.res.setHeader("Set-Cookie", sessionCookieHeader(token));
     await db.update(users).set({ lastLoginIp: ctx.clientIp, lastLoginAt: /* @__PURE__ */ new Date() }).where(eq(users.id, user.id)).catch(() => {
     });
-    return { id: user.id, name: user.name, email: user.email, role: user.role };
+    return { id: user.id, name: user.name, email: user.email, role: user.role, token };
   }),
   logout: publicProcedure.mutation(({ ctx }) => {
     ctx.res.setHeader("Set-Cookie", clearSessionCookieHeader());
@@ -240193,6 +240263,10 @@ function deduplicarNoArquivo(linhas, jaExistem) {
 function janelaLembretes(agora) {
   return { de: new Date(agora.getTime() - 24 * 36e5), ate: new Date(agora.getTime() + 7 * 24 * 36e5) };
 }
+var DIAS_VENCIDOS_MEUS = 180;
+function janelaLembretesMeus(agora) {
+  return { de: new Date(agora.getTime() - DIAS_VENCIDOS_MEUS * 24 * 36e5), ate: janelaLembretes(agora).ate };
+}
 
 // server/routers/tasks.ts
 var EMAIL_CONFIRMED_TAG = "Email Confirmado";
@@ -240920,7 +240994,15 @@ var tasksRouter = router({
       phone: tasks.phone
     };
     if (input?.meus) {
-      return db.select(reminderFields).from(tasks).where(and(await meusLeadsFilter(ctx.user.id, ctx.user.name ?? ""), filtroLembrete)).orderBy(asc(tasks.reminderDate)).limit(300);
+      const { de: desdeMeus } = janelaLembretesMeus(/* @__PURE__ */ new Date());
+      const filtroMeus = and(
+        isNotNull(tasks.reminderDate),
+        gte(tasks.reminderDate, desdeMeus),
+        lte(tasks.reminderDate, ateData),
+        eq(tasks.status, "pending"),
+        sql`${tasks.reminderEnabled} IS DISTINCT FROM false`
+      );
+      return db.select(reminderFields).from(tasks).where(and(await meusLeadsFilter(ctx.user.id, ctx.user.name ?? ""), filtroMeus)).orderBy(asc(tasks.reminderDate)).limit(500);
     }
     if (ctx.user.role === "admin") {
       return db.select(reminderFields).from(tasks).where(filtroLembrete).orderBy(asc(tasks.reminderDate)).limit(300);

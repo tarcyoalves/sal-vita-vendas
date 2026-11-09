@@ -111,7 +111,7 @@ describe('tasks.findForWhatsapp: vincular lead para o admin', () => {
     const corpo = fonte.slice(i, fonte.indexOf('getById: protectedProcedure', i));
     expect(corpo).toContain('assignedTo: tasks.assignedTo');
     expect(corpo).toMatch(/veTodos \? \{ assignedTo/);
-    expect(fonte).toContain('.where(and(await meusLeadsFilter(ctx.user.id, ctx.user.name ?? \'\'), filtroLembrete))');
+    expect(fonte).toContain('.where(and(await meusLeadsFilter(ctx.user.id, ctx.user.name ?? \'\'), filtroMeus))');
   });
 });
 

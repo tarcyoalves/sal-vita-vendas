@@ -8,7 +8,7 @@ import {
 } from '../shared/tarefasAtrasadas';
 import { ordenarTarefas } from '../client/src/lib/taskOrder';
 import { computeDashboardAgg, isTaskOverdue as isTaskOverdueDash } from '../client/src/lib/dashboardAgg';
-import { deduplicarNoArquivo, janelaLembretes } from '../server/lib/taskImport';
+import { deduplicarNoArquivo, janelaLembretes, janelaLembretesMeus } from '../server/lib/taskImport';
 
 const ler = (p: string) => readFileSync(p, 'utf8');
 const NOW = new Date('2026-10-20T15:00:00Z').getTime();
@@ -18,13 +18,18 @@ const ago = (dias: number) => new Date(NOW - dias * DAY);
 describe('item 6 — tasks.reminders filtra no SQL', () => {
   const fonte = ler('server/routers/tasks.ts');
   const i = fonte.indexOf('reminders: protectedProcedure');
-  const trecho = fonte.slice(i, i + 2200);
+  const trecho = fonte.slice(i, i + 3000);
   it('só pendentes, lembrete ligado (nulo conta como ligado) e janela ontem..+7 dias', () => {
     expect(trecho).toContain("eq(tasks.status, 'pending')");
     expect(trecho).toContain('IS DISTINCT FROM false');
     expect(trecho).toContain('lte(tasks.reminderDate, ateData)');
     expect(trecho.match(/\.where\(filtroLembrete\)|\.where\(and\(filter, filtroLembrete\)\)/g)?.length).toBe(2);
     expect(trecho).toContain('.limit(300)');
+  });
+  it('janelaLembretesMeus (extensão): 180 dias para trás, 7 dias para a frente', () => {
+    const { de, ate } = janelaLembretesMeus(new Date(NOW));
+    expect(NOW - de.getTime()).toBe(180 * DAY);
+    expect(ate.getTime() - NOW).toBe(7 * DAY);
   });
   it('janelaLembretes: 24 h para trás, 7 dias para a frente', () => {
     const { de, ate } = janelaLembretes(new Date(NOW));

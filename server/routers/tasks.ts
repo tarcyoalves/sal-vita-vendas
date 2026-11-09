@@ -12,7 +12,7 @@ import { ACOMPANHANDO_LIMITE, buscaDoVincularVeTodos, ETIQUETA_ACOMPANHAR, etiqu
 import { validarDocumentoDaTarefa } from '../lib/taskDocumento';
 import { isNewContact } from '../lib/taskNotes';
 import { emailDoWhatsappInput, planejarEmail } from '../lib/emailDoWhatsapp';
-import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento, deduplicarNoArquivo, janelaLembretes } from '../lib/taskImport';
+import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento, deduplicarNoArquivo, janelaLembretes, janelaLembretesMeus } from '../lib/taskImport';
 
 // Tag aplicada/removida automaticamente junto com tasks.emailConfirmed (ver
 // confirmEmail e update abaixo), para permitir filtrar tarefas por confirmação
@@ -919,10 +919,17 @@ export const tasksRouter = router({
       phone: tasks.phone,
     };
     if (input?.meus) {
+      // Extensão: só os do próprio atendente, mas inclui os vencidos antigos (até 180 dias), que ficavam
+      // invisíveis com a janela de ontem. Os já vencidos há tempo não geram notificação na extensão.
+      const { de: desdeMeus } = janelaLembretesMeus(new Date());
+      const filtroMeus = and(
+        isNotNull(tasks.reminderDate), gte(tasks.reminderDate, desdeMeus), lte(tasks.reminderDate, ateData),
+        eq(tasks.status, 'pending'), sql`${tasks.reminderEnabled} IS DISTINCT FROM false`,
+      );
       return db.select(reminderFields).from(tasks)
-        .where(and(await meusLeadsFilter(ctx.user.id, ctx.user.name ?? ''), filtroLembrete))
+        .where(and(await meusLeadsFilter(ctx.user.id, ctx.user.name ?? ''), filtroMeus))
         .orderBy(asc(tasks.reminderDate))
-        .limit(300);
+        .limit(500);
     }
     if (ctx.user.role === 'admin') {
       return db.select(reminderFields).from(tasks)
