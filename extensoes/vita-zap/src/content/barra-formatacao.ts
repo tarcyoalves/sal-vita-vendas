@@ -3,6 +3,7 @@
 // Aqui ela só é deslocada para acima da caixa de digitação (abaixo não há espaço: a caixa encosta
 // no fim da janela). Não clica, não digita, não envia nada.
 
+import { extensaoDesligadaNestaAba } from './desligada';
 import { encontrar } from './selectors';
 
 const MARCA = 'data-vz-formatacao';
@@ -41,7 +42,7 @@ function ajustar(): void {
 export function iniciarBarraFormatacao(): void {
   let agendado = false;
   const agendar = (): void => {
-    if (agendado) return;
+    if (agendado || extensaoDesligadaNestaAba()) return;
     agendado = true;
     requestAnimationFrame(() => {
       agendado = false;

@@ -9,6 +9,7 @@ import { abrirEColar, consultarEnvio, limparCaixa, pararObservacao, registrarBat
 import { ErroSeletor } from './lista';
 import { iniciarCrm } from './crm';
 import { iniciarBarraFormatacao } from './barra-formatacao';
+import { extensaoDesligadaNestaAba } from './desligada';
 import { avisarUmaVez } from './crm/ui';
 import { encontrar } from './selectors';
 import { pararVarredura, varrerLista } from './varredura';
@@ -80,6 +81,10 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
 
 if (!jaCarregado) chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo, remetente, responder: (r: RespostaConteudo) => void) => {
   if (remetente.id !== chrome.runtime.id) return false;
+  if (extensaoDesligadaNestaAba() && mensagem.tipo !== 'batimento') {
+    responder({ ok: false, codigo: 'nao_pronto', erro: 'O Vita Zap foi desligado nesta aba ("Usar o WhatsApp sem a extensão"). Recarregue o WhatsApp Web e entre no CRM para usar.' });
+    return false;
+  }
   const longo = mensagem.tipo === 'varrer' || mensagem.tipo === 'abrirEColar' || mensagem.tipo === 'abrirPorTelefone' || mensagem.tipo === 'consultarEnvio';
   if (longo && ocupado) {
     responder({ ok: false, codigo: 'ocupado', erro: 'Outra operação ainda está em andamento.' });
@@ -100,5 +105,5 @@ if (!jaCarregado) chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo
 
 // CRM dentro do WhatsApp Web (barra de abas, lembretes, notas...). Falha em silêncio.
 if (!jaCarregado) iniciarBarraFormatacao();
-if (!jaCarregado) iniciarCrm().catch((e: unknown) => avisarUmaVez('crm', 'Não consegui iniciar o CRM.', e));
+if (!jaCarregado && !extensaoDesligadaNestaAba()) iniciarCrm().catch((e: unknown) => avisarUmaVez('crm', 'Não consegui iniciar o CRM.', e));
 

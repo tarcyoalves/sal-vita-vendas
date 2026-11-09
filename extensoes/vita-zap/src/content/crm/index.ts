@@ -22,6 +22,7 @@ import { refDaConversaAberta } from './conversa-aberta';
 import { esperarAte } from '../dom';
 import { encontrar, encontrarTodos } from '../selectors';
 import { algumaRelevante } from '../mutacoes';
+import { desligarNestaAba } from '../desligada';
 import { abrirConversaComRascunho, abrirConversaPorTelefoneNaPagina, consumirAcaoPendente } from './acao-pendente';
 import { ligarTelefones } from './telefone-conhecido';
 import { lerTelefoneDosDadosDoContato } from './dados-do-contato';
@@ -295,6 +296,10 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
               const r = await leads.conectarPelaSessao();
               if (r.ok) lerConta(true);
               return r.ok ? { ok: true } : { ok: false, mensagem: r.erro.mensagem };
+            },
+            aoUsarSemExtensao: () => {
+              desligarNestaAba();
+              pararTudo?.();
             },
           });
         }

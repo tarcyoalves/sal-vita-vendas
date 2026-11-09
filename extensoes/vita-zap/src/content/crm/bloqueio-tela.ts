@@ -12,6 +12,8 @@ export interface PropsBloqueio {
   aoEntrar: (email: string, senha: string) => Promise<{ ok: boolean; mensagem?: string }>;
   aoConectarSessao: () => Promise<{ ok: boolean; mensagem?: string }>;
   aoAbrirPainel?: () => void;
+  /** "Usar o WhatsApp sem a extensão": some o bloqueio e o Vita Zap fica desligado nesta aba até recarregar. */
+  aoUsarSemExtensao?: () => void;
 }
 
 export class BloqueioTelaCrm {
@@ -232,6 +234,28 @@ export class BloqueioTelaCrm {
           'Abrir CRM Sal Vita em outra aba ↗'
         )
       ),
+      props.aoUsarSemExtensao
+        ? h(
+            'div',
+            { class: 'bloqueio-sem-extensao' },
+            h(
+              'button',
+              {
+                type: 'button',
+                class: 'bloqueio-btn-sem-extensao',
+                disabled: this.ocupado,
+                onclick: () => {
+                  this.h.host.style.display = 'none';
+                  this.estaVisivel = false;
+                  this.h.conteudo.innerHTML = '';
+                  props.aoUsarSemExtensao?.();
+                },
+              },
+              'Usar o WhatsApp sem a extensão',
+            ),
+            h('p', { class: 'bloqueio-sem-extensao-ajuda' }, 'O Vita Zap fica desligado nesta aba (sem CRM, lembretes, abas e campanhas). Para ligar de novo, recarregue a página e entre no CRM.'),
+          )
+        : null,
       h(
         'div',
         { class: 'bloqueio-rodape' },

@@ -186,6 +186,11 @@ textarea.campo { resize: vertical; min-height: 60px; }
 .bloqueio-btn-sessao:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
 .bloqueio-btn-sessao:active:not(:disabled) { transform: translateY(0); }
 .bloqueio-btn-sessao:disabled { opacity: 0.6; cursor: not-allowed; }
+.bloqueio-sem-extensao { margin: 14px 0 2px; text-align: center; }
+.bloqueio-btn-sem-extensao { background: transparent; border: 1px solid var(--borda); color: var(--texto, inherit); padding: 8px 14px; border-radius: 10px; font-size: 12.5px; cursor: pointer; }
+.bloqueio-btn-sem-extensao:hover:not(:disabled) { background: rgba(127, 127, 127, 0.12); }
+.bloqueio-btn-sem-extensao:disabled { opacity: 0.6; cursor: not-allowed; }
+.bloqueio-sem-extensao-ajuda { margin: 6px 0 0; font-size: 11px; color: var(--suave); line-height: 1.4; }
 .bloqueio-divisor { display: flex; align-items: center; text-align: center; margin: 18px 0 16px; color: var(--suave); font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase; }
 .bloqueio-divisor::before, .bloqueio-divisor::after { content: ''; flex: 1; border-bottom: 1px solid var(--borda); }
 .bloqueio-divisor span { padding: 0 10px; }

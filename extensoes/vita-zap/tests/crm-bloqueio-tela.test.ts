@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BloqueioTelaCrm } from '../src/content/crm/bloqueio-tela';
 import { iniciarCrm, type ControladorCrm } from '../src/content/crm';
 import { limparAvisos } from '../src/content/crm/ui';
+import { extensaoDesligadaNestaAba, religarParaTeste } from '../src/content/desligada';
 import { RepositorioLocal } from '../src/shared/repositorio-local';
 import { criarRepositorioCRM } from '../src/shared/repositorio-crm';
 import { ServicoCrm } from '../src/shared/servico-crm';
@@ -179,5 +180,25 @@ describe('Integração de Bloqueio no iniciarCrm', () => {
     expect(document.getElementById('vita-zap-bloqueio')).not.toBeNull();
     ctrl.parar();
     expect(document.getElementById('vita-zap-bloqueio')).toBeNull();
+  });
+
+  it('"Usar o WhatsApp sem a extensão": libera a tela, desliga o Vita Zap nesta aba e não grava nada', async () => {
+    religarParaTeste();
+    ctrl = await iniciarCrm({ agora: () => AGORA, periodicoMs: 0, repositorio: repo });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const host = document.getElementById('vita-zap-bloqueio') as HTMLElement;
+    const botao = host.shadowRoot?.querySelector<HTMLButtonElement>('.bloqueio-btn-sem-extensao');
+    expect(botao?.textContent).toBe('Usar o WhatsApp sem a extensão');
+    const gravadoAntes = JSON.stringify(await chrome.storage.local.get(null));
+    botao!.click();
+
+    expect(extensaoDesligadaNestaAba()).toBe(true);
+    expect(document.getElementById('vita-zap-bloqueio')).toBeNull(); // tela liberada
+    expect(document.querySelector('[data-vita-zap]')).toBeNull(); // nenhuma ferramenta do Vita Zap na página
+    expect(document.querySelector('#pane-side')).not.toBeNull(); // o WhatsApp continua lá
+    expect(JSON.stringify(await chrome.storage.local.get(null))).toBe(gravadoAntes); // só até recarregar
+    ctrl = null; // já parado
+    religarParaTeste();
   });
 });
