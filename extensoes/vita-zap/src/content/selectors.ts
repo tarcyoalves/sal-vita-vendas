@@ -85,6 +85,15 @@ export const SELETORES = {
   /** Mensagem minha pela classe estável do WhatsApp (message-out); as recebidas são message-in. */
   mensagemMinhaClasse: ['.message-out'],
 
+  /** Mensagem recebida pela classe do WhatsApp (message-in). Contas novas não têm: há outros sinais. */
+  mensagemRecebidaClasse: ['.message-in'],
+
+  /** Cadeado do aviso de criptografia (mensagem do sistema, não do contato). */
+  iconeCadeado: ['[data-icon*="lock"]'],
+
+  /** Botão "Itálico" da barra de formatação nativa (só para achar a barra e deslocá-la). */
+  botaoItalico: ['[aria-label^="Itálico"]', '[aria-label^="Italic"]', '[title^="Itálico"]', '[title^="Italic"]'],
+
   /** Janela/aviso aberto sobre a conversa (erro, confirmação, "não foi possível...") */
   avisoWhatsApp: ['[role="alertdialog"]', '[role="dialog"]', '[data-animate-modal-popup="true"]', '[role="alert"]', '[data-testid="popup-contents"]'],
 
@@ -188,6 +197,11 @@ export function encontrar(raiz: ParentNode, chave: ChaveSeletor): HTMLElement | 
     if (el) return el;
   }
   return svgPorTitulo(raiz, chave);
+}
+
+/** O próprio elemento, ou algum ancestral, bate com alguma alternativa da chave. */
+export function dentroDe(el: Element, chave: ChaveSeletor): boolean {
+  return SELETORES[chave].some((s) => el.closest(s) !== null);
 }
 
 /** Verdadeiro se QUALQUER alternativa bate com algum elemento. */

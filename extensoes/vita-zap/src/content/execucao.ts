@@ -13,7 +13,7 @@ import { abrirLinhaDaLista } from './abrir-conversa';
 import { colarComClipboard, colarDiretoNoParagrafo, escreverNoCampo, esperar, esperarAte, limparCampo, limparMarcas, textoComEmoji, textoDoCampoComEmoji } from './dom';
 import { lerConversasVisiveis } from './extrair';
 import { buscar, exigir, linhasDaLista } from './lista';
-import { encontrar, encontrarTodos, existeAlgum, SELETORES } from './selectors';
+import { dentroDe, encontrar, encontrarTodos, existeAlgum, SELETORES } from './selectors';
 import { agendarEnvioHumano, enviarHumano, PRAZO_CONFIRMACAO_MS } from './envio-humano';
 import { mesmoNome } from '../shared/abrir-por-telefone';
 import { lerResultadosDaBusca } from './extrair';
@@ -29,7 +29,7 @@ const SUBTITULO_DE_PRESENCA = /visto|last seen|online|digitando|typing|gravando|
 /** A mensagem é MINHA? Sinais positivos: data-id "true_", classe message-out ou ícone de status (✓/✓✓/relógio). */
 export function mensagemEhMinha(el: HTMLElement): boolean {
   if ((el.getAttribute('data-id') ?? '').startsWith('true_')) return true;
-  if (el.matches('.message-out') || el.closest('.message-out') || existeAlgum(el, 'mensagemMinhaClasse')) return true;
+  if (dentroDe(el, 'mensagemMinhaClasse') || existeAlgum(el, 'mensagemMinhaClasse')) return true;
   return existeAlgum(el, 'iconeMinhaMensagem');
 }
 
@@ -37,7 +37,7 @@ const PADRAO_MENSAGEM_SISTEMA = /criptografia|end-to-end|servi[cç]o seguro da m
 
 /** Aviso de sistema do WhatsApp (criptografia, aviso da Meta). Não é mensagem enviada nem recebida de contato. */
 export function ehMensagemDoSistema(el: HTMLElement): boolean {
-  if (el.querySelector('[data-icon*="lock"]')) return true;
+  if (existeAlgum(el, 'iconeCadeado')) return true;
   const texto = el.textContent ?? '';
   return PADRAO_MENSAGEM_SISTEMA.test(texto);
 }
@@ -119,7 +119,7 @@ export function classificarConversa(
   // Mensagens recebidas do contato (exclui as minhas e avisos do sistema que não têm .message-in nem autor)
   const recebidas = mensagens.filter((m) => {
     if (mensagemEhMinha(m)) return false;
-    return m.matches('.message-in') || m.closest('.message-in') != null || m.querySelector('.message-in') != null || autorDaMensagem(m) !== null;
+    return dentroDe(m, 'mensagemRecebidaClasse') || existeAlgum(m, 'mensagemRecebidaClasse') || autorDaMensagem(m) !== null;
   });
 
   if (recebidas.length === 0) {
@@ -404,7 +404,7 @@ function avisoDoWhatsAppAberto(): boolean {
     if (el.hidden || el.getAttribute('aria-hidden') === 'true') continue;
     // Ignora elementos dentro do chat (#main), menu lateral (#side) ou da própria extensão.
     // Modais e alertas de bloqueio reais ficam como overlays fora de #main e #side.
-    if (el.closest('#main') || el.closest('#side') || el.closest('[data-vita-zap]')) continue;
+    if (dentroDe(el, 'painelConversa') || dentroDe(el, 'colunaEsquerda') || el.closest('[data-vita-zap]')) continue;
     return true;
   }
   return false;

@@ -21,6 +21,7 @@ import { nomeDaConversaAberta } from '../execucao';
 import { refDaConversaAberta } from './conversa-aberta';
 import { esperarAte } from '../dom';
 import { encontrar, encontrarTodos } from '../selectors';
+import { algumaRelevante } from '../mutacoes';
 import { abrirConversaComRascunho, abrirConversaPorTelefoneNaPagina, consumirAcaoPendente } from './acao-pendente';
 import { ligarTelefones } from './telefone-conhecido';
 import { lerTelefoneDosDadosDoContato } from './dados-do-contato';
@@ -61,6 +62,17 @@ export interface ControladorCrm {
   /** Relê a lista, grava o estado e redesenha. Seguro: nunca lança. */
   ciclo: () => void;
   parar: () => void;
+  /** Contadores do observador de DOM (medição do trabalho evitado; só leitura). */
+  metricas: Readonly<MetricasObservador>;
+}
+
+export interface MetricasObservador {
+  /** Lotes de mudanças entregues pelo MutationObserver. */
+  lotes: number;
+  /** Lotes descartados por não terem nenhuma mudança relevante. */
+  ignorados: number;
+  /** Ciclos de leitura/desenho executados. */
+  ciclos: number;
 }
 
 const MAX_ESPERA_MS = 1000;
@@ -118,6 +130,8 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let primeiroPedido = 0;
   let encerrado = false;
+  let pendenteOculto = false;
+  const metricas: MetricasObservador = { lotes: 0, ignorados: 0, ciclos: 0 };
   const inicio = Date.now();
 
   const ctxLembretes: ContextoLembretes = { estado, agora: agoraFn, abrirConversa: ({ nome, telefone, rascunho, remoto }) => {
@@ -377,6 +391,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
 
   function ciclo(): void {
     if (encerrado) return;
+    metricas.ciclos += 1;
     if (scriptOrfao()) {
       pararTudo?.();
       return;
@@ -518,9 +533,22 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
     }
   }
 
-  const observador = new MutationObserver(agendar);
+  // Só agenda o ciclo quando alguma mudança importa (ver mutacoes.ts); `metricas` conta o trabalho evitado.
+  const observador = new MutationObserver((registros) => {
+    metricas.lotes += 1;
+    if (!algumaRelevante(registros)) {
+      metricas.ignorados += 1;
+      return;
+    }
+    agendar();
+  });
   function agendar(): void {
     if (encerrado) return;
+    // Aba escondida: não desenha nada; ao voltar (visibilitychange) roda um ciclo só.
+    if (document.visibilityState === 'hidden') {
+      pendenteOculto = true;
+      return;
+    }
     const agora = Date.now();
     if (primeiroPedido === 0) primeiroPedido = agora;
     if (timer) clearTimeout(timer);
@@ -547,7 +575,12 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   window.addEventListener('scroll', agendar, { capture: true, passive: true });
   // Voltou para a aba do WhatsApp (por exemplo depois de entrar no CRM pelo painel): confere a conta (leitura local, sem rede).
   const aoVoltar = (): void => {
-    if (document.visibilityState !== 'hidden') lerConta();
+    if (document.visibilityState === 'hidden') return;
+    lerConta();
+    if (pendenteOculto) {
+      pendenteOculto = false;
+      agendar();
+    }
   };
   window.addEventListener('focus', aoVoltar);
   document.addEventListener('visibilitychange', aoVoltar);
@@ -575,6 +608,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   const controlador: ControladorCrm = {
     estado,
     ciclo,
+    metricas,
     parar: () => {
       encerrado = true;
       ligarTelefones(null);

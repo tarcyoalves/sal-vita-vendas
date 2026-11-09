@@ -3,7 +3,8 @@
 // Aqui ela só é deslocada para acima da caixa de digitação (abaixo não há espaço: a caixa encosta
 // no fim da janela). Não clica, não digita, não envia nada.
 
-const BOTAO_ITALICO = '[aria-label^="Itálico"], [aria-label^="Italic"], [title^="Itálico"], [title^="Italic"]';
+import { encontrar } from './selectors';
+
 const MARCA = 'data-vz-formatacao';
 const FOLGA_PX = 6;
 
@@ -24,8 +25,8 @@ export function deslocamento(barra: DOMRect, caixa: DOMRect, folga = FOLGA_PX): 
 }
 
 function ajustar(): void {
-  const caixa = document.querySelector('#main footer');
-  const botao = caixa?.ownerDocument.querySelector(BOTAO_ITALICO);
+  const caixa = encontrar(document, 'rodapeConversa');
+  const botao = caixa ? encontrar(document, 'botaoItalico') : null;
   if (!caixa || !botao) return;
   const barra = barraDoBotao(botao);
   if (!barra) return;
