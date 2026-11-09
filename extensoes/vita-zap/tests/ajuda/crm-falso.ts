@@ -32,6 +32,8 @@ export interface Requisicao {
   metodo: string;
   credentials: RequestCredentials | undefined;
   contentType: string | null;
+  /** Cabeçalho Authorization enviado (null = sem). */
+  authorization?: string | null;
   entrada: unknown;
 }
 
@@ -45,6 +47,8 @@ export interface CrmFalso {
   forcarStatus: number | null;
   /** O login passa, mas a sessão não é reconhecida depois (IP restrito / cookie não enviado). */
   sessaoInvisivel: boolean;
+  /** Token que o servidor devolve no login e no auth.me (null = servidor que não devolve token). */
+  token: string | null;
   /** Servidor da 0.7.23: converter já tira a etiqueta "Acompanhar" na mesma chamada. Falso = servidor anterior. */
   conversaoTiraAcompanhar: boolean;
   /** tasks.acompanhando não existe (servidor anterior). */
@@ -70,6 +74,7 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
     semRede: false,
     forcarStatus: null,
     sessaoInvisivel: false,
+    token: null,
     conversaoTiraAcompanhar: true,
     semProcedureAcompanhando: false,
     fetch: undefined as unknown as typeof fetch,
@@ -86,19 +91,19 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
     const entradaSer = bruto ? JSON.parse(bruto) : undefined;
     const dados = entradaSer && entradaSer.json !== null ? superjson.deserialize<Record<string, unknown>>(entradaSer) : undefined;
     const headers = new Headers(init?.headers);
-    crm.requisicoes.push({ url, metodo, credentials: init?.credentials, contentType: headers.get('Content-Type'), entrada: dados });
+    crm.requisicoes.push({ url, metodo, credentials: init?.credentials, contentType: headers.get('Content-Type'), authorization: headers.get('Authorization'), entrada: dados });
     if (crm.forcarStatus) return resposta(crm.forcarStatus, { error: 'Muitas tentativas. Tente novamente em 15 minutos.' });
 
     if (caminho === 'auth.login') {
       if (dados?.email !== EMAIL || dados?.password !== SENHA) return erroTrpc(401, 'UNAUTHORIZED', 'Email ou senha inválidos');
       crm.logado = true;
-      return ok({ id: 7, name: 'Ana', email: EMAIL, role: 'user' });
+      return ok({ id: 7, name: 'Ana', email: EMAIL, role: 'user', ...(crm.token ? { token: crm.token } : {}) });
     }
     if (caminho === 'auth.logout') {
       crm.logado = false;
       return ok({ success: true });
     }
-    if (caminho === 'auth.me') return ok(crm.logado && !crm.sessaoInvisivel ? { id: 7, name: 'Ana', email: EMAIL, role: 'user', mustChangePassword: false } : null);
+    if (caminho === 'auth.me') return ok(crm.logado && !crm.sessaoInvisivel ? { id: 7, name: 'Ana', email: EMAIL, role: 'user', mustChangePassword: false, ...(crm.token ? { token: crm.token } : {}) } : null);
     if (!crm.logado || crm.sessaoInvisivel) return erroTrpc(401, 'UNAUTHORIZED', 'UNAUTHORIZED');
 
     if (caminho === 'tasks.findForWhatsapp') {

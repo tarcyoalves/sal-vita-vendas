@@ -115,6 +115,39 @@ describe('o que é recusado', () => {
   });
 });
 
+describe('contrato: só ping, nada além', () => {
+  it('origem falsa no campo origin não é salva por uma url boa', async () => {
+    const { vaiResponder } = await perguntar({ tipo: 'ping' }, { origin: 'https://evil.com', url: 'https://lembretes.salvitarn.com.br/vita-zap' });
+    expect(vaiResponder).toBe(false);
+  });
+
+  it.each([
+    ['indefinido', undefined],
+    ['número', 1],
+    ['lista', [{ tipo: 'ping' }]],
+    ['tipo em lista', { tipo: ['ping'] }],
+    ['pedido de token', { tipo: 'token' }],
+    ['pedido de conta', { tipo: 'conta' }],
+  ])('mensagem inválida (%s): ignora', async (_nome, msg) => {
+    const { vaiResponder, responder } = await perguntar(msg, { origin: 'https://lembretes.salvitarn.com.br' });
+    expect(vaiResponder).toBe(false);
+    expect(responder).not.toHaveBeenCalled();
+  });
+
+  it('ping com campos extras responde só os quatro campos de sempre', async () => {
+    const { responder } = await perguntar({ tipo: 'ping', pedir: 'token', metodo: 'sair' }, { origin: 'https://lembretes.salvitarn.com.br' });
+    expect(Object.keys(responder.mock.calls[0][0]).sort()).toEqual(['conectadoAoCrm', 'ok', 'temPermissao', 'versao']);
+  });
+
+  it('externo.ts não importa nada: não tem como ler armazenamento, token ou chamar o CRM', () => {
+    const fonte = readFileSync(join(__dirname, '..', 'src', 'background', 'externo.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, ''); // só o código, sem comentários
+    expect(fonte).not.toMatch(/^\s*import\s/m);
+    expect(fonte).not.toMatch(/chrome\.|fetch\(|token/i);
+  });
+});
+
 describe('fiação no service worker', () => {
   it('o service worker registra o ouvinte externo', () => {
     const sw = readFileSync(join(__dirname, '..', 'src', 'background', 'service-worker.ts'), 'utf8');

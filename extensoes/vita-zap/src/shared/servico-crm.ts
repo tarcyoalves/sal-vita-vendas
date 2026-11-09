@@ -217,7 +217,8 @@ export class ServicoCrm implements LeadsCRM {
       const erro: ErroCrm = e instanceof ErroDoCrm ? e.erro : { tipo: 'servidor', mensagem: 'Falha inesperada ao falar com o CRM.' };
       if (erro.tipo === 'nao-autenticado' || erro.tipo === 'ip') {
         const c = await this.lerConta();
-        if (c.usuario) await this.gravarConta({ ...c, usuario: null, erro });
+        // Sessão caiu (expirou, senha trocada, revogada): o token guardado não vale mais. Não fica no armazenamento.
+        if (c.usuario || c.token) await this.gravarConta({ ...c, usuario: null, erro, token: null });
       }
       return { ok: false, erro };
     }
@@ -264,7 +265,8 @@ export class ServicoCrm implements LeadsCRM {
       const tokenMe = (typeof r.valor === 'object' && r.valor && 'token' in r.valor && typeof (r.valor as { token: unknown }).token === 'string')
         ? (r.valor as { token: string }).token
         : null;
-      const tokenFinal = tokenMe ?? tokenLogin ?? c.token;
+      // Só o token DESTE login. Nunca o de uma sessão anterior (podia ser de outro usuário ou já revogado).
+      const tokenFinal = tokenMe ?? tokenLogin;
       if (!u) {
         const erro: ErroCrm = {
           tipo: 'nao-autenticado',
@@ -301,8 +303,10 @@ export class ServicoCrm implements LeadsCRM {
       }
       // Outro usuário no site: o cache do anterior (leads, lembretes) não vale para este (vínculos e fila ficam, como no sair).
       if (c.usuario && c.usuario.id !== u.id) await this.arm.limparChaves('vz.crm.', [CHAVES_CRM.conta, CHAVES_CRM.vinculos, CHAVES_CRM.fila, CHAVES_CRM.falhas]);
-      await this.gravarConta({ baseUrl: c.baseUrl, usuario: u, token: tokenMe ?? c.token });
-      if (!c.usuario || c.usuario.id !== u.id) {
+      // Outro usuário (ou nenhum antes): o token antigo não é dele.
+      const mesmoUsuario = c.usuario !== null && c.usuario.id === u.id;
+      await this.gravarConta({ baseUrl: c.baseUrl, usuario: u, token: tokenMe ?? (mesmoUsuario ? c.token : null) });
+      if (!mesmoUsuario) {
         await this.sincronizarInterno();
         await this.reenviarInterno();
       }
