@@ -93,24 +93,17 @@ describe('observador de DOM do CRM', () => {
     expect(document.querySelector('[data-vita-zap]')).not.toBeNull(); // e ela volta
   });
 
-  it('aba escondida não desenha; ao voltar roda o ciclo pendente', async () => {
+  it('aba escondida (janela coberta) CONTINUA atualizando: o envio automático roda assim', async () => {
     ctrl = await iniciarCrm({ agora: () => AGORA, periodicoMs: 0 });
     await esperar();
-    const vis = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
-    let estado: DocumentVisibilityState = 'hidden';
-    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => estado });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
     try {
       const c = ctrl.metricas.ciclos;
       document.getElementById('lista')!.insertAdjacentHTML('beforeend', htmlDaLinha({ nome: 'Dora', data: '10:05', previa: 'oi' }, 144));
       await esperar();
-      expect(ctrl.metricas.ciclos).toBe(c);
-      estado = 'visible';
-      document.dispatchEvent(new Event('visibilitychange'));
-      await esperar();
       expect(ctrl.metricas.ciclos).toBeGreaterThan(c);
     } finally {
       delete (document as unknown as Record<string, unknown>).visibilityState;
-      if (vis) Object.defineProperty(Document.prototype, 'visibilityState', vis);
     }
   });
 

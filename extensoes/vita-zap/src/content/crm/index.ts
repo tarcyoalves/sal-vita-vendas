@@ -131,7 +131,6 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let primeiroPedido = 0;
   let encerrado = false;
-  let pendenteOculto = false;
   const metricas: MetricasObservador = { lotes: 0, ignorados: 0, ciclos: 0 };
   const inicio = Date.now();
 
@@ -549,11 +548,9 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   });
   function agendar(): void {
     if (encerrado) return;
-    // Aba escondida: não desenha nada; ao voltar (visibilitychange) roda um ciclo só.
-    if (document.visibilityState === 'hidden') {
-      pendenteOculto = true;
-      return;
-    }
+    // NÃO pausar com a aba escondida (0.7.48 pausava e quebrou o envio): o Chrome marca a aba como escondida
+    // também com a janela coberta por outra, e o envio automático roda assim. Sem o ciclo, o filtro das abas
+    // continuava escondendo/deslocando as linhas dos resultados da busca e o clique caía no contato errado.
     const agora = Date.now();
     if (primeiroPedido === 0) primeiroPedido = agora;
     if (timer) clearTimeout(timer);
@@ -580,12 +577,7 @@ export async function iniciarCrm(op: OpcoesCrm = {}): Promise<ControladorCrm> {
   window.addEventListener('scroll', agendar, { capture: true, passive: true });
   // Voltou para a aba do WhatsApp (por exemplo depois de entrar no CRM pelo painel): confere a conta (leitura local, sem rede).
   const aoVoltar = (): void => {
-    if (document.visibilityState === 'hidden') return;
-    lerConta();
-    if (pendenteOculto) {
-      pendenteOculto = false;
-      agendar();
-    }
+    if (document.visibilityState !== 'hidden') lerConta();
   };
   window.addEventListener('focus', aoVoltar);
   document.addEventListener('visibilitychange', aoVoltar);
