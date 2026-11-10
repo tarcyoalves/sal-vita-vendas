@@ -14,6 +14,13 @@ describe('mesmaConversa (campanha)', () => {
     expect(mesmaConversa('Agro', 'Agropecuária Boa Vista')).toBe(false);
   });
 
+  it('caso real 2 (v0.7.51): conversa "Claudimar…" aberta, próximo era "Cliente Caratinga Mg Frical"', () => {
+    for (const t of ['Claudimara Cliente Caratinga Mg', 'Claudimar Cliente Caratinga MG', 'Claudimar…']) {
+      expect(mesmaConversa(t, 'Cliente Caratinga Mg Frical'), t).toBe(false);
+    }
+    expect(mesmoNome('Claudimara Cliente Caratinga Mg', 'Cliente Caratinga Mg Frical')).toBe(true); // o frouxo reaproveitava
+  });
+
   it('igual depois de normalizar (maiúsculas, acentos, espaços)', () => {
     expect(mesmaConversa('AGROPECUÁRIA  Boa Vista', 'agropecuaria boa vista')).toBe(true);
   });
