@@ -1053,3 +1053,13 @@ export const creditReportLinks = pgTable('credit_report_links', {
   vinculadoPorUserId: integer('vinculado_por_user_id'),
   origem: text('origem').notNull(), // CONSULTA_NO_PEDIDO | ENVIO_SMBI | MANUAL
 });
+
+// Histórico de ações do admin sobre pedidos da loja (banco ORDERS). Sem PII: só nomes de campos.
+export const adminOrderActions = pgTable('admin_order_actions', {
+  id: serial('id').primaryKey(),
+  orderId: integer('order_id').notNull(),
+  actor: text('actor'),
+  action: text('action').notNull(),
+  detail: text('detail'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});

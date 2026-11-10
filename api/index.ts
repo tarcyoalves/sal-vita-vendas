@@ -1604,7 +1604,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       // 3º toque sem cupom ativo cai no template simples (nunca "Use o cupom **").
       const ruleCfg = regraDeAbandono(RULE_MAP[run.ruleName]);
       // Append ?cupom= so the storefront pre-fills and auto-applies the code.
-      const link = ruleCfg.coupon ? `${STORE_URL}?cupom=${ruleCfg.coupon}` : STORE_URL;
+      const link = ruleCfg.coupon ? `${STORE_URL}?cupom=${encodeURIComponent(ruleCfg.coupon)}` : STORE_URL;
       const tpl = tplBySlug[ruleCfg.slug] ?? fallbackTpl;
       let msg: string;
       if (run.aiBody) {
@@ -1625,7 +1625,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
           sent++;
           // Email only on 3rd touch (cupom) to save Resend daily quota for confirmations
           if (cart.customerEmail && ruleCfg.coupon) {
-            const emailHtml = abandonedCartHtml(cart.customerName, STORE_URL, ruleCfg.coupon);
+            const emailHtml = abandonedCartHtml(cart.customerName, link, ruleCfg.coupon);
             try { await sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} — finalize seu pedido Sal Vita`, emailHtml); }
             catch (e) { console.error(`[cron] abandoned-cart: e-mail do carrinho ${cart.id} falhou:`, safeErr(e)); }
           }

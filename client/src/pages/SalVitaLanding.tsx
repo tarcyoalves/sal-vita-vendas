@@ -4,7 +4,8 @@ import { trackPixel } from '../components/premium/pixelConsent';
 import { claimPurchase } from '../components/premium/purchaseLock';
 import { parseApiError } from '../components/premium/apiError';
 import {
-  CARRIERS_TEXT, cleanAddressNumber, isSavedCustomerFresh, shouldTrackCart, validateCheckoutFields,
+  CARRIERS_TEXT, cleanAddressNumber, customerNameError, emailTypoSuggestion, isSavedCustomerFresh, phoneProblem,
+  shouldTrackCart, validateCheckoutFields,
 } from '../components/premium/checkoutLogic';
 
 /* ─── Image assets ───────────────────────────────────────── */
@@ -348,6 +349,7 @@ export default function SalVitaLanding() {
     setFieldErrs(e => { if (!e[k]) return e; const n = { ...e }; delete n[k]; return n; });
   };
   const FE = (k: string) => fieldErrs[k] ? <p id={`err-${k}`} role="alert" className="err">{fieldErrs[k]}</p> : null;
+  const emailFix = emailTypoSuggestion(checkoutForm.customerEmail);
 
   useEffect(()=>{
     const h=()=>{ setScrolled(window.scrollY>50); };
@@ -704,7 +706,8 @@ export default function SalVitaLanding() {
     if(checkoutLoading) return; // guard against double-submit (mobile double-tap)
     setOrderErr('');
     const p3 = checkoutForm.customerPhone.replace(/\D/g,'');
-    if (p3.length < 10) { setPhoneError('Informe DDD + número.'); document.getElementById('co-phone')?.focus(); return; }
+    const phoneMsg = phoneProblem(checkoutForm.customerPhone);
+    if (phoneMsg) { setPhoneError(phoneMsg); document.getElementById('co-phone')?.focus(); return; }
     setPhoneError('');
     // Validate CPF before creating the order — a bad CPF only fails later at
     // Mercado Pago / Melhor Envio, after the sale, which loses the customer.
@@ -712,6 +715,8 @@ export default function SalVitaLanding() {
     setCpfError('');
     // Same rules as the server, so a bad value never reaches it as raw validation JSON.
     const fe = validateCheckoutFields(checkoutForm);
+    const nameMsg = customerNameError(checkoutForm.customerName);
+    if (nameMsg) fe.customerName = nameMsg;
     setFieldErrs(fe);
     const feKeys = Object.keys(fe);
     if (feKeys.length) { setOrderErr('Confira os campos destacados.'); document.getElementById(FIELD_INPUT_ID[feKeys[0]])?.focus(); return; }
@@ -1845,8 +1850,8 @@ export default function SalVitaLanding() {
               <div>
                 <label className="inp-lbl" htmlFor="co-phone">Telefone/WhatsApp *</label>
                 <input id="co-phone" className="inp" required type="tel" inputMode="numeric" autoComplete="tel" value={checkoutForm.customerPhone}
-                  onChange={e=>{ const m=maskPhone(e.target.value); onField('customerPhone',m); if(m.replace(/\D/g,'').length>=10) setPhoneError(''); }}
-                  onBlur={()=>{ const n=checkoutForm.customerPhone.replace(/\D/g,'').length; setPhoneError(n>0&&n<10?'Informe DDD + número.':''); }}
+                  onChange={e=>{ const m=maskPhone(e.target.value); onField('customerPhone',m); if(!phoneProblem(m)) setPhoneError(''); }}
+                  onBlur={()=>{ const v=checkoutForm.customerPhone; setPhoneError(v.replace(/\D/g,'') ? (phoneProblem(v) ?? '') : ''); }}
                   placeholder="(84) 99999-9999"
                   aria-invalid={phoneError?true:undefined} aria-describedby={phoneError?'co-phone-err':undefined}/>
                 {phoneError && <p id="co-phone-err" role="alert" className="err">{phoneError}</p>}
@@ -1863,6 +1868,12 @@ export default function SalVitaLanding() {
                 <label className="inp-lbl" htmlFor="co-email">E-mail *</label>
                 <input id="co-email" className="inp" required type="email" autoComplete="email" value={checkoutForm.customerEmail} onChange={e=>onField('customerEmail',e.target.value)} placeholder="seuemail@exemplo.com" maxLength={254} aria-invalid={fieldErrs.customerEmail?true:undefined} aria-describedby={fieldErrs.customerEmail?'err-customerEmail':undefined}/>
                 {FE('customerEmail')}
+                {emailFix && !fieldErrs.customerEmail && (
+                  <p style={{margin:'4px 0 0',fontSize:13,color:'#475569'}}>
+                    Você quis dizer{' '}
+                    <button type="button" onClick={()=>onField('customerEmail', emailFix)} style={{background:'none',border:0,padding:'8px 2px',color:'#0C3680',fontWeight:600,textDecoration:'underline',cursor:'pointer',font:'inherit'}}>{emailFix}</button>?
+                  </p>
+                )}
               </div>
               <div>
                 <label className="inp-lbl" htmlFor="co-cep">CEP (do frete)</label>

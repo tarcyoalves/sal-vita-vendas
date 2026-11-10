@@ -4,7 +4,7 @@ import { decideLabelStep, RESUME_MIN_AGE_MS } from '../lib/labelResume';
 import crypto from 'crypto';
 import { router, publicProcedure, premiumAdminProcedure } from '../trpc';
 import { ordersDb as db } from '../db/ordersDb';
-import { siteOrders, coupons, msgTemplates } from '../db/schema';
+import { siteOrders, coupons, msgTemplates, adminOrderActions } from '../db/schema';
 import { desc, eq, and, or, ne, gte, isNull, sql } from 'drizzle-orm';
 import { TRPCError } from '@trpc/server';
 import { STORE_URL } from '../lib/storeUrl';
@@ -17,6 +17,8 @@ import {
 import { sendEmail, shippingUpdateEmail, postPurchaseEmail, orderCancelledEmail } from '../email/resend';
 import { confirmOrderPaid, appendReviewNote, bumpCouponUsage } from '../lib/orderConfirmation';
 import { alertOwner } from '../lib/ownerAlert';
+import { logAdminAction } from '../lib/adminOrderLog';
+import { checkoutError } from '../lib/checkoutValidation';
 import { confirmApprovedPayment } from '../lib/confirmApprovedPayment';
 import {
   transicaoAdminPermitida, statusAoSalvarRastreio, modoReembolso, cancelamentoExigeForce,
@@ -801,6 +803,9 @@ export const shippingRouter = router({
       fbc: z.string().max(255).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
+      const invalido = checkoutError(input);
+      if (invalido) throw new TRPCError({ code: 'BAD_REQUEST', message: invalido });
+
       // Server-authoritative price catalog. `quantity` is the number of 1kg units
       // (kg units): 1kg product = 1 unit each, box = 10 units each.
       const productId = resolveProduct(input.productId, input.quantity);
@@ -1026,6 +1031,22 @@ Seja direto e use emojis para facilitar leitura.`;
       };
     }),
 
+  // Admin: histórico de ações sobre um pedido (mais recentes primeiro, máx. 50).
+  orderHistory: premiumAdminProcedure
+    .input(z.object({ orderId: z.number().int() }))
+    .query(async ({ input }) => {
+      const rows = await db.select({
+        action: adminOrderActions.action,
+        actor: adminOrderActions.actor,
+        detail: adminOrderActions.detail,
+        createdAt: adminOrderActions.createdAt,
+      }).from(adminOrderActions)
+        .where(eq(adminOrderActions.orderId, input.orderId))
+        .orderBy(desc(adminOrderActions.createdAt), desc(adminOrderActions.id))
+        .limit(50);
+      return rows.map(r => ({ ...r, createdAt: r.createdAt ?? new Date(0) }));
+    }),
+
   updateOrder: premiumAdminProcedure
     .input(z.object({
       id: z.number(),
@@ -1058,6 +1079,10 @@ Seja direto e use emojis para facilitar leitura.`;
       if (fields.postalCode) updates.postalCode = fields.postalCode.replace(/\D/g,'');
       if (fields.notes !== undefined) updates.notes = fields.notes || null;
       const [updated] = await db.update(siteOrders).set(updates).where(eq(siteOrders.id, id)).returning();
+      if (updated) {
+        const campos = Object.keys(updates).filter(k => k !== 'updatedAt');
+        await logAdminAction(ctx, id, 'edit_order', campos.length ? `Campos: ${campos.join(', ')}` : null);
+      }
       return updated;
     }),
 
@@ -1087,6 +1112,15 @@ Seja direto e use emojis para facilitar leitura.`;
         .returning();
       if (before && input.status && !updated) {
         throw new TRPCError({ code: 'CONFLICT', message: 'O pedido mudou enquanto você editava. Atualize a lista e tente de novo.' });
+      }
+      if (updated) {
+        if (input.paymentStatus === 'confirmed' && before?.paymentStatus !== 'confirmed') {
+          await logAdminAction(ctx, input.id, 'confirm_payment_manual', 'Pagamento confirmado manualmente');
+        }
+        const partes: string[] = [];
+        if (input.status && before?.status !== input.status) partes.push(`status ${before?.status ?? '?'} -> ${input.status}`);
+        if (input.paymentStatus && before?.paymentStatus !== input.paymentStatus) partes.push(`pagamento ${before?.paymentStatus ?? '?'} -> ${input.paymentStatus}`);
+        if (partes.length) await logAdminAction(ctx, input.id, 'update_status', partes.join('; '));
       }
       // Manually confirming a payment must produce the same customer-facing
       // result as an automatic confirmation (WhatsApp + email + CAPI + coupon
@@ -1155,6 +1189,7 @@ Seja direto e use emojis para facilitar leitura.`;
         .set({ trackingCode: input.trackingCode, ...(novoStatus ? { status: novoStatus } : {}), updatedAt: new Date() })
         .where(eq(siteOrders.id, input.id))
         .returning();
+      if (updated) await logAdminAction(ctx, input.id, 'update_tracking', novoStatus ? `Rastreio salvo; status -> ${novoStatus}` : 'Rastreio salvo');
       // Sem aviso de "postado" para pedido não pago ou cancelado.
       if (updated && (updated.paymentStatus !== 'confirmed' || updated.status === 'cancelled')) return updated;
 
@@ -1371,7 +1406,10 @@ Seja direto e use emojis para facilitar leitura.`;
   generateLabel: premiumAdminProcedure
     .input(z.object({ orderId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      return generateLabelForOrder(input.orderId);
+      return generateLabelForOrder(input.orderId).then(async (result) => {
+        await logAdminAction(ctx, input.orderId, 'generate_label', 'Etiqueta gerada');
+        return result;
+      });
     }),
 
   cancelOrder: premiumAdminProcedure
@@ -1474,6 +1512,8 @@ Seja direto e use emojis para facilitar leitura.`;
       }
 
       results.push('Pedido cancelado');
+      await logAdminAction(ctx, input.id, 'cancel_order',
+        `Reembolso: ${refund}; force: ${input.force === true ? 'sim' : 'não'}${order.meOrderId && order.meOrderId !== 'pending' ? `; etiqueta ME ${labelCancelFailed ? 'NÃO cancelada' : 'cancelada'}` : ''}`);
       return { order: updated, actions: results, refund, labelCancelFailed, couponReturned, emailSent };
     }),
 
@@ -1491,6 +1531,7 @@ Seja direto e use emojis para facilitar leitura.`;
         if (exists) throw new TRPCError({ code: 'FORBIDDEN', message: 'Pedido com pagamento confirmado não pode ser excluído. Cancele (com reembolso) em vez de excluir.' });
         throw new TRPCError({ code: 'NOT_FOUND' });
       }
+      await logAdminAction(ctx, input.id, 'delete_order', 'Pedido excluído');
       return { ok: true };
     }),
 
@@ -1722,6 +1763,7 @@ Seja direto e use emojis para facilitar leitura.`;
           await fillTrackingCodeAfterLabel(orderId, meOrderId, token);
 
           results.push({ orderId, success: true, labelUrl });
+          await logAdminAction(ctx, orderId, 'generate_label', 'Etiqueta gerada (lote)');
         } catch (e: any) {
           if (reserved && !purchased) await releaseLabel(orderId);
           results.push({ orderId, success: false, error: e?.message ?? 'Erro desconhecido' });

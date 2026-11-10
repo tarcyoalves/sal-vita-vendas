@@ -108,6 +108,79 @@ export function csvText(v: unknown): string {
   return '"' + s.replace(/"/g, '""') + '"';
 }
 
+/** CEP, CPF e telefone como texto no Excel (="01310100" mantém o zero à esquerda). Só dígitos: não há fórmula a escapar. */
+export function csvDigitsAsText(v: unknown): string {
+  const d = String(v ?? '').replace(/\D/g, '');
+  return d ? `"=""${d}"""` : '""';
+}
+
+/** Valor monetário com vírgula decimal (vazio vira 0,00). */
+export function csvMoney(v: unknown): string {
+  return num(v).toFixed(2).replace('.', ',');
+}
+
+export const CSV_HEADERS = [
+  'ID', 'Cliente', 'Telefone', 'Email', 'CPF', 'CEP', 'Estado', 'Cidade', 'Bairro', 'Endereco', 'Numero',
+  'Quantidade', 'Produto', 'Valor Frete', 'Valor Total', 'Status Pedido', 'Status Pgto', 'Rastreio', 'Data Criacao',
+  'Complemento', 'Transportadora', 'Cupom', 'Desconto', 'Subtotal produtos', 'ID pagamento MP', 'Observacoes',
+];
+
+/** Observações em uma linha só: quebras de linha viram " | ". */
+export function csvNotesOneLine(notes?: string | null): string {
+  return (notes ?? '')
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean)
+    .join(' | ');
+}
+
+/** Uma linha do CSV (campos separados por ";"). Colunas novas vêm depois das antigas. */
+export function csvOrderRow(
+  o: any,
+  statusLabel: Record<string, string>,
+  payLabel: Record<string, string>,
+): string {
+  const row = [
+    o.id,
+    csvText(o.customerName),
+    csvDigitsAsText(o.customerPhone),
+    csvText(o.customerEmail),
+    csvDigitsAsText(o.customerCpf),
+    csvDigitsAsText(o.postalCode),
+    csvText(o.state),
+    csvText(o.city),
+    csvText(o.neighborhood),
+    csvText(o.address),
+    csvText(o.number),
+    o.quantity || 1,
+    csvText(o.product || 'Sal Marinho Integral 1kg'),
+    (o.shippingPrice || '0').replace('.', ','),
+    (o.totalPrice || '0').replace('.', ','),
+    csvText(statusLabel[o.status] ?? o.status),
+    csvText(payLabel[o.paymentStatus] ?? o.paymentStatus),
+    csvText(o.trackingCode),
+    csvText(new Date(o.createdAt).toLocaleString('pt-BR')),
+    csvText(o.complement),
+    csvText(o.shippingServiceName),
+    csvText(o.couponCode),
+    csvMoney(o.couponDiscount),
+    csvMoney(num(o.totalPrice) - num(o.shippingPrice)),
+    csvText(o.mpPaymentId),
+    csvText(csvNotesOneLine(o.notes)),
+  ];
+  return row.join(';');
+}
+
+/** Arquivo CSV inteiro: cabeçalho + uma linha por pedido, com BOM UTF-8 para o Excel. */
+export function buildOrdersCsv(
+  orders: any[],
+  statusLabel: Record<string, string>,
+  payLabel: Record<string, string>,
+): string {
+  const lines = [CSV_HEADERS.join(';'), ...orders.map(o => csvOrderRow(o, statusLabel, payLabel))];
+  return '\uFEFF' + lines.join('\n');
+}
+
 export function errorMessage(e: unknown): string {
   const m = (e as { message?: string } | null)?.message;
   return m && m.trim() ? m : 'Não foi possível carregar. Verifique a conexão ou entre de novo.';

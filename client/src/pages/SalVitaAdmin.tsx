@@ -13,7 +13,7 @@ import {
   BATCH_LABEL_MAX,
   brl,
   computeKpis,
-  csvText,
+  buildOrdersCsv,
   errorMessage,
   matchesSearch,
   reviewLines,
@@ -95,35 +95,8 @@ function exportOrdersToCsv(orders: any[]) {
     toast.error('Nenhum pedido para exportar.');
     return;
   }
-  const headers = ['ID', 'Cliente', 'Telefone', 'Email', 'CPF', 'CEP', 'Estado', 'Cidade', 'Bairro', 'Endereco', 'Numero', 'Quantidade', 'Produto', 'Valor Frete', 'Valor Total', 'Status Pedido', 'Status Pgto', 'Rastreio', 'Data Criacao'];
-  const csvRows = [headers.join(';')];
-
-  for (const o of orders) {
-    const row = [
-      o.id,
-      csvText(o.customerName),
-      csvText(o.customerPhone),
-      csvText(o.customerEmail),
-      csvText(o.customerCpf),
-      csvText(o.postalCode),
-      csvText(o.state),
-      csvText(o.city),
-      csvText(o.neighborhood),
-      csvText(o.address),
-      csvText(o.number),
-      o.quantity || 1,
-      csvText(o.product || 'Sal Marinho Integral 1kg'),
-      (o.shippingPrice || '0').replace('.', ','),
-      (o.totalPrice || '0').replace('.', ','),
-      csvText(CSV_STATUS[o.status] ?? o.status),
-      csvText(CSV_PAY[o.paymentStatus] ?? o.paymentStatus),
-      csvText(o.trackingCode),
-      csvText(new Date(o.createdAt).toLocaleString('pt-BR')),
-    ];
-    csvRows.push(row.join(';'));
-  }
-
-  const blob = new Blob(['﻿' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const csv = buildOrdersCsv(orders, CSV_STATUS, CSV_PAY);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -383,6 +356,8 @@ function OrderCard({
   const review = reviewLines(order.notes);
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [confirm, setConfirm] = useState<CardConfirm>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const history = trpc.shipping.orderHistory.useQuery({ orderId: order.id }, { enabled: showHistory });
 
   const payMut = trpc.shipping.updateStatus.useMutation({
     onSuccess: () => { onRefetch(); toast.success(`Pagamento do pedido #${order.id} confirmado.`); },
@@ -762,6 +737,36 @@ function OrderCard({
             Melhor Envio: {order.meOrderId}{order.trackingCode ? ` · Rastreio: ${order.trackingCode}` : ''}
           </p>
         )}
+
+        <div className="mt-3 pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => setShowHistory(v => !v)}
+            aria-expanded={showHistory}
+            aria-controls={`hist-${order.id}`}
+            className={`min-h-[44px] inline-flex items-center gap-1.5 text-xs font-semibold text-[#0b1d3a] ${FOCUS}`}
+          >
+            <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showHistory ? 'rotate-90' : ''}`} aria-hidden="true" />
+            Histórico
+          </button>
+          {showHistory && (
+            <div id={`hist-${order.id}`} className="mt-1">
+              {history.isLoading && <p className="text-[11px] text-slate-600">Carregando...</p>}
+              {history.isError && <p role="alert" className="text-[11px] text-rose-700">Não foi possível carregar o histórico.</p>}
+              {history.data && history.data.length === 0 && <p className="text-[11px] text-slate-600">Nenhuma ação registrada.</p>}
+              {history.data && history.data.length > 0 && (
+                <ol className="space-y-1.5">
+                  {history.data.map((h, i) => (
+                    <li key={i} className="text-[11px] text-slate-700 break-words">
+                      <span className="font-mono text-slate-500">{h.createdAt ? new Date(h.createdAt).toLocaleString('pt-BR') : 'sem data'}</span>{' '}
+                      <strong>{h.action}</strong> · {h.actor ?? 'não informado'}{h.detail ? ` — ${h.detail}` : ''}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {editing && <EditModal order={order} onClose={() => setEditing(false)} onSaved={onRefetch} />}

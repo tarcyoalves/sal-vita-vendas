@@ -26,7 +26,7 @@ export function isSavedCustomerFresh(savedAt: unknown, now: number = Date.now())
 }
 
 // ── Validação antes de enviar (F-02) ───────────────────────────────────────────────────────
-// Mesma regra do servidor (nome >= 2, e-mail válido, número até 20).
+// Nome >= 2 caracteres, e-mail válido, número até 20 (o servidor usa a mesma regra).
 export function isValidEmail(v: string): boolean {
   const t = v.trim();
   return t.length <= 254 && /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)*\.[^\s@.]{2,}$/.test(t);
@@ -58,3 +58,44 @@ export function cleanAddressNumber(v: string): string {
 // ── Transportadoras (F-14) ─────────────────────────────────────────────────────────────────
 // Espelha ALLOWED_CARRIERS de server/lib/shippingFilter.ts (Correios, Jadlog, Azul Cargo, J&T).
 export const CARRIERS_TEXT = 'Correios, Jadlog, Azul Cargo ou J&T, conforme o CEP';
+
+// ── Nome, telefone e e-mail no formulário (lote 3) ─────────────────────────────────────────
+// validateCheckoutFields continua aceitando nome curto (o servidor também); o formulário
+// exige nome e sobrenome com customerNameError, aplicado no envio e na tela.
+/** Nome com pelo menos duas palavras. null = ok. */
+export function customerNameError(name: string): string | null {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  return words.length >= 2 ? null : 'Informe nome e sobrenome.';
+}
+
+/** Telefone/WhatsApp: 10 ou 11 dígitos, DDD entre 11 e 99, celular de 11 dígitos com 9 após o DDD. */
+export function phoneProblem(v: string): string | null {
+  const d = v.replace(/\D/g, '');
+  const msg = 'Informe DDD + número de celular válido.';
+  if (d.length !== 10 && d.length !== 11) return msg;
+  const ddd = Number(d.slice(0, 2));
+  if (ddd < 11 || ddd > 99) return msg;
+  if (d.length === 11 && d[2] !== '9') return msg;
+  return null;
+}
+
+/** Domínios digitados errado com mais frequência. Só sugere; nunca bloqueia. */
+const EMAIL_DOMAIN_FIXES: Record<string, string> = {
+  'gmial.com': 'gmail.com',
+  'gmai.com': 'gmail.com',
+  'gamil.com': 'gmail.com',
+  'hotmal.com': 'hotmail.com',
+  'hotmial.com': 'hotmail.com',
+  'outlok.com': 'outlook.com',
+  'yaho.com': 'yahoo.com',
+  'icloud.co': 'icloud.com',
+};
+
+/** E-mail válido com domínio típico de erro de digitação → endereço corrigido; senão null. */
+export function emailTypoSuggestion(v: string): string | null {
+  const t = v.trim();
+  if (!isValidEmail(t)) return null;
+  const at = t.lastIndexOf('@');
+  const fix = EMAIL_DOMAIN_FIXES[t.slice(at + 1).toLowerCase()];
+  return fix ? `${t.slice(0, at)}@${fix}` : null;
+}

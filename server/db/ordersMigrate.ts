@@ -4,7 +4,7 @@ import { FOLLOWUP_SEQUENCES, LEGACY_SEED_HTML_PREFIX } from '../email/followupSe
 type Step = { name: string; ok: boolean; error?: string };
 
 // Bump whenever the DDL below changes, to force exactly one full re-run.
-const ORDERS_SCHEMA_VERSION = 'orders-2026-10-15c';
+const ORDERS_SCHEMA_VERSION = 'orders-2026-11-10a';
 
 /**
  * Ensures all e-commerce/recovery tables exist in the ORDERS database.
@@ -529,6 +529,20 @@ export async function ensureOrdersTablesExist(force = false): Promise<Step[]> {
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await run('admin_order_actions', () => sql`
+    CREATE TABLE IF NOT EXISTS admin_order_actions (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL,
+      actor TEXT,
+      action TEXT NOT NULL,
+      detail TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await run('admin_order_actions_order_idx', () => sql`
+    CREATE INDEX IF NOT EXISTS admin_order_actions_order_idx ON admin_order_actions(order_id, created_at DESC)
   `);
 
   // Auto-cleanup: keep Neon storage well under the 0.5 GB free limit.

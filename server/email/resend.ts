@@ -3,7 +3,7 @@
  * All functions are best-effort: they never throw and never block the caller.
  *
  * Free tier: 3,000 emails/month, 100 emails/day hard cap.
- * Daily budget is split conservatively: max 80 emails/day to leave margin.
+ * Daily budget: 30/day transactional (own counter `resend_tx`), 70/day marketing.
  * The counter is in-memory only (resets on cold start) — a best-effort
  * guard, not a hard guarantee against Resend's own daily cap.
  */
@@ -16,7 +16,13 @@ const FROM = 'Sal Vita <noreply@premium.salvitarn.com.br>';
 const BRAND = '#0C3680';
 /** Respostas aos e-mails da loja (o remetente é noreply@): o texto promete "é só responder este e-mail". */
 export const REPLY_TO = 'contato@salvitarn.com.br';
-const DAILY_SOFT_LIMIT = parseInt(process.env.RESEND_DAILY_LIMIT ?? '80', 10);
+/**
+ * E-mails de pedido têm contador PRÓPRIO (`resend_tx`), separado do marketing (`resend_1`):
+ * o volume de campanha nunca bloqueia confirmação/envio/cancelamento. Plano Resend: 100/dia por
+ * conta; marketing fica com 70 (marketing.ts/marketingQuota.ts) e 30 são reservados aqui.
+ */
+const TX_QUOTA_KEY = 'resend_tx';
+const DAILY_SOFT_LIMIT = parseInt(process.env.RESEND_TX_DAILY_LIMIT ?? process.env.RESEND_DAILY_LIMIT ?? '30', 10);
 
 // ── Core send function ────────────────────────────────────────────────────────
 
@@ -33,9 +39,9 @@ export async function sendEmail(
   if (!apiKey) return { ok: false, reason: 'no_api_key' };
 
   // Reserve 1 slot atomically from email_send_counters
-  const reserved = await reserveDailyQuota('resend_1', 1, DAILY_SOFT_LIMIT);
+  const reserved = await reserveDailyQuota(TX_QUOTA_KEY, 1, DAILY_SOFT_LIMIT);
   if (reserved <= 0) {
-    console.warn(`[email] daily soft limit (${DAILY_SOFT_LIMIT}) reached — skipping → ${maskEmail(to)}`);
+    console.warn(`[email] cota transacional diária (${DAILY_SOFT_LIMIT}) esgotada — e-mail de pedido NÃO enviado`);
     return { ok: false, reason: 'daily_limit' };
   }
 
@@ -60,7 +66,7 @@ export async function sendEmail(
       console.error(`[email] Resend error ${res.status}:`, safeErr(err));
       // Refund quota only on definitive HTTP errors (not network/timeout)
       if (res.status >= 400 && res.status < 500) {
-        await refundDailyQuota('resend_1', 1);
+        await refundDailyQuota(TX_QUOTA_KEY, 1);
       }
       return { ok: false, reason: `resend_${res.status}` };
     }

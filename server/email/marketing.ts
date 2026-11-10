@@ -26,11 +26,11 @@ export const BRAND = '#0C3680';
  * transformaria cada parágrafo numa linha única de ponta a ponta.
  */
 export const CONTENT_MAX_WIDTH = 820;
-const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90');
+const MKT_DAILY_LIMIT = parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '70');
 
 export interface AccountLimits { daily: number; monthly: number; }
 
-/** Per-provider send limits (free-plan defaults), env-overridable. */
+/** Per-provider send limits (free-plan defaults), env-overridable. Resend: 100/dia por conta; 70 pro marketing + 30 reservados aos e-mails de pedido (chave `resend_tx` em resend.ts). */
 export function getAccountLimits(provider: 'resend' | 'brevo'): AccountLimits {
   if (provider === 'brevo') {
     return {
@@ -39,7 +39,7 @@ export function getAccountLimits(provider: 'resend' | 'brevo'): AccountLimits {
     };
   }
   return {
-    daily: parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90'),
+    daily: parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '70'),
     monthly: parseInt(process.env.RESEND_MKT_MONTHLY_LIMIT ?? '3000'),
   };
 }

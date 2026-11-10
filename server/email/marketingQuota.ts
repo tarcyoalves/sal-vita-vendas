@@ -53,7 +53,7 @@ export function getAccountLimits(provider: 'resend' | 'brevo') {
     };
   }
   return {
-    daily: parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '90', 10),
+    daily: parseInt(process.env.RESEND_MKT_DAILY_LIMIT ?? '70', 10),
     monthly: parseInt(process.env.RESEND_MKT_MONTHLY_LIMIT ?? '3000', 10),
   };
 }

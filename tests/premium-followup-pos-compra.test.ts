@@ -203,8 +203,9 @@ describe('sequências criadas desligadas, na migração', () => {
     expect(mig).not.toMatch(/followup[^\n]*TRUE/i);
   });
   it('versão do schema foi subida (e o lock acompanha)', () => {
-    expect(mig).toMatch(/ORDERS_SCHEMA_VERSION = 'orders-2026-10-15c'/);
-    expect(read('tests/schema-version.lock.json')).toContain('orders-2026-10-15c');
+    const ver = mig.match(/ORDERS_SCHEMA_VERSION = '(orders-\d{4}-\d{2}-\d{2}[a-z])'/)?.[1];
+    expect(ver && ver >= 'orders-2026-10-15c').toBe(true);
+    expect(read('tests/schema-version.lock.json')).toContain(ver!);
   });
   it('Pós-compra: 4 passos, dias 0/+12/+10/+7, quarto só se não abriu; sem repetição', () => {
     expect(POS_COMPRA.steps.map((s) => s.delayDays)).toEqual([0, 12, 10, 7]);

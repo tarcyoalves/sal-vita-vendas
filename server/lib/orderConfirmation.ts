@@ -1,4 +1,5 @@
 import { safeErr } from './logSafe';
+import { whatsappVariants } from './whatsappVariants';
 import crypto from 'crypto';
 import { eq, and, or, ne, sql } from 'drizzle-orm';
 import { ordersDb } from '../db/ordersDb';
@@ -164,7 +165,7 @@ export async function sendCapiPurchase(order: SiteOrder): Promise<void> {
   } catch (e) { console.error('[capi] error:', safeErr(e)); }
 }
 
-// Sends to BOTH 9th-digit variants IN PARALLEL — wa-server blindly returns
+// Sends to the 9th-digit variants (mobile only, see whatsappVariants) IN PARALLEL — wa-server blindly returns
 // success:true so we can't detect which variant is the real JID. Sending both
 // guarantees delivery as long as one format matches WhatsApp registration.
 export async function sendWhatsApp(phone: string, message: string): Promise<boolean> {
@@ -172,11 +173,7 @@ export async function sendWhatsApp(phone: string, message: string): Promise<bool
   const waKey = process.env.WA_API_KEY;
   if (!waKey) { console.warn('[wa] WA_API_KEY not configured — skipping WhatsApp send'); return false; }
   const digits = phone.replace(/\D/g, '');
-  const primary = digits.startsWith('55') ? digits : `55${digits}`;
-  const alt = primary.length === 13
-    ? primary.slice(0, 4) + primary.slice(5)
-    : primary.length === 12 ? primary.slice(0, 4) + '9' + primary.slice(4) : null;
-  const variants = [primary, alt].filter(Boolean) as string[];
+  const variants = whatsappVariants(digits);
   const results = await Promise.all(variants.map(async phoneNum => {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 9000);
