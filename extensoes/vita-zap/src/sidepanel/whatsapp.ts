@@ -16,6 +16,12 @@ async function injetarConteudo(tabId: number): Promise<void> {
   await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
 }
 
+/** O Chrome não achou ninguém ouvindo na aba: o pedido não foi entregue (é seguro injetar e tentar de novo). */
+export function pedidoNaoEntregue(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /Receiving end does not exist|Could not establish connection/i.test(msg);
+}
+
 export async function pedir(pedido: PedidoConteudo, trazerParaFrente = false): Promise<RespostaConteudo> {
   const aba = await abaDoWhatsApp().catch(() => null);
   if (!aba?.id) return { ok: false, codigo: 'nao_pronto', erro: 'Abra o WhatsApp Web (web.whatsapp.com) nesta janela do Chrome.' };
@@ -26,7 +32,14 @@ export async function pedir(pedido: PedidoConteudo, trazerParaFrente = false): P
     let r: RespostaConteudo | undefined;
     try {
       r = await enviarPedido();
-    } catch {
+    } catch (e) {
+      // Só repete quando o pedido NUNCA chegou (aba sem content script). Se chegou e a resposta se perdeu (página
+      // recarregada, extensão atualizada no meio: "message port closed", "context invalidated"), o WhatsApp pode já
+      // ter recebido a mensagem: repetir enviava DUAS VEZES (visto num atendente, 10/11/2026). Aí devolve 'interno'
+      // e o executor confere a conversa antes de qualquer nova colagem.
+      if (!pedidoNaoEntregue(e)) {
+        return { ok: false, codigo: 'interno', erro: 'A resposta do WhatsApp Web se perdeu no meio do pedido (aba recarregada ou extensão atualizada). Nada foi repetido.' };
+      }
       await injetarConteudo(tabId);
       r = await enviarPedido();
     }
