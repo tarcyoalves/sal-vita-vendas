@@ -112,3 +112,19 @@ export function errorMessage(e: unknown): string {
   const m = (e as { message?: string } | null)?.message;
   return m && m.trim() ? m : 'Não foi possível carregar. Verifique a conexão ou entre de novo.';
 }
+
+/** Linhas [REVISAR] das observações do pedido, sem o carimbo ISO ("[REVISAR] <data> motivo"). */
+export function reviewLines(notes?: string | null): string[] {
+  return (notes ?? '')
+    .split(/\r?\n/)
+    .filter(l => l.includes('[REVISAR]'))
+    .map(l => l.trim().replace(/\[REVISAR\]\s*\d{4}-\d{2}-\d{2}T[\d:.]+Z?\s*/, '[REVISAR] '));
+}
+
+/** Número para wa.me: só dígitos, com 55 à frente quando falta (DDD 84 sem 55 abria número do Vietnã). */
+export function waNumber(phone?: string | null): string {
+  const d = (phone ?? '').replace(/\D/g, '');
+  if (!d) return '';
+  if (/^55\d{10,11}$/.test(d)) return d;
+  return '55' + d;
+}

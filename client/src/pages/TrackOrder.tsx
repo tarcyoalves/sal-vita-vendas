@@ -382,7 +382,7 @@ export default function TrackOrder() {
                 </div>
               </div>
               <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', margin: '0 0 4px' }}>
-                🧂 {order.quantity}x Sal Vita Premium 1kg
+                🧂 {order.quantity}x {order.product || 'Sal Vita Premium 1kg'}
               </p>
               <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.65)', margin: 0 }}>
                 📍 {order.city}/{order.state} · {order.shippingServiceName ?? 'Correios'}
@@ -506,8 +506,22 @@ export default function TrackOrder() {
               </div>
             )}
 
+            {/* Pedido pago: suporte visível em todas as etapas (pago, enviado, entregue) */}
+            {order.paymentStatus === 'confirmed' && order.status !== 'cancelled' && (
+              <p style={{ textAlign: 'center', margin: '0', fontSize: '14px' }}>
+                <a
+                  href="https://wa.me/558421408212"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#4ade80', fontWeight: 600, textDecoration: 'underline' }}
+                >
+                  Dúvidas? Fale no WhatsApp
+                </a>
+              </p>
+            )}
+
             {/* Payment status */}
-            {(order.paymentStatus === 'awaiting' || order.paymentStatus === 'failed') && (
+            {(order.paymentStatus === 'awaiting' || order.paymentStatus === 'failed') && order.status !== 'cancelled' && (
               <div style={{
                 background: order.paymentStatus === 'failed' ? 'rgba(239,68,68,0.1)' : 'rgba(234,179,8,0.1)',
                 border: order.paymentStatus === 'failed' ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(234,179,8,0.3)',

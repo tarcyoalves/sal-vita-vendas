@@ -16,7 +16,9 @@ import {
   csvText,
   errorMessage,
   matchesSearch,
+  reviewLines,
   splitBatchSelection,
+  waNumber,
 } from '../components/premium/admin/adminLogic';
 import { trackingLink } from '../lib/trackingLink';
 import {
@@ -81,7 +83,7 @@ const P_PILL: Record<string, Pill> = {
   failed:   { bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200' },
 };
 
-type FilterTab = 'all' | 'awaiting' | 'confirmed' | 'toship' | 'shipped';
+type FilterTab = 'all' | 'awaiting' | 'confirmed' | 'toship' | 'shipped' | 'review';
 type PeriodFilter = 'all' | 'today' | '7days' | 'month';
 
 /* ── CSV Export ───────────────────────────────────────────── */
@@ -247,6 +249,7 @@ function Field({ label, wide, children }: { label: string; wide?: boolean; child
 }
 
 function EditModal({ order, onClose, onSaved }: { order: any; onClose: () => void; onSaved: () => void }) {
+  const initialNotes = order.notes ?? '';
   const [form, setForm] = useState({
     customerName: order.customerName ?? '',
     customerPhone: order.customerPhone ?? '',
@@ -301,13 +304,17 @@ function EditModal({ order, onClose, onSaved }: { order: any; onClose: () => voi
           <Field label="Endereço" wide><input value={form.address} onChange={set('address')} className={INPUT} /></Field>
           <Field label="Número"><input value={form.number} onChange={set('number')} placeholder="123" className={INPUT} /></Field>
           <Field label="Complemento"><input value={form.complement} onChange={set('complement')} placeholder="Casa, Apto..." className={INPUT} /></Field>
-          <Field label="Observações internas" wide><input value={form.notes} onChange={set('notes')} className={INPUT} /></Field>
+          <Field label="Observações internas" wide><textarea value={form.notes} onChange={set('notes')} rows={4} className={`${INPUT} min-h-[96px] resize-y`} /></Field>
         </div>
 
         <div className="flex gap-3 mt-6">
           <button onClick={onClose} className={`${btn.secondary} flex-1`}>Cancelar</button>
           <button
-            onClick={() => updateMut.mutate({ id: order.id, ...form })}
+            onClick={() => {
+              // Observações só vão no payload se o usuário mexeu: senão o save não apaga o que o sistema anexou ([REVISAR]).
+              const { notes, ...rest } = form;
+              updateMut.mutate({ id: order.id, ...rest, ...(notes !== initialNotes ? { notes } : {}) });
+            }}
             disabled={updateMut.isPending}
             className={`${btn.primary} flex-[2]`}
           >
@@ -373,6 +380,7 @@ function OrderCard({
 }) {
   const [trackInput, setTrackInput] = useState(order.trackingCode ?? '');
   const [editing, setEditing] = useState(false);
+  const review = reviewLines(order.notes);
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [confirm, setConfirm] = useState<CardConfirm>(null);
 
@@ -539,6 +547,14 @@ function OrderCard({
       }`} />
 
       <div className="p-4 sm:p-5">
+        {review.length > 0 && (
+          <div role="alert" className="mb-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+            <p className="font-bold flex items-center gap-1.5"><AlertCircle className="w-4 h-4" aria-hidden="true" /> Revisar pedido</p>
+            <ul className="mt-1 list-disc pl-5 space-y-0.5">
+              {review.map((line, i) => <li key={i}>{line}</li>)}
+            </ul>
+          </div>
+        )}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="flex items-start gap-3 flex-1 min-w-0">
             <label className="flex items-center justify-center min-w-[44px] min-h-[44px] -ml-2 -mt-2 cursor-pointer">
@@ -637,7 +653,7 @@ function OrderCard({
                 )}
                 {order.customerPhone && (
                   <a
-                    href={`https://wa.me/${(order.customerPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(`🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá ${order.customerName}! Tudo bem?\n\nA transportadora confirmou a entrega do seu pedido! Queremos saber se o pacote chegou tudo certinho com você. 📦\n\n💡 *Dica de conservação:* Após o uso, feche bem o fecho zip lock e guarde em local seco para manter a textura natural do sal.\n\nQualquer dúvida ou se precisar de algo, estamos sempre à disposição aqui no WhatsApp! 🙏`)}`}
+                    href={`https://wa.me/${waNumber(order.customerPhone)}?text=${encodeURIComponent(`🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá ${order.customerName}! Tudo bem?\n\nA transportadora confirmou a entrega do seu pedido! Queremos saber se o pacote chegou tudo certinho com você. 📦\n\n💡 *Dica de conservação:* Após o uso, feche bem o fecho zip lock e guarde em local seco para manter a textura natural do sal.\n\nQualquer dúvida ou se precisar de algo, estamos sempre à disposição aqui no WhatsApp! 🙏`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={btn.secondary}
@@ -664,7 +680,7 @@ function OrderCard({
                 </button>
 
                 <a
-                  href={`https://wa.me/${(order.customerPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(`🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá ${order.customerName}! Seu pedido foi enviado! 🚚\n\n📦 Código de rastreio: *${order.trackingCode}*\n\n🔗 Rastreie: ${trackingLink(order.trackingCode)}\n\nOu acesse: https://www.premium.salvitarn.com.br/meu-pedido\n\nObrigado! 🙏`)}`}
+                  href={`https://wa.me/${waNumber(order.customerPhone)}?text=${encodeURIComponent(`🧂 *Sal Vita — Pedido #${order.id}*\n\nOlá ${order.customerName}! Seu pedido foi enviado! 🚚\n\n📦 Código de rastreio: *${order.trackingCode}*\n\n🔗 Rastreie: ${trackingLink(order.trackingCode)}\n\nOu acesse: https://www.premium.salvitarn.com.br/meu-pedido\n\nObrigado! 🙏`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={btn.secondary}
@@ -873,12 +889,14 @@ export function OrdersPanel() {
   const isReadyToShip = (o: any) => o.status === 'label_generated' && o.paymentStatus === 'confirmed';
   const isAwaiting = (o: any) => o.paymentStatus === 'awaiting' && o.status !== 'cancelled';
   const isShippedTab = (o: any) => ['shipped', 'delivered'].includes(o.status);
+  const hasReview = (o: { notes?: string | null }) => reviewLines(o.notes).length > 0;
 
   const filtered = useMemo(() => base.filter(o => {
     if (filter === 'awaiting') return isAwaiting(o);
     if (filter === 'confirmed') return isToLabel(o);
     if (filter === 'toship') return isReadyToShip(o);
     if (filter === 'shipped') return isShippedTab(o);
+    if (filter === 'review') return hasReview(o);
     return true;
   }), [base, filter]);
 
@@ -890,6 +908,7 @@ export function OrdersPanel() {
     { key: 'confirmed', label: 'Pago, sem etiqueta', count: base.filter(isToLabel).length },
     { key: 'toship', label: 'Etiqueta gerada', count: base.filter(isReadyToShip).length },
     { key: 'shipped', label: 'Enviados', count: base.filter(isShippedTab).length },
+    { key: 'review', label: 'Revisar', count: base.filter(hasReview).length },
   ];
 
   const toggleSelectAll = () => {
