@@ -53,7 +53,11 @@ describe('DB-1: estados que aceitam confirmação', () => {
   });
   it('webhook e reconcile usam a lista; rejected só rebaixa awaiting; erro de banco responde 500', () => {
     const src = readFileSync('api/index.ts', 'utf8');
-    expect(src.match(/eq\(siteOrders\.id, (orderId|o\.id)\), podeConfirmarPagamento\)/g)).toHaveLength(2);
+    // webhook, reconcile e pixStatus agora passam pela rotina compartilhada (um único UPDATE condicional)
+    const shared = readFileSync('server/lib/confirmApprovedPayment.ts', 'utf8');
+    expect(shared.match(/eq\(siteOrders\.id, orderId\), podeConfirmarPagamento\)/g)).toHaveLength(1);
+    expect(src).toContain("confirmApprovedPayment(order, payment, 'webhook')");
+    expect(src).toContain("'reconcile'");
     expect(src).toMatch(/paymentStatus: 'failed', mpPaymentId: mpId[\s\S]{0,60}\}\)\s*\.where\(and\(eq\(siteOrders\.id, orderId\), eq\(siteOrders\.paymentStatus, 'awaiting'\)\)\)/);
     expect(src).toMatch(/MP webhook error[\s\S]{0,300}res\.status\(500\)/);
   });

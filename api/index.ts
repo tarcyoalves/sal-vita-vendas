@@ -24,7 +24,7 @@ import { eq, ne, and, or, sql, lte, gte, isNull, isNotNull, inArray, notInArray,
 import { sendEmail, abandonedCartHtml, unpaidOrderHtml, orderConfirmedHtml } from '../server/email/resend';
 import { createPixPaymentForOrder } from '../server/lib/mercadopago';
 import { mpSignatureManifest, parseMpSignatureHeader } from '../server/lib/mpSignature';
-import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, confirmOrderPaid, orderTrackLink, podeConfirmarPagamento, appendReviewNote } from '../server/lib/orderConfirmation';
+import { renderTemplate, brl, bumpCouponUsage, sendCapiPurchase, sendWhatsApp, orderTrackLink, appendReviewNote } from '../server/lib/orderConfirmation';
 import { verifyResendWebhook } from '../server/email/marketing';
 import { evaluateInactiveDaysRules, flagEngagementByMessageId, processSequenceEnrollments, cancelAllEnrollments } from '../server/email/automations';
 import { processDueCampaigns } from '../server/email/campaigns';
@@ -357,7 +357,9 @@ import { isForbiddenBatch, emailFromTrpcBody } from '../server/lib/trpcBatchGuar
 import { csrfRejection } from '../server/lib/csrfGuard';
 import { origensDeExtensao } from '../shared/extensao';
 import { STORE_URL } from '../server/lib/storeUrl';
-import { decidirTransicaoPagamento, idPagamentoMpValido, pagamentoAprovadoDuplicado, estornoPertenceAoPedido, motivoValorDivergente } from '../server/lib/paymentTransition';
+import { idPagamentoMpValido, estornoPertenceAoPedido, telefoneNormalizado } from '../server/lib/paymentTransition';
+import { confirmApprovedPayment, deveReenviarWebhook } from '../server/lib/confirmApprovedPayment';
+import { inicioJanelaCompra, telefoneParaBusca, selecionarUmPorTelefone, regraDeAbandono, deveSuprimirCobranca, podeUsarTemplatePix } from '../server/lib/recoveryCadence';
 
 app.get('/api/unsubscribe', aguardarSchemasMw, handleUnsubscribe);
 // RFC 8058 one-click unsubscribe sends a POST request
@@ -529,7 +531,13 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
       headers: { 'Authorization': `Bearer ${token}` },
       signal: AbortSignal.timeout(8000),
     });
-    if (!payRes.ok) { res.json({ ok: true }); return; }
+    if (!payRes.ok) {
+      // 5xx/429 do MP: 500 para o MP reenviar. 404/4xx (pagamento inexistente, id de outra conta) não adianta reenviar.
+      const retry = deveReenviarWebhook(payRes.status);
+      console.warn(`[mp-webhook] payment lookup failed: HTTP ${payRes.status}${retry ? ' — asking MP to retry' : ''}`);
+      if (retry) { res.status(500).json({ error: 'temporary failure' }); return; }
+      res.json({ ok: true }); return;
+    }
 
     const payment = await payRes.json() as { status: string; external_reference?: string; id?: number; transaction_amount?: number };
     const orderId = parseInt(payment.external_reference ?? '');
@@ -544,51 +552,13 @@ app.post('/api/mp-webhook', webhookLimiter, express.raw({ type: 'application/jso
     const mpId = String(payment.id ?? '');
 
     if (payment.status === 'approved') {
-      // Idempotency: don't reprocess an already-confirmed order (avoids duplicate side effects)
-      const transicao = decidirTransicaoPagamento(order, payment.status);
-      if (transicao === 'ja_confirmado') {
-        // Pedido já pago por OUTRO pagamento: o cliente pagou duas vezes (ex.: PIX e cartão). Sem estorno automático.
-        if (pagamentoAprovadoDuplicado(order.mpPaymentId, mpId)) {
-          console.error(`[mp-webhook] order ${orderId}: second approved payment ${mpId} (confirmed with ${order.mpPaymentId})`);
-          await appendReviewNote(orderId, `segundo pagamento aprovado — MP ${mpId} — possível cobrança em duplicidade, estornar`);
-        }
-        res.json({ ok: true, already: true }); return;
-      }
-      // Pedido cancelado ('awaiting' ou 'failed'): pagamento tardio não ressuscita o pedido (o UPDATE abaixo também barra).
-      if (transicao === 'ignorar') {
-        console.error(`[mp-webhook] order ${orderId}: approved payment ${mpId} on a cancelled order — refund manually`);
-        await appendReviewNote(orderId, `pagamento aprovado em pedido cancelado — MP ${mpId} — estornar manualmente`);
-        res.json({ ok: true, ignored: true }); return;
-      }
-      // Validate payment amount before marking as paid
-      if (payment.transaction_amount !== undefined) {
-        const expectedTotal = parseFloat(order.totalPrice ?? '0');
-        if (expectedTotal > 0 && Math.abs(payment.transaction_amount - expectedTotal) > 0.01) {
-          console.warn(`[mp-webhook] Amount mismatch for order ${orderId}: expected ${expectedTotal}, got ${payment.transaction_amount}`);
-          // Return 200 (not 400) so MP doesn't retry forever; flag for manual review.
-          await appendReviewNote(orderId, motivoValorDivergente(payment.transaction_amount, expectedTotal, mpId));
-          res.json({ ok: true, mismatch: true }); return;
-        }
-      }
-      // C3: conditional update — only rows still 'awaiting' get confirmed, and only
-      // the caller that actually flips the row runs confirmOrderPaid(). This closes
-      // the race with the reconcile cron (both could otherwise fire WhatsApp/e-mail/
-      // CAPI/coupon-bump twice for the same order).
-      const updated = await ordersDb.update(siteOrders)
-        .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: mpId, updatedAt: new Date() })
-        // 'failed' também confirma: o cliente pode pagar um PIX depois de um cartão recusado.
-        .where(and(eq(siteOrders.id, orderId), podeConfirmarPagamento))
-        .returning();
-
-      if (updated.length > 0) {
-        // Coupon bump, CAPI Purchase, automation cancellation, abandoned-cart
-        // conversion, and WhatsApp/email confirmation — shared with the
-        // reconciliation cron and the admin's manual confirm action.
-        await confirmOrderPaid(updated[0]);
-      } else {
-        console.log(`[mp-webhook] order ${orderId} was already confirmed elsewhere — skipping duplicate side effects`);
-      }
-
+      // Rotina compartilhada com o reconcile e o pixStatus: idempotência, notas [REVISAR],
+      // checagem de valor, UPDATE condicional e confirmOrderPaid só para quem virou a linha.
+      const { resultado } = await confirmApprovedPayment(order, payment, 'webhook');
+      if (resultado === 'ja_confirmado') { res.json({ ok: true, already: true }); return; }
+      if (resultado === 'ignorado') { res.json({ ok: true, ignored: true }); return; }
+      // Return 200 (not 400) on mismatch so MP doesn't retry forever; flagged for manual review.
+      if (resultado === 'divergente') { res.json({ ok: true, mismatch: true }); return; }
     } else if (payment.status === 'pending' || payment.status === 'in_process' || payment.status === 'authorized') {
       // PIX/boleto awaiting payment — keep awaiting but persist the payment id for follow-up
       // Condicional: pedido já confirmado/falho não troca o id do pagamento que o confirmou.
@@ -1274,6 +1244,26 @@ async function fetchPixCode(order: typeof siteOrders.$inferSelect): Promise<stri
   return null;
 }
 
+/**
+ * Existe pedido do MESMO telefone (comparado pelos dígitos nacionais, sem DDI) criado depois de `desde`
+ * e não cancelado — ou só confirmado, com `soConfirmado`? Usado para não cobrar/recuperar quem já comprou.
+ */
+async function telefoneTemPedidoDesde(
+  phone: string, desde: Date, opts: { soConfirmado?: boolean; excetoId?: number } = {},
+): Promise<boolean> {
+  const n = telefoneParaBusca(phone);
+  if (!n) return false;
+  const conds = [
+    ne(siteOrders.status, 'cancelled'),
+    gte(siteOrders.createdAt, desde),
+    sql`right(regexp_replace(${siteOrders.customerPhone}, '\\D', '', 'g'), ${sql.raw(String(n.length))}) = ${n}`,
+  ];
+  if (opts.soConfirmado) conds.push(eq(siteOrders.paymentStatus, 'confirmed'));
+  if (opts.excetoId !== undefined) conds.push(ne(siteOrders.id, opts.excetoId));
+  const [row] = await ordersDb.select({ id: siteOrders.id }).from(siteOrders).where(and(...conds)).limit(1);
+  return !!row;
+}
+
 // One-shot WhatsApp follow-up for unpaid (awaiting PIX/boleto) and failed (rejected) orders.
 // Free-tier safe: small LIMIT, marks unpaid_followup_sent_at on attempt so it never reprocesses.
 async function processUnpaidFollowups(): Promise<{ sent: number }> {
@@ -1294,11 +1284,20 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
     const tpls = await ordersDb.select().from(msgTemplates).where(inArray(msgTemplates.type, ['unpaid', 'failed']));
     const defaultByType = (type: string) => tpls.find(t => t.type === type && t.isDefault) ?? tpls.find(t => t.type === type);
     const pixTpl = tpls.find(t => t.slug === 'unpaid_pix');
+    // Sem o código PIX o template de PIX sairia com {pix} vazio: o lembrete com link o substitui.
+    const lembreteTpl = tpls.find(t => t.slug === 'unpaid_lembrete') ?? tpls.find(t => t.type === 'unpaid' && t.slug !== 'unpaid_pix');
 
     for (const o of orders) {
       // Mark first so a transient WA outage never causes reprocessing / repeated MP calls.
       await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: new Date(), updatedAt: new Date() })
         .where(eq(siteOrders.id, o.id));
+
+      // Não cobra pedido em revisão humana, nem quem já tem um pedido mais novo pago (marcado acima: não volta).
+      const maisNovoPago = await telefoneTemPedidoDesde(o.customerPhone, new Date(o.createdAt), { soConfirmado: true, excetoId: o.id });
+      if (deveSuprimirCobranca(o.notes, maisNovoPago)) {
+        console.log(`[cron] unpaid-followup: pedido ${o.id} pulado (${maisNovoPago ? 'cliente tem pedido mais novo pago' : 'em revisão'})`);
+        continue;
+      }
 
       // Honor "responda PARAR" opt-outs — never send automated follow-ups to these customers.
       const phoneDigits = o.customerPhone.replace(/\D/g, '');
@@ -1311,7 +1310,8 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
       let pix = '';
       if (o.paymentStatus === 'awaiting') {
         const code = await fetchPixCode(o);
-        if (code && pixTpl) { tpl = pixTpl; pix = code; }
+        if (podeUsarTemplatePix(code) && pixTpl) { tpl = pixTpl; pix = code; }
+        else tpl = lembreteTpl && !lembreteTpl.body.includes('{pix}') ? lembreteTpl : (tpl && !tpl.body.includes('{pix}') ? tpl : undefined);
       }
       // Leave {pix} as the raw copy-paste code in the main message — WhatsApp
       // copies messages as literal text, so wrapping it in ``` would put those
@@ -1393,39 +1393,10 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
         }
         if (!approved) continue;
 
-        // Cancelado com PIX pago depois: não confirma (o UPDATE abaixo também barra); avisa a revisão.
-        if (o.status === 'cancelled') {
-          console.error(`[cron] reconcile: order ${o.id} cancelled but payment ${payId} approved — refund manually`);
-          await appendReviewNote(o.id, `pagamento aprovado em pedido cancelado — MP ${payId} — estornar manualmente`);
-          continue;
-        }
-
-        // C2: replicate the webhook's amount validation here — without it, the
-        // reconcile cron was the anti-fraud check's back door (a mismatched webhook
-        // leaves the order 'awaiting', and this loop would otherwise confirm it anyway).
-        if (transactionAmount !== undefined) {
-          const expectedTotal = parseFloat(o.totalPrice ?? '0');
-          if (expectedTotal > 0 && Math.abs(transactionAmount - expectedTotal) > 0.01) {
-            console.warn(`[cron] reconcile amount mismatch for order ${o.id}: expected ${expectedTotal}, got ${transactionAmount}`);
-            await appendReviewNote(o.id, motivoValorDivergente(transactionAmount, expectedTotal, payId));
-            continue; // leave order 'awaiting' for manual review; do not confirm
-          }
-        }
-
-        // C3: same idempotent conditional update as the webhook — only the caller
-        // that actually flips payment_status 'awaiting' → 'confirmed' runs the
-        // WhatsApp/e-mail/CAPI/coupon side effects.
-        const updated = await ordersDb.update(siteOrders)
-          .set({ status: 'confirmed', paymentStatus: 'confirmed', mpPaymentId: payId, updatedAt: new Date() })
-          .where(and(eq(siteOrders.id, o.id), podeConfirmarPagamento))
-          .returning();
-
-        if (updated.length > 0) {
-          // Coupon bump, CAPI Purchase, automation cancellation, abandoned-cart
-          // conversion, and WhatsApp/email confirmation — same as the mp-webhook path
-          await confirmOrderPaid(updated[0]);
-          confirmed++;
-        }
+        // Mesma rotina do webhook: pedido cancelado, valor divergente e UPDATE condicional (só quem
+        // vira 'awaiting' → 'confirmed' roda os efeitos de WhatsApp/e-mail/CAPI/cupom).
+        const { resultado } = await confirmApprovedPayment(o, { status: 'approved', id: payId, transaction_amount: transactionAmount }, 'reconcile');
+        if (resultado === 'confirmado') confirmed++;
       } catch (e) { console.error(`[cron] reconcile: pedido ${o.id} falhou:`, safeErr(e)); }
     }
   } catch (e) { console.error('[cron] reconcile error:', safeErr(e)); }
@@ -1520,6 +1491,11 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     // para sobrar tempo ao resto do cron; o teto diário (FOLLOWUP_DAILY_CAP) fica no motor.
     const followup = await runIsolated('post-purchase-followup', () => runPostPurchaseFollowup(15_000), null);
 
+    // Etiquetas e rastreio do Melhor Envio não usam WhatsApp (o aviso de postagem sai por e-mail):
+    // rodam antes do portão do WhatsApp para não ficarem presos quando a sessão cai.
+    const labels = await runIsolated('auto-labels', () => autoGenerateLabels(), { considered: 0, generated: 0, failed: 0, lowBalance: false });
+    const tracking = await runIsolated('me-tracking', syncMeTracking, { checked: 0, shipped: 0, delivered: 0, notified: 0 });
+
     // Everything below sends WhatsApp. If the session is down, do nothing at all
     // rather than consuming these one-shot opportunities against a dead socket.
     const waUp = await isWhatsAppConnected();
@@ -1528,7 +1504,7 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       res.json({
         ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0,
         skipped: 'whatsapp disconnected', waConnected: false,
-        unpaid: { sent: 0 }, reconciled, reorder: { sent: 0 }, followup,
+        unpaid: { sent: 0 }, reconciled, reorder: { sent: 0 }, tracking, labels, followup,
       });
       return;
     }
@@ -1541,9 +1517,6 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
     const reorder = reorderWhatsappEnabled()
       ? await runIsolated('reorder-reminder', processReorderReminders, { sent: 0 })
       : { sent: 0 };
-    // Rastreio do Melhor Envio: postado -> 'shipped' + um WhatsApp; entregue -> 'delivered'.
-    const labels = await runIsolated('auto-labels', () => autoGenerateLabels(), { considered: 0, generated: 0, failed: 0, lowBalance: false });
-    const tracking = await runIsolated('me-tracking', syncMeTracking, { checked: 0, shipped: 0, delivered: 0, notified: 0 });
 
     // ── Abandoned cart automation: only during business hours ─────────────────
     let sent = 0, cancelled = 0, failed = 0;
@@ -1589,8 +1562,16 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       } catch (e) { console.error('[cron] release claimed runs failed:', safeErr(e)); }
     };
     const pendingIds = new Set(due.map(r => r.id));
+    // No máximo um toque por telefone por rodada (T1+T2+T3 vencidos juntos não viram 3 mensagens
+    // seguidas): os demais NÃO são cancelados, voltam para 'scheduled' e saem na próxima rodada.
+    const { enviar: dueAgora, adiar } = selecionarUmPorTelefone(due);
+    if (adiar.length > 0) {
+      for (const r of adiar) pendingIds.delete(r.id);
+      await releaseClaimed(adiar.map(r => r.id));
+      console.log(`[cron] abandoned-cart: ${adiar.length} toque(s) adiados (um por telefone por rodada)`);
+    }
 
-    for (const run of due) {
+    for (const run of dueAgora) {
       if (Date.now() > cronDeadline) {
         console.warn(`[cron] abandoned-cart: orçamento de tempo esgotado — ${pendingIds.size} run(s) voltam para a fila`);
         await releaseClaimed([...pendingIds]);
@@ -1604,8 +1585,24 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
         cancelled++;
         continue;
       }
+      // Quem já fez um pedido (não cancelado) depois do carrinho — pago ou não — não recebe a cadência.
+      let jaComprou = false;
+      try { jaComprou = await telefoneTemPedidoDesde(run.customerPhone, inicioJanelaCompra(cart.createdAt)); }
+      catch (e) {
+        // Na dúvida não manda: devolve o toque à fila para a próxima rodada.
+        console.error(`[cron] abandoned-cart: checagem de compra do carrinho ${cart.id} falhou:`, safeErr(e));
+        await releaseClaimed([run.id]);
+        continue;
+      }
+      if (jaComprou) {
+        await ordersDb.update(runs).set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
+          .where(eq(runs.id, run.id));
+        cancelled++;
+        continue;
+      }
       const name = cart.customerName;
-      const ruleCfg = RULE_MAP[run.ruleName] ?? { slug: 'abandoned_simples', coupon: '' };
+      // 3º toque sem cupom ativo cai no template simples (nunca "Use o cupom **").
+      const ruleCfg = regraDeAbandono(RULE_MAP[run.ruleName]);
       // Append ?cupom= so the storefront pre-fills and auto-applies the code.
       const link = ruleCfg.coupon ? `${STORE_URL}?cupom=${ruleCfg.coupon}` : STORE_URL;
       const tpl = tplBySlug[ruleCfg.slug] ?? fallbackTpl;

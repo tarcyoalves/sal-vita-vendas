@@ -114,6 +114,14 @@ export function quantidadeValida(qty: number, kgPerUnit: number): boolean {
   return Number.isInteger(qty) && qty > 0 && kgPerUnit > 0 && qty % kgPerUnit === 0;
 }
 
+/**
+ * Sanidade do frete que o navegador mandou: o preço cobrado é o da recotação do servidor, então aqui
+ * só barra valor negativo ou absurdo. (O teto antigo de R$ 200 recusava o SEDEX da caixa de 10 kg, R$ 272.)
+ */
+export function freteInformadoValido(v: number): boolean {
+  return Number.isFinite(v) && v >= 0 && v <= 1000;
+}
+
 /** Cupom com valor mínimo só vale se o subtotal (calculado no servidor, antes do desconto) o atinge. */
 export function cupomAtendeMinimo(subtotal: number, minOrderValue: string | number | null | undefined): boolean {
   const min = parseFloat(String(minOrderValue ?? '0'));

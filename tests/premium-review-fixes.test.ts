@@ -26,7 +26,7 @@ describe('review fix 1: pedido cancelado (ainda awaiting) não confirma', () => 
     expect(oc).toMatch(/podeConfirmarPagamento = and\(\s*ne\(siteOrders\.status, 'cancelled'\),\s*or\(/);
   });
   it('reconcile anota [REVISAR] em cancelado aprovado em vez de confirmar', () => {
-    expect(api).toMatch(/o\.status === 'cancelled'\) \{[\s\S]{0,300}appendReviewNote\(o\.id, `pagamento aprovado em pedido cancelado/);
+    expect(readFileSync('server/lib/confirmApprovedPayment.ts', 'utf8')).toMatch(/transicao === 'ignorar'\) \{[\s\S]{0,500}appendReviewNote\(orderId, `pagamento aprovado em pedido cancelado/);
   });
 });
 

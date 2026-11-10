@@ -16,7 +16,9 @@ import {
 } from '../lib/meTracking';
 import { sendEmail, shippingUpdateEmail, postPurchaseEmail } from '../email/resend';
 import { confirmOrderPaid, appendReviewNote } from '../lib/orderConfirmation';
-import { quantidadeValida, cupomAtendeMinimo, acharPedidoDuplicado, mesmosDadosDoPedido, IDEMPOTENCIA_PEDIDO_MS } from '../lib/paymentTransition';
+import { alertOwner } from '../lib/ownerAlert';
+import { confirmApprovedPayment } from '../lib/confirmApprovedPayment';
+import { quantidadeValida, freteInformadoValido, cupomAtendeMinimo, acharPedidoDuplicado, mesmosDadosDoPedido, IDEMPOTENCIA_PEDIDO_MS } from '../lib/paymentTransition';
 
 /** Erro do MP para log: só status + código/mensagem curta do `error`/`message`, nunca o corpo inteiro (pode ter dados do pagador). */
 async function mpErrorTag(res: Response): Promise<string> {
@@ -444,7 +446,6 @@ async function generateLabelForOrder(orderId: number) {
       }
 }
 
-const ALERT_EMAIL = () => process.env.ALERT_EMAIL || 'contato@salvitarn.com.br';
 const brlFmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** Um aviso por dia por assunto (tabela shipping_events, order_id 0). */
@@ -455,12 +456,6 @@ async function claimDailyAlert(topic: string): Promise<boolean> {
     const list = (rows as unknown as { rows?: unknown[] }).rows ?? (rows as unknown as unknown[]);
     return Array.isArray(list) && list.length > 0;
   } catch { return false; }
-}
-
-async function alertOwner(subject: string, lines: string[]): Promise<void> {
-  const html = `<p style="font-family:system-ui,Arial,sans-serif;font-size:15px;line-height:1.6">${lines.map(l => l.replace(/</g, '&lt;')).join('<br/>')}</p>`;
-  const r = await sendEmail(ALERT_EMAIL(), subject, html);
-  if (!r.ok) console.warn(`[auto-label] alerta "${subject}" não saiu (${r.reason})`);
 }
 
 /**
@@ -837,7 +832,7 @@ export const shippingRouter = router({
         };
       }
 
-      if (input.shippingPrice !== undefined && (input.shippingPrice < 0 || input.shippingPrice > 200)) {
+      if (input.shippingPrice !== undefined && !freteInformadoValido(input.shippingPrice)) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Valor de frete inválido.' });
       }
 
@@ -1307,13 +1302,7 @@ Seja direto e use emojis para facilitar leitura.`;
     }))
     // .mutation: o storefront chama com POST (tRPC 11 responde 405 a POST em query).
     .mutation(async ({ input }) => {
-      const orders = await db.select({
-        id: siteOrders.id,
-        paymentStatus: siteOrders.paymentStatus,
-        mpPaymentId: siteOrders.mpPaymentId,
-        customerPhone: siteOrders.customerPhone,
-        trackToken: siteOrders.trackToken,
-      }).from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
+      const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.orderId)).limit(1);
       const order = orders[0];
       if (!order) throw orderNotFound();
       assertOrderAccess(order, { token: input.token, phone: input.phone });
@@ -1324,6 +1313,11 @@ Seja direto e use emojis para facilitar leitura.`;
         const r = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, { headers: { 'Authorization': `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
         if (!r.ok) return { paid: false, status: order.paymentStatus };
         const p = await r.json() as any;
+        // Webhook perdido: confirma aqui (mesma rotina do webhook/reconcile; idempotente) em vez de esperar o reconcile diário.
+        if (p.status === 'approved') {
+          try { await confirmApprovedPayment(order, { status: p.status, id: p.id ?? order.mpPaymentId, transaction_amount: p.transaction_amount }, 'pixStatus'); }
+          catch (e) { console.error(`[pix-status] pedido ${order.id}: confirmação falhou:`, safeErr(e)); }
+        }
         return { paid: p.status === 'approved', status: p.status as string };
       } catch {
         return { paid: false, status: order.paymentStatus };

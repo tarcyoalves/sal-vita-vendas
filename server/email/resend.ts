@@ -158,7 +158,7 @@ export function abandonedCartHtml(name: string, link: string, coupon?: string): 
           Notamos que voc&ecirc; se interessou pelo <strong>Sal Marinho Integral Sal Vita</strong> mas n&atilde;o finalizou o pedido.
         </p>
         <p style="margin:0 0 24px;font-size:15px;color:#444;line-height:1.6;">
-          Nosso sal &eacute; colhido artesanalmente em Mossor&oacute;/RN, sem refino &mdash; preservando os 84+ minerais naturais do mar. &#127754;
+          Sal marinho n&atilde;o refinado de Mossor&oacute;/RN, seco por evapora&ccedil;&atilde;o solar. &#127754;
         </p>
       </td>
     </tr>
@@ -237,7 +237,7 @@ export function unpaidOrderHtml(
     <tr>
       <td>
         <p style="margin:16px 0 0;font-size:13px;color:#888;text-align:center;">
-          Aceitamos Cart&atilde;o, PIX e Boleto. Pedido reservado por tempo limitado!
+          Aceitamos Cart&atilde;o, PIX e Boleto.
         </p>
       </td>
     </tr>

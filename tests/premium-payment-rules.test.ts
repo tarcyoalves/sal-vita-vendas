@@ -37,7 +37,7 @@ describe('P0-2: pedido cancelado não pode ser pago', () => {
   });
   it("aprovado em pedido cancelado: transição 'ignorar' + nota [REVISAR] no webhook", () => {
     expect(decidirTransicaoPagamento({ paymentStatus: 'failed', status: 'cancelled' }, 'approved')).toBe('ignorar');
-    expect(api).toMatch(/pagamento aprovado em pedido cancelado — MP \$\{mpId\} — estornar manualmente/);
+    expect(readFileSync('server/lib/confirmApprovedPayment.ts', 'utf8')).toMatch(/pagamento aprovado em pedido cancelado — MP \$\{mpId\} — estornar manualmente/);
   });
 });
 
@@ -56,7 +56,7 @@ describe('P0-3: pagamento ligado ao pedido', () => {
     expect(api).toMatch(/set\(\{ mpPaymentId: mpId, updatedAt: new Date\(\) \}\)\s*\.where\(and\(eq\(siteOrders\.id, orderId\), eq\(siteOrders\.paymentStatus, 'awaiting'\)\)\)/);
   });
   it('webhook usa as duas checagens', () => {
-    expect(api).toContain('pagamentoAprovadoDuplicado(order.mpPaymentId, mpId)');
+    expect(readFileSync('server/lib/confirmApprovedPayment.ts', 'utf8')).toContain('pagamentoAprovadoDuplicado(order.mpPaymentId, mpId)');
     expect(api).toContain('estornoPertenceAoPedido(order.mpPaymentId, mpId)');
   });
 });
@@ -76,7 +76,9 @@ describe('divergência de valor e notas [REVISAR]', () => {
     expect(linhaRevisar('x', agora)).toMatch(/^\[REVISAR\] \d{4}-\d{2}-\d{2}T/);
   });
   it('webhook e reconcile registram a divergência', () => {
-    expect(api.match(/motivoValorDivergente\(/g)!.length).toBe(2); // webhook + reconcile
+    // rotina compartilhada (webhook + reconcile + pixStatus)
+    expect(readFileSync('server/lib/confirmApprovedPayment.ts', 'utf8').match(/motivoValorDivergente\(/g)!.length).toBe(1);
+    expect(api.match(/confirmApprovedPayment\(/g)!.length).toBe(2); // webhook + reconcile
   });
 });
 

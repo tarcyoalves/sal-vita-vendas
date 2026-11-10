@@ -6,6 +6,7 @@ import { siteOrders, abandonedCarts, automationRuns, msgTemplates, coupons } fro
 import { sendEmail, orderConfirmedHtml } from '../email/resend';
 import { linhaRevisar } from './paymentTransition';
 import { STORE_URL } from './storeUrl';
+import { alertOwnerBestEffort, alertaPedidoPago, alertaPedidoRevisao } from './ownerAlert';
 
 type SiteOrder = typeof siteOrders.$inferSelect;
 
@@ -40,17 +41,19 @@ export function orderTrackLink(
 
 /**
  * Anexa "[REVISAR] <data ISO> <motivo>" a site_orders.notes (UPDATE atômico, nunca sobrescreve).
- * Idempotente: não repete o mesmo motivo. Não lança — falha de nota não pode derrubar o webhook.
+ * Idempotente: não repete o mesmo motivo (e só avisa o dono quando a linha é nova). Não lança — falha de nota não pode derrubar o webhook.
  */
 export async function appendReviewNote(orderId: number, motivo: string): Promise<void> {
   try {
     const linha = linhaRevisar(motivo);
-    await ordersDb.update(siteOrders)
+    const written = await ordersDb.update(siteOrders)
       .set({
         notes: sql`CASE WHEN coalesce(${siteOrders.notes}, '') = '' THEN ${linha}::text ELSE ${siteOrders.notes} || chr(10) || ${linha}::text END`,
         updatedAt: new Date(),
       })
-      .where(and(eq(siteOrders.id, orderId), sql`strpos(coalesce(${siteOrders.notes}, ''), ${motivo}::text) = 0`));
+      .where(and(eq(siteOrders.id, orderId), sql`strpos(coalesce(${siteOrders.notes}, ''), ${motivo}::text) = 0`))
+      .returning({ id: siteOrders.id });
+    if (written.length > 0) await alertOwnerBestEffort(alertaPedidoRevisao(orderId, motivo));
   } catch (e) { console.error(`[review-note] pedido ${orderId}: falhou:`, safeErr(e)); }
 }
 
@@ -245,6 +248,8 @@ export async function confirmOrderPaid(order: SiteOrder): Promise<void> {
     } catch (e) { console.error(`[order-confirmation] pedido ${order.id}: e-mail falhou:`, safeErr(e)); }
   }
 
+  // Aviso ao dono (melhor esforço, limitado a 6 s): antes da etiqueta, que pode levar 20 s.
+  await alertOwnerBestEffort(alertaPedidoPago(order));
 
   // Etiqueta automática (último passo: nada acima depende dela). Limite de 20 s para nunca
   // segurar a resposta ao Mercado Pago; o que não terminar a rodada diária do meio-dia refaz.
