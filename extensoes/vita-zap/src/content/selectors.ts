@@ -88,6 +88,10 @@ export const SELETORES = {
   /** Mensagem recebida pela classe do WhatsApp (message-in). Contas novas não têm: há outros sinais. */
   mensagemRecebidaClasse: ['.message-in'],
 
+  /** Mensagem citada (resposta a outra mensagem). O nome de autor DENTRO dela existe também em conversa individual
+   *  (mostra quem escreveu o original); visto no WhatsApp real em 10/11/2026. */
+  citacao: ['[data-testid="quoted-message"]', '[role="button"][aria-label="Mensagem citada"]', '[role="button"][aria-label="Quoted message"]'],
+
   /** Cadeado do aviso de criptografia (mensagem do sistema, não do contato). */
   iconeCadeado: ['[data-icon*="lock"]'],
 
@@ -207,6 +211,11 @@ export function dentroDe(el: Element, chave: ChaveSeletor): boolean {
 /** Verdadeiro se QUALQUER alternativa bate com algum elemento. */
 export function existeAlgum(raiz: ParentNode, chave: ChaveSeletor): boolean {
   return SELETORES[chave].some((s) => raiz.querySelector(s) != null) || svgPorTitulo(raiz, chave) != null;
+}
+
+/** Todos os elementos de TODAS as alternativas (sem repetir). */
+export function encontrarTodosAlternativas(raiz: ParentNode, chave: ChaveSeletor): HTMLElement[] {
+  return [...new Set(SELETORES[chave].flatMap((s) => [...raiz.querySelectorAll<HTMLElement>(s)]))];
 }
 
 /** Todos os elementos da primeira alternativa que tiver algum resultado. */

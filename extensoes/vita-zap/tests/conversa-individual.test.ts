@@ -78,6 +78,16 @@ describe('sem JID: individual exige sinal positivo', () => {
     expect(classificar({ titulo: 'Ana Cliente' }, [msg('a', { autor: 'Ana Cliente', elementoDeAutor: true })])).toBe('grupo');
   });
 
+  it('autor dentro de MENSAGEM CITADA não é sinal de grupo (caso real "Lucas Cliente Pr", 10/11/2026)', () => {
+    const citada = (id: string, autorCitado: string) =>
+      `<div data-id="${id}" class="message-in"><div data-testid="msg-container"><div data-testid="quoted-message"><div role="button" aria-label="Mensagem citada"><div><span data-testid="author">${autorCitado}</span></div></div></div><div class="copyable-text" data-pre-plain-text="[14:24, 10/11/2026] Lucas Cliente Pr: "><span class="selectable-text"><span>texto</span></span></div></div></div>`;
+    expect(classificar({ titulo: 'Lucas Cliente Pr' }, [citada('a', 'Lucas Cliente Pr'), msg('b', { autor: 'Lucas Cliente Pr' }), msg('c', { minha: true })])).toBe('individual');
+    expect(classificarConversa([`${HASH}0`, `${HASH}1`], conversa({ titulo: 'Lucas Cliente Pr' }, [citada('a', 'Você'), msg('b', { autor: 'Lucas Cliente Pr' })]), undefined, true)).toBe('individual');
+    // autor FORA da citação continua sendo grupo, mesmo com uma citação no mesmo balão
+    const grupo = `<div data-id="g" class="message-in"><span data-testid="author">Maria</span><div data-testid="quoted-message"><span data-testid="author">Lucas Cliente Pr</span></div><div class="copyable-text" data-pre-plain-text="[14:24, 10/11/2026] Maria: "></div></div>`;
+    expect(classificar({ titulo: 'Lucas Cliente Pr' }, [grupo])).toBe('grupo');
+  });
+
   it('ícone default-group ou default-community no cabeçalho → grupo, mesmo só com mensagens minhas', () => {
     expect(classificar({ titulo: 'Ana Cliente', icone: true }, [msg('a', { minha: true })])).toBe('grupo');
     const el = conversa({ titulo: 'Ana Cliente' }, [msg('a', { minha: true })]);

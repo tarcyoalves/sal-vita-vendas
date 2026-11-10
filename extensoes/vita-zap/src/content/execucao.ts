@@ -13,7 +13,7 @@ import { abrirLinhaDaLista } from './abrir-conversa';
 import { colarComClipboard, colarDiretoNoParagrafo, escreverNoCampo, esperar, esperarAte, limparCampo, limparMarcas, textoComEmoji, textoDoCampoComEmoji } from './dom';
 import { lerConversasVisiveis } from './extrair';
 import { buscar, exigir, linhasDaLista } from './lista';
-import { dentroDe, encontrar, encontrarTodos, existeAlgum, SELETORES } from './selectors';
+import { dentroDe, encontrar, encontrarTodos, encontrarTodosAlternativas, existeAlgum, SELETORES } from './selectors';
 import { agendarEnvioHumano, enviarHumano, PRAZO_CONFIRMACAO_MS } from './envio-humano';
 import { mesmoNome } from '../shared/abrir-por-telefone';
 import { lerResultadosDaBusca } from './extrair';
@@ -72,7 +72,10 @@ function sinalDeGrupo(raiz: ParentNode, mensagens: HTMLElement[]): string | null
     const nomes = sub.split(/[,|]/).map((x) => x.trim()).filter(Boolean);
     if (sub.includes(',') && nomes.length >= 2 && !SUBTITULO_DE_PRESENCA.test(sub)) return 'subtítulo do cabeçalho é uma lista de nomes';
   }
-  if (mensagens.some((m) => existeAlgum(m, 'autorMensagem'))) return 'mensagem com nome de autor (só existe em grupo)';
+  // Nome de autor dentro de uma CITAÇÃO não conta: resposta a uma mensagem mostra o autor original até em conversa
+  // individual (falso "grupo" no WhatsApp real, 10/11/2026). Fora da citação continua sendo sinal de grupo.
+  const autorForaDeCitacao = mensagens.some((m) => encontrarTodosAlternativas(m, 'autorMensagem').some((a) => !dentroDe(a, 'citacao')));
+  if (autorForaDeCitacao) return 'mensagem com nome de autor (só existe em grupo)';
   return null;
 }
 
