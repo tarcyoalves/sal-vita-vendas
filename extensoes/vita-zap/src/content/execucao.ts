@@ -15,7 +15,7 @@ import { lerConversasVisiveis } from './extrair';
 import { buscar, exigir, linhasDaLista } from './lista';
 import { dentroDe, encontrar, encontrarTodos, encontrarTodosAlternativas, existeAlgum, SELETORES } from './selectors';
 import { agendarEnvioHumano, enviarHumano, PRAZO_CONFIRMACAO_MS } from './envio-humano';
-import { mesmoNome } from '../shared/abrir-por-telefone';
+import { mesmaConversa, mesmoNome } from '../shared/abrir-por-telefone';
 import { lerResultadosDaBusca } from './extrair';
 
 export type TipoConversa = 'individual' | 'grupo' | 'desconhecido';
@@ -318,9 +318,12 @@ export function nomeDaConversaAberta(): string | null {
  * conversa) e confere o cabeçalho. Devolve null quando abriu; senão, o erro.
  * Com `usarSeJaAberta`, se a conversa já está aberta nem mexe na busca.
  */
-async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promise<RespostaConteudo | null> {
+async function abrirConversaPorNome(nome: string, usarSeJaAberta = false, estrito = false): Promise<RespostaConteudo | null> {
   exigir(encontrar(document, 'painelLateral'), 'lista de conversas');
-  if (usarSeJaAberta && (tituloAberto() === nome || (tituloAberto() != null && mesmoNome(tituloAberto()!, nome)))) return null;
+  // Estrito (campanha): nome igual de verdade. O frouxo `mesmoNome` reaproveitava a conversa de OUTRO cliente com
+  // nome parecido e mandava duas vezes para ele (10/11/2026).
+  const bate = (a: string | null, b: string) => (estrito ? mesmaConversa(a, b) : a === b || (a != null && mesmoNome(a, b)));
+  if (usarSeJaAberta && bate(tituloAberto(), nome)) return null;
 
   // 1. Achar a conversa pela busca: tenta exato primeiro, depois por termos e contatos da agenda.
   await buscar(nome);
@@ -337,7 +340,7 @@ async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promi
     if (exatas.length === 1) return exatas[0];
 
     // Se não achou exato, busca conversas ativas que batem pelo nome/termo inteligente
-    const batemConversas = visiveis.filter((c) => c.linha.rotuloData && mesmoNome(c.linha.nome, nome));
+    const batemConversas = visiveis.filter((c) => c.linha.rotuloData && bate(c.linha.nome, nome));
     if (batemConversas.length === 1) return batemConversas[0];
     if (batemConversas.length > 1) {
       viuAmbiguo = true;
@@ -355,7 +358,7 @@ async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promi
       return null;
     }
 
-    const batemGeral = todas.filter((c) => mesmoNome(c.linha.nome, nome));
+    const batemGeral = todas.filter((c) => bate(c.linha.nome, nome));
     if (batemGeral.length === 1) return batemGeral[0];
     if (batemGeral.length > 1) {
       viuAmbiguo = true;
@@ -376,9 +379,9 @@ async function abrirConversaPorNome(nome: string, usarSeJaAberta = false): Promi
   const abriu = await esperarAte(() => {
     const aberto = tituloAberto();
     if (
-      aberto === alvo.linha.nome ||
-      aberto === nome ||
-      (aberto != null && (mesmoNome(aberto, nome) || mesmoNome(aberto, alvo.linha.nome)))
+      estrito
+        ? mesmaConversa(aberto, nome)
+        : aberto === alvo.linha.nome || aberto === nome || (aberto != null && (mesmoNome(aberto, nome) || mesmoNome(aberto, alvo.linha.nome)))
     ) {
       return true;
     }
@@ -418,10 +421,11 @@ function avisoDoWhatsAppAberto(): boolean {
  * confere: painel vivo, título da conversa === nome, conversa individual (MESMO critério da hora de colar),
  * caixa com EXATAMENTE o texto colado (normalizado, emoji incluído) e nenhum aviso do WhatsApp na tela.
  */
-export function reconferirAntesDoClique(nome: string, textoColado: string): string | null {
+export function reconferirAntesDoClique(nome: string, textoColado: string, estrito = false): string | null {
   if (!painelVivo()) return 'o painel parou de responder (fechado ou travado)';
   const aberto = tituloAberto();
-  if (aberto !== nome && (aberto == null || !mesmoNome(aberto, nome))) return `a conversa aberta mudou: não é mais "${nome}"`;
+  const confere = estrito ? mesmaConversa(aberto, nome) : aberto === nome || (aberto != null && mesmoNome(aberto, nome));
+  if (!confere) return `a conversa aberta mudou: não é mais "${nome}"`;
   const tipo = classificarConversa(idsDasMensagens(), document, nome, false, true);
   if (tipo === 'grupo') return `"${nome}" parece grupo, comunidade ou transmissão`;
   if (tipo === 'desconhecido') return `não consegui confirmar que "${nome}" é conversa individual`;
@@ -457,7 +461,7 @@ export async function abrirEColar(
 ): Promise<RespostaConteudo> {
   pararObservacao();
   registrarBatimento(); // o próprio pedido do painel prova que ele está vivo
-  const falha = await abrirConversaPorNome(nome, true);
+  const falha = await abrirConversaPorNome(nome, true, true);
   if (falha) return falha;
   await buscar('');
 
@@ -535,7 +539,7 @@ export async function abrirEColar(
       if (disparou || resolvido) return;
       disparou = true;
       const r = await enviarHumano(document, {
-        reconferir: () => reconferirAntesDoClique(nome, texto),
+        reconferir: () => reconferirAntesDoClique(nome, texto, true),
         confirmar: () => {
           if (resolvido) return true; // o observador já entregou a detecção
           const t = detectarEnvio(nome, texto, antes);
@@ -567,7 +571,7 @@ export async function abrirEColar(
  * não dá para provar que a mensagem é nova: devolve `nao_encontrado` (o painel manda para "revisar").
  */
 export async function consultarEnvio(nome: string, texto: string, idsAntes: string[] | null): Promise<RespostaConteudo> {
-  const falha = await abrirConversaPorNome(nome, true);
+  const falha = await abrirConversaPorNome(nome, true, true);
   if (falha) return falha;
   await esperar(800);
   if (idsAntes === null) return { ok: true, situacao: 'nao_encontrado', avisos: ['sem a foto das mensagens: não dá para provar que é nova'] };

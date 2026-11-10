@@ -39,6 +39,29 @@ export interface CandidatoBusca {
 
 export type Escolha = { tipo: 'um'; indice: number } | { tipo: 'nenhum' } | { tipo: 'ambiguo' };
 
+/**
+ * Identidade ESTRITA da conversa (campanha): o título da conversa aberta é o nome do contato. Só aceita igualdade
+ * depois de normalizar (maiúsculas, acentos, espaços) ou um lado cortado com "…" cujo começo (8+ letras) é o
+ * começo do outro. `mesmoNome` é frouxo de propósito (títulos do CRM) e NÃO serve para isso: "Agropecuária São José
+ * Cliente PR" e "Agropecuária Boa Vista Cliente PR" batem lá, e a campanha mandou duas vezes para o mesmo cliente
+ * (atendente, 10/11/2026).
+ */
+export function mesmaConversa(aberto: string | null, nome: string): boolean {
+  if (!aberto || !nome) return false;
+  const n = (s: string) => normalizarTexto(s).replace(/\s+/g, ' ').trim();
+  const a = n(aberto);
+  const b = n(nome);
+  if (a === '' || b === '') return false;
+  if (a === b) return true;
+  const corte = /\s*(\.{2,}|…)\s*$/;
+  for (const [cortado, inteiro] of [[a, b], [b, a]] as const) {
+    if (!corte.test(cortado)) continue;
+    const prefixo = cortado.replace(corte, '').trim();
+    if (prefixo.length >= 8 && inteiro.startsWith(prefixo)) return true;
+  }
+  return false;
+}
+
 export function mesmoNome(a: string, b: string): boolean {
   if (!a || !b) return false;
   const limpaDots = (s: string) => s.replace(/\.{2,}|…/g, '').trim();
