@@ -1,3 +1,4 @@
+import { gravarPausaVarredura } from './crm';
 import { useEffect, useState } from 'react';
 import { limparContatos, salvarContatos, type Banco } from '../shared/banco';
 import { linhasParaContatos } from '../shared/contatos';
@@ -56,6 +57,7 @@ export function Varredura({ db, dados, aoMudar, aoContinuar }: Props) {
       await aoMudar();
     } finally {
       setRodando(false);
+      setPausando(false);
       setProgresso(null);
     }
   }
@@ -134,11 +136,21 @@ export function Varredura({ db, dados, aoMudar, aoContinuar }: Props) {
             style={{ padding: '6px 12px' }}
             onClick={async () => {
               setPausando(true);
+              // 1º pelo armazenamento (a varredura confere a cada passo, mesmo se a mensagem não chegar à aba);
+              // 2º pela mensagem (para na hora). Se nada parar em 10 s, avisa em vez de ficar "Pausando…" para sempre.
               try {
-                await pedir({ tipo: 'pararVarredura' });
+                await gravarPausaVarredura();
               } catch {
-                setPausando(false);
+                // sem armazenamento: fica só a mensagem
               }
+              const r = await pedir({ tipo: 'pararVarredura' }).catch(() => null);
+              if (r && !r.ok) setErro(`Pedido de pausa: ${r.erro}`);
+              window.setTimeout(() => {
+                setPausando((ainda) => {
+                  if (ainda) setErro('A varredura não respondeu à pausa. Recarregue a aba do WhatsApp Web (F5) para interromper.');
+                  return false;
+                });
+              }, 10_000);
             }}
             disabled={pausando}
           >

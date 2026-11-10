@@ -4,6 +4,17 @@ export function pararVarredura(): void {
   interromper = true;
 }
 
+/**
+ * Pedido de pausa também pelo armazenamento da extensão (o painel grava a hora). Não depende da mensagem
+ * painel→aba chegar: se ela se perder (extensão atualizada sem recarregar a aba etc.), a pausa vale assim mesmo.
+ */
+import { lerPausaVarredura } from './crm';
+
+async function pausaPedidaDesde(inicio: number): Promise<boolean> {
+  const em = await lerPausaVarredura(); // null: sem pedido, ou contexto inválido (aí vale só a mensagem)
+  return em !== null && em >= inicio;
+}
+
 // Varredura da lista de conversas — SÓ LEITURA. Não abre conversa, não escreve mensagem.
 // Rola a lista com pausas (ritmo calmo) e devolve as linhas lidas; a deduplicação e a
 // interpretação das datas acontecem no painel (shared/contatos.ts).
@@ -19,6 +30,7 @@ const MAX_LINHAS = 5000;
 
 export async function varrerLista(termo: string, aoProgredir: (lidas: number, unicas: number) => void): Promise<{ linhas: LinhaBruta[]; avisos: string[] }> {
   interromper = false;
+  const inicio = Date.now();
   exigir(encontrar(document, 'painelLateral'), 'lista de conversas');
   await buscar(termo);
 
@@ -54,6 +66,7 @@ export async function varrerLista(termo: string, aoProgredir: (lidas: number, un
       nomes.add(l.nome);
     }
     aoProgredir(todas.length, nomes.size);
+    if (!interromper && (await pausaPedidaDesde(inicio))) interromper = true;
     if (interromper) {
       avisos.push('Varredura pausada pelo usuário.');
       break;

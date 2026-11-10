@@ -3,6 +3,7 @@
 // garante). Uma chave por coleção (vz.*); as mutações são serializadas (uma de cada vez) e só
 // regravam as coleções que de fato mudaram.
 
+import { CHAVE_PARAR_VARREDURA } from './constantes';
 import {
   acharContato,
   adicionarNota as opAdicionarNota,
@@ -358,4 +359,22 @@ export function repositorioPadrao(): RepositorioComCrm {
 export function reiniciarRepositorioPadrao(): void {
   padrao = null;
   servicoCrm = null;
+}
+
+// ── Sinal de pausa da varredura (painel grava, content script lê a cada passo) ──────────────────────────────
+
+/** Painel: grava a hora do pedido de pausa. Vale mesmo se a mensagem painel→aba se perder. */
+export async function gravarPausaVarredura(agora: number = Date.now()): Promise<void> {
+  await chrome.storage.local.set({ [CHAVE_PARAR_VARREDURA]: agora });
+}
+
+/** Content script: hora do último pedido de pausa, ou null (sem pedido, ou contexto da extensão inválido). */
+export async function lerPausaVarredura(): Promise<number | null> {
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return null;
+    const em = (await chrome.storage.local.get(CHAVE_PARAR_VARREDURA))[CHAVE_PARAR_VARREDURA];
+    return typeof em === 'number' ? em : null;
+  } catch {
+    return null;
+  }
 }

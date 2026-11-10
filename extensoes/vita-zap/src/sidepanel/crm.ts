@@ -52,3 +52,6 @@ export function useCrm(repositorio?: RepositorioComCrm): CrmPainel {
 
   return { dados, agora, repo, fazer, recarregar };
 }
+
+// Sinal de pausa da varredura: o painel grava por aqui (o RepositorioLocal só entra pelos pontos de entrada).
+export { gravarPausaVarredura } from '../shared/repositorio-local';

@@ -56,3 +56,6 @@ export const ORIGEM_DA_EXTENSAO = `chrome-extension://${ID_DA_EXTENSAO}`;
 
 /** Endereço padrão do CRM Lembretes (configurável na aba Dados). */
 export const URL_CRM_PADRAO = 'https://lembretes.salvitarn.com.br';
+
+/** Hora (ms) do último pedido de pausa da varredura, gravada pelo painel em chrome.storage.local. */
+export const CHAVE_PARAR_VARREDURA = 'vz.varredura.parar';

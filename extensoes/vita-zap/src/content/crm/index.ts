@@ -641,3 +641,6 @@ function scriptOrfao(): boolean {
     return true;
   }
 }
+
+// Sinal de pausa da varredura: a varredura (content script) lê por aqui (o RepositorioLocal só entra pelos pontos de entrada).
+export { lerPausaVarredura } from '../../shared/repositorio-local';
