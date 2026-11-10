@@ -14,10 +14,14 @@ import {
   fetchMeBalance, isBalanceError, eligibleForAutoLabel,
   type MeTrackingInfo, type ShippingEvent,
 } from '../lib/meTracking';
-import { sendEmail, shippingUpdateEmail, postPurchaseEmail } from '../email/resend';
-import { confirmOrderPaid, appendReviewNote } from '../lib/orderConfirmation';
+import { sendEmail, shippingUpdateEmail, postPurchaseEmail, orderCancelledEmail } from '../email/resend';
+import { confirmOrderPaid, appendReviewNote, bumpCouponUsage } from '../lib/orderConfirmation';
 import { alertOwner } from '../lib/ownerAlert';
 import { confirmApprovedPayment } from '../lib/confirmApprovedPayment';
+import {
+  transicaoAdminPermitida, statusAoSalvarRastreio, modoReembolso, cancelamentoExigeForce,
+  insuranceValueCotacao, insuranceValueEtiqueta, notaFreteEstimado,
+} from '../lib/pedidoAdmin';
 import { quantidadeValida, freteInformadoValido, cupomAtendeMinimo, acharPedidoDuplicado, mesmosDadosDoPedido, IDEMPOTENCIA_PEDIDO_MS } from '../lib/paymentTransition';
 
 /** Erro do MP para log: só status + código/mensagem curta do `error`/`message`, nunca o corpo inteiro (pode ter dados do pagador). */
@@ -124,12 +128,12 @@ type NotifiableOrder = { id: number; customerName: string; customerPhone: string
  * Cliente sem e-mail não recebe aviso automático; acompanha pelo /meu-pedido.
  * Devolve 'email', ou null se nada saiu.
  */
-export async function notifyShippingEvent(order: NotifiableOrder, event: ShippingEvent): Promise<'email' | null> {
+export async function notifyShippingEvent(order: NotifiableOrder, event: ShippingEvent, opts?: { manual?: boolean }): Promise<'email' | null> {
   if (!order.customerEmail) return null;
   const code = order.trackingCode ?? null;
   const link = code ? trackingLink(code) : null;
   const { subject, html } = event === 'delivered'
-    ? postPurchaseEmail(order.customerName, order.id, ORDER_PAGE_URL())
+    ? postPurchaseEmail(order.customerName, order.id, ORDER_PAGE_URL(), opts?.manual === true)
     : shippingUpdateEmail(event, order.customerName, order.id, code, link, ORDER_PAGE_URL());
   const r = await sendEmail(order.customerEmail, subject, html);
   if (r.ok) return 'email';
@@ -319,7 +323,14 @@ async function generateLabelForOrder(orderId: number) {
       const labelPkg = CATALOG[labelProduct].pkg;
       const weight = shipWeight(labelProduct, labelPacks);
       const declaredUnitPrice = parseFloat(order.unitPrice ?? String(CATALOG[labelProduct].price));
-      const declaredValue = parseFloat(order.totalPrice ?? String(declaredUnitPrice * labelPacks));
+      // Valor declarado = produtos depois do cupom, SEM frete: o mesmo critério da cotação
+      // (meCalculate), para o frete pago pelo cliente ser o custo da etiqueta. Com cupom, a cotação
+      // (feita antes de conhecê-lo) declarou um pouco mais: diferença de centavos.
+      const declaredValue = insuranceValueEtiqueta({
+        totalPrice: order.totalPrice, shippingPrice: order.shippingPrice,
+        unitPrice: order.unitPrice, couponDiscount: order.couponDiscount,
+        packs: labelPacks, catalogPrice: CATALOG[labelProduct].price,
+      });
 
       const cartBody = {
         service: serviceId,
@@ -594,7 +605,9 @@ async function meCalculate(destCep: string, qty: number, productId?: string | nu
       from: { postal_code: ORIGIN_CEP },
       to:   { postal_code: destCep.replace(/\D/g, '') },
       package: { height: pkg.height, width: pkg.width, length: pkg.length, weight },
-      options: { receipt: false, own_hand: false },
+      // Mesmo valor declarado da etiqueta (produto, sem frete, preço de catálogo: o cupom
+      // ainda não é conhecido na cotação), senão o frete cotado difere do custo da etiqueta.
+      options: { receipt: false, own_hand: false, insurance_value: insuranceValueCotacao(CATALOG[product].price, packs) },
     };
     const res = await fetch(`${ME_BASE}/api/v2/me/shipment/calculate`, {
       method: 'POST',
@@ -928,6 +941,9 @@ export const shippingRouter = router({
         ...clientSignals(ctx.req.headers, input.fbp, input.fbc),
       }).returning();
       if (!order?.id) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Erro ao criar pedido. Tente novamente.' });
+      // Frete da tabela estática (Melhor Envio fora do ar): marca o pedido para conferir a etiqueta.
+      const notaEstimado = notaFreteEstimado(quote.source);
+      if (notaEstimado) await appendReviewNote(order.id, notaEstimado);
       // `shipping` is returned so the storefront can show the corrected freight if
       // its own quote went stale; `trackToken` authorizes the follow-up calls
       // (payment, PIX, status) and the /meu-pedido link without leaking the phone.
@@ -1053,23 +1069,40 @@ Seja direto e use emojis para facilitar leitura.`;
     }))
     .mutation(async ({ ctx, input }) => {
       const [before] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
+      if (before && input.status) {
+        const t = transicaoAdminPermitida(before.status, input.status, {
+          paymentStatus: input.paymentStatus ?? before.paymentStatus,
+          trackingCode: before.trackingCode,
+        });
+        if (!t.ok) throw new TRPCError({ code: 'BAD_REQUEST', message: t.message });
+      }
       const updates: Record<string,unknown> = { updatedAt: new Date() };
       if (input.status) updates.status = input.status;
       if (input.paymentStatus) updates.paymentStatus = input.paymentStatus;
+      // Mudança de status é condicional ao status lido acima: se o webhook/cron do Melhor Envio
+      // mexeu no pedido no meio, não sobrescreve com base em leitura velha.
       const [updated] = await db.update(siteOrders)
         .set(updates)
-        .where(eq(siteOrders.id, input.id))
+        .where(before && input.status ? and(eq(siteOrders.id, input.id), eq(siteOrders.status, before.status)) : eq(siteOrders.id, input.id))
         .returning();
+      if (before && input.status && !updated) {
+        throw new TRPCError({ code: 'CONFLICT', message: 'O pedido mudou enquanto você editava. Atualize a lista e tente de novo.' });
+      }
       // Manually confirming a payment must produce the same customer-facing
       // result as an automatic confirmation (WhatsApp + email + CAPI + coupon
       // + cancel pending follow-ups) — only run once per order.
       if (updated && input.paymentStatus === 'confirmed' && before?.paymentStatus !== 'confirmed') {
         await confirmOrderPaid(updated);
       }
-      // Ao marcar manualmente como entregue no painel, avisa o cliente com o pós-venda
+      // Entrega marcada à mão: avisa o cliente UMA vez (mesma trava do rastreio automático,
+      // então nem clique repetido nem o Melhor Envio depois reenviam), em texto neutro.
       if (updated && input.status === 'delivered' && before?.status !== 'delivered') {
         try {
-          await notifyShippingEvent(updated, 'delivered');
+          if (await claimShippingEvent(updated.id, 'delivered', null)) {
+            const channel = await notifyShippingEvent(updated, 'delivered', { manual: true });
+            if (channel) await markShippingEvent(updated.id, 'delivered', channel);
+            else await releaseShippingEvent(updated.id, 'delivered');
+          }
         } catch (e) {
           console.error(`[shipping] pós-venda automático do pedido ${updated.id} falhou:`, safeErr(e));
         }
@@ -1113,10 +1146,17 @@ Seja direto e use emojis para facilitar leitura.`;
       trackingCode: z.string().min(1),
     }))
     .mutation(async ({ ctx, input }) => {
+      const [atual] = await db.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1);
+      if (!atual) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado.' });
+      // Só pedido pago e ainda não enviado/entregue/cancelado vira "enviado"; nos demais
+      // o código é salvo e o status fica como está.
+      const novoStatus = statusAoSalvarRastreio(atual.status, atual.paymentStatus);
       const [updated] = await db.update(siteOrders)
-        .set({ trackingCode: input.trackingCode, status: 'shipped', updatedAt: new Date() })
+        .set({ trackingCode: input.trackingCode, ...(novoStatus ? { status: novoStatus } : {}), updatedAt: new Date() })
         .where(eq(siteOrders.id, input.id))
         .returning();
+      // Sem aviso de "postado" para pedido não pago ou cancelado.
+      if (updated && (updated.paymentStatus !== 'confirmed' || updated.status === 'cancelled')) return updated;
 
       // Avisa o cliente uma única vez (e-mail; WhatsApp só sem e-mail). Se o rastreio
       // automático já avisou o 'postado', salvar de novo no painel não reenvia.
@@ -1335,20 +1375,26 @@ Seja direto e use emojis para facilitar leitura.`;
     }),
 
   cancelOrder: premiumAdminProcedure
-    .input(z.object({ id: z.number() }))
+    .input(z.object({ id: z.number(), force: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
 
       const orders = await db.select().from(siteOrders).where(eq(siteOrders.id, input.id));
       const order = orders[0];
       if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
       if (order.status === 'cancelled') throw new TRPCError({ code: 'CONFLICT', message: 'Pedido já cancelado.' });
+      // Pacote já postado/entregue: cancelar não para a entrega, então exige confirmação explícita.
+      if (cancelamentoExigeForce(order.status) && input.force !== true) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'O pacote já foi postado ou entregue. O reembolso não para a entrega. Confirme o cancelamento forçado para continuar.' });
+      }
 
       const results: string[] = [];
+      const refund = modoReembolso(order);
+      let labelCancelFailed = false;
 
       // Reembolso PRIMEIRO: se falhar, o pedido continua como está (não vira 'cancelled'
       // com o dinheiro ainda com a loja) e a etiqueta não é mexida. Reembolso feito à mão
       // no painel do MP chega pelo webhook (refunded), que cancela o pedido sozinho.
-      if (order.paymentStatus === 'confirmed' && order.mpPaymentId) {
+      if (refund === 'mercadopago') {
         const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
         if (!mpToken) {
           throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'MERCADO_PAGO_ACCESS_TOKEN não configurado — reembolse no painel do Mercado Pago; o webhook cancela o pedido.' });
@@ -1369,6 +1415,9 @@ Seja direto e use emojis para facilitar leitura.`;
           if (err instanceof TRPCError) throw err;
           throw new TRPCError({ code: 'BAD_GATEWAY', message: 'Falha ao reembolsar no MP — pedido NÃO cancelado. Tente de novo ou reembolse no painel do Mercado Pago.' });
         }
+      } else if (refund === 'manual') {
+        // Pagamento confirmado à mão: não há id do MP para estornar. A equipe devolve por fora.
+        results.push('Reembolso manual necessário (pagamento confirmado manualmente)');
       }
 
       if (order.meOrderId && order.meOrderId !== 'pending') {
@@ -1387,20 +1436,45 @@ Seja direto e use emojis para facilitar leitura.`;
               signal: AbortSignal.timeout(8000),
             });
             if (meRes.ok) results.push('Etiqueta ME cancelada');
-            else results.push(`Aviso: ME retornou ${meRes.status} — verifique manualmente`);
+            else { labelCancelFailed = true; results.push(`Aviso: ME retornou ${meRes.status} — verifique manualmente`); }
           } catch {
+            labelCancelFailed = true;
             results.push('Aviso: falha ao cancelar etiqueta ME — verifique manualmente');
           }
         }
       }
 
-      const [updated] = await db.update(siteOrders)
+      // Condicional a "ainda não cancelado": só quem vira a linha devolve o cupom (uma vez).
+      const [won] = await db.update(siteOrders)
         .set({ status: 'cancelled', updatedAt: new Date() })
-        .where(eq(siteOrders.id, input.id))
+        .where(and(eq(siteOrders.id, input.id), ne(siteOrders.status, 'cancelled')))
         .returning();
+      // Perdeu a corrida: o webhook de estorno (ou outro clique) já cancelou. Não é erro.
+      const updated = won ?? (await db.select().from(siteOrders).where(eq(siteOrders.id, input.id)).limit(1))[0];
+
+      // Cupom: com reembolso pelo MP quem devolve é o webhook de estorno (condicional a
+      // paymentStatus='confirmed', que aqui não mexemos). Sem id do MP o webhook ignora o
+      // pedido (estornoPertenceAoPedido), então a devolução é feita aqui, uma vez.
+      let couponReturned = false;
+      if (won && refund === 'manual' && order.couponCode) {
+        await bumpCouponUsage(order.couponCode, -1);
+        couponReturned = true;
+        results.push('Uso do cupom devolvido');
+      }
+
+      // Aviso ao cliente: best-effort, nunca bloqueia o cancelamento.
+      let emailSent = false;
+      if (order.customerEmail) {
+        try {
+          const info = refund === 'mercadopago' ? 'automatic' : refund === 'manual' ? 'manual' : 'none';
+          const { subject, html } = orderCancelledEmail(order.customerName, order.id, info);
+          emailSent = (await sendEmail(order.customerEmail, subject, html)).ok;
+        } catch (e) { console.error(`[cancelOrder] e-mail do pedido ${order.id} falhou:`, safeErr(e)); }
+        results.push(emailSent ? 'Cliente avisado por e-mail' : 'Aviso por e-mail ao cliente não saiu');
+      }
 
       results.push('Pedido cancelado');
-      return { order: updated, actions: results };
+      return { order: updated, actions: results, refund, labelCancelFailed, couponReturned, emailSent };
     }),
 
   // Admin: permanently remove an order (e.g. test orders). No refund/label
@@ -1542,7 +1616,14 @@ Seja direto e use emojis para facilitar leitura.`;
           const labelPkg = CATALOG[labelProduct].pkg;
           const weight = shipWeight(labelProduct, labelPacks);
           const declaredUnitPrice = parseFloat(order.unitPrice ?? String(CATALOG[labelProduct].price));
-          const declaredValue = parseFloat(order.totalPrice ?? String(declaredUnitPrice * labelPacks));
+          // Valor declarado = produtos depois do cupom, SEM frete: o mesmo critério da cotação
+          // (meCalculate), para o frete pago pelo cliente ser o custo da etiqueta. Com cupom, a cotação
+          // (feita antes de conhecê-lo) declarou um pouco mais: diferença de centavos.
+          const declaredValue = insuranceValueEtiqueta({
+            totalPrice: order.totalPrice, shippingPrice: order.shippingPrice,
+            unitPrice: order.unitPrice, couponDiscount: order.couponDiscount,
+            packs: labelPacks, catalogPrice: CATALOG[labelProduct].price,
+          });
 
           const headers = {
             'Authorization': `Bearer ${token}`,

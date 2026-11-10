@@ -14,6 +14,8 @@ import { isBlockedEmail } from '../../shared/blockedEmailDomains';
 
 const FROM = 'Sal Vita <noreply@premium.salvitarn.com.br>';
 const BRAND = '#0C3680';
+/** Respostas aos e-mails da loja (o remetente é noreply@): o texto promete "é só responder este e-mail". */
+export const REPLY_TO = 'contato@salvitarn.com.br';
 const DAILY_SOFT_LIMIT = parseInt(process.env.RESEND_DAILY_LIMIT ?? '80', 10);
 
 // ── Core send function ────────────────────────────────────────────────────────
@@ -47,7 +49,7 @@ export async function sendEmail(
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        from: FROM, to, subject, html,
+        from: FROM, to, subject, html, reply_to: REPLY_TO,
         ...(attachments?.length ? { attachments } : {}),
       }),
       signal: ac.signal,
@@ -393,6 +395,8 @@ export function postPurchaseEmail(
   name: string,
   orderId: number,
   orderPageUrl: string,
+  /** true = entrega marcada à mão no painel: não afirma que "a transportadora confirmou". */
+  manual = false,
 ): { subject: string; html: string } {
   const rawFirst = String(name || '').trim().split(/\s+/)[0] || name;
   const firstName = escapeHtml(rawFirst);
@@ -407,7 +411,7 @@ export function postPurchaseEmail(
           Ol&aacute;, <strong>${firstName}</strong>!
         </p>
         <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
-          A transportadora confirmou a entrega do seu pedido <strong>#${orderId}</strong>. Aqui &eacute; da Sal Vita, l&aacute; de Mossor&oacute;/RN, e queremos saber se o seu pacote chegou tudo certinho com voc&ecirc;!
+          ${manual ? 'Seu pedido' : 'A transportadora confirmou a entrega do seu pedido'} <strong>#${orderId}</strong>${manual ? ' foi entregue' : ''}. Aqui &eacute; da Sal Vita, l&aacute; de Mossor&oacute;/RN, e queremos saber se o seu pacote chegou tudo certinho com voc&ecirc;!
         </p>
         <div style="background:#f8fafc;border-left:4px solid ${BRAND};padding:14px 16px;border-radius:6px;margin:20px 0;">
           <p style="margin:0 0 6px;font-size:14px;font-weight:bold;color:#1e293b;">
@@ -434,6 +438,40 @@ export function postPurchaseEmail(
     </tr>
   </table>`;
 
+  return { subject, html: layout(subject, body) };
+}
+
+/** Como o reembolso de um pedido cancelado será tratado (texto do e-mail de cancelamento). */
+export type CancelRefundInfo = 'automatic' | 'manual' | 'none';
+
+/**
+ * E-mail de pedido cancelado. Sem prazo inventado: o reembolso automático depende do
+ * Mercado Pago / banco, e o manual é tratado pela equipe.
+ */
+export function orderCancelledEmail(
+  name: string, orderId: number, refund: CancelRefundInfo,
+): { subject: string; html: string } {
+  const refundText = refund === 'automatic'
+    ? 'O reembolso foi solicitado automaticamente pelo Mercado Pago, na mesma forma de pagamento usada na compra.'
+    : refund === 'manual'
+      ? 'Nossa equipe vai tratar o reembolso do seu pagamento e falar com voc&ecirc; por este e-mail.'
+      : 'Como o pagamento n&atilde;o chegou a ser confirmado, n&atilde;o houve cobran&ccedil;a a reembolsar.';
+  const subject = `Pedido #${orderId} cancelado`;
+  const body = `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td>
+        <p style="margin:0 0 4px;font-size:13px;color:#888;">Pedido #${orderId}</p>
+        <h2 style="margin:0 0 12px;font-size:22px;color:#222;">Seu pedido foi cancelado</h2>
+        <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">
+          Ol&aacute;, <strong>${escapeHtml(name)}</strong>. O pedido <strong>#${orderId}</strong> foi cancelado.
+        </p>
+        <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;">${refundText}</p>
+        <p style="margin:0;font-size:14px;color:#555;line-height:1.6;">
+          D&uacute;vidas? Responda este e-mail ou escreva para <a href="mailto:${REPLY_TO}" style="color:${BRAND};">${REPLY_TO}</a>.
+        </p>
+      </td>
+    </tr>
+  </table>`;
   return { subject, html: layout(subject, body) };
 }
 

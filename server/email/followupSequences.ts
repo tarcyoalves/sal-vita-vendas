@@ -108,12 +108,13 @@ export const POS_COMPRA: FollowupSequenceDef = {
       stepOrder: 1,
       delayDays: 0,
       sendCondition: 'always',
-      subject: 'Chegou bem, {nome}?',
+      // Dia 0 NÃO pergunta "chegou bem?": essa mensagem já sai na hora da entrega
+      // (notifyShippingEvent, 1 por pedido). Aqui só o agradecimento, sem repetir a pergunta.
+      subject: 'Obrigado pela compra, {nome}',
       htmlBody: corpo(
         'Olá, {nome}!',
-        'Aqui é da Sal Vita, lá de Mossoró. Seu pedido já deve ter chegado e queremos saber se veio tudo certo.',
-        'Uma dica simples de guarda: depois de usar, feche bem o zip lock e deixe o pacote em local seco e longe do fogão.',
-        'Se algo veio diferente do esperado, é só responder este e-mail. Aqui quem responde é gente de verdade, e a gente resolve.',
+        'Aqui é da Sal Vita, lá de Mossoró. Obrigado por ter escolhido o nosso sal.',
+        `Quando precisar de mais, a loja continua aqui: ${loja('Ver a loja Sal Vita')}`,
       ),
     },
     {

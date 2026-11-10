@@ -400,7 +400,12 @@ function OrderCard({
     onError: (e) => toast.error(`Rastreio não salvo: ${e.message}`),
   });
   const cancelMut = trpc.shipping.cancelOrder.useMutation({
-    onSuccess: (d) => { toast.success(d.actions.join(' · ')); onRefetch(); },
+    onSuccess: (d) => {
+      toast.success(d.actions.join(' · '));
+      if (d.refund === 'manual') toast.warning('Este pagamento foi confirmado manualmente: faça o reembolso por fora.', { duration: 15000 });
+      if (d.labelCancelFailed) toast.error('A etiqueta do Melhor Envio NÃO foi cancelada: cancele no painel do Melhor Envio para não perder o valor.', { duration: 15000 });
+      onRefetch();
+    },
     onError: (e) => toast.error(e.message),
   });
   const deleteMut = trpc.shipping.deleteOrder.useMutation({
@@ -451,14 +456,16 @@ function OrderCard({
           description: (
             <>
               <p>Pedido de <strong>{order.customerName}</strong>, valor <strong>{total}</strong>.</p>
-              {isPaid && <p><strong>O pedido está pago: o sistema tenta reembolsar o valor integral no Mercado Pago.</strong> Se o reembolso falhar, o pedido não é cancelado.</p>}
+              {order.status === 'shipped' && <p><strong>O pacote já foi postado. O reembolso não para a entrega. Cancelar mesmo assim?</strong></p>}
+              {isPaid && order.mpPaymentId && <p><strong>O pedido está pago: o sistema tenta reembolsar o valor integral no Mercado Pago.</strong> Se o reembolso falhar, o pedido não é cancelado.</p>}
+              {isPaid && !order.mpPaymentId && <p><strong>Este pagamento foi confirmado manualmente: faça o reembolso por fora.</strong> O sistema cancela o pedido e avisa o cliente, mas não devolve o dinheiro.</p>}
               {order.meOrderId && order.meOrderId !== 'pending' && <p>A etiqueta do Melhor Envio também será cancelada.</p>}
             </>
           ),
           confirmLabel: 'Cancelar pedido',
           destructive: true,
           requireText: undefined as string | undefined,
-          run: () => cancelMut.mutate({ id: order.id }),
+          run: () => cancelMut.mutate({ id: order.id, force: order.status === 'shipped' ? true : undefined }),
         };
       case 'delete':
         return {
