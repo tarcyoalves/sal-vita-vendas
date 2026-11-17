@@ -512,3 +512,37 @@ describe('zapIa.avaliarReativacao', () => {
     expect(diasSugeridosValidos(undefined, 30)).toBe(30);
   });
 });
+
+describe('zapIa.gerarCobranca com contexto de reativação (0.7.56)', () => {
+  const base = { primeiroNome: 'Maria Souza', mensagemCampanha: '', tentativa: 1, contexto: 'reativacao' as const };
+
+  it('usa o prompt de reativação (sem "mensagem anterior"), com estilo e exemplos do dono, e valida a saída como sempre', async () => {
+    llm.completeWithFallback.mockResolvedValue({ text: 'Oi, Maria! Faz um tempinho que não nos falamos. Precisa de sal?', provider: 't' });
+    const r = await chamador().gerarCobranca({ ...base, estilo: 'curto e direto', exemplos: ['Oi, {nome}! Tudo bem?'] } as never);
+    expect(r).toMatchObject({ ok: true });
+    const msgs = llm.completeWithFallback.mock.calls[0][0] as Array<{ content: string }>;
+    expect(msgs[0].content).toMatch(/reativação, etapa N de 3/);
+    expect(msgs[1].content).toMatch(/etapa: 1/);
+    expect(msgs[1].content).toMatch(/Oi, Maria! Tudo bem\?/);
+    expect(msgs[1].content).not.toMatch(/mensagem_anterior/);
+  });
+
+  it('a etapa 3 só existe na reativação; cobrança comum continua limitada a 2', async () => {
+    llm.completeWithFallback.mockResolvedValue({ text: 'Oi, Maria! Fico à disposição se precisar de sal.', provider: 't' });
+    const c = chamador();
+    expect((await c.gerarCobranca({ ...base, tentativa: 3 } as never)).ok).toBe(true);
+    await expect(c.gerarCobranca({ primeiroNome: 'Maria', mensagemCampanha: 'x', tentativa: 3 } as never)).rejects.toThrow();
+  });
+
+  it('texto com termo proibido continua sendo recusado (texto_invalido)', async () => {
+    llm.completeWithFallback.mockResolvedValue({ text: 'Oi, Maria! Nosso sal natural está em promoção.', provider: 't' });
+    expect(await chamador().gerarCobranca(base as never)).toMatchObject({ ok: false, codigo: 'texto_invalido' });
+  });
+
+  it('sem contexto o prompt é o de cobrança de sempre', async () => {
+    llm.completeWithFallback.mockResolvedValue({ text: 'Oi, Maria! Passando para saber do sal.', provider: 't' });
+    await chamador().gerarCobranca({ primeiroNome: 'Maria', mensagemCampanha: 'Oi Maria', tentativa: 1 });
+    const msgs = llm.completeWithFallback.mock.calls[0][0] as Array<{ content: string }>;
+    expect(msgs[1].content).toMatch(/mensagem_anterior: Oi Maria/);
+  });
+});
