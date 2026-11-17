@@ -44,6 +44,22 @@ function modelFor(provider: string, env: Record<string, string | undefined>): st
 
 // Pura — recebe o `env` em vez de ler `process.env` direto, para dar para testar
 // sem mexer em variável de ambiente global.
+/**
+ * Só o código de erro curto que o provedor devolve (ex.: AUTH_002, model_not_found),
+ * para diagnóstico no log. Nunca a mensagem inteira: ela pode ecoar parte do pedido.
+ */
+export function codigoDoErro(corpo: string): string | undefined {
+  try {
+    const j = JSON.parse(corpo) as { error?: { code?: unknown; type?: unknown } | string; code?: unknown };
+    const e = typeof j.error === 'object' && j.error ? j.error : undefined;
+    const bruto = e?.code ?? e?.type ?? j.code;
+    const v = typeof bruto === 'string' || typeof bruto === 'number' ? String(bruto) : '';
+    return /^[A-Za-z0-9_.-]{1,60}$/.test(v) ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function buildProviderChain(env: Record<string, string | undefined>): LlmProviderConfig[] {
   const chain: LlmProviderConfig[] = [];
 
@@ -113,6 +129,7 @@ async function callOnce(cfg: LlmProviderConfig, messages: LlmMessage[], opts: { 
     const text = await res.text().catch(() => '');
     const err = new Error(`LLM API ${res.status}: ${text.slice(0, 300)}`);
     (err as { status?: number }).status = res.status;
+    (err as { codigo?: string }).codigo = codigoDoErro(text);
     throw err;
   }
   const data = await res.json() as { choices?: { message?: { content?: string } }[] };
@@ -145,7 +162,8 @@ export async function completeWithFallback(
     } catch (err) {
       lastErr = err;
       // Nunca logar a chave nem o conteúdo das mensagens — só provedor e status.
-      console.warn(`[${label}] provedor ${cfg.provider} falhou (status ${(err as { status?: number } | undefined)?.status ?? 'rede'})`);
+      const codigo = (err as { codigo?: string } | undefined)?.codigo;
+      console.warn(`[${label}] provedor ${cfg.provider} falhou (status ${(err as { status?: number } | undefined)?.status ?? 'rede'}${codigo ? `, código ${codigo}` : ''})`);
       if (!isRetryable(err)) throw err;
     }
   }

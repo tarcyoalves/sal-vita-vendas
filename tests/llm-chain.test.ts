@@ -6,7 +6,7 @@
  * relação à cadeia existente (Groq → Cerebras → OpenRouter → NVIDIA).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildProviderChain, completeWithFallback } from '../server/lib/llm';
+import { buildProviderChain, codigoDoErro, completeWithFallback } from '../server/lib/llm';
 
 const ENV_KEYS = [
   'ANTIGRAVITY_BASE_URL', 'ANTIGRAVITY_API_KEY', 'ANTIGRAVITY_MODEL',
@@ -155,5 +155,15 @@ describe('completeWithFallback', () => {
     const result = await completeWithFallback([{ role: 'user', content: 'oi' }]);
     expect(result.provider).toBe('antigravity');
     expect(fetchMock.mock.calls[0][0]).toBe('https://vps.example.com/v1/chat/completions');
+  });
+});
+
+describe('codigoDoErro', () => {
+  it('pega só o código curto do erro, nunca a mensagem', () => {
+    expect(codigoDoErro('{"error":{"code":"AUTH_002","message":"Authentication required"}}')).toBe('AUTH_002');
+    expect(codigoDoErro('{"error":{"type":"model_not_found","message":"x"}}')).toBe('model_not_found');
+    expect(codigoDoErro('{"error":"texto livre com espaço"}')).toBeUndefined();
+    expect(codigoDoErro('<html>forbidden</html>')).toBeUndefined();
+    expect(codigoDoErro('{"error":{"code":"a b c com espaço"}}')).toBeUndefined();
   });
 });
