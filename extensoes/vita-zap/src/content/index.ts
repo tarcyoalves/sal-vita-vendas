@@ -1,11 +1,11 @@
 // Content script do WhatsApp Web: recebe pedidos do painel lateral e responde.
 // Pedidos possíveis: verificar, varrer (só leitura), abrirEColar, limparCaixa, pararObservacao,
-// batimento (o painel está vivo) e consultarEnvio (só leitura). Não existe pedido de "enviar" avulso:
+// batimento (o painel está vivo), consultarEnvio e lerConversa (só leitura, follow-up). Não existe pedido de "enviar" avulso:
 // o envio automático opcional é parte do abrirEColar (envioAutomatico) e mora em envio-humano.ts.
 
 import type { EventoConteudo, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
 import { abrirConversaPorTelefoneSemRecarregar } from './abrir-por-telefone';
-import { abrirEColar, consultarEnvio, limparCaixa, pararObservacao, registrarBatimento } from './execucao';
+import { abrirEColar, consultarEnvio, lerConversa, limparCaixa, pararObservacao, registrarBatimento } from './execucao';
 import { ErroSeletor } from './lista';
 import { iniciarCrm } from './crm';
 import { iniciarBarraFormatacao } from './barra-formatacao';
@@ -52,6 +52,8 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
       return { ok: true };
     case 'consultarEnvio':
       return consultarEnvio(pedido.nome, pedido.texto, pedido.idsAntes);
+    case 'lerConversa':
+      return lerConversa(pedido.nome);
     case 'verificar':
       return verificar();
     case 'pararObservacao':
@@ -85,7 +87,7 @@ if (!jaCarregado) chrome.runtime.onMessage.addListener((mensagem: PedidoConteudo
     responder({ ok: false, codigo: 'nao_pronto', erro: 'O Vita Zap foi desligado nesta aba ("Usar o WhatsApp sem a extensão"). Recarregue o WhatsApp Web e entre no CRM para usar.' });
     return false;
   }
-  const longo = mensagem.tipo === 'varrer' || mensagem.tipo === 'abrirEColar' || mensagem.tipo === 'abrirPorTelefone' || mensagem.tipo === 'consultarEnvio';
+  const longo = mensagem.tipo === 'varrer' || mensagem.tipo === 'abrirEColar' || mensagem.tipo === 'abrirPorTelefone' || mensagem.tipo === 'consultarEnvio' || mensagem.tipo === 'lerConversa';
   if (longo && ocupado) {
     responder({ ok: false, codigo: 'ocupado', erro: 'Outra operação ainda está em andamento.' });
     return false;

@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.36: Bloqueio seguro de tela com vidro embaçado + CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.54: follow-up com IA no painel (seção 3.4); antes, v0.7.36: Bloqueio seguro de tela com vidro embaçado + CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -382,6 +382,41 @@ interface `RepositorioContatos`: o que não é do CRM cai no `RepositorioLocal`;
 cache. O servidor aceita a origem `chrome-extension://anlifdaoagpcbdjpbflodkcialbdbghh` (ID fixo, vindo da
 chave pública `key` do manifest; a chave privada **não** está no repositório).
 
+### 3.4 Follow-up com IA (v0.7.54)
+
+Aba **Follow-up** do painel. Depois de um disparo, a extensão lê (só leitura) as conversas e a IA do **CRM** entende quem precisa de atenção.
+Decisão do dono (17/11/2026), detalhes em [`docs/PLANO-CAMPANHAS-WHATSAPP.md`](../../docs/PLANO-CAMPANHAS-WHATSAPP.md), seção 10.
+
+- **Quem não respondeu** em X dias (padrão 3; 1 a 30) é **cobrado sozinho**, no máximo **2 vezes** por contato por campanha, com X dias entre as
+  cobranças. O envio é feito pelo **mesmo Executor das campanhas** (envio automático): teto diário compartilhado com as campanhas, horário comercial,
+  intervalo de 60 a 120 s, freio, "Não enviar mais", conversa conferida antes do clique. Se a IA estiver fora, entram modelos locais variados.
+- **Quem respondeu** e precisa de atenção (pediu preço, interesse, reclamação, vai comprar depois, tem estoque, pergunta) vai para **Precisa de você**,
+  com resumo, resposta sugerida editável e **Abrir e colar**: só cola o texto; **você** aperta Enter. Nada disso sai sozinho. `compra depois`/`tem estoque`
+  com prazo criam um lembrete (9h de Fortaleza).
+- **Pediu para sair** ("não, obrigado", "pare", "me tira da lista") → **Não enviar mais** automático e registro na lista "Pediram para sair".
+- **Resolvido:** sem assunto comercial (só emoji/"ok"), você já respondeu, ou sem resposta depois de 2 cobranças.
+- **Falha fechada → "revisar"** (dentro de Precisa de você): grupo, nome repetido, identidade da conversa que não confere, mensagem do disparo que não
+  aparece na conversa, IA sem classificação válida. Nunca cobra na dúvida.
+- Botões: **Verificar respostas agora** (lê também disparos de 2 h para cima e ignora o intervalo de 12 h entre leituras), **Pausar/Retomar follow-up**, **Parar agora**.
+  Pausa por freio ou erro exige "Conferi o WhatsApp: retomar"; pausa por horário/teto/painel escondido volta sozinha.
+- **Liga/desliga e X dias:** no próprio cartão. A cobrança automática vem **desligada** e só liga depois de uma confirmação do risco.
+- ⚠️ **Risco:** o envio automático viola os Termos do WhatsApp e pode bloquear ou banir o número. Os limites **reduzem** o risco, não o eliminam.
+- O painel precisa ficar **aberto** (a lógica roda nele): fechar ou esconder o painel pausa tudo. Só acompanha disparos dos últimos 21 dias.
+  Cada conversa é lida no máximo 1 vez a cada 12 h; cobrança preparada há mais de 12 h é lida de novo antes de enviar.
+
+**Configuração no CRM (servidor, só os nomes; o repositório é público):** a IA roda no servidor do CRM (Vercel), nunca na extensão, pela cadeia
+`server/lib/llm.ts`. Configure ao menos **um** provedor: `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `OPENROUTER_API_KEY` ou `NVIDIA_API_KEY`; ou as **três**
+`ANTIGRAVITY_BASE_URL`, `ANTIGRAVITY_API_KEY` e `ANTIGRAVITY_MODEL` (o endpoint precisa falar o formato OpenAI `/chat/completions`; não foi verificado se o
+do dono, com a chave Gemini, é compatível). Sem nenhuma, a aba Follow-up avisa "A IA não respondeu" e **nada é inventado**: as respostas continuam
+esperando e a cobrança usa os modelos locais. Procedures: `zapIa.classificarConversas` e `zapIa.gerarCobranca` (login do CRM, 300 usos por usuário por dia).
+A extensão precisa do CRM atualizado com `zapIa` (servidor antigo → erro claro, sem quebrar o resto).
+
+**LGPD:** para a IA vai só o primeiro nome, o texto do disparo e as últimas 12 mensagens (sem telefone, CPF nem e-mail; o servidor remove de novo).
+Nada do conteúdo é logado.
+
+**Não verificado no WhatsApp real:** a leitura da conversa (`lerConversa`: autor, carimbo `data-pre-plain-text`, mensagens só com mídia) e o efeito das
+cobranças automáticas no número. A IA só foi testada com LLM simulado.
+
 ### Dados e backup
 
 Campanhas: tudo fica **só neste navegador** (IndexedDB da extensão): contatos varridos, campanhas,
@@ -634,13 +669,18 @@ extensoes/vita-zap/
 │   │   ├── crm-acompanhar.ts          aba Acompanhar: quem entra, ordem, "há N dias sem falar" (puro, v0.7.23)
 │   │   ├── crm-*.ts                   CRM: tipos, regras das abas, lembretes, contatos (id, vínculo),
 │   │   │                              modelos, clientes, formato/sanitização e JSON (puros)
-│   │   └── ia.ts                      interface da fase 2 (desligada)
-│   └── sidepanel/                     React: Lembretes, Acompanhar, Clientes, Varredura, Prévia, Envio, Dados
+│   │   ├── ia.ts                      interface da fase 2 (desligada)
+│   │   ├── followup.ts                regras puras do follow-up (quem cobrar, quando, máx. 2, opt-out, falha fechada) (v0.7.54)
+│   │   └── servico-ia.ts              ponte para zapIa.* do CRM (só no service worker)
+│   └── sidepanel/                     React: Lembretes, Acompanhar, Clientes, Varredura, Prévia, Envio, Follow-up, Dados
+│       └── followup-motor.ts          lê as conversas, IA, monta a campanha de cobrança (sem caminho próprio de envio)
 ├── dev/                               harness visual (harness.html + servir.mjs, porta 5288)
 └── tests/                             vitest (npm test)
 ```
 
-## 9. Fase 2 (IA) — preparado, não implementado
+## 9. Fase 2 (IA)
+
+Desde a v0.7.54 a IA existe para o **follow-up** (seção 3.4), no servidor do CRM. A interface genérica abaixo (`ia.ts`) segue desligada.
 
 A interface está em `src/shared/ia.ts` (`ProvedorIA`, hoje `IA_DESLIGADA`). Decisão do dono:
 API **Gemini**, chamada por um **proxy no servidor**; a chave **nunca** fica na extensão. A

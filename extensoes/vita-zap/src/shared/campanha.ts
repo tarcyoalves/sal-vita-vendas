@@ -39,6 +39,8 @@ export interface EmVoo {
 
 export interface Campanha {
   id: string;
+  /** Ausente = campanha comum. 'followup' = cobrança automática de quem não respondeu (ver shared/followup.ts). */
+  tipo?: 'followup';
   nome: string;
   criadaEm: string;
   aprovadaEm: string | null;

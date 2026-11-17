@@ -41,6 +41,8 @@ import { novoId } from './id';
 import type { Acompanhamento, ArmazemChaves, EstadoConta, EstadoLead, FalhaFila, LeadsCRM, MotivoAcompanhando, MotivoSync, ResultadoAcao, ResultadoAcompanhando, ResultadoBusca, ResultadoConta, ResultadoLead } from './leads';
 import { normalizarTelefone } from './telefone';
 import * as email from './servico-email';
+import * as ia from './servico-ia';
+import type { ClassificacaoIa } from './followup';
 
 const MAX_FILA = 200;
 const MAX_FALHAS = 20;
@@ -816,6 +818,20 @@ export class ServicoCrm implements LeadsCRM {
 
   inscreverNaSequencia(sequenceId: number, taskId: number) {
     return this.exclusivo('e-mail do lead: inscrever em sequência (ação do usuário)', () => email.inscreverNaSequencia(this.apoioEmail(), sequenceId, taskId));
+  }
+
+  // ── IA do follow-up (lógica em servico-ia.ts) ──────────────────────────────
+
+  classificarRespostas(conversas: ia.ConversaParaIa[]): Promise<ia.ResultadoIa<ClassificacaoIa[]>> {
+    return this.exclusivo('follow-up: classificar respostas com a IA (ação do usuário)', () =>
+      ia.classificarRespostas({ alterar: (c, e) => this.alterar(c, e), chamar: (fn) => this.chamar(fn) }, conversas),
+    );
+  }
+
+  escreverCobranca(primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2): Promise<ia.ResultadoIa<string>> {
+    return this.exclusivo('follow-up: escrever cobrança com a IA (ação do usuário)', () =>
+      ia.escreverCobranca({ alterar: (c, e) => this.alterar(c, e), chamar: (fn) => this.chamar(fn) }, primeiroNome, mensagemCampanha, tentativa),
+    );
   }
 
   // ── Fila ───────────────────────────────────────────────────────────────────

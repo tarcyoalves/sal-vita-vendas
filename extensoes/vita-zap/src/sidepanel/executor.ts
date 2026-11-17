@@ -378,6 +378,9 @@ export class Executor {
     // Próximo contato, revalidado agora (pode ter mudado desde a aprovação).
     const bloqueados = new Set(naoEnviar.map((n) => n.chave));
     const ultimo = ultimoEnvioPorChave(envios);
+    // Campanha comum: piso fixo de 14 dias entre campanhas. Follow-up: o disparo original JÁ é recente por definição,
+    // então vale o intervalo mínimo entre contatos escolhido para o follow-up (X dias, gravado em filtros).
+    const limiteSemRepetir = c.tipo === 'followup' ? Math.max(1, c.filtros.excluirContatadosHaDias) : diasSemRepetir(c.filtros);
     const idsEnviados = new Set(envios.map((e) => e.id));
     let item = proximoPendente(c);
     while (item) {
@@ -390,7 +393,7 @@ export class Executor {
       } else if (bloqueados.has(item.chave)) {
         status = 'nao_enviar';
         motivo = 'marcado "Não enviar mais"';
-      } else if (ultimoEnvio && diferencaDias(hojeNoFuso(agora), hojeNoFuso(new Date(ultimoEnvio))) < diasSemRepetir(c.filtros)) {
+      } else if (ultimoEnvio && diferencaDias(hojeNoFuso(agora), hojeNoFuso(new Date(ultimoEnvio))) < limiteSemRepetir) {
         status = 'pulado';
         motivo = 'recebeu outra campanha recentemente';
       }

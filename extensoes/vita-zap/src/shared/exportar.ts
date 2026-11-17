@@ -74,6 +74,8 @@ const itemSchema = z.object({
 
 const campanhaSchema = z.object({
   id: z.string().min(1),
+  // Sem isto o backup apagaria a marca e a cobrança do follow-up voltaria como campanha comum.
+  tipo: z.literal('followup').optional(),
   nome: z.string(),
   criadaEm: iso,
   aprovadaEm: z.string().nullable(),

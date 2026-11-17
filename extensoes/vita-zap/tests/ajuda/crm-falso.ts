@@ -53,6 +53,8 @@ export interface CrmFalso {
   conversaoTiraAcompanhar: boolean;
   /** tasks.acompanhando não existe (servidor anterior). */
   semProcedureAcompanhando: boolean;
+  /** IA do follow-up (zapIa.*): o teste define o que o servidor devolve. null = procedure inexistente (servidor anterior). */
+  zapIa: { classificar: (conversas: unknown[]) => unknown; cobranca: (entrada: Record<string, unknown>) => unknown } | null;
   fetch: typeof fetch;
   transporte: Transporte;
   chamadas(caminho: string): Requisicao[];
@@ -77,6 +79,7 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
     token: null,
     conversaoTiraAcompanhar: true,
     semProcedureAcompanhando: false,
+    zapIa: null,
     fetch: undefined as unknown as typeof fetch,
     transporte: undefined as unknown as Transporte,
     chamadas: (c) => crm.requisicoes.filter((r) => r.url.pathname === `/api/trpc/${c}`),
@@ -161,6 +164,8 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
     if (caminho === 'tasks.reminders') {
       return ok(crm.tasks.filter((t) => t.reminderDate && t.reminderEnabled && t.status === 'pending').map((t) => ({ id: t.id, title: t.title, reminderDate: t.reminderDate, reminderEnabled: t.reminderEnabled, status: t.status, notes: null, assignedTo: null, phone: t.phone })));
     }
+    if (caminho === 'zapIa.classificarConversas' && crm.zapIa) return ok(crm.zapIa.classificar((dados as { conversas: unknown[] }).conversas));
+    if (caminho === 'zapIa.gerarCobranca' && crm.zapIa) return ok(crm.zapIa.cobranca(dados as Record<string, unknown>));
     if (caminho === 'tags.list') {
       return ok([
         { id: 1, name: 'Cliente Ativo', color: '#16a34a' },

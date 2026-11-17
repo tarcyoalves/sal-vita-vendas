@@ -6,7 +6,8 @@
 // Este arquivo não clica nem usa teclado: o único clique no botão Enviar mora em envio-humano.ts.
 // tests/envio-isolado.test.ts falha se aparecer outro lugar.
 
-import type { EventoConteudo, RespostaConteudo } from '../shared/mensagens';
+import { lerCarimbo } from '../shared/followup';
+import type { EventoConteudo, MensagemLida, RespostaConteudo } from '../shared/mensagens';
 import { normalizarTexto } from '../shared/nomes';
 import { normalizarParaComparar } from '../shared/texto';
 import { abrirLinhaDaLista } from './abrir-conversa';
@@ -576,6 +577,44 @@ export async function consultarEnvio(nome: string, texto: string, idsAntes: stri
   await esperar(800);
   if (idsAntes === null) return { ok: true, situacao: 'nao_encontrado', avisos: ['sem a foto das mensagens: não dá para provar que é nova'] };
   return { ok: true, situacao: acharMensagemEnviada(texto, new Set(idsAntes)) !== null ? 'enviado' : 'nao_encontrado' };
+}
+
+/** Quantas mensagens do fim da conversa o follow-up lê. */
+const MAX_MENSAGENS_LIDAS = 40;
+
+/** Autor/carimbo de uma mensagem (data-pre-plain-text, no próprio elemento ou dentro dele). */
+function carimboDaMensagem(el: HTMLElement): string | null {
+  const dono = el.hasAttribute('data-pre-plain-text') ? el : el.querySelector<HTMLElement>('[data-pre-plain-text]');
+  return lerCarimbo(dono?.getAttribute('data-pre-plain-text'));
+}
+
+/**
+ * Follow-up (SÓ LEITURA): abre a conversa de `nome` com identidade ESTRITA (mesmo critério do envio automático),
+ * confirma que é individual com sinal positivo e devolve as últimas mensagens. Nunca escreve na caixa nem clica
+ * em nada além de abrir a conversa pela busca. Grupo/dúvida → erro (o follow-up marca "revisar" e não cobra).
+ * Mensagem sem sinal de ser minha conta como do CLIENTE (o erro cai sempre do lado de não cobrar).
+ */
+export async function lerConversa(nome: string): Promise<RespostaConteudo> {
+  pararObservacao();
+  registrarBatimento();
+  const falha = await abrirConversaPorNome(nome, true, true);
+  if (falha) return falha;
+  await buscar('');
+  await esperarAte(() => (idsDasMensagens().length > 0 ? true : null), 2500);
+  await esperar(800); // deixa o histórico terminar de carregar
+  const tipo = classificarConversa(idsDasMensagens(), document, nome, false, true);
+  if (tipo === 'grupo') return erro('grupo', `"${nome}" é grupo, comunidade ou lista de transmissão.`);
+  if (tipo === 'desconhecido') return erro('nao_confirmado', `Não consegui confirmar que "${nome}" é conversa individual. Não li nada.`);
+  const elementos = encontrarTodos(document, 'mensagem').filter((el) => !ehMensagemDoSistema(el));
+  const mensagens: MensagemLida[] = elementos.slice(-MAX_MENSAGENS_LIDAS).map((el) => {
+    const textoEl = encontrar(el, 'textoMensagem');
+    return {
+      de: mensagemEhMinha(el) ? 'eu' : 'cliente',
+      texto: limparMarcas(textoEl ? textoComEmoji(textoEl) : ''),
+      quando: carimboDaMensagem(el),
+    };
+  });
+  return { ok: true, mensagens };
 }
 
 /**

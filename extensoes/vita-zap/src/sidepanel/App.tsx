@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { abrirBanco, listarCampanhas, listarContatos, listarEnvios, listarNaoEnviar, type Banco } from '../shared/banco';
 import type { Campanha } from '../shared/campanha';
 import type { ContatoVarrido } from '../shared/contatos';
@@ -12,11 +12,12 @@ import { conectarAutomaticamente, dependenciasPadrao } from './conexao';
 import { useCrm } from './crm';
 import { Dados } from './Dados';
 import { Execucao } from './Execucao';
+import { Followup } from './Followup';
 import { Lembretes } from './Lembretes';
 import { Previa } from './Previa';
 import { Varredura } from './Varredura';
 
-type Aba = 'lembretes' | 'acompanhar' | 'clientes' | 'varredura' | 'previa' | 'execucao' | 'dados';
+type Aba = 'lembretes' | 'acompanhar' | 'clientes' | 'varredura' | 'previa' | 'execucao' | 'followup' | 'dados';
 
 export interface DadosLocais {
   contatos: ContatoVarrido[];
@@ -32,6 +33,7 @@ const ABAS: Array<{ id: Aba; rotulo: string }> = [
   { id: 'varredura', rotulo: '1. Varredura' },
   { id: 'previa', rotulo: '2. Prévia' },
   { id: 'execucao', rotulo: '3. Envio' },
+  { id: 'followup', rotulo: 'Follow-up' },
   { id: 'dados', rotulo: 'Dados' },
 ];
 
@@ -94,6 +96,9 @@ export function App() {
   useEffect(() => {
     void recarregar();
   }, [recarregar]);
+
+  // A aba 3 só lista campanhas comuns: as de cobrança do follow-up têm o painel próprio.
+  const dadosDasCampanhas = useMemo(() => ({ ...dados, campanhas: dados.campanhas.filter((c) => c.tipo !== 'followup') }), [dados]);
 
   if (erro) return <div className="erro">{erro}</div>;
   if (!db) return <div className="carregando">Carregando…</div>;
@@ -167,7 +172,11 @@ export function App() {
         )}
         {/* Sempre montada: trocar de aba não pode interromper uma campanha em andamento. */}
         <div hidden={aba !== 'execucao'}>
-          <Execucao db={db} dados={dados} crm={crm} campanhaId={campanhaAtiva} aoEscolher={setCampanhaAtiva} aoMudar={recarregar} />
+          <Execucao db={db} dados={dadosDasCampanhas} crm={crm} campanhaId={campanhaAtiva} aoEscolher={setCampanhaAtiva} aoMudar={recarregar} />
+        </div>
+        {/* Também sempre montada: a cobrança automática do follow-up continua com a aba fechada. */}
+        <div hidden={aba !== 'followup'}>
+          <Followup db={db} crm={crm} />
         </div>
         {aba === 'dados' && <Dados db={db} dados={dados} aoMudar={recarregar} crm={crm} />}
       </main>

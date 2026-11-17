@@ -5,6 +5,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { Campanha } from './campanha';
 import type { ContatoVarrido } from './contatos';
 import type { Backup, Envio, NaoEnviar } from './exportar';
+import { normalizarConfigFollowup, type ConfigFollowup, type Followup } from './followup';
 import { normalizarConfig, type ConfigPolitica } from './politica';
 
 interface EsquemaVitaZap extends DBSchema {
@@ -13,23 +14,33 @@ interface EsquemaVitaZap extends DBSchema {
   envios: { key: string; value: Envio; indexes: { porChave: string; porCampanha: string } };
   naoEnviar: { key: string; value: NaoEnviar };
   config: { key: string; value: { id: 'politica'; valor: ConfigPolitica } };
+  /** Follow-up (v0.7.54): um registro por contato/campanha de origem (`${campanhaId}:${chave}`). */
+  followups: { key: string; value: Followup };
+  followupConfig: { key: string; value: { id: 'followup'; valor: ConfigFollowup } };
 }
 
 export const NOME_BANCO = 'vita-zap';
-const VERSAO_BANCO = 1;
+const VERSAO_BANCO = 2;
 
 export type Banco = IDBPDatabase<EsquemaVitaZap>;
 
 export function abrirBanco(nome: string = NOME_BANCO): Promise<Banco> {
   return openDB<EsquemaVitaZap>(nome, VERSAO_BANCO, {
-    upgrade(db) {
-      db.createObjectStore('contatos', { keyPath: 'chave' });
-      db.createObjectStore('campanhas', { keyPath: 'id' });
-      const envios = db.createObjectStore('envios', { keyPath: 'id' });
-      envios.createIndex('porChave', 'chave');
-      envios.createIndex('porCampanha', 'campanhaId');
-      db.createObjectStore('naoEnviar', { keyPath: 'chave' });
-      db.createObjectStore('config', { keyPath: 'id' });
+    upgrade(db, versaoAnterior) {
+      if (versaoAnterior < 1) {
+        db.createObjectStore('contatos', { keyPath: 'chave' });
+        db.createObjectStore('campanhas', { keyPath: 'id' });
+        const envios = db.createObjectStore('envios', { keyPath: 'id' });
+        envios.createIndex('porChave', 'chave');
+        envios.createIndex('porCampanha', 'campanhaId');
+        db.createObjectStore('naoEnviar', { keyPath: 'chave' });
+        db.createObjectStore('config', { keyPath: 'id' });
+      }
+      // v2 (0.7.54): follow-up. Só ACRESCENTA lojas; nada do que já existe muda.
+      if (versaoAnterior < 2) {
+        db.createObjectStore('followups', { keyPath: 'id' });
+        db.createObjectStore('followupConfig', { keyPath: 'id' });
+      }
     },
   });
 }
@@ -117,6 +128,29 @@ export async function lerConfig(db: Banco): Promise<ConfigPolitica> {
 export async function salvarConfig(db: Banco, cfg: ConfigPolitica): Promise<ConfigPolitica> {
   const valor = normalizarConfig(cfg);
   await db.put('config', { id: 'politica', valor });
+  return valor;
+}
+
+// ── Follow-up ────────────────────────────────────────────────────────────────
+
+export async function salvarFollowups(db: Banco, itens: ReadonlyArray<Followup>): Promise<void> {
+  if (itens.length === 0) return;
+  const tx = db.transaction('followups', 'readwrite');
+  await Promise.all([...itens.map((f) => tx.store.put(f)), tx.done]);
+}
+
+export function listarFollowups(db: Banco): Promise<Followup[]> {
+  return db.getAll('followups');
+}
+
+export async function lerConfigFollowup(db: Banco): Promise<ConfigFollowup> {
+  const r = await db.get('followupConfig', 'followup');
+  return normalizarConfigFollowup(r?.valor);
+}
+
+export async function salvarConfigFollowup(db: Banco, cfg: ConfigFollowup): Promise<ConfigFollowup> {
+  const valor = normalizarConfigFollowup(cfg);
+  await db.put('followupConfig', { id: 'followup', valor });
   return valor;
 }
 

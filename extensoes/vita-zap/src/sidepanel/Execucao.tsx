@@ -10,6 +10,7 @@ import { acharContato } from '../shared/crm-contatos';
 import { type EstadoExecutor, Executor } from './executor';
 import { iniciarBatimento, protegerContraFechamento } from './protecao';
 import { pedir } from './whatsapp';
+import { assinarTrava, donoDaTrava, liberar, ROTULO_DONO, tentarTravar } from './trava-whatsapp';
 import { lerPreferencia, salvarPreferencia } from './preferencias';
 
 interface Props {
@@ -86,6 +87,15 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
   useEffect(() => {
     if (!rodandoAgora) return;
     return iniciarBatimento(pedir);
+  }, [rodandoAgora]);
+
+  // O follow-up usa a mesma aba do WhatsApp: uma coisa de cada vez (ver trava-whatsapp.ts).
+  const [donoDoWhatsApp, setDonoDoWhatsApp] = useState(donoDaTrava());
+  useEffect(() => assinarTrava(() => setDonoDoWhatsApp(donoDaTrava())), []);
+  useEffect(() => {
+    if (rodandoAgora) tentarTravar('campanha');
+    else liberar('campanha');
+    return () => liberar('campanha');
   }, [rodandoAgora]);
 
   useEffect(() => {
@@ -254,7 +264,19 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
 
         <div className="botoes">
           {!rodando && c.status !== 'concluida' && (
-            <button type="button" className="primario" onClick={() => void executor.iniciar()}>
+            <button
+              type="button"
+              className="primario"
+              disabled={donoDoWhatsApp != null && donoDoWhatsApp !== 'campanha'}
+              title={donoDoWhatsApp != null && donoDoWhatsApp !== 'campanha' ? `Agora não: ${ROTULO_DONO[donoDoWhatsApp]}.` : undefined}
+              onClick={() => {
+                if (!tentarTravar('campanha')) return;
+                void executor.iniciar().finally(() => {
+                  const fase = executor.atual.fase;
+                  if (fase === 'parada' || fase === 'concluida') liberar('campanha');
+                });
+              }}
+            >
               {c.status === 'em_execucao' || r.enviado + r.pulado + r.problema > 0 ? 'Retomar' : 'Iniciar'}
             </button>
           )}

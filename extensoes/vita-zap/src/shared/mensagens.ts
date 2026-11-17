@@ -18,7 +18,20 @@ export type PedidoConteudo =
   /** Batimento do painel: sem ele por ~45 s o content script não clica no envio automático. */
   | { tipo: 'batimento' }
   /** Abre a conversa e diz se há mensagem NOSSA nova (id fora de `idsAntes`) com exatamente `texto`. Só leitura. */
-  | { tipo: 'consultarEnvio'; nome: string; texto: string; idsAntes: string[] | null };
+  | { tipo: 'consultarEnvio'; nome: string; texto: string; idsAntes: string[] | null }
+  /**
+   * Follow-up: abre a conversa de `nome` (identidade estrita, só individual) e devolve as últimas mensagens lidas.
+   * Só leitura: não escreve na caixa nem clica em nada além de abrir a conversa pela busca.
+   */
+  | { tipo: 'lerConversa'; nome: string };
+
+/** Uma mensagem da conversa aberta, como o follow-up a lê. `quando` = ISO (carimbo do WhatsApp, fuso de Fortaleza) ou null. */
+export interface MensagemLida {
+  de: 'eu' | 'cliente';
+  /** Texto (com emoji). Vazio = mídia/figurinha sem legenda. */
+  texto: string;
+  quando: string | null;
+}
 
 export type CodigoErro =
   | 'seletor' // estrutura do WhatsApp Web não reconhecida → falha fechada, pausa tudo
@@ -47,6 +60,8 @@ export type RespostaConteudo =
       limpou?: boolean;
       /** consultarEnvio: saiu uma mensagem nossa nova com o texto? */
       situacao?: 'enviado' | 'nao_encontrado';
+      /** lerConversa: as últimas mensagens da conversa, da mais antiga para a mais nova. */
+      mensagens?: MensagemLida[];
     }
   | { ok: false; codigo: CodigoErro; erro: string };
 

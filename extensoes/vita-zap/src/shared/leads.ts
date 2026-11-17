@@ -7,6 +7,8 @@ import type { ErroCrm } from './crm-rede';
 import type { LeadCrm, UsuarioCrm } from './crm-remoto';
 import type { InscricaoLead, ModeloEmail, ResultadoInscricao, SequenciaEmail } from './crm-email';
 import type { RefContato } from './crm-tipos';
+import type { ClassificacaoIa } from './followup';
+import type { ConversaParaIa, ResultadoIa } from './servico-ia';
 import type { EmailDoLead, EnvioApresentacao, PedidoApresentacao, ResultadoEmail } from './servico-email';
 
 /** Chaves e valores guardados pela integração (só o RepositorioLocal toca em chrome.storage). */
@@ -122,12 +124,17 @@ export interface LeadsCRM {
   inscricoesDoLead(taskId: number): Promise<ResultadoEmail<InscricaoLead>>;
   mandarApresentacao(pedido: PedidoApresentacao): Promise<ResultadoEmail<EnvioApresentacao>>;
   inscreverNaSequencia(sequenceId: number, taskId: number): Promise<ResultadoEmail<ResultadoInscricao>>;
+
+  // IA do follow-up (zapIa.* no CRM). Só lê texto e devolve texto: nunca envia nada. Ver servico-ia.ts.
+  classificarRespostas(conversas: ConversaParaIa[]): Promise<ResultadoIa<ClassificacaoIa[]>>;
+  escreverCobranca(primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2): Promise<ResultadoIa<string>>;
 }
 
 export const METODOS_LEADS = [
   'conta', 'definirUrl', 'entrar', 'conectarPelaSessao', 'verificarSessao', 'sair', 'leadDoContato', 'procurarLeads', 'vincularLead', 'desvincularLead',
   'criarLead', 'registrarContatoNoLead', 'reagendar', 'alterarEtiquetas', 'catalogoTags', 'marcarConvertido', 'registrarContatoNaTask', 'acompanhando', 'reagendarTask', 'sincronizarLembretes', 'reenviarFila',
   'emailDoLead', 'salvarEmailDoLead', 'modelosEmail', 'sequenciasEmail', 'inscricoesDoLead', 'mandarApresentacao', 'inscreverNaSequencia',
+  'classificarRespostas', 'escreverCobranca',
 ] as const satisfies ReadonlyArray<keyof LeadsCRM>;
 
 export function ehLeadsCRM(r: unknown): r is LeadsCRM {
