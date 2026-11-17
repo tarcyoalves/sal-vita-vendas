@@ -93,6 +93,21 @@ describe('buildProviderChain', () => {
     expect(chain.map((c) => c.provider)).toEqual(['groq']);
   });
 
+  it('antigravity02 (OmniRoute) vem antes do antigravity e dos demais; parcial é ignorado', () => {
+    const chain = buildProviderChain({
+      ANTIGRAVITY02_BASE_URL: 'https://gw.exemplo.test/v1/',
+      ANTIGRAVITY02_API_KEY: 'k2',
+      ANTIGRAVITY02_MODEL: 'modelo-2',
+      ANTIGRAVITY_BASE_URL: 'https://ag.exemplo.test/v1',
+      ANTIGRAVITY_API_KEY: 'k1',
+      ANTIGRAVITY_MODEL: 'modelo-1',
+      GROQ_API_KEY: 'g',
+    });
+    expect(chain.map((c) => c.provider)).toEqual(['antigravity02', 'antigravity', 'groq']);
+    expect(chain[0]).toMatchObject({ baseURL: 'https://gw.exemplo.test/v1', apiKey: 'k2', model: 'modelo-2' });
+    expect(buildProviderChain({ ANTIGRAVITY02_BASE_URL: 'x', ANTIGRAVITY02_MODEL: 'm', GROQ_API_KEY: 'g' }).map((c) => c.provider)).toEqual(['groq']);
+  });
+
   it('respeita override de modelo por env, como o modelFor de ai.ts', () => {
     const chain = buildProviderChain({ GROQ_API_KEY: 'g', GROQ_MODEL: 'llama-custom' });
     expect(chain[0].model).toBe('llama-custom');

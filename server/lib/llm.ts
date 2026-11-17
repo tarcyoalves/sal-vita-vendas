@@ -47,6 +47,19 @@ function modelFor(provider: string, env: Record<string, string | undefined>): st
 export function buildProviderChain(env: Record<string, string | undefined>): LlmProviderConfig[] {
   const chain: LlmProviderConfig[] = [];
 
+  // antigravity02 (OmniRoute do dono, 17/11/2026) vem primeiro quando as 3 variáveis
+  // ANTIGRAVITY02_* existem; o antigravity original continua logo atrás. Configuração
+  // parcial é tratada como "não configurado".
+  const { ANTIGRAVITY02_BASE_URL, ANTIGRAVITY02_API_KEY, ANTIGRAVITY02_MODEL } = env;
+  if (ANTIGRAVITY02_BASE_URL && ANTIGRAVITY02_API_KEY && ANTIGRAVITY02_MODEL) {
+    chain.push({
+      provider: 'antigravity02',
+      baseURL: ANTIGRAVITY02_BASE_URL.replace(/\/+$/, ''),
+      apiKey: ANTIGRAVITY02_API_KEY,
+      model: ANTIGRAVITY02_MODEL,
+    });
+  }
+
   // antigravity só entra com as 3 variáveis presentes — configuração parcial é
   // tratada como "não configurado" (ver PLANO-RADAR-CARGAS.md seção 4).
   const { ANTIGRAVITY_BASE_URL, ANTIGRAVITY_API_KEY, ANTIGRAVITY_MODEL } = env;
@@ -126,7 +139,7 @@ export async function completeWithFallback(
   const chain = buildProviderChain(process.env);
   if (chain.length === 0) {
     throw new Error(
-      'completeWithFallback: nenhum provedor de IA configurado (defina GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY ou os 3 ANTIGRAVITY_*)',
+      'completeWithFallback: nenhum provedor de IA configurado (defina GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY ou os 3 ANTIGRAVITY_* / ANTIGRAVITY02_*)',
     );
   }
 
