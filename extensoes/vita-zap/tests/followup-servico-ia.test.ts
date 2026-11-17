@@ -108,6 +108,32 @@ describe('escreverCobranca', () => {
   });
 });
 
+describe('escreverCobranca com o estilo do dono (0.7.55)', () => {
+  it('chamada antiga: o corpo não leva estilo nem exemplos', async () => {
+    crm.zapIa = { classificar: () => ({}), cobranca: () => ({ ok: true, texto: 'Oi, Maria! Passando para saber de você.' }) };
+    await servico.escreverCobranca('Maria', 'Oi Maria', 1);
+    const entrada = crm.chamadas('zapIa.gerarCobranca')[0].entrada as Record<string, unknown>;
+    expect(Object.keys(entrada).sort()).toEqual(['mensagemCampanha', 'primeiroNome', 'tentativa']);
+  });
+
+  it('manda estilo (até 500) e exemplos (até 10, de até 300), sem vazios', async () => {
+    crm.zapIa = { classificar: () => ({}), cobranca: () => ({ ok: true, texto: 'Maria, tudo certo por aí? Fico no aguardo.' }) };
+    const exemplos = Array.from({ length: 12 }, (_, i) => `{nome}, variação ${i} ${'x'.repeat(400)}`);
+    await servico.escreverCobranca('Maria', 'Oi Maria', 1, { estilo: ` ${'e'.repeat(700)} `, exemplos: ['  ', ...exemplos] });
+    const entrada = crm.chamadas('zapIa.gerarCobranca')[0].entrada as { estilo: string; exemplos: string[] };
+    expect(entrada.estilo).toHaveLength(500);
+    expect(entrada.exemplos).toHaveLength(10);
+    expect(entrada.exemplos.every((e) => e.length <= 300 && e.trim() !== '')).toBe(true);
+  });
+
+  it('texto recusado pelo servidor volta como "validacao" (não derruba as outras cobranças do lote)', async () => {
+    crm.zapIa = { classificar: () => ({}), cobranca: () => ({ ok: false, codigo: 'texto_invalido', mensagem: 'não passou' }) };
+    expect(await servico.escreverCobranca('Maria', 'x', 1, { estilo: 'a', exemplos: ['{nome}, oi tudo certo?'] })).toMatchObject({ ok: false, erro: { tipo: 'validacao' } });
+    crm.zapIa = { classificar: () => ({}), cobranca: () => ({ ok: false, codigo: 'ia_indisponivel', mensagem: 'fora' }) };
+    expect(await servico.escreverCobranca('Maria', 'x', 1)).toMatchObject({ ok: false, erro: { tipo: 'servidor' } });
+  });
+});
+
 describe('itemDaIa', () => {
   it('só aceita classes conhecidas e normaliza os campos', () => {
     expect(itemDaIa({ ref: 'c1', classe: 'interessado', precisaAtencao: true, resumo: 'r', sugestao: 's', lembreteDias: 7 })).toEqual({ ref: 'c1', classe: 'interessado', precisaAtencao: true, resumo: 'r', sugestao: 's', lembreteDias: 7 });

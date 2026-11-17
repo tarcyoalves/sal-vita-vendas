@@ -16,6 +16,7 @@ import { instanteNoFuso } from './crm-lembretes';
 import { diferencaDias, hojeNoFuso, somarDias } from './datas';
 import type { Envio } from './exportar';
 import type { MensagemLida } from './mensagens';
+import { assinaturaTextos, normalizarEstilo, normalizarTextos, type ModoCobranca, type OrigemTexto } from './followup-estilo';
 import { normalizarParaComparar, validarModelo } from './texto';
 
 // ── Constantes ──────────────────────────────────────────────────────────────
@@ -37,7 +38,7 @@ export const MAX_MENSAGENS_IA = 12;
 // ── Configuração ────────────────────────────────────────────────────────────
 
 export interface ConfigFollowup {
-  /** Liga a cobrança automática. Só liga com a confirmação do risco (confirmouRisco). */
+  /** Liga a cobrança automática. Só liga com a confirmação do risco (confirmouRisco) E com pelo menos 1 texto da 1ª cobrança. */
   ligado: boolean;
   /** X dias sem resposta antes de cobrar (e intervalo mínimo entre cobranças). */
   dias: number;
@@ -45,19 +46,53 @@ export interface ConfigFollowup {
   pausado: boolean;
   /** O atendente leu e aceitou o risco do envio automático. */
   confirmouRisco: boolean;
+  // ── A mensagem é do dono (v0.7.55) ──
+  /** 'meus_textos' (padrão): sorteia entre os textos do dono. 'ia_estilo': a IA escreve no estilo dele. */
+  modo: ModoCobranca;
+  /** Variações da 1ª cobrança (1 a 10), com {nome}. */
+  textos1: string[];
+  /** Variações da 2ª cobrança (0 a 10). Vazio = a 2ª usa os textos da 1ª, sem repetir o que o contato já recebeu. */
+  textos2: string[];
+  /** "Como devo escrever" (até 500 caracteres): só vale no modo 'ia_estilo'. */
+  estilo: string;
+  /** Config antiga estava ligada sem texto: foi desligada. A tela avisa até o dono salvar um texto. */
+  desligadaSemTexto: boolean;
 }
 
-export const CONFIG_FOLLOWUP_PADRAO: ConfigFollowup = { ligado: false, dias: DIAS_PADRAO, pausado: false, confirmouRisco: false };
+export const CONFIG_FOLLOWUP_PADRAO: ConfigFollowup = {
+  ligado: false,
+  dias: DIAS_PADRAO,
+  pausado: false,
+  confirmouRisco: false,
+  modo: 'meus_textos',
+  textos1: [],
+  textos2: [],
+  estilo: '',
+  desligadaSemTexto: false,
+};
 
+/**
+ * Normaliza (e MIGRA) a configuração guardada. Config da 0.7.54 não tem os campos novos: vira modo "meus textos" vazio,
+ * e se estava ligada fica desligada (`desligadaSemTexto`) porque os modelos genéricos não saem mais.
+ */
 export function normalizarConfigFollowup(c: Partial<ConfigFollowup> | null | undefined): ConfigFollowup {
   const bruto = typeof c?.dias === 'number' && Number.isFinite(c.dias) ? Math.floor(c.dias) : DIAS_PADRAO;
   const confirmouRisco = c?.confirmouRisco === true;
+  const textos1 = normalizarTextos(c?.textos1);
+  const textos2 = normalizarTextos(c?.textos2);
+  const querLigar = c?.ligado === true && confirmouRisco;
+  const ligado = querLigar && textos1.length > 0;
   return {
-    // Sem a confirmação do risco nunca fica ligado.
-    ligado: c?.ligado === true && confirmouRisco,
+    // Sem a confirmação do risco, ou sem texto da 1ª cobrança, nunca fica ligado.
+    ligado,
     dias: Math.min(DIAS_MAXIMO, Math.max(DIAS_MINIMO, bruto)),
     pausado: c?.pausado === true,
     confirmouRisco,
+    modo: c?.modo === 'ia_estilo' ? 'ia_estilo' : 'meus_textos',
+    textos1,
+    textos2,
+    estilo: normalizarEstilo(c?.estilo),
+    desligadaSemTexto: textos1.length === 0 && (querLigar || c?.desligadaSemTexto === true),
   };
 }
 
@@ -115,9 +150,11 @@ export interface Followup {
   /** Última leitura da conversa (ISO). */
   verificadoEm: string | null;
   cobrancas: CobrancaFeita[];
-  /** Estado 'cobranca': o texto pronto (com {primeiroNome}) e de onde veio. */
+  /** Estado 'cobranca': o texto pronto (com {primeiroNome}) e de onde veio. 'ia'/'modelo' são da 0.7.54 (genéricos: refeitos antes do envio). */
   cobrancaModelo: string | null;
-  cobrancaOrigem: 'ia' | 'modelo' | null;
+  cobrancaOrigem: OrigemTexto | 'ia' | 'modelo' | null;
+  /** Assinatura da configuração de texto com que `cobrancaModelo` foi preparado (ver assinaturaTextos). */
+  cobrancaAssinatura?: string | null;
   /** Estado 'precisa' (e saiu): o que a IA entendeu. */
   classe?: ClasseIa;
   resumo?: string;
@@ -324,36 +361,12 @@ export function paraModelo(texto: string, primeiroNome: string): string {
   return `Oi, ${MARCADOR_PRIMEIRO_NOME}! ${limpo}`;
 }
 
-const MODELOS_1 = [
-  'Oi, {primeiroNome}! Passando só para saber se você viu a minha mensagem. Se precisar de sal, é só me chamar. 😊',
-  '{primeiroNome}, tudo bem? Fiquei sem retorno da minha última mensagem e quis lembrar. Qualquer coisa, estou por aqui!',
-  'Olá, {primeiroNome}! Só reforçando a minha mensagem de alguns dias atrás. Se fizer sentido para você, me avisa por aqui.',
-  'Oi, {primeiroNome}! Conseguiu ver a minha mensagem? Fico à disposição.',
-  '{primeiroNome}, passando para lembrar da minha mensagem. Se tiver alguma dúvida, me chama por aqui.',
-];
-const MODELOS_2 = [
-  '{primeiroNome}, última lembrança por aqui: se precisar de sal, é só me chamar. Fico à disposição!',
-  'Oi, {primeiroNome}! Não quero te incomodar, só deixo meu contato aberto caso precise. Um abraço!',
-  'Olá, {primeiroNome}! Sigo à disposição se precisar de sal. Qualquer coisa é só chamar.',
-];
-
-/** Tira o marcador do nome de um modelo ("Oi, {primeiroNome}!" → "Oi!"). */
-export function semNome(modelo: string): string {
-  const t = modelo
-    .replace(/,\s*\{primeiroNome\}/g, '')
-    .replace(/\{primeiroNome\},\s*/g, '')
-    .replace(/\s*\{primeiroNome\}/g, '')
-    .trim();
-  return t.charAt(0).toUpperCase() + t.slice(1);
-}
-
-/** Modelos locais (a IA fora do ar): variados, curtos, sem link. `usados` evita repetir o mesmo texto no mesmo lote. */
-export function modeloLocal(tentativa: number, temNome: boolean, aleatorio: () => number = Math.random, usados: ReadonlySet<string> = new Set()): string {
-  const base = tentativa >= 2 ? MODELOS_2 : MODELOS_1;
-  const todos = base.map((m) => (temNome ? m : semNome(m)));
-  const livres = todos.filter((m) => !usados.has(m));
-  const lista = livres.length > 0 ? livres : todos;
-  return lista[Math.min(lista.length - 1, Math.floor(aleatorio() * lista.length))];
+/**
+ * O texto preparado para a fila foi feito com a configuração de agora? Se não (o dono mudou os textos, o modo ou o
+ * estilo, ou o texto é da 0.7.54), ele NUNCA pode ser enviado: tem que ser refeito.
+ */
+export function textoDaFilaDesatualizado(f: Pick<Followup, 'estado' | 'cobrancaModelo' | 'cobrancaAssinatura'>, config: ConfigFollowup): boolean {
+  return f.estado === 'cobranca' && (f.cobrancaModelo == null || f.cobrancaAssinatura !== assinaturaTextos(config));
 }
 
 /** Modelo aceitável para a campanha (política de texto: sem link, curto, só o marcador do primeiro nome)? */

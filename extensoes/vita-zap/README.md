@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.54: follow-up com IA no painel (seção 3.4); antes, v0.7.36: Bloqueio seguro de tela com vidro embaçado + CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.55: o dono escreve a mensagem de cobrança (seção 3.4); 0.7.54: follow-up com IA no painel; antes, v0.7.36: Bloqueio seguro de tela com vidro embaçado + CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -389,7 +389,7 @@ Decisão do dono (17/11/2026), detalhes em [`docs/PLANO-CAMPANHAS-WHATSAPP.md`](
 
 - **Quem não respondeu** em X dias (padrão 3; 1 a 30) é **cobrado sozinho**, no máximo **2 vezes** por contato por campanha, com X dias entre as
   cobranças. O envio é feito pelo **mesmo Executor das campanhas** (envio automático): teto diário compartilhado com as campanhas, horário comercial,
-  intervalo de 60 a 120 s, freio, "Não enviar mais", conversa conferida antes do clique. Se a IA estiver fora, entram modelos locais variados.
+  intervalo de 60 a 120 s, freio, "Não enviar mais", conversa conferida antes do clique. Desde a 0.7.55 a mensagem é **do dono** (ver abaixo): não há mais modelos genéricos de envio.
 - **Quem respondeu** e precisa de atenção (pediu preço, interesse, reclamação, vai comprar depois, tem estoque, pergunta) vai para **Precisa de você**,
   com resumo, resposta sugerida editável e **Abrir e colar**: só cola o texto; **você** aperta Enter. Nada disso sai sozinho. `compra depois`/`tem estoque`
   com prazo criam um lembrete (9h de Fortaleza).
@@ -416,6 +416,12 @@ Nada do conteúdo é logado.
 
 **Não verificado no WhatsApp real:** a leitura da conversa (`lerConversa`: autor, carimbo `data-pre-plain-text`, mensagens só com mídia) e o efeito das
 cobranças automáticas no número. A IA só foi testada com LLM simulado.
+
+**Sua mensagem de cobrança (v0.7.55).** Cartão no topo da aba Follow-up:
+- *Usar os meus textos* (padrão): variações da 1ª (1 a 10) e da 2ª cobrança, com `{nome}`; o app sorteia uma por contato, sem repetir a mesma em sequência. Sem IA.
+- *IA escreve no meu estilo*: "Como devo escrever" (até 500 caracteres) + seus textos como exemplos; se a IA falhar, sai um texto seu.
+- Sem pelo menos 1 texto da 1ª cobrança a cobrança automática **não liga**. Texto sem `{nome}`, com link, preço ou termo proibido não salva. "Ver exemplo" mostra o resultado com um nome fictício.
+- Mudou texto, modo ou estilo: quem já está na fila tem o texto refeito antes do envio; a fila mostra "seu texto" ou "IA no seu estilo". Lógica em `src/shared/followup-estilo.ts`, tela em `src/sidepanel/MensagemCobranca.tsx`.
 
 ### Dados e backup
 
@@ -671,6 +677,7 @@ extensoes/vita-zap/
 │   │   │                              modelos, clientes, formato/sanitização e JSON (puros)
 │   │   ├── ia.ts                      interface da fase 2 (desligada)
 │   │   ├── followup.ts                regras puras do follow-up (quem cobrar, quando, máx. 2, opt-out, falha fechada) (v0.7.54)
+│   │   ├── followup-estilo.ts         mensagem de cobrança do dono: validação, sorteio, assinatura, rascunho (v0.7.55)
 │   │   └── servico-ia.ts              ponte para zapIa.* do CRM (só no service worker)
 │   └── sidepanel/                     React: Lembretes, Acompanhar, Clientes, Varredura, Prévia, Envio, Follow-up, Dados
 │       └── followup-motor.ts          lê as conversas, IA, monta a campanha de cobrança (sem caminho próprio de envio)

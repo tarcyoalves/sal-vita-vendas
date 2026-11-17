@@ -69,11 +69,28 @@ export async function classificarRespostas(ap: ApoioIa, conversas: ConversaParaI
   return { ok: true, valor: itens };
 }
 
-/** Texto de cobrança (com o primeiro nome dentro). Erro = a IA está fora ou o texto não passou nas regras: use o modelo local. */
-export async function escreverCobranca(ap: ApoioIa, primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2): Promise<ResultadoIa<string>> {
-  const r = await ap.chamar(() => ap.alterar<unknown>('zapIa.gerarCobranca', { primeiroNome: primeiroNome.slice(0, 60), mensagemCampanha: mensagemCampanha.slice(0, 1000), tentativa }));
+/** O jeito de escrever do dono (v0.7.55): instruções livres + os textos dele (com {nome}) como exemplos. */
+export interface EstiloDoDono {
+  estilo: string;
+  exemplos: string[];
+}
+
+/**
+ * Texto de cobrança (com o primeiro nome dentro). Com `estilo`, a IA imita o jeito de escrever do dono (o servidor limita
+ * 500 caracteres de estilo e 10 exemplos de 300). Erro = a IA está fora ou o texto não passou nas regras: o motor usa um
+ * dos textos do dono. `validacao` = o servidor recusou o texto da IA (não derruba as outras cobranças do lote).
+ */
+export async function escreverCobranca(ap: ApoioIa, primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2, estilo?: EstiloDoDono): Promise<ResultadoIa<string>> {
+  const entrada: Record<string, unknown> = { primeiroNome: primeiroNome.slice(0, 60), mensagemCampanha: mensagemCampanha.slice(0, 1000), tentativa };
+  const instrucoes = estilo?.estilo.trim().slice(0, 500) ?? '';
+  const exemplos = (estilo?.exemplos ?? []).map((e) => e.trim().slice(0, 300)).filter(Boolean).slice(0, 10);
+  if (instrucoes !== '') entrada.estilo = instrucoes;
+  if (exemplos.length > 0) entrada.exemplos = exemplos;
+  const r = await ap.chamar(() => ap.alterar<unknown>('zapIa.gerarCobranca', entrada));
   if (!r.ok) return r;
   const o = obj(r.valor);
-  if (o.ok !== true || typeof o.texto !== 'string' || o.texto.trim() === '') return falha('servidor', typeof o.mensagem === 'string' ? o.mensagem : 'A IA não devolveu um texto utilizável.');
+  if (o.ok !== true || typeof o.texto !== 'string' || o.texto.trim() === '') {
+    return falha(o.codigo === 'texto_invalido' ? 'validacao' : 'servidor', typeof o.mensagem === 'string' ? o.mensagem : 'A IA não devolveu um texto utilizável.');
+  }
   return { ok: true, valor: o.texto.trim() };
 }

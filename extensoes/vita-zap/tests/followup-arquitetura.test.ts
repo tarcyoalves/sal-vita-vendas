@@ -47,4 +47,24 @@ describe('follow-up não tem caminho próprio de envio', () => {
     expect(c).not.toMatch(/fetch\(|XMLHttpRequest|api\/trpc/);
     expect(c).toMatch(/ia: Pick<LeadsCRM, 'classificarRespostas' \| 'escreverCobranca'>/);
   });
+
+  it('não existe mais modelo genérico de cobrança para envio (a mensagem é do dono)', () => {
+    for (const f of ['src/shared/followup.ts', 'src/sidepanel/followup-motor.ts', 'src/sidepanel/Followup.tsx']) {
+      const c = ler(f);
+      expect(c, f).not.toMatch(/modeloLocal|MODELOS_1|MODELOS_2|Passando só para saber/);
+    }
+    // as sugestões vivem só no editor (followup-estilo.ts) e o motor nunca as importa
+    expect(ler('src/sidepanel/followup-motor.ts')).not.toMatch(/SUGESTOES_/);
+    expect(ler('src/sidepanel/Followup.tsx')).not.toMatch(/SUGESTOES_/);
+    expect(ler('src/sidepanel/MensagemCobranca.tsx')).toMatch(/SUGESTOES_1/);
+  });
+
+  it('o motor só prepara cobrança com a config do dono (assinatura) e o ligar é bloqueado sem texto', () => {
+    const motor = ler('src/sidepanel/followup-motor.ts');
+    expect(motor).toMatch(/cobrancaAssinatura: assinatura/);
+    expect(motor).toMatch(/refazerFila\(config\)/);
+    expect(motor).toMatch(/config\.textos1\.length === 0\) return null/);
+    expect(ler('src/sidepanel/Followup.tsx')).toMatch(/podeLigar\(/);
+    expect(ler('src/shared/followup.ts')).toMatch(/ligado = querLigar && textos1\.length > 0/);
+  });
 });

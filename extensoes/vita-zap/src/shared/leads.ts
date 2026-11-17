@@ -8,7 +8,7 @@ import type { LeadCrm, UsuarioCrm } from './crm-remoto';
 import type { InscricaoLead, ModeloEmail, ResultadoInscricao, SequenciaEmail } from './crm-email';
 import type { RefContato } from './crm-tipos';
 import type { ClassificacaoIa } from './followup';
-import type { ConversaParaIa, ResultadoIa } from './servico-ia';
+import type { ConversaParaIa, EstiloDoDono, ResultadoIa } from './servico-ia';
 import type { EmailDoLead, EnvioApresentacao, PedidoApresentacao, ResultadoEmail } from './servico-email';
 
 /** Chaves e valores guardados pela integração (só o RepositorioLocal toca em chrome.storage). */
@@ -127,7 +127,7 @@ export interface LeadsCRM {
 
   // IA do follow-up (zapIa.* no CRM). Só lê texto e devolve texto: nunca envia nada. Ver servico-ia.ts.
   classificarRespostas(conversas: ConversaParaIa[]): Promise<ResultadoIa<ClassificacaoIa[]>>;
-  escreverCobranca(primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2): Promise<ResultadoIa<string>>;
+  escreverCobranca(primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2, estilo?: EstiloDoDono): Promise<ResultadoIa<string>>;
 }
 
 export const METODOS_LEADS = [

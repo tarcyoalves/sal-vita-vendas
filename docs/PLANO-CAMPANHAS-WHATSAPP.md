@@ -240,3 +240,13 @@ O painel precisa ficar aberto (a lógica roda nele): fechar ou esconder o painel
 ### Não verificado
 WhatsApp Web real (seletores de leitura da conversa, carimbo `data-pre-plain-text`, mídia do cliente), IA real (qualidade da classificação em português
 real; só testada com LLM mockado), e o comportamento do número no WhatsApp depois de cobranças automáticas.
+
+### 10.x A mensagem de cobrança é do dono (17/11/2026, extensão 0.7.55)
+
+Pedido do dono: "eu que tenho que definir o estilo de mensagem". Os modelos genéricos deixam de ser enviados.
+- **Usar os meus textos (padrão):** 1 a 10 variações para a 1ª cobrança e 0 a 10 para a 2ª, com `{nome}` (primeiro nome). Sorteia uma por contato, sem repetir a mesma em sequência; sem IA. 2ª lista vazia = usa a da 1ª, sem repetir o que o contato já recebeu.
+- **IA escreve no meu estilo:** campo "Como devo escrever" (até 500) + os textos do dono como exemplos (`zapIa.gerarCobranca` com `estilo` e `exemplos`, opcionais; chamadas antigas continuam iguais). Se a IA falhar ou o texto for recusado, sai um texto do dono, nunca um genérico.
+- **Sem texto da 1ª cobrança, a cobrança automática não liga** ("Escreva sua mensagem de cobrança antes de ligar"). Config da 0.7.54 ligada vira desligada, com aviso.
+- **Validação local = servidor:** contém `{nome}`, até 280 caracteres com o nome, sem link, sem "R$"/"%", sem os termos proibidos da conformidade sanitária (lista copiada do servidor; teste compara as duas).
+- **Fila:** cada item guarda a assinatura da configuração (modo, textos, estilo) com que o texto foi feito; mudou a configuração, o texto é refeito ao salvar e de novo antes de montar a campanha (campanha pendente já montada é alinhada). A fila mostra "seu texto" ou "IA no seu estilo".
+- Botão "Ver exemplo" (nome fictício "Maria", sem chamar a IA). Armazenamento: IndexedDB `followupConfig` (sem mudança de versão do banco).

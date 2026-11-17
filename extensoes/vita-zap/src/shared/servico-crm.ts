@@ -828,9 +828,9 @@ export class ServicoCrm implements LeadsCRM {
     );
   }
 
-  escreverCobranca(primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2): Promise<ia.ResultadoIa<string>> {
+  escreverCobranca(primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2, estilo?: ia.EstiloDoDono): Promise<ia.ResultadoIa<string>> {
     return this.exclusivo('follow-up: escrever cobrança com a IA (ação do usuário)', () =>
-      ia.escreverCobranca({ alterar: (c, e) => this.alterar(c, e), chamar: (fn) => this.chamar(fn) }, primeiroNome, mensagemCampanha, tentativa),
+      ia.escreverCobranca({ alterar: (c, e) => this.alterar(c, e), chamar: (fn) => this.chamar(fn) }, primeiroNome, mensagemCampanha, tentativa, estilo),
     );
   }
 

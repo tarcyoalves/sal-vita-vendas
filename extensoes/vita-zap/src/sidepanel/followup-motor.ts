@@ -35,14 +35,25 @@ import {
   decidirCobranca,
   devidoParaVerificar,
   modeloDeCobrancaValido,
-  modeloLocal,
   novosFollowups,
   paraModelo,
   referenciaDe,
   separarListas,
+  textoDaFilaDesatualizado,
   textoEsperadoDe,
   type ListasFollowup,
 } from '../shared/followup';
+import {
+  MARCADOR_NOME,
+  assinaturaTextos,
+  montarTextoCobranca,
+  sortearTexto,
+  textoCobrancaValido,
+  textoParaModelo,
+  textosDaTentativa,
+  type OrigemTexto,
+} from '../shared/followup-estilo';
+import { MARCADOR_PRIMEIRO_NOME } from '../shared/constantes';
 import type { LeadsCRM } from '../shared/leads';
 import type { CodigoErro, MensagemLida, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
 import { contarEnviosHoje } from '../shared/politica';
@@ -99,6 +110,9 @@ export interface VisaoFollowup {
 const vazio = (): ResumoRodada => ({ lidas: 0, cobrancas: 0, precisam: 0, saidas: 0, resolvidos: 0, revisar: 0, aviso: null, parou: false });
 
 export class MotorFollowup {
+  /** Último texto do dono sorteado por tentativa: o próximo contato não repete a mesma variação em sequência. */
+  private readonly ultimoSorteado: Record<1 | 2, string | null> = { 1: null, 2: null };
+
   constructor(private readonly d: DependenciasMotor) {}
 
   // ── Estado ────────────────────────────────────────────────────────────────
@@ -110,8 +124,33 @@ export class MotorFollowup {
     return { config, followups, listas: separarListas(followups), enviadasHoje };
   }
 
+  /**
+   * Grava a configuração. Se mudou o modo, os textos ou o estilo, os itens que já estão na fila de cobrança (e ainda
+   * não saíram) têm o texto refeito AGORA com a configuração nova: um texto preparado com a configuração antiga nunca sai.
+   */
   async salvarConfig(c: ConfigFollowup): Promise<ConfigFollowup> {
-    return salvarConfigFollowup(this.d.db, c);
+    const antes = await lerConfigFollowup(this.d.db);
+    const nova = await salvarConfigFollowup(this.d.db, c);
+    if (assinaturaTextos(antes) !== assinaturaTextos(nova)) await this.refazerFila(nova);
+    return nova;
+  }
+
+  /**
+   * Refaz o texto de quem está na fila ('cobranca') com um texto preparado por OUTRA configuração (ou da 0.7.54).
+   * Fica de fora o contato cuja mensagem está em voo (já foi colada: o Executor confere a conversa). Sem nenhum texto
+   * do dono, a fila volta a "monitorando": sem texto próprio não se cobra. Devolve quantos itens foram refeitos.
+   */
+  async refazerFila(config: ConfigFollowup): Promise<number> {
+    const [todos, campanhas] = await Promise.all([listarFollowups(this.d.db), listarCampanhas(this.d.db)]);
+    const emVoo = new Set(campanhas.filter((c) => c.tipo === 'followup' && c.status !== 'concluida' && c.emVoo).map((c) => c.emVoo?.chave));
+    const velhos = todos.filter((f) => textoDaFilaDesatualizado(f, config) && !emVoo.has(f.chave));
+    if (velhos.length === 0) return 0;
+    if (config.textos1.length === 0) {
+      for (const f of velhos) await this.gravar({ ...f, estado: 'monitorando', cobrancaModelo: null, cobrancaOrigem: null, cobrancaAssinatura: null, verificadoEm: null, atualizadoEm: this.d.agora().toISOString() });
+      return velhos.length;
+    }
+    await this.prepararCobrancas(velhos, config, vazio());
+    return velhos.length;
   }
 
   /** Cria o acompanhamento de cada item 'enviado' das campanhas que ainda não tem um. */
@@ -201,7 +240,7 @@ export class MotorFollowup {
     }
 
     if (paraIa.length > 0) await this.classificar(paraIa, resumo);
-    if (paraCobrar.length > 0) await this.prepararCobrancas(paraCobrar, resumo);
+    if (paraCobrar.length > 0) await this.prepararCobrancas(paraCobrar, config, resumo);
     return resumo;
   }
 
@@ -261,42 +300,78 @@ export class MotorFollowup {
     }
   }
 
-  // ── IA: texto da cobrança ─────────────────────────────────────────────────
+  // ── Texto da cobrança: SEMPRE o jeito do dono ─────────────────────────────
 
-  private async prepararCobrancas(itens: Followup[], resumo: ResumoRodada): Promise<void> {
+  /**
+   * Escolhe o texto de UM contato. Modo "meus textos": sorteia entre os textos do dono (sem repetir a mesma variação em
+   * sequência, nem o que este contato já recebeu). Modo "IA no meu estilo": pede à IA com o estilo e os textos do dono
+   * como exemplos; se ela falhar ou o texto for recusado, sorteia um texto do dono. Nunca existe modelo genérico.
+   * Devolve null se não há texto do dono que sirva a este contato (o chamador manda para "revisar").
+   */
+  private async escolherTexto(f: Followup, config: ConfigFollowup, usados: Set<string>, ia: { fora: boolean }): Promise<{ modelo: string; origem: OrigemTexto } | null> {
+    const tentativa = Math.min(2, f.cobrancas.length + 1) as 1 | 2;
+    const nome = f.primeiroNome.trim();
+    if (nome === '') return null; // os textos do dono usam {nome}: sem primeiro nome não há como cobrar
+    const lista = textosDaTentativa(config, tentativa);
+    const jaRecebeu = f.cobrancas.map((c) => c.texto);
+
+    if (config.modo === 'ia_estilo' && !ia.fora) {
+      try {
+        const r = await this.d.ia.escreverCobranca(nome, f.mensagemCampanha, tentativa, { estilo: config.estilo, exemplos: lista });
+        if (r.ok) {
+          const modelo = paraModelo(r.valor, nome);
+          const comMarcador = modelo.split(MARCADOR_PRIMEIRO_NOME).join(MARCADOR_NOME);
+          const final = montarTextoCobranca(comMarcador, nome);
+          const copiaDoDono = lista.some((t) => montarTextoCobranca(t, nome) === final);
+          if (textoCobrancaValido(comMarcador, nome) && modeloDeCobrancaValido(modelo) && !usados.has(modelo) && !jaRecebeu.includes(final)) {
+            // Se a IA devolveu um texto do dono palavra por palavra, o rótulo honesto é "seu texto".
+            return { modelo, origem: copiaDoDono ? 'meus_textos' : 'ia_estilo' };
+          }
+        } else if (r.erro.tipo !== 'validacao') ia.fora = true;
+      } catch {
+        ia.fora = true;
+      }
+    }
+
+    const servem = lista.filter((t) => textoCobrancaValido(t, nome) && !jaRecebeu.includes(montarTextoCobranca(t, nome)));
+    const escolhido = sortearTexto(servem, this.d.aleatorio, this.ultimoSorteado[tentativa]);
+    if (escolhido === null) return null;
+    this.ultimoSorteado[tentativa] = escolhido;
+    const modelo = textoParaModelo(escolhido);
+    return modeloDeCobrancaValido(modelo) ? { modelo, origem: 'meus_textos' } : null;
+  }
+
+  private async prepararCobrancas(itens: Followup[], config: ConfigFollowup, resumo: ResumoRodada): Promise<void> {
     const usados = new Set<string>();
-    let iaForaDoAr = false;
+    const ia = { fora: false };
+    const assinatura = assinaturaTextos(config);
     for (const f of itens) {
-      const tentativa = (f.cobrancas.length + 1) as 1 | 2;
-      let modelo: string | null = null;
-      let origem: 'ia' | 'modelo' = 'modelo';
-      if (!iaForaDoAr) {
-        try {
-          const r = await this.d.ia.escreverCobranca(f.primeiroNome, f.mensagemCampanha, tentativa);
-          if (r.ok) {
-            const candidato = paraModelo(r.valor, f.primeiroNome);
-            if (modeloDeCobrancaValido(candidato) && !usados.has(candidato) && !f.cobrancas.some((c) => c.texto === candidato)) {
-              modelo = candidato;
-              origem = 'ia';
-            }
-          } else if (r.erro.tipo !== 'validacao') iaForaDoAr = true;
-        } catch {
-          iaForaDoAr = true;
-        }
+      const escolha = await this.escolherTexto(f, config, usados, ia);
+      if (escolha === null) {
+        await this.gravar({
+          ...f,
+          estado: 'revisar',
+          motivo: f.primeiroNome.trim() === '' ? 'o contato não tem primeiro nome: escreva você' : 'não achei um texto seu que sirva para esta cobrança (escreva mais variações na mensagem de cobrança)',
+          cobrancaModelo: null,
+          cobrancaOrigem: null,
+          cobrancaAssinatura: null,
+        });
+        resumo.revisar += 1;
+        continue;
       }
-      if (modelo === null) {
-        modelo = modeloLocal(tentativa, f.primeiroNome.trim() !== '', this.d.aleatorio, usados);
-        if (!modeloDeCobrancaValido(modelo)) {
-          await this.gravar({ ...f, estado: 'revisar', motivo: 'não consegui montar um texto de cobrança válido' });
-          resumo.revisar += 1;
-          continue;
-        }
-      }
-      usados.add(modelo);
-      await this.gravar({ ...f, estado: 'cobranca', motivo: null, cobrancaModelo: modelo, cobrancaOrigem: origem, atualizadoEm: this.d.agora().toISOString() });
+      usados.add(escolha.modelo);
+      await this.gravar({
+        ...f,
+        estado: 'cobranca',
+        motivo: null,
+        cobrancaModelo: escolha.modelo,
+        cobrancaOrigem: escolha.origem,
+        cobrancaAssinatura: assinatura,
+        atualizadoEm: this.d.agora().toISOString(),
+      });
       resumo.cobrancas += 1;
     }
-    if (iaForaDoAr && resumo.aviso === null) resumo.aviso = 'A IA estava fora do ar: usei os modelos locais de cobrança.';
+    if (ia.fora && resumo.aviso === null) resumo.aviso = 'A IA estava fora do ar: usei os seus textos de cobrança.';
   }
 
   // ── Mandar a cobrança (pelo Executor das campanhas) ───────────────────────
@@ -308,11 +383,16 @@ export class MotorFollowup {
    */
   async montarCampanhaDeCobranca(config: ConfigFollowup): Promise<Campanha | null> {
     const agora = this.d.agora();
+    // Sem pelo menos 1 texto do dono para a 1ª cobrança nada é preparado nem enviado (a tela também bloqueia o "ligar").
+    if (config.textos1.length === 0) return null;
+    // Texto preparado com outra configuração (o dono mudou os textos, o modo ou o estilo) é refeito ANTES do envio.
+    await this.refazerFila(config);
     const abertas = (await listarCampanhas(this.d.db)).filter((c) => c.tipo === 'followup' && c.status !== 'concluida');
     // Uma cobrança em voo (o painel fechou no meio) pode ter saído: essa campanha PRECISA ser retomada (o Executor
-    // confere a conversa antes de qualquer colagem), nunca encerrada nem substituída.
+    // confere a conversa antes de qualquer colagem), nunca encerrada nem substituída. Os outros itens pendentes dela
+    // ficam com o texto atual da fila (ou são pulados se saíram da fila).
     const emVoo = abertas.find((c) => c.emVoo);
-    if (emVoo) return emVoo;
+    if (emVoo) return this.alinharComAFila(emVoo, await listarFollowups(this.d.db));
     const todos = await listarFollowups(this.d.db);
     // Leitura velha: volta a monitorar para ser lida de novo (a próxima rodada).
     for (const f of todos) {
@@ -328,7 +408,7 @@ export class MotorFollowup {
       const pendentes = c.itens.filter((i) => i.status === 'pendente');
       return pendentes.length === chavesProntas.size && pendentes.every((i) => chavesProntas.has(i.chave));
     });
-    if (igual) return igual;
+    if (igual) return this.alinharComAFila(igual, await listarFollowups(this.d.db));
     for (const c of abertas) await salvarCampanha(this.d.db, { ...c, status: 'concluida', motivoPausa: 'substituída por uma cobrança mais nova' });
     const campanha: Campanha = {
       id: novoId(agora, this.d.aleatorio),
@@ -357,6 +437,31 @@ export class MotorFollowup {
     };
     await salvarCampanha(this.d.db, campanha);
     return campanha;
+  }
+
+  /**
+   * Os itens PENDENTES de uma campanha de cobrança aberta passam a ter exatamente o texto atual da fila. Quem saiu da
+   * fila (ou ficou sem texto) é pulado. O item em voo não é tocado (a mensagem dele já foi colada).
+   */
+  private async alinharComAFila(c: Campanha, followups: ReadonlyArray<Followup>): Promise<Campanha> {
+    const porChave = new Map(followups.map((f) => [f.chave, f]));
+    let mudou = false;
+    const agora = this.d.agora().toISOString();
+    const itens = c.itens.map((i) => {
+      if (i.status !== 'pendente' || c.emVoo?.chave === i.chave) return i;
+      const f = porChave.get(i.chave);
+      if (f && f.estado === 'cobranca' && f.cobrancaModelo) {
+        if (f.cobrancaModelo === i.modelo) return i;
+        mudou = true;
+        return { ...i, modelo: f.cobrancaModelo };
+      }
+      mudou = true;
+      return { ...i, status: 'pulado' as const, motivo: 'saiu da fila de cobrança (o texto foi refeito ou o contato mudou de situação)', atualizadoEm: agora };
+    });
+    if (!mudou) return c;
+    const nova = { ...c, itens };
+    await salvarCampanha(this.d.db, nova);
+    return nova;
   }
 
   /** Campanha de cobrança com mensagem em voo (o painel fechou no meio): precisa ser conferida antes de qualquer nova colagem. */

@@ -16,6 +16,7 @@ import {
   type ConfigFollowup,
   type Followup,
 } from '../shared/followup';
+import { MSG_ESCREVA_ANTES, podeLigar, rotuloOrigem, type RascunhoMensagem } from '../shared/followup-estilo';
 import { ehEventoConteudo } from '../shared/mensagens';
 import { dentroDoHorario } from '../shared/politica';
 import { montarMensagem } from '../shared/texto';
@@ -23,6 +24,7 @@ import { formatarDataBr, hojeNoFuso } from '../shared/datas';
 import type { CrmPainel } from './crm';
 import { type EstadoExecutor, Executor } from './executor';
 import { MotorFollowup, type ResumoRodada, type VisaoFollowup } from './followup-motor';
+import { MensagemCobranca } from './MensagemCobranca';
 import { iniciarBatimento, protegerContraFechamento, MOTIVO_PAINEL_FECHADO } from './protecao';
 import { assinarTrava, donoDaTrava, liberar, ROTULO_DONO, tentarTravar } from './trava-whatsapp';
 import { pedir } from './whatsapp';
@@ -272,12 +274,36 @@ export function Followup({ db, crm }: Props) {
       await mudarConfig({ ligado: false });
       return;
     }
+    // Os modelos genéricos não são mais enviados: sem texto do dono salvo, não liga.
+    const pode = podeLigar(visao?.config ?? { textos1: [] });
+    if (!pode.ok) {
+      setAviso(pode.motivo);
+      return;
+    }
+    setAviso(null);
     const total = visao?.followups.filter((f) => f.estado === 'monitorando').length ?? 0;
     const ok = window.confirm(
       `${TEXTO_RISCO}\n\nHá ${total} contato(s) de disparos dos últimos ${JANELA_DIAS} dias sendo acompanhados. ` +
         `Quem não responder em ${visao?.config.dias ?? 3} dia(s) será cobrado automaticamente (no máximo ${MAX_COBRANCAS} vezes).\n\nLigar a cobrança automática?`,
     );
     if (ok) await mudarConfig({ ligado: true, confirmouRisco: true, pausado: false });
+  };
+
+  /** Salva a mensagem do dono e refaz o texto de quem já está na fila (nunca sai texto preparado com a configuração antiga). */
+  const salvarMensagem = async (r: RascunhoMensagem): Promise<void> => {
+    if (!visao || emCicloRef.current) return;
+    emCicloRef.current = true;
+    setOcupado('Salvando a mensagem e refazendo os textos da fila…');
+    try {
+      await motor.salvarConfig({ ...visao.config, modo: r.modo, textos1: r.textos1, textos2: r.textos2, estilo: r.estilo });
+      await recarregar();
+      setAviso(null);
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOcupado(null);
+      emCicloRef.current = false;
+    }
   };
 
   const verificarAgora = async (): Promise<void> => {
@@ -346,6 +372,7 @@ export function Followup({ db, crm }: Props) {
           <input type="checkbox" checked={config.ligado} onChange={(e) => void ligar(e.target.checked)} />
           <span>Cobrança automática de quem não respondeu</span>
         </label>
+        {!podeLigar(config).ok && !config.ligado && <p className="aviso">{MSG_ESCREVA_ANTES}: use "Sua mensagem de cobrança", logo abaixo.</p>}
         <div style={{ marginTop: 8, fontSize: 12.5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
           <label htmlFor="followup-dias">Cobrar depois de</label>
           <select id="followup-dias" value={config.dias} onChange={(e) => void mudarConfig({ dias: Number(e.target.value) })} style={{ width: 'auto' }}>
@@ -397,6 +424,8 @@ export function Followup({ db, crm }: Props) {
         </p>
       </div>
 
+      <MensagemCobranca config={config} ocupado={trabalhando} onSalvar={salvarMensagem} />
+
       <div className="botoes" role="tablist" aria-label="Listas do follow-up">
         {(
           [
@@ -430,7 +459,7 @@ export function Followup({ db, crm }: Props) {
             <ul className="lista">
               {listas.cobranca.map((f) => (
                 <li key={f.id}>
-                  <b>{f.nome}</b> <small>cobrança {f.cobrancas.length + 1} de {MAX_COBRANCAS} · texto {f.cobrancaOrigem === 'ia' ? 'da IA' : 'de modelo'}</small>
+                  <b>{f.nome}</b> <small>cobrança {f.cobrancas.length + 1} de {MAX_COBRANCAS} · texto: {rotuloOrigem(f.cobrancaOrigem)}</small>
                   <div className="balao">{montarMensagem(f.cobrancaModelo ?? '', f.primeiroNome)}</div>
                   <div className="botoes">
                     <button type="button" className="pequeno" onClick={acao(() => motor.marcarResolvido(f.id, 'tirado da fila por você'))}>

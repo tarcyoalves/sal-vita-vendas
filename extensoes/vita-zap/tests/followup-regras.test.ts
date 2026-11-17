@@ -14,12 +14,9 @@ import {
   decidirCobranca,
   devidoParaVerificar,
   lerCarimbo,
-  modeloDeCobrancaValido,
-  modeloLocal,
   normalizarConfigFollowup,
   novosFollowups,
   paraModelo,
-  semNome,
   separarListas,
   type ClassificacaoIa,
   type ClasseIa,
@@ -27,7 +24,6 @@ import {
 } from '../src/shared/followup';
 import type { Envio } from '../src/shared/exportar';
 import type { MensagemLida } from '../src/shared/mensagens';
-import { contemLink, montarMensagem } from '../src/shared/texto';
 
 // 17/11/2026 10:00 em Fortaleza (UTC-3), terça
 const AGORA = new Date('2026-11-17T13:00:00.000Z');
@@ -60,12 +56,12 @@ const cli = (texto: string, quando: string | null = null): MensagemLida => ({ de
 
 describe('configuração', () => {
   it('padrão desligado, 3 dias, sem confirmação do risco', () => {
-    expect(CONFIG_FOLLOWUP_PADRAO).toEqual({ ligado: false, dias: 3, pausado: false, confirmouRisco: false });
+    expect(CONFIG_FOLLOWUP_PADRAO).toEqual({ ligado: false, dias: 3, pausado: false, confirmouRisco: false, modo: 'meus_textos', textos1: [], textos2: [], estilo: '', desligadaSemTexto: false });
   });
 
   it('nunca fica ligado sem a confirmação do risco e prende os dias em 1–30', () => {
     expect(normalizarConfigFollowup({ ligado: true, confirmouRisco: false }).ligado).toBe(false);
-    expect(normalizarConfigFollowup({ ligado: true, confirmouRisco: true }).ligado).toBe(true);
+    expect(normalizarConfigFollowup({ ligado: true, confirmouRisco: true, textos1: ['Oi, {nome}! Conseguiu ver a minha mensagem?'] }).ligado).toBe(true);
     expect(normalizarConfigFollowup({ dias: 0 }).dias).toBe(1);
     expect(normalizarConfigFollowup({ dias: 999 }).dias).toBe(30);
     expect(normalizarConfigFollowup({ dias: 4.9 }).dias).toBe(4);
@@ -218,37 +214,6 @@ describe('texto da cobrança', () => {
     expect(paraModelo('Passando para saber se precisa de sal.', 'Ana')).toBe('Oi, {primeiroNome}! Passando para saber se precisa de sal.');
     expect(paraModelo('Oi, Ana!', '')).toBe('Oi, Ana!');
     expect(paraModelo('Olá {link} Ana', 'Ana')).not.toMatch(/\{link\}/);
-  });
-
-  it('modelos locais: válidos pela política (sem link, curtos), sem alegação de saúde e variados', () => {
-    const proibidos = /natural|puro|aditivo|mineral|saúde|iodo|benef|energia|cura|prev/i;
-    const vistos = new Set<string>();
-    for (const t of [1, 2]) {
-      for (let i = 0; i < 20; i++) {
-        for (const comNome of [true, false]) {
-          const m = modeloLocal(t, comNome, () => i / 20);
-          expect(modeloDeCobrancaValido(m), m).toBe(true);
-          expect(contemLink(montarMensagem(m, 'Ana'))).toBe(false);
-          expect(m).not.toMatch(proibidos);
-          expect(m.length).toBeLessThanOrEqual(200);
-          expect(comNome ? m.includes('{primeiroNome}') : !m.includes('{primeiroNome}'), m).toBe(true);
-          vistos.add(m);
-        }
-      }
-    }
-    expect(vistos.size).toBeGreaterThanOrEqual(6);
-  });
-
-  it('modeloLocal evita repetir no mesmo lote e a 2ª tentativa tem texto diferente da 1ª', () => {
-    const usados = new Set<string>();
-    for (let i = 0; i < 5; i++) usados.add(modeloLocal(1, true, () => 0, usados));
-    expect(usados.size).toBe(5);
-    expect(modeloLocal(2, true, () => 0)).not.toBe(modeloLocal(1, true, () => 0));
-  });
-
-  it('semNome tira o marcador e mantém a frase legível', () => {
-    expect(semNome('Oi, {primeiroNome}! Conseguiu ver?')).toBe('Oi! Conseguiu ver?');
-    expect(semNome('{primeiroNome}, tudo bem?')).toBe('Tudo bem?');
   });
 });
 

@@ -8,6 +8,7 @@ import {
   listarCampanhas,
   listarEnvios,
   listarFollowups,
+  lerConfigFollowup,
   listarNaoEnviar,
   marcarNaoEnviar,
   registrarEnvio,
@@ -18,6 +19,7 @@ import {
 import { type Campanha, textoDoItem } from '../src/shared/campanha';
 import { FILTROS_PADRAO } from '../src/shared/filtros';
 import { type ClassificacaoIa, type ConfigFollowup, type Followup, MAX_LEITURAS_POR_RODADA } from '../src/shared/followup';
+import { assinaturaTextos } from '../src/shared/followup-estilo';
 import type { MensagemLida, PedidoConteudo, RespostaConteudo } from '../src/shared/mensagens';
 import { CONFIG_PADRAO } from '../src/shared/politica';
 import type { ConversaParaIa, ResultadoIa } from '../src/shared/servico-ia';
@@ -26,7 +28,11 @@ import { MotorFollowup } from '../src/sidepanel/followup-motor';
 
 let n = 0;
 const TEXTO = 'Oi {primeiroNome}, tudo bem? Como estão de sal por aí?';
-const CONFIG: ConfigFollowup = { ligado: true, dias: 3, pausado: false, confirmouRisco: true };
+const TEXTOS1 = ['Oi, {nome}! Passando para saber se você viu minha mensagem. Qualquer coisa me chama.', '{nome}, tudo certo por aí? Fico no aguardo.', 'Olá, {nome}! Conseguiu ver o que mandei? Estou à disposição.'];
+const TEXTOS2 = ['{nome}, última lembrança: fico à disposição se precisar de sal.', 'Oi, {nome}! Deixo meu contato aberto, é só chamar.'];
+const BASE: ConfigFollowup = { ligado: true, dias: 3, pausado: false, confirmouRisco: true, modo: 'meus_textos', textos1: TEXTOS1, textos2: TEXTOS2, estilo: '', desligadaSemTexto: false };
+// A maioria dos testes usa a IA no estilo do dono (a IA falsa escreve "Oi, Nome! Passando para saber...").
+const CONFIG: ConfigFollowup = { ...BASE, modo: 'ia_estilo', estilo: 'curto e informal' };
 const dispara = (nome: string) => `Oi ${nome.split(' ')[0]}, tudo bem? Como estão de sal por aí?`;
 
 const eu = (texto: string): MensagemLida => ({ de: 'eu', texto, quando: null });
@@ -71,6 +77,7 @@ async function montar(contatos: Record<string, RespostaDaConversa | 'sem_respost
   const colados: Array<{ nome: string; texto: string; envioAutomatico: boolean | undefined }> = [];
   const lembretes: Array<{ nome: string; venceEm: number }> = [];
   const enviadosParaIa: ConversaParaIa[][] = [];
+  const chamadasCobranca: Array<{ nome: string; tentativa: number; estilo?: { estilo: string; exemplos: string[] } }> = [];
   const agendados: Array<{ fn: () => void; ms: number }> = [];
   const estadoIa = { fora: opcoes.iaOff === true, cobrancaIa: opcoes.cobrancaIa !== false };
 
@@ -99,7 +106,8 @@ async function montar(contatos: Record<string, RespostaDaConversa | 'sem_respost
         valor: conversas.map((c) => opcoes.iaClassifica?.(c) ?? { ref: c.ref, classe: 'sem_relacao', precisaAtencao: false, resumo: 'só um ok', sugestao: '' }).filter((x): x is ClassificacaoIa => x !== null),
       };
     },
-    async escreverCobranca(primeiroNome: string, _msg: string, tentativa: 1 | 2): Promise<ResultadoIa<string>> {
+    async escreverCobranca(primeiroNome: string, _msg: string, tentativa: 1 | 2, estilo?: { estilo: string; exemplos: string[] }): Promise<ResultadoIa<string>> {
+      chamadasCobranca.push({ nome: primeiroNome, tentativa, estilo });
       if (estadoIa.fora || !estadoIa.cobrancaIa) return { ok: false, erro: { tipo: 'servidor', mensagem: 'fora' } };
       return { ok: true, valor: `Oi, ${primeiroNome}! Passando para saber se ainda precisa de sal (tentativa ${tentativa}).` };
     },
@@ -156,7 +164,7 @@ async function montar(contatos: Record<string, RespostaDaConversa | 'sem_respost
   };
 
   return {
-    db, motor, pedidos, colados, lembretes, enviadosParaIa, agendados, estadoIa, cobrar, get, criarExecutor,
+    db, motor, pedidos, colados, lembretes, enviadosParaIa, chamadasCobranca, agendados, estadoIa, cobrar, get, criarExecutor,
     agora: () => agora,
     avancarDias: (d: number) => {
       agora = new Date(agora.getTime() + d * 86_400_000);
@@ -171,7 +179,7 @@ describe('quem NÃO respondeu é cobrado sozinho, pelo mesmo motor das campanhas
     const r = await t.motor.verificar(CONFIG);
     expect(r).toMatchObject({ lidas: 2, cobrancas: 2, aviso: null, parou: false });
     expect((await t.get('Maria Souza')).estado).toBe('cobranca');
-    expect((await t.get('Maria Souza')).cobrancaOrigem).toBe('ia');
+    expect((await t.get('Maria Souza')).cobrancaOrigem).toBe('ia_estilo');
     expect(t.pedidos.every((p) => p.tipo === 'lerConversa')).toBe(true); // ler não cola nada
 
     const ex = await t.cobrar();
@@ -361,23 +369,26 @@ describe('IA fora do ar', () => {
     expect((await t.get('Ana')).estado).toBe('resolvido');
   });
 
-  it('a cobrança usa os modelos locais variados quando a IA não escreve', async () => {
+  it('IA fora do ar: a cobrança sai com os textos do DONO (nunca um modelo genérico), variados', async () => {
     const t = await montar({ Ana: 'sem_resposta', Bia: 'sem_resposta', Caio: 'sem_resposta' }, { iaOff: true });
     const r = await t.motor.verificar(CONFIG);
     expect(r.cobrancas).toBe(3);
-    const textos = new Set<string>();
+    expect(r.aviso).toMatch(/seus textos/);
+    const modelos: string[] = [];
     for (const nome of ['Ana', 'Bia', 'Caio']) {
       const f = await t.get(nome);
-      expect(f.cobrancaOrigem).toBe('modelo');
-      textos.add(f.cobrancaModelo as string);
+      expect(f.cobrancaOrigem).toBe('meus_textos');
+      modelos.push(f.cobrancaModelo as string);
+      expect(TEXTOS1.map((x) => x.replace('{nome}', '{primeiroNome}'))).toContain(f.cobrancaModelo);
     }
-    expect(textos.size).toBe(3); // variados no mesmo lote
+    for (let i = 1; i < modelos.length; i++) expect(modelos[i]).not.toBe(modelos[i - 1]); // nunca a mesma em sequência
     await t.cobrar();
     expect(t.colados).toHaveLength(3);
     expect(t.colados.every((c) => !/[{}]/.test(c.texto))).toBe(true);
+    expect(t.colados.some((c) => /Passando só para saber se você viu a minha mensagem\. Se precisar de sal/.test(c.texto))).toBe(false);
   });
 
-  it('texto da IA com link ou longo demais é descartado e entra o modelo local', async () => {
+  it('texto da IA com link ou longo demais é descartado e entra um texto do dono', async () => {
     const t = await montar({ Ana: 'sem_resposta' });
     t.estadoIa.cobrancaIa = true;
     // sobrescreve a IA do motor com uma que devolve link
@@ -392,7 +403,7 @@ describe('IA fora do ar', () => {
     });
     await motor.verificar(CONFIG);
     const f = await t.get('Ana');
-    expect(f.cobrancaOrigem).toBe('modelo');
+    expect(f.cobrancaOrigem).toBe('meus_textos');
     expect(f.cobrancaModelo).not.toMatch(/www|http/);
   });
 });
@@ -593,5 +604,214 @@ describe('ações do atendente', () => {
     expect(v.enviadasHoje).toBe(1);
     expect(v.listas.monitorando).toHaveLength(1);
     expect(vi.isMockFunction(t.motor.carregar)).toBe(false);
+  });
+});
+
+
+describe('a mensagem é do dono (0.7.55): textos dele, IA no estilo dele, nunca modelo genérico', () => {
+  const NOMES = { Ana: 'sem_resposta', Bia: 'sem_resposta', Caio: 'sem_resposta', Dani: 'sem_resposta', Eva: 'sem_resposta', Fabi: 'sem_resposta' } as const;
+  const doDono1 = TEXTOS1.map((x) => x.replace('{nome}', '{primeiroNome}'));
+  const doDono2 = TEXTOS2.map((x) => x.replace('{nome}', '{primeiroNome}'));
+
+  it('modo "meus textos": não chama a IA para escrever, sorteia só entre os textos do dono e nunca repete a mesma em sequência', async () => {
+    let chamouIa = 0;
+    const t = await montar({ ...NOMES });
+    // sorteio "ruim": sempre o índice 0 da lista que sobrou; o código tem de pular a variação anterior
+    const motor = new MotorFollowup({ db: t.db, pedir: async (p) => (p.tipo === 'lerConversa' ? { ok: true, mensagens: [eu(dispara(p.nome))] } : { ok: true }), ia: { classificarRespostas: async () => ({ ok: true, valor: [] }), escreverCobranca: async () => { chamouIa += 1; return { ok: false, erro: { tipo: 'servidor', mensagem: 'não deveria ser chamada' } }; } }, criarLembrete: async () => null, agora: t.agora, aleatorio: () => 0, esperar: async () => undefined });
+    await motor.verificar({ ...BASE, modo: 'meus_textos' });
+    expect(chamouIa).toBe(0);
+    const modelos: string[] = [];
+    for (const nome of Object.keys(NOMES)) {
+      const f = await t.get(nome);
+      expect(f.cobrancaOrigem).toBe('meus_textos');
+      expect(doDono1).toContain(f.cobrancaModelo);
+      modelos.push(f.cobrancaModelo as string);
+    }
+    for (let i = 1; i < modelos.length; i++) expect(modelos[i]).not.toBe(modelos[i - 1]);
+  });
+
+  it('1 só texto: a mesma variação repetida é inevitável (e permitida)', async () => {
+    const t = await montar({ Ana: 'sem_resposta', Bia: 'sem_resposta' });
+    await t.motor.verificar({ ...BASE, textos1: [TEXTOS1[0]] });
+    expect((await t.get('Ana')).cobrancaModelo).toBe(doDono1[0]);
+    expect((await t.get('Bia')).cobrancaModelo).toBe(doDono1[0]);
+  });
+
+  it('a 2ª cobrança usa a lista da 2ª; sem lista própria, usa a da 1ª sem repetir o que o contato já recebeu', async () => {
+    const conversas: Record<string, 'sem_resposta' | MensagemLida[]> = { Ana: 'sem_resposta' };
+    const t = await montar(conversas);
+    await t.motor.verificar({ ...BASE });
+    await t.cobrar(BASE);
+    const primeira = (await t.get('Ana')).cobrancas[0].texto;
+    conversas.Ana = [eu(dispara('Ana')), eu(primeira)]; // a conversa agora mostra a nossa cobrança
+    expect(TEXTOS1.map((x) => x.replace('{nome}', 'Ana'))).toContain(primeira);
+    t.avancarDias(4);
+    await t.motor.verificar(BASE, { forcar: true });
+    const f2 = await t.get('Ana');
+    expect(f2.estado).toBe('cobranca');
+    expect(doDono2).toContain(f2.cobrancaModelo);
+
+    // sem textos2: usa a lista da 1ª, mas nunca o texto que ela já recebeu
+    const conversasU: Record<string, 'sem_resposta' | MensagemLida[]> = { Ana: 'sem_resposta' };
+    const u = await montar(conversasU);
+    await u.motor.verificar({ ...BASE, textos2: [] });
+    await u.cobrar({ ...BASE, textos2: [] });
+    const recebida = (await u.get('Ana')).cobrancas[0].texto;
+    conversasU.Ana = [eu(dispara('Ana')), eu(recebida)];
+    u.avancarDias(4);
+    await u.motor.verificar({ ...BASE, textos2: [] }, { forcar: true });
+    const f3 = await u.get('Ana');
+    expect(f3.estado).toBe('cobranca');
+    expect(f3.cobrancaModelo?.replace('{primeiroNome}', 'Ana')).not.toBe(recebida);
+  });
+
+  it('modo IA no estilo: manda o estilo e os textos do dono como exemplos, e o texto da IA entra rotulado "ia_estilo"', async () => {
+    const t = await montar({ Ana: 'sem_resposta' });
+    await t.motor.verificar({ ...BASE, modo: 'ia_estilo', estilo: 'curto e informal' });
+    expect(t.chamadasCobranca).toEqual([{ nome: 'Ana', tentativa: 1, estilo: { estilo: 'curto e informal', exemplos: TEXTOS1 } }]);
+    expect(await t.get('Ana')).toMatchObject({ estado: 'cobranca', cobrancaOrigem: 'ia_estilo' });
+  });
+
+  it('modo IA: IA fora do ar, texto recusado ou cópia literal do dono → texto do dono ("seu texto"); nunca modelo genérico', async () => {
+    const fora = await montar({ Ana: 'sem_resposta' }, { iaOff: true });
+    await fora.motor.verificar({ ...BASE, modo: 'ia_estilo' });
+    expect(await fora.get('Ana')).toMatchObject({ cobrancaOrigem: 'meus_textos' });
+    expect(doDono1).toContain((await fora.get('Ana')).cobrancaModelo);
+
+    for (const ruim of ['Oi, Ana! Nosso sal é natural.', 'Oi, Ana! R$ 20 o saco.', `Oi, Ana! ${'muito '.repeat(60)}`]) {
+      const t = await montar({ Ana: 'sem_resposta' });
+      const motor = new MotorFollowup({ db: t.db, pedir: async (p) => (p.tipo === 'lerConversa' ? { ok: true, mensagens: [eu(dispara('Ana'))] } : { ok: true }), ia: { classificarRespostas: async () => ({ ok: true, valor: [] }), escreverCobranca: async () => ({ ok: true, valor: ruim }) }, criarLembrete: async () => null, agora: t.agora, aleatorio: () => 0.5, esperar: async () => undefined });
+      await motor.verificar({ ...BASE, modo: 'ia_estilo' });
+      const f = await t.get('Ana');
+      expect(f.cobrancaOrigem, ruim).toBe('meus_textos');
+      expect(doDono1).toContain(f.cobrancaModelo);
+    }
+
+    const copia = await montar({ Ana: 'sem_resposta' });
+    const m = new MotorFollowup({ db: copia.db, pedir: async (p) => (p.tipo === 'lerConversa' ? { ok: true, mensagens: [eu(dispara('Ana'))] } : { ok: true }), ia: { classificarRespostas: async () => ({ ok: true, valor: [] }), escreverCobranca: async () => ({ ok: true, valor: 'Ana, tudo certo por aí? Fico no aguardo.' }) }, criarLembrete: async () => null, agora: copia.agora, aleatorio: () => 0.5, esperar: async () => undefined });
+    await m.verificar({ ...BASE, modo: 'ia_estilo' });
+    expect(await copia.get('Ana')).toMatchObject({ cobrancaOrigem: 'meus_textos' }); // é palavra por palavra um texto do dono
+  });
+
+  it('contato sem primeiro nome não é cobrado com {nome}: vai para revisar', async () => {
+    const t = await montar({ Ana: 'sem_resposta' });
+    await t.motor.sincronizar();
+    const f = await t.get('Ana');
+    await (await import('../src/shared/banco')).salvarFollowups(t.db, [{ ...f, primeiroNome: '' }]);
+    await t.motor.verificar(BASE, { forcar: true });
+    expect(await t.get('Ana')).toMatchObject({ estado: 'revisar' });
+  });
+
+  it('sem texto da 1ª cobrança nada é montado nem enviado (mesmo que alguém force a config)', async () => {
+    const t = await montar({ Ana: 'sem_resposta' });
+    await t.motor.verificar(BASE);
+    expect(await t.motor.montarCampanhaDeCobranca({ ...BASE, textos1: [] })).toBeNull();
+  });
+
+  describe('mudou o texto/modo/estilo com gente já na fila: o texto é refeito antes do envio', () => {
+    it('salvarConfig refaz a fila agora; cada item guarda a assinatura da config nova', async () => {
+      const t = await montar({ Ana: 'sem_resposta', Bia: 'sem_resposta' });
+      await t.motor.salvarConfig(BASE);
+      await t.motor.verificar(BASE);
+      const antes = await t.get('Ana');
+      expect(antes.cobrancaAssinatura).toBe(assinaturaTextos(BASE));
+      const nova = await t.motor.salvarConfig({ ...BASE, textos1: ['Bom dia, {nome}! Tudo certo por aí?'], textos2: [] });
+      expect(nova.textos1).toEqual(['Bom dia, {nome}! Tudo certo por aí?']);
+      for (const nome of ['Ana', 'Bia']) {
+        const f = await t.get(nome);
+        expect(f.estado).toBe('cobranca');
+        expect(f.cobrancaModelo).toBe('Bom dia, {primeiroNome}! Tudo certo por aí?');
+        expect(f.cobrancaAssinatura).toBe(assinaturaTextos(nova));
+      }
+    });
+
+    it('trocar de "meus textos" para "IA no estilo" refaz com a IA; voltar refaz sem IA', async () => {
+      const t = await montar({ Ana: 'sem_resposta' });
+      await t.motor.salvarConfig(BASE);
+      await t.motor.verificar(BASE);
+      expect(t.chamadasCobranca).toHaveLength(0);
+      await t.motor.salvarConfig({ ...BASE, modo: 'ia_estilo', estilo: 'formal' });
+      expect(t.chamadasCobranca).toHaveLength(1);
+      expect(await t.get('Ana')).toMatchObject({ cobrancaOrigem: 'ia_estilo' });
+      await t.motor.salvarConfig({ ...BASE, modo: 'meus_textos' });
+      expect(t.chamadasCobranca).toHaveLength(1);
+      expect(await t.get('Ana')).toMatchObject({ cobrancaOrigem: 'meus_textos' });
+    });
+
+    it('mudar só o estilo (modo IA) refaz; mudar o estilo no modo "meus textos" não mexe na fila', async () => {
+      const t = await montar({ Ana: 'sem_resposta' });
+      await t.motor.salvarConfig({ ...BASE, modo: 'ia_estilo', estilo: 'a' });
+      await t.motor.verificar({ ...BASE, modo: 'ia_estilo', estilo: 'a' });
+      const n = t.chamadasCobranca.length;
+      await t.motor.salvarConfig({ ...BASE, modo: 'ia_estilo', estilo: 'b' });
+      expect(t.chamadasCobranca.length).toBe(n + 1);
+      expect(t.chamadasCobranca.at(-1)?.estilo?.estilo).toBe('b');
+
+      const u = await montar({ Ana: 'sem_resposta' });
+      await u.motor.salvarConfig({ ...BASE, estilo: 'a' });
+      await u.motor.verificar({ ...BASE, estilo: 'a' });
+      const antes = await u.get('Ana');
+      await u.motor.salvarConfig({ ...BASE, estilo: 'b' });
+      expect(await u.get('Ana')).toEqual(antes);
+    });
+
+    it('texto preparado pela 0.7.54 (sem assinatura, origem "modelo") nunca é enviado: é refeito ao montar a campanha', async () => {
+      const t = await montar({ Ana: 'sem_resposta' });
+      await t.motor.verificar(BASE);
+      const f = await t.get('Ana');
+      await (await import('../src/shared/banco')).salvarFollowups(t.db, [{ ...f, cobrancaModelo: 'Oi, {primeiroNome}! Passando só para saber se você viu a minha mensagem. Se precisar de sal, é só me chamar. 😊', cobrancaOrigem: 'modelo', cobrancaAssinatura: null }]);
+      await t.cobrar(BASE);
+      expect(t.colados).toHaveLength(1);
+      expect(t.colados[0].texto).not.toMatch(/Passando só para saber/);
+      expect(TEXTOS1.map((x) => x.replace('{nome}', 'Ana'))).toContain(t.colados[0].texto);
+    });
+
+    it('campanha de cobrança já montada (pendente) recebe o texto novo; quem saiu da fila é pulado', async () => {
+      const t = await montar({ Ana: 'sem_resposta', Bia: 'sem_resposta' });
+      await t.motor.salvarConfig(BASE);
+      await t.motor.verificar(BASE);
+      const c1 = (await t.motor.montarCampanhaDeCobranca(BASE)) as Campanha;
+      expect(c1.itens.map((i) => i.modelo).every((m) => doDono1.includes(m))).toBe(true);
+      const novoTexto = ['Bom dia, {nome}! Tudo certo por aí?'];
+      const cfg = await t.motor.salvarConfig({ ...BASE, textos1: novoTexto });
+      const c2 = (await t.motor.montarCampanhaDeCobranca(cfg)) as Campanha;
+      expect(c2.id).toBe(c1.id); // mesma campanha, texto atualizado
+      expect(c2.itens.every((i) => i.modelo === 'Bom dia, {primeiroNome}! Tudo certo por aí?')).toBe(true);
+      expect((await listarCampanhas(t.db)).find((c) => c.id === c1.id)?.itens.every((i) => i.modelo.startsWith('Bom dia'))).toBe(true);
+    });
+
+    it('apagou todos os textos: a fila volta a "monitorando" e a cobrança desliga', async () => {
+      const t = await montar({ Ana: 'sem_resposta' });
+      await t.motor.salvarConfig(BASE);
+      await t.motor.verificar(BASE);
+      const nova = await t.motor.salvarConfig({ ...BASE, textos1: [], textos2: [] });
+      expect(nova).toMatchObject({ ligado: false, desligadaSemTexto: true });
+      expect(await t.get('Ana')).toMatchObject({ estado: 'monitorando', cobrancaModelo: null });
+      expect(await t.motor.montarCampanhaDeCobranca(nova)).toBeNull();
+    });
+  });
+
+  describe('persistência e migração (IndexedDB followupConfig)', () => {
+    it('salva e lê textos, modo e estilo', async () => {
+      const t = await montar({ Ana: 'sem_resposta' });
+      await t.motor.salvarConfig({ ...BASE, modo: 'ia_estilo', estilo: '  curto   e informal ' });
+      expect(await lerConfigFollowup(t.db)).toMatchObject({ modo: 'ia_estilo', estilo: 'curto e informal', textos1: TEXTOS1, textos2: TEXTOS2, ligado: true });
+    });
+
+    it('config da 0.7.54 (sem os campos novos): modo "meus textos" vazio e, se estava ligada, fica DESLIGADA com aviso', async () => {
+      const t = await montar({ Ana: 'sem_resposta' });
+      await t.db.put('followupConfig', { id: 'followup', valor: { ligado: true, dias: 5, pausado: false, confirmouRisco: true } as unknown as ConfigFollowup });
+      const c = await lerConfigFollowup(t.db);
+      expect(c).toMatchObject({ modo: 'meus_textos', textos1: [], textos2: [], estilo: '', ligado: false, desligadaSemTexto: true, dias: 5, confirmouRisco: true });
+      // desligada na leitura: o ciclo não prepara nem envia nada
+      await t.motor.verificar(c);
+      expect(await t.motor.montarCampanhaDeCobranca(c)).toBeNull();
+    });
+
+    it('config antiga que já estava desligada não ganha aviso', async () => {
+      const t = await montar({ Ana: 'sem_resposta' });
+      await t.db.put('followupConfig', { id: 'followup', valor: { ligado: false, dias: 3, pausado: false, confirmouRisco: false } as unknown as ConfigFollowup });
+      expect(await lerConfigFollowup(t.db)).toMatchObject({ ligado: false, desligadaSemTexto: false });
+    });
   });
 });
