@@ -7,10 +7,18 @@ import {
   ContadorDiario,
   IaIndisponivel,
   LIMITE_DIARIO_CLASSIFICACOES,
+  LIMITE_DIARIO_CONFERENCIAS,
+  LIMITE_DIARIO_PEDIDOS,
   LIMITE_DIARIO_COBRANCAS,
   LIMITE_DIARIO_REATIVACOES,
   avaliarReativacao,
   classificarConversas,
+  conferirInputSchema,
+  conferirPedido,
+  fallbackConferencia,
+  interpretarPedido,
+  pedidoInputSchema,
+  type ConferenciaPedido,
   classificarInputSchema,
   cobrancaInputSchema,
   fallbackReativacao,
@@ -24,6 +32,8 @@ import {
 const classificacoesDoDia = new ContadorDiario(LIMITE_DIARIO_CLASSIFICACOES);
 const cobrancasDoDia = new ContadorDiario(LIMITE_DIARIO_COBRANCAS);
 const reativacoesDoDia = new ContadorDiario(LIMITE_DIARIO_REATIVACOES);
+const pedidosDoDia = new ContadorDiario(LIMITE_DIARIO_PEDIDOS);
+const conferenciasDoDia = new ContadorDiario(LIMITE_DIARIO_CONFERENCIAS);
 
 export type ZapIaFalha = { ok: false; codigo: 'ia_indisponivel' | 'limite_diario' | 'texto_invalido'; mensagem: string };
 
@@ -46,7 +56,7 @@ export const zapIaRouter = router({
     const fora = input.conversas.slice(concedidas);
     let itens: Classificacao[];
     try {
-      itens = await classificarConversas(dentro);
+      itens = await classificarConversas(dentro, input.orientacoes);
     } catch (e) {
       if (e instanceof IaIndisponivel) return { ok: false, codigo: 'ia_indisponivel', mensagem: MSG_IA_FORA } satisfies ZapIaFalha;
       // Falha inesperada: nunca devolve conteúdo na mensagem; o lote todo vai para "revisar".
@@ -91,13 +101,53 @@ export const zapIaRouter = router({
     const fora = input.conversas.slice(concedidas);
     let itens: AvaliacaoReativacao[];
     try {
-      itens = await avaliarReativacao(dentro, hoje);
+      itens = await avaliarReativacao(dentro, hoje, input.orientacoes);
     } catch (e) {
       if (e instanceof IaIndisponivel) return { ok: false, codigo: 'ia_indisponivel', mensagem: MSG_IA_FORA } satisfies ZapIaFalha;
       itens = dentro.map((c) => fallbackReativacao(c.ref, 'erro ao processar com a IA'));
     }
     const semCota = fora.map((c) => fallbackReativacao(c.ref, 'limite diário da IA atingido'));
     return { ok: true as const, itens: [...itens, ...semCota], restantesHoje: reativacoesDoDia.restante(ctx.user.id, hoje) };
+  }),
+
+  /**
+   * "Pedir à IA" passo 1 (Vita Zap 0.7.57): o pedido do dono em português vira um plano de busca para ele confirmar/editar.
+   * Entrada: {texto (3 a 600), orientacoes?}. Saída: {ok:true, plano:{periodoDias 1-60, quemFalouPorUltimo, respondeu, assunto,
+   * termosNomeContato?, perguntas?}, restantesHoje} ou {ok:false, codigo, mensagem}. Não lê conversa nenhuma e não envia nada.
+   */
+  interpretarPedido: protectedProcedure.input(pedidoInputSchema).mutation(async ({ ctx, input }) => {
+    const hoje = spDateStr();
+    if (pedidosDoDia.consumir(ctx.user.id, hoje, 1) === 0) return { ok: false, codigo: 'limite_diario', mensagem: MSG_LIMITE } satisfies ZapIaFalha;
+    try {
+      const plano = await interpretarPedido(input.texto, hoje, input.orientacoes);
+      return { ok: true as const, plano, restantesHoje: pedidosDoDia.restante(ctx.user.id, hoje) };
+    } catch (e) {
+      if (e instanceof IaIndisponivel) return { ok: false, codigo: 'ia_indisponivel', mensagem: MSG_IA_FORA } satisfies ZapIaFalha;
+      return { ok: false, codigo: 'texto_invalido', mensagem: 'A IA não conseguiu entender o pedido. Escreva de outro jeito, com mais detalhe.' } satisfies ZapIaFalha;
+    }
+  }),
+
+  /**
+   * "Pedir à IA" passo 2: para cada conversa lida (até 20), diz se corresponde ao plano.
+   * Entrada: {assunto, quemFalouPorUltimo?, respondeu?, conversas:[{ref, primeiroNome, mensagens[]}], orientacoes?}.
+   * Saída: {ok:true, itens:[{ref, corresponde, motivo, confianca, pediuParaSair?, revisar?}], restantesHoje}.
+   * Mesma LGPD de classificarConversas. Item sem resposta válida da IA volta como revisar (falha fechada).
+   */
+  conferirPedido: protectedProcedure.input(conferirInputSchema).mutation(async ({ ctx, input }) => {
+    const hoje = spDateStr();
+    const concedidas = conferenciasDoDia.consumir(ctx.user.id, hoje, input.conversas.length);
+    if (concedidas === 0) return { ok: false, codigo: 'limite_diario', mensagem: MSG_LIMITE } satisfies ZapIaFalha;
+    const dentro = input.conversas.slice(0, concedidas);
+    const fora = input.conversas.slice(concedidas);
+    let itens: ConferenciaPedido[];
+    try {
+      itens = await conferirPedido({ ...input, conversas: dentro }, input.orientacoes);
+    } catch (e) {
+      if (e instanceof IaIndisponivel) return { ok: false, codigo: 'ia_indisponivel', mensagem: MSG_IA_FORA } satisfies ZapIaFalha;
+      itens = dentro.map((c) => fallbackConferencia(c.ref, 'erro ao processar com a IA'));
+    }
+    const semCota = fora.map((c) => fallbackConferencia(c.ref, 'limite diário da IA atingido'));
+    return { ok: true as const, itens: [...itens, ...semCota], restantesHoje: conferenciasDoDia.restante(ctx.user.id, hoje) };
   }),
 });
 
