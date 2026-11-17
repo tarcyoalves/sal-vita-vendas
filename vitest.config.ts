@@ -13,6 +13,8 @@ export default mergeConfig(
   defineConfig({
     test: {
       exclude: [...configDefaults.exclude, 'extensoes/**'],
+      // limpa as variáveis de IA do ambiente (ver tests/setup-env.ts)
+      setupFiles: ['./tests/setup-env.ts'],
     },
   }),
 );
