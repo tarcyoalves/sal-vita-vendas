@@ -2,7 +2,8 @@
 
 - **Agente:** claude
 - **Início:** 2026-11-17
-- **Status:** em andamento
+- **Fim:** 2026-11-17
+- **Status:** parcial (servidor em `main`; extensão 0.7.57 só na branch, não publicada no site)
 - **Branch:** `claude/magical-fermi-wrdxjy` (extensão, NÃO vai para `main`); só os commits do servidor vão para `main`
 
 ## Objetivo
@@ -21,3 +22,19 @@ regras fixas do dono (até 1500 caracteres) enviadas em todas as chamadas de IA,
 - Docs: `docs/PLANO-CAMPANHAS-WHATSAPP.md`, `extensoes/vita-zap/README.md`.
 
 **Não vou tocar em:** `coordenacao/ativo/2026-10-15-*` (análise de crédito), nenhum outro arquivo do CRM.
+
+## Resultado
+Servidor (main): `zapIa.interpretarPedido`, `zapIa.conferirPedido` e `orientacoes` opcional (<=1500) em todas as chamadas de IA. Extensão 0.7.57: aba "Pedir à IA" (plano editável, leitura só-leitura, lista de revisão, ações, prévia obrigatória, pedidos salvos) e "Orientações para a IA".
+
+## Commits
+main: claim `ccc6abf`, feat `063ca79`. Branch `claude/magical-fermi-wrdxjy`: o commit do servidor + commit da extensão 0.7.57.
+
+## Verificado
+Main (worktree, env de IA simulado): check 0 erros, 125 arquivos / 1791 testes. Extensão: tsc, build ok, `npm test` 1220 ok + só `publicacao.test.ts` (pré-existente); Chromium real 17/17 (`run-pedido.cjs`), zip local 0.7.57.
+
+## Não verificado
+IA real, WhatsApp real, deploy do servidor, `npm run publicar` NAO feito.
+
+## Armadilhas
+- `aplicarFiltros` exclui quem recebeu campanha há <14 dias: inadequado para BUSCAR (esses são justamente os alvos), por isso candidatas têm regra própria; a política de 14 dias fica no Executor.
+- Orientações ficam em `chrome.storage` (vz.ia.*): trocar de usuário do CRM no mesmo Chrome não as apaga.
