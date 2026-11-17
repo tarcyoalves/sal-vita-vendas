@@ -161,6 +161,8 @@ export interface Followup {
   sugestao?: string;
   lembreteDias?: number;
   lembreteCriadoEm?: string;
+  /** 'reativacao': o item veio da reativação por inatividade (v0.7.56), não de um disparo: nunca é cobrado nem volta a 'monitorando'. */
+  origem?: 'reativacao';
   atualizadoEm: string;
 }
 
@@ -189,7 +191,8 @@ export function novosFollowups(campanhas: ReadonlyArray<Campanha>, envios: Reado
   const horaDoEnvio = new Map(envios.map((e) => [e.id, e.enviadoEm]));
   const novos: Followup[] = [];
   for (const c of campanhas) {
-    if (c.tipo === 'followup') continue;
+    // Campanhas de cobrança e de reativação têm o próprio acompanhamento: não geram follow-up de cobrança.
+    if (c.tipo != null) continue;
     for (const item of c.itens) {
       if (item.status !== 'enviado') continue;
       const id = `${c.id}:${item.chave}`;

@@ -31,6 +31,7 @@ import {
 } from '../shared/banco';
 import type { EventoConteudo, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
 import { contarEnviosHoje, podeAbrirProximo, sortearIntervaloSeg } from '../shared/politica';
+import type { ResultadoTrava } from '../shared/trava-agendamento';
 
 export interface DependenciasExecutor {
   db: Banco;
@@ -40,7 +41,17 @@ export interface DependenciasExecutor {
   /** Agenda `fn` para daqui a `ms`; devolve a função que cancela. */
   agendar: (fn: () => void, ms: number) => () => void;
   obterEnvioAutomatico?: () => boolean;
+  /**
+   * Trava de agendamento (v0.7.56): conferida IMEDIATAMENTE antes de abrir cada contato, em qualquer campanha (comum,
+   * cobrança, reativação). `agendado` → o contato é pulado (o agendamento prevalece). `indisponivel` (CRM fora do ar, sem
+   * login, lista incompleta) → falha fechada: no envio automático a campanha PAUSA sem enviar; no manual só avisa.
+   * Sem esta dependência (testes antigos) nada é conferido.
+   */
+  trava?: (item: ItemCampanha, campanha: Campanha) => Promise<ResultadoTrava>;
 }
+
+/** Pausa por não conseguir conferir os agendamentos: o ciclo do follow-up/reativação tenta de novo sozinho (ver pausaBenigna). */
+export const PREFIXO_PAUSA_CRM = 'CRM indisponível';
 
 export type FaseExecucao = 'parada' | 'abrindo' | 'aguardando_envio' | 'intervalo' | 'concluida';
 
@@ -54,6 +65,8 @@ export interface EstadoExecutor {
   enviosHoje: number;
   tetoDiario: number;
   envioAutomatico: boolean;
+  /** Envio manual: não consegui conferir os agendamentos do CRM (avisa; quem envia é você). */
+  avisoTrava: string | null;
 }
 
 export type AcaoManual = 'pulado' | 'nao_cliente' | 'problema' | 'nao_enviar';
@@ -80,6 +93,7 @@ export class Executor {
       enviosHoje: 0,
       tetoDiario: 0,
       envioAutomatico: false,
+      avisoTrava: null,
     };
   }
 
@@ -380,7 +394,7 @@ export class Executor {
     const ultimo = ultimoEnvioPorChave(envios);
     // Campanha comum: piso fixo de 14 dias entre campanhas. Follow-up: o disparo original JÁ é recente por definição,
     // então vale o intervalo mínimo entre contatos escolhido para o follow-up (X dias, gravado em filtros).
-    const limiteSemRepetir = c.tipo === 'followup' ? Math.max(1, c.filtros.excluirContatadosHaDias) : diasSemRepetir(c.filtros);
+    const limiteSemRepetir = c.tipo != null ? Math.max(1, c.filtros.excluirContatadosHaDias) : diasSemRepetir(c.filtros);
     const idsEnviados = new Set(envios.map((e) => e.id));
     let item = proximoPendente(c);
     while (item) {
@@ -425,8 +439,29 @@ export class Executor {
       return;
     }
 
-    this.publicar({ fase: 'abrindo', itemAtual: item, liberaEm: null, mensagem: null });
     const envioAuto = this.deps.obterEnvioAutomatico ? this.deps.obterEnvioAutomatico() : this.envioAutomatico;
+    // Trava de agendamento, ANTES de abrir o contato (e de novo a cada passo: depois de esperar o intervalo o CRM pode ter mudado).
+    if (this.deps.trava) {
+      let t: ResultadoTrava;
+      try {
+        t = await this.deps.trava(item, c);
+      } catch (e) {
+        t = { tipo: 'indisponivel', motivo: e instanceof Error ? e.message : String(e) };
+      }
+      if (!this.ativo) return;
+      if (t.tipo === 'agendado') {
+        if (await this.marcarComo(item, 'pulado', t.motivo)) await this.passo();
+        return;
+      }
+      if (t.tipo === 'indisponivel') {
+        if (envioAuto) {
+          await this.pausar(`${PREFIXO_PAUSA_CRM}: não envio sem conferir os agendamentos (${t.motivo})`);
+          return;
+        }
+        this.publicar({ avisoTrava: `Não consegui conferir os agendamentos do CRM (${t.motivo}). Confira antes de enviar.` });
+      } else if (this.estado.avisoTrava !== null) this.publicar({ avisoTrava: null });
+    }
+    this.publicar({ fase: 'abrindo', itemAtual: item, liberaEm: null, mensagem: null });
     const texto = textoDoItem(item);
     // Marcador "em voo": ANTES de colar. A foto dos ids chega na resposta (a conversa só abre lá dentro).
     const marcador: EmVoo = { chave: item.chave, nome: item.nome, texto, idsAntes: null, desde: agora.toISOString() };

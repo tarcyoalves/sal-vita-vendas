@@ -24,6 +24,7 @@ import type { MensagemLida, PedidoConteudo, RespostaConteudo } from '../src/shar
 import { CONFIG_PADRAO } from '../src/shared/politica';
 import type { ConversaParaIa, ResultadoIa } from '../src/shared/servico-ia';
 import { Executor } from '../src/sidepanel/executor';
+import type { ResultadoTrava } from '../src/shared/trava-agendamento';
 import { MotorFollowup } from '../src/sidepanel/followup-motor';
 
 let n = 0;
@@ -40,7 +41,7 @@ const cli = (texto: string): MensagemLida => ({ de: 'cliente', texto, quando: nu
 
 type RespostaDaConversa = MensagemLida[] | { erro: string; codigo: Extract<RespostaConteudo, { ok: false }>['codigo'] };
 
-async function montar(contatos: Record<string, RespostaDaConversa | 'sem_resposta'>, opcoes: { iaClassifica?: (c: ConversaParaIa) => ClassificacaoIa | null; iaOff?: boolean; cobrancaIa?: boolean } = {}) {
+async function montar(contatos: Record<string, RespostaDaConversa | 'sem_resposta'>, opcoes: { iaClassifica?: (c: ConversaParaIa) => ClassificacaoIa | null; iaOff?: boolean; cobrancaIa?: boolean; trava?: (nome: string) => ResultadoTrava } = {}) {
   const db = await abrirBanco(`followup-${Date.now()}-${(n += 1)}`);
   await salvarConfig(db, { ...CONFIG_PADRAO, numeroComMaisDe30Dias: true });
   let agora = new Date('2026-11-17T13:00:00.000Z'); // terça 10h em Fortaleza
@@ -124,6 +125,7 @@ async function montar(contatos: Record<string, RespostaDaConversa | 'sem_respost
     agora: () => agora,
     aleatorio: () => 0.5,
     esperar: async () => undefined,
+    travar: opcoes.trava ? async (cs) => cs.map((c) => (opcoes.trava as (n: string) => ResultadoTrava)(c.nome)) : undefined,
   });
 
   const criarExecutor = (campanha: Campanha) =>
@@ -813,5 +815,73 @@ describe('a mensagem é do dono (0.7.55): textos dele, IA no estilo dele, nunca 
       await t.db.put('followupConfig', { id: 'followup', valor: { ligado: false, dias: 3, pausado: false, confirmouRisco: false } as unknown as ConfigFollowup });
       expect(await lerConfigFollowup(t.db)).toMatchObject({ ligado: false, desligadaSemTexto: false });
     });
+  });
+});
+
+
+describe('TRAVA DE AGENDAMENTO na cobrança (0.7.56): o agendamento prevalece', () => {
+  const agendado = (): ResultadoTrava => ({ tipo: 'agendado', ate: new Date('2027-01-16T12:00:00Z').getTime(), taskId: 1, titulo: 'x', como: 'telefone', motivo: 'agendado para 16/01 (o agendamento prevalece)' });
+
+  it('quem não respondeu MAS tem agendamento futuro no CRM NÃO é cobrado: vai para "Resolvido" com o motivo', async () => {
+    const t = await montar({ Ana: 'sem_resposta', Bia: 'sem_resposta' }, { trava: (nome) => (nome === 'Ana' ? agendado() : { tipo: 'livre' }) });
+    const r = await t.motor.verificar(CONFIG);
+    expect(r).toMatchObject({ lidas: 2, cobrancas: 1, resolvidos: 1 });
+    const ana = await t.get('Ana');
+    expect(ana.estado).toBe('resolvido');
+    expect(ana.motivo).toBe('agendado para 16/01 (o agendamento prevalece)');
+    expect((await t.get('Bia')).estado).toBe('cobranca');
+    await t.cobrar();
+    expect(t.colados.map((c) => c.nome)).toEqual(['Bia']);
+  });
+
+  it('CRM indisponível: ninguém é cobrado (falha fechada), o aviso aparece e a leitura se repete na próxima rodada', async () => {
+    const t = await montar({ Ana: 'sem_resposta' }, { trava: () => ({ tipo: 'indisponivel', motivo: 'CRM indisponível (sem rede)' }) });
+    const r = await t.motor.verificar(CONFIG);
+    expect(r.cobrancas).toBe(0);
+    expect(r.aviso).toMatch(/nada foi cobrado/);
+    const ana = await t.get('Ana');
+    expect(ana.estado).toBe('monitorando');
+    expect(ana.verificadoEm).toBeNull(); // lê de novo já na próxima rodada
+    expect(await t.motor.montarCampanhaDeCobranca(CONFIG)).toBeNull();
+    expect(t.colados).toHaveLength(0);
+  });
+
+  it('a trava só barra a COBRANÇA: quem respondeu continua indo para a IA e para "Precisa de você"', async () => {
+    const t = await montar({ Ana: [eu(dispara('Ana')), cli('quanto custa?')] }, { trava: agendado, iaClassifica: (c) => ({ ref: c.ref, classe: 'pediu_preco', precisaAtencao: true, resumo: 'Pediu preço', sugestao: 'Oi Ana, já te passo o valor.' }) });
+    await t.motor.verificar(CONFIG);
+    expect((await t.get('Ana')).estado).toBe('precisa');
+  });
+
+  it('o Executor também confere antes do clique: agendamento criado depois de a cobrança ser preparada → pulado', async () => {
+    const t = await montar({ Ana: 'sem_resposta' });
+    await t.motor.verificar(CONFIG);
+    const campanha = (await t.motor.montarCampanhaDeCobranca(CONFIG)) as Campanha;
+    const ex = new Executor(
+      { db: t.db, pedir: async (p) => { if (p.tipo === 'abrirEColar') t.colados.push({ nome: p.nome, texto: p.texto, envioAutomatico: p.envioAutomatico }); return { ok: true, idsAntes: [] }; }, agora: t.agora, aleatorio: () => 0.5, agendar: () => () => undefined, obterEnvioAutomatico: () => true, trava: async () => agendado() },
+      campanha,
+    );
+    await ex.iniciar();
+    await t.motor.aplicarCampanha(ex.atual.campanha);
+    expect(t.colados).toHaveLength(0);
+    expect(ex.atual.campanha.itens[0]).toMatchObject({ status: 'pulado', motivo: expect.stringMatching(/^agendado para/) });
+  });
+
+  it('item da reativação no Follow-up nunca volta a "monitorando" (seria cobrado)', async () => {
+    const t = await montar({ Ana: 'sem_resposta' });
+    await salvarFollowups(t.db, [{ id: 'reat:zeca', campanhaId: 'reativacao', chave: 'zeca', nome: 'Zeca', primeiroNome: 'Zeca', mensagemCampanha: '', enviadoEm: t.agora().toISOString(), estado: 'revisar', motivo: 'leia', verificadoEm: null, cobrancas: [], cobrancaModelo: null, cobrancaOrigem: null, origem: 'reativacao', atualizadoEm: t.agora().toISOString() }]);
+    await t.motor.voltarAMonitorar('reat:zeca');
+    expect((await listarFollowups(t.db)).find((f) => f.id === 'reat:zeca')?.estado).toBe('revisar');
+  });
+
+  it('campanhas de reativação não geram acompanhamento de cobrança (o follow-up só acompanha disparos comuns)', async () => {
+    const t = await montar({ Ana: 'sem_resposta' });
+    const existentes = await listarFollowups(t.db);
+    const reativ: Campanha = { id: 'r1', tipo: 'reativacao', nome: 'R', criadaEm: t.agora().toISOString(), aprovadaEm: t.agora().toISOString(), termoBusca: '', filtros: FILTROS_PADRAO, modelos: [], status: 'concluida', motivoPausa: null, itens: [{ chave: 'zeca', nome: 'Zeca', primeiroNome: 'Zeca', modelo: 'Oi {primeiroNome}, tudo bem?', status: 'enviado', motivo: null, atualizadoEm: t.agora().toISOString() }], problemasSeguidos: 0, ultimoEnvioEm: null, intervaloAtualSeg: null };
+    await salvarCampanha(t.db, reativ);
+    await registrarEnvio(t.db, { campanhaId: 'r1', chave: 'zeca', nome: 'Zeca', enviadoEm: t.agora().toISOString(), textoConfere: true });
+    const todos = await t.motor.sincronizar();
+    expect(todos.filter((f) => f.campanhaId === 'r1')).toEqual([]);
+    expect(todos.some((f) => f.chave === 'zeca')).toBe(false);
+    expect(existentes).toBeDefined();
   });
 });

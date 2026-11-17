@@ -9,6 +9,9 @@ import type { InscricaoLead, ModeloEmail, ResultadoInscricao, SequenciaEmail } f
 import type { RefContato } from './crm-tipos';
 import type { ClassificacaoIa } from './followup';
 import type { ConversaParaIa, EstiloDoDono, ResultadoIa } from './servico-ia';
+import type { AvaliacaoReativacao, ConversaReativacaoParaIa } from './reativacao';
+import type { PedidoRegistroReativacao, ResultadoRegistroReativacao } from './servico-agendamentos';
+import type { RefTrava, ResultadoTrava } from './trava-agendamento';
 import type { EmailDoLead, EnvioApresentacao, PedidoApresentacao, ResultadoEmail } from './servico-email';
 
 /** Chaves e valores guardados pela integração (só o RepositorioLocal toca em chrome.storage). */
@@ -127,14 +130,22 @@ export interface LeadsCRM {
 
   // IA do follow-up (zapIa.* no CRM). Só lê texto e devolve texto: nunca envia nada. Ver servico-ia.ts.
   classificarRespostas(conversas: ConversaParaIa[]): Promise<ResultadoIa<ClassificacaoIa[]>>;
-  escreverCobranca(primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2, estilo?: EstiloDoDono): Promise<ResultadoIa<string>>;
+  escreverCobranca(primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2 | 3, estilo?: EstiloDoDono, contexto?: 'reativacao'): Promise<ResultadoIa<string>>;
+
+  // Reativação por inatividade e trava de agendamento (v0.7.56). Nada aqui envia mensagem de WhatsApp.
+  /** A IA lê a ÚLTIMA conversa de quem está parado e decide o que fazer (zapIa.avaliarReativacao). */
+  avaliarReativacao(conversas: ConversaReativacaoParaIa[]): Promise<ResultadoIa<AvaliacaoReativacao[]>>;
+  /** Um resultado por contato: livre | agendado (data) | indisponivel (falha fechada). Cache de 5 min; `forcar` consulta o CRM. */
+  verificarAgendamentos(refs: RefTrava[], opcoes?: { forcar?: boolean }): Promise<ResultadoTrava[]>;
+  /** Grava o resumo da última conversa (e o agendamento) no lead do CRM, sem contar como contato. */
+  registrarReativacao(pedido: PedidoRegistroReativacao): Promise<ResultadoRegistroReativacao>;
 }
 
 export const METODOS_LEADS = [
   'conta', 'definirUrl', 'entrar', 'conectarPelaSessao', 'verificarSessao', 'sair', 'leadDoContato', 'procurarLeads', 'vincularLead', 'desvincularLead',
   'criarLead', 'registrarContatoNoLead', 'reagendar', 'alterarEtiquetas', 'catalogoTags', 'marcarConvertido', 'registrarContatoNaTask', 'acompanhando', 'reagendarTask', 'sincronizarLembretes', 'reenviarFila',
   'emailDoLead', 'salvarEmailDoLead', 'modelosEmail', 'sequenciasEmail', 'inscricoesDoLead', 'mandarApresentacao', 'inscreverNaSequencia',
-  'classificarRespostas', 'escreverCobranca',
+  'classificarRespostas', 'escreverCobranca', 'avaliarReativacao', 'verificarAgendamentos', 'registrarReativacao',
 ] as const satisfies ReadonlyArray<keyof LeadsCRM>;
 
 export function ehLeadsCRM(r: unknown): r is LeadsCRM {

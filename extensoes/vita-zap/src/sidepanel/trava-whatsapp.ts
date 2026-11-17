@@ -2,7 +2,7 @@
 // content script. O content script já recusa pedidos simultâneos ('ocupado'), mas aqui o painel evita nem tentar:
 // quem está rodando segura a trava; o outro mostra o motivo em vez de disputar a conversa aberta.
 
-export type DonoDaTrava = 'campanha' | 'followup' | 'manual';
+export type DonoDaTrava = 'campanha' | 'followup' | 'reativacao' | 'manual';
 
 let dono: DonoDaTrava | null = null;
 const ouvintes = new Set<() => void>();
@@ -39,5 +39,6 @@ export function assinarTrava(fn: () => void): () => void {
 export const ROTULO_DONO: Record<DonoDaTrava, string> = {
   campanha: 'uma campanha está enviando (aba 3. Envio)',
   followup: 'o follow-up está trabalhando',
+  reativacao: 'a reativação está trabalhando',
   manual: 'uma resposta está sendo colada na conversa',
 };

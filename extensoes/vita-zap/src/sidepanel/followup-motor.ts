@@ -58,6 +58,7 @@ import type { LeadsCRM } from '../shared/leads';
 import type { CodigoErro, MensagemLida, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
 import { contarEnviosHoje } from '../shared/politica';
 import type { ConversaParaIa } from '../shared/servico-ia';
+import type { ResultadoTrava } from '../shared/trava-agendamento';
 
 /** Erros que indicam problema GERAL (não do contato): a rodada para sem marcar ninguém. */
 const ERROS_GERAIS: ReadonlySet<CodigoErro> = new Set<CodigoErro>(['seletor', 'nao_pronto', 'ocupado', 'interno']);
@@ -74,6 +75,12 @@ export interface DependenciasMotor {
   agora: () => Date;
   aleatorio: () => number;
   esperar: (ms: number) => Promise<void>;
+  /**
+   * Trava de agendamento (v0.7.56): um resultado por contato, na ordem. Quem tem agendamento futuro no CRM NÃO é cobrado
+   * (o agendamento prevalece); CRM indisponível = não cobra agora (falha fechada) e tenta de novo na próxima rodada.
+   * Ausente (testes antigos) = nada é conferido.
+   */
+  travar?: (contatos: ReadonlyArray<{ nome: string; chave: string }>) => Promise<ResultadoTrava[]>;
 }
 
 export interface ResumoRodada {
@@ -185,6 +192,8 @@ export class MotorFollowup {
 
     const paraIa: Array<{ f: Followup; mensagens: MensagemLida[] }> = [];
     const paraCobrar: Followup[] = [];
+    // Uma consulta ao CRM para a rodada toda (cache de 5 min no serviço); só vale para quem for cobrado.
+    const travas = this.d.travar ? await this.d.travar(devidos.map((f) => ({ nome: f.nome, chave: f.chave }))) : null;
 
     for (const [i, f] of devidos.entries()) {
       if (opcoes.parar?.()) {
@@ -224,7 +233,16 @@ export class MotorFollowup {
           paraIa.push({ f: base, mensagens: leitura.mensagens });
         } else {
           const decisao = decidirCobranca(f, { agora, dias: config.dias, naoEnviar, ultimoEnvioPorChave: ultimo });
-          if (decisao.pode) {
+          const trava = travas?.[i] ?? { tipo: 'livre' as const };
+          if (decisao.pode && trava.tipo === 'agendado') {
+            // O agendamento prevalece: nada de cobrança. Quando a data passar, o disparo já terá saído da janela de acompanhamento.
+            await this.gravar({ ...base, estado: 'resolvido', motivo: trava.motivo });
+            resumo.resolvidos += 1;
+          } else if (decisao.pode && trava.tipo === 'indisponivel') {
+            // Não deu para conferir os agendamentos: não cobra agora (falha fechada) e lê de novo na próxima rodada.
+            await this.gravar({ ...base, verificadoEm: null, motivo: `não cobrei: ${trava.motivo}` });
+            resumo.aviso ??= `Não consegui conferir os agendamentos do CRM (${trava.motivo}): nada foi cobrado.`;
+          } else if (decisao.pode) {
             if (config.ligado) paraCobrar.push(base);
             else await this.gravar({ ...base, motivo: `sem resposta há ${config.dias}+ dia(s); cobrança automática desligada` });
           } else if (decisao.destino === 'espera') {
@@ -498,7 +516,8 @@ export class MotorFollowup {
   /** "Conferi: pode voltar a acompanhar" (um 'revisar' que o atendente verificou). Volta a ser lido depois de X dias. */
   async voltarAMonitorar(id: string): Promise<void> {
     const f = (await listarFollowups(this.d.db)).find((x) => x.id === id);
-    if (!f || f.estado !== 'revisar') return;
+    // Item da reativação nunca vira "monitorando" (não é disparo: seria cobrado).
+    if (!f || f.estado !== 'revisar' || f.origem === 'reativacao') return;
     await this.gravar({ ...f, estado: 'monitorando', motivo: null, verificadoEm: this.d.agora().toISOString(), atualizadoEm: this.d.agora().toISOString() });
   }
 }

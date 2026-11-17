@@ -250,3 +250,24 @@ Pedido do dono: "eu que tenho que definir o estilo de mensagem". Os modelos gen�
 - **Validação local = servidor:** contém `{nome}`, até 280 caracteres com o nome, sem link, sem "R$"/"%", sem os termos proibidos da conformidade sanitária (lista copiada do servidor; teste compara as duas).
 - **Fila:** cada item guarda a assinatura da configuração (modo, textos, estilo) com que o texto foi feito; mudou a configuração, o texto é refeito ao salvar e de novo antes de montar a campanha (campanha pendente já montada é alinhada). A fila mostra "seu texto" ou "IA no seu estilo".
 - Botão "Ver exemplo" (nome fictício "Maria", sem chamar a IA). Armazenamento: IndexedDB `followupConfig` (sem mudança de versão do banco).
+
+---
+
+## 11. Reativação por inatividade e trava de agendamento (decisão do dono, 17/11/2026; extensão 0.7.56)
+
+Pedido: *"a versão web não puxa mais que 25/30/40 dias: os históricos antigos somem e ficam só no celular. A IA vê os clientes com 25 dias, lê a última conversa, entende se o cliente precisa agora ou de mais tempo. Se o cliente tem agendamento para 60 dias, não faz sentido entrar em campanha: o agendamento prevalece."*
+
+### Reativação (aba "Reativação", desligada de fábrica)
+- **Quem entra (etapa 1):** contatos da última varredura com a última conversa há `etapas[0]` dias ou mais (padrão 25), pelas mesmas regras de público da política (salvo com nome, individual, nunca grupo, nunca "Não enviar mais", sem campanha nos últimos 14 dias, termo "CLIENTE" no nome e sinal de mensagem minha, ambos configuráveis). Nome repetido, possível grupo e data incerta não entram sozinhos.
+- **Leitura:** só leitura (`lerConversa`, identidade estrita; falha fechada → "Precisa de você"). A data real da última mensagem confirma os dias; conversa mais recente que a lista = nada a fazer.
+- **Decisão da IA** (`zapIa.avaliarReativacao`, lote ≤ 20, mesma LGPD do `classificarConversas`): `precisa_agora` → mensagem do dono; `precisa_mais_tempo` / `aguardando_cliente` (7 a 120 dias) → agendamento no CRM para hoje + dias, 9h de Fortaleza, sem mensagem; `delicado` / `sem_contexto` → "Precisa de você" (a lista do Follow-up, marcada "reativação"); `pediu_para_sair` → opt-out. O código reforça: pedido inequívoco de sair vale mesmo se a IA errar; cliente que falou por último sem resposta nunca vira mensagem automática.
+- **Contexto no CRM:** o resumo (1–2 frases, sem telefone/CPF) vai para as **notas do lead** (`tasks.notes`) por `zapCrm.registrarReativacao`, achado pelo vínculo ou pelo telefone lido da conversa (JID das mensagens). Não conta como contato (`contactCount`/`lastContactedAt` não mudam). O lead é criado se não existir (com lembrete só se houver agendamento). Sem tabela nem coluna nova (sem `SCHEMA_VERSION`).
+- **Mensagens:** textos PRÓPRIOS por etapa, `{nome}`, modos "meus textos" / "IA no meu estilo" (0.7.55; `gerarCobranca` com `contexto: 'reativacao'`). Sem texto da etapa 1 não liga. Envio pelo MESMO Executor das campanhas (campanha `tipo: 'reativacao'`): teto diário compartilhado, horário, intervalo 60–120 s, freio, opt-out revalidado, conversa conferida antes do clique. Nenhum segundo caminho de clique.
+- **Sequência:** etapas 2 e 3 (30 e 40 dias desde a última conversa real, mínimo 3 dias entre mensagens) só para quem recebeu a anterior e não respondeu. Respondeu → sai da sequência e vai para a classificação de respostas do follow-up. Depois da 3ª sem resposta (7 dias) → "Resolvido" e agendamento de nova tentativa (padrão 60 dias, configurável).
+- **"Avaliar agora"** só lê/avalia (grava resumo e agendamentos no CRM), nunca envia.
+
+### Trava de agendamento
+Cliente com agendamento futuro pendente no CRM (tarefa com lembrete ligado, `status = pending`, data > agora, sem limite de antecedência) NÃO entra em reativação, campanha (Prévia e Executor) nem cobrança do follow-up. `zapCrm.agendamentosFuturos` (só leitura; mesma visibilidade de `tasks.list`) alimenta a trava, com cache de 5 min na extensão. Casamento: telefone → vínculo já gravado → nome (igual ou por palavras inteiras). Motivo "agendado para dd/MM (o agendamento prevalece)" na Prévia e nas listas. Revalidada antes de abrir cada contato no Executor. CRM indisponível/sem login/lista truncada: envio automático PAUSA sem enviar ("CRM indisponível"), reativação e cobrança não agem; campanha manual só avisa.
+
+### Não verificado
+WhatsApp Web real (telefone pelo JID: o WhatsApp de 10/2026 usa só hashes, então muitas vezes o telefone vem do índice local; sem telefone não se cria lead nem agendamento), IA real (só mockada), o servidor em produção (publicado em `main`, deploy não conferido aqui), e o efeito das mensagens automáticas no número.

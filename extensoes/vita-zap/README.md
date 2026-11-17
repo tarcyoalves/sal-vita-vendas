@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.55: o dono escreve a mensagem de cobrança (seção 3.4); 0.7.54: follow-up com IA no painel; antes, v0.7.36: Bloqueio seguro de tela com vidro embaçado + CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.56: reativação por inatividade 25/30/40 dias + trava de agendamento do CRM (seção 3.5); v0.7.55: o dono escreve a mensagem de cobrança (seção 3.4); 0.7.54: follow-up com IA no painel; antes, v0.7.36: Bloqueio seguro de tela com vidro embaçado + CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -693,3 +693,8 @@ A interface está em `src/shared/ia.ts` (`ProvedorIA`, hoje `IA_DESLIGADA`). Dec
 API **Gemini**, chamada por um **proxy no servidor**; a chave **nunca** fica na extensão. A
 extensão enviará só um token pessoal revogável, o primeiro nome e o texto necessário — nunca
 telefone.
+
+
+### 3.5 Reativação por inatividade e trava de agendamento (v0.7.56)
+
+Aba **Reativação** (desligada de fábrica; liga só com texto da etapa 1 e confirmação do risco). A IA lê a última conversa de quem está há 25 dias sem falar (etapas 25/30/40 configuráveis), o resumo vai para as notas do lead no CRM e ela decide: retomar agora (mensagem sua, pelo mesmo Executor das campanhas), esperar (agendamento no CRM, sem mensagem), chamar você ou opt-out. "Avaliar agora" nunca envia. **Trava:** cliente com agendamento futuro no CRM não entra em reativação, campanha nem cobrança; CRM indisponível = envio automático pausa. Detalhes em `docs/PLANO-CAMPANHAS-WHATSAPP.md`, seção 11. Arquivos: `shared/reativacao.ts`, `shared/trava-agendamento.ts`, `shared/servico-agendamentos.ts`, `sidepanel/reativacao-motor.ts`, `sidepanel/Reativacao.tsx`, `sidepanel/trava.ts`. Banco local v3 (loja `reativacoes`).

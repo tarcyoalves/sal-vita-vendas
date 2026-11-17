@@ -54,7 +54,11 @@ export interface CrmFalso {
   /** tasks.acompanhando não existe (servidor anterior). */
   semProcedureAcompanhando: boolean;
   /** IA do follow-up (zapIa.*): o teste define o que o servidor devolve. null = procedure inexistente (servidor anterior). */
-  zapIa: { classificar: (conversas: unknown[]) => unknown; cobranca: (entrada: Record<string, unknown>) => unknown } | null;
+  zapIa: { classificar: (conversas: unknown[]) => unknown; cobranca: (entrada: Record<string, unknown>) => unknown; reativacao?: (conversas: unknown[]) => unknown } | null;
+  /** zapCrm.* não existe (servidor anterior à 0.7.56). */
+  semZapCrm: boolean;
+  /** O servidor devolve a lista cortada (limite). */
+  agendamentosTruncados: boolean;
   fetch: typeof fetch;
   transporte: Transporte;
   chamadas(caminho: string): Requisicao[];
@@ -80,6 +84,8 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
     conversaoTiraAcompanhar: true,
     semProcedureAcompanhando: false,
     zapIa: null,
+    semZapCrm: false,
+    agendamentosTruncados: false,
     fetch: undefined as unknown as typeof fetch,
     transporte: undefined as unknown as Transporte,
     chamadas: (c) => crm.requisicoes.filter((r) => r.url.pathname === `/api/trpc/${c}`),
@@ -166,6 +172,41 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
     }
     if (caminho === 'zapIa.classificarConversas' && crm.zapIa) return ok(crm.zapIa.classificar((dados as { conversas: unknown[] }).conversas));
     if (caminho === 'zapIa.gerarCobranca' && crm.zapIa) return ok(crm.zapIa.cobranca(dados as Record<string, unknown>));
+    if (caminho === 'zapIa.avaliarReativacao' && crm.zapIa?.reativacao) return ok(crm.zapIa.reativacao((dados as { conversas: unknown[] }).conversas));
+    if (caminho === 'zapCrm.agendamentosFuturos' && !crm.semZapCrm) {
+      // Igual ao servidor: pendente, lembrete ligado (nulo conta como ligado) e data FUTURA, sem teto de antecedência.
+      const futuros = crm.tasks.filter((t) => t.reminderDate && t.reminderDate.getTime() > agora() && t.reminderEnabled !== false && t.status === 'pending');
+      return ok({ itens: futuros.map((t) => ({ taskId: t.id, titulo: t.title, telefone: t.phone, venceEm: t.reminderDate })), truncado: crm.agendamentosTruncados, consultadoEm: new Date(agora()) });
+    }
+    if (caminho === 'zapCrm.registrarReativacao' && !crm.semZapCrm) {
+      // Espelho do servidor: acha por id ou telefone, anexa a nota SEM contar contato e só agenda se não houver agendamento futuro.
+      const d = dados as { taskId?: number; telefone?: string; titulo: string; linha: string; agendarEm?: Date | null; criar: boolean };
+      const digitos = (d.telefone ?? '').replace(/\D/g, '').replace(/^55/, '');
+      let t = crm.tasks.find((x) => x.id === d.taskId) ?? (digitos ? crm.tasks.find((x) => (x.phone ?? '').replace(/\D/g, '').replace(/^55/, '') === digitos) : undefined);
+      const linha = `[carimbo] ${d.linha}`;
+      let criou = false;
+      if (!t) {
+        if (!d.criar) return ok({ ok: false, codigo: 'sem_lead', mensagem: 'Este contato não tem lead no CRM.' });
+        if (!digitos) return ok({ ok: false, codigo: 'sem_telefone', mensagem: 'Sem telefone válido para criar o lead no CRM.' });
+        t = task({ id: 2000 + crm.tasks.length, title: d.titulo, phone: digitos, reminderDate: d.agendarEm ?? null, reminderEnabled: d.agendarEm != null });
+        crm.tasks.push(t);
+        criou = true;
+      }
+      t.notes = t.notes ? `${t.notes}\n${linha}` : linha;
+      const futuro = t.reminderDate && t.reminderDate.getTime() > agora() && t.reminderEnabled !== false && t.status === 'pending' ? t.reminderDate : null;
+      let agendou = criou && d.agendarEm != null;
+      let semAgenda: string | undefined;
+      if (d.agendarEm && !criou) {
+        if (futuro) semAgenda = 'agendamento_existente';
+        else if (t.status !== 'pending') semAgenda = 'tarefa_encerrada';
+        else {
+          t.reminderDate = d.agendarEm;
+          t.reminderEnabled = true;
+          agendou = true;
+        }
+      }
+      return ok({ ok: true, taskId: t.id, criou, agendou, ...(semAgenda ? { semAgenda } : {}), ...(semAgenda && futuro ? { agendamentoExistente: futuro } : {}) });
+    }
     if (caminho === 'tags.list') {
       return ok([
         { id: 1, name: 'Cliente Ativo', color: '#16a34a' },

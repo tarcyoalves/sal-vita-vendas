@@ -38,7 +38,7 @@ interface EditorProps {
   onChange: (l: string[]) => void;
 }
 
-function EditorDeTextos({ titulo, ajuda, lista, erros, sugestoes, idBase, onChange }: EditorProps) {
+export function EditorDeTextos({ titulo, ajuda, lista, erros, sugestoes, idBase, onChange }: EditorProps) {
   const cheio = lista.length >= MAX_TEXTOS;
   return (
     <fieldset style={{ border: 'none', padding: 0, margin: '10px 0 0' }}>

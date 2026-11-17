@@ -42,6 +42,9 @@ import type { Acompanhamento, ArmazemChaves, EstadoConta, EstadoLead, FalhaFila,
 import { normalizarTelefone } from './telefone';
 import * as email from './servico-email';
 import * as ia from './servico-ia';
+import * as agendamentos from './servico-agendamentos';
+import type { AvaliacaoReativacao, ConversaReativacaoParaIa } from './reativacao';
+import type { RefTrava, ResultadoTrava } from './trava-agendamento';
 import type { ClassificacaoIa } from './followup';
 
 const MAX_FILA = 200;
@@ -828,10 +831,40 @@ export class ServicoCrm implements LeadsCRM {
     );
   }
 
-  escreverCobranca(primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2, estilo?: ia.EstiloDoDono): Promise<ia.ResultadoIa<string>> {
+  escreverCobranca(primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2 | 3, estilo?: ia.EstiloDoDono, contexto?: 'reativacao'): Promise<ia.ResultadoIa<string>> {
     return this.exclusivo('follow-up: escrever cobrança com a IA (ação do usuário)', () =>
-      ia.escreverCobranca({ alterar: (c, e) => this.alterar(c, e), chamar: (fn) => this.chamar(fn) }, primeiroNome, mensagemCampanha, tentativa, estilo),
+      ia.escreverCobranca({ alterar: (c, e) => this.alterar(c, e), chamar: (fn) => this.chamar(fn) }, primeiroNome, mensagemCampanha, tentativa, estilo, contexto),
     );
+  }
+
+  // ── Reativação por inatividade e trava de agendamento (v0.7.56) ────────────
+
+  avaliarReativacao(conversas: ConversaReativacaoParaIa[]): Promise<ia.ResultadoIa<AvaliacaoReativacao[]>> {
+    return this.exclusivo('reativação: a IA lê a última conversa (ação do usuário)', () =>
+      ia.avaliarReativacao({ alterar: (c, e) => this.alterar(c, e), chamar: (fn) => this.chamar(fn) }, conversas),
+    );
+  }
+
+  private apoioAgendamentos(): agendamentos.ApoioAgendamentos {
+    return {
+      consultar: (c, e) => this.consultar(c, e),
+      alterar: (c, e) => this.alterar(c, e),
+      chamar: (fn) => this.chamar(fn),
+      ler: (chave, padrao) => this.ler(chave, padrao),
+      gravar: (chave, valor) => this.arm.gravarChave(chave, valor),
+      relogio: () => this.relogio(),
+      temLogin: async () => (await this.lerConta()).usuario != null,
+      taskDoVinculo: (ref) => this.taskDoVinculo(ref),
+      gravarVinculo: (ref, taskId) => this.gravarVinculo(ref, taskId),
+    };
+  }
+
+  verificarAgendamentos(refs: RefTrava[], opcoes: { forcar?: boolean } = {}): Promise<ResultadoTrava[]> {
+    return this.exclusivo(opcoes.forcar ? 'trava de agendamento (consulta forçada)' : 'trava de agendamento', () => agendamentos.verificarAgendamentos(this.apoioAgendamentos(), refs, opcoes));
+  }
+
+  registrarReativacao(pedido: agendamentos.PedidoRegistroReativacao): Promise<agendamentos.ResultadoRegistroReativacao> {
+    return this.exclusivo('reativação: salvar o resumo no CRM (ação do usuário)', () => agendamentos.registrarReativacao(this.apoioAgendamentos(), pedido));
   }
 
   // ── Fila ───────────────────────────────────────────────────────────────────

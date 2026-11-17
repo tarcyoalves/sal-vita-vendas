@@ -27,11 +27,14 @@ import { MotorFollowup, type ResumoRodada, type VisaoFollowup } from './followup
 import { MensagemCobranca } from './MensagemCobranca';
 import { iniciarBatimento, protegerContraFechamento, MOTIVO_PAINEL_FECHADO } from './protecao';
 import { assinarTrava, donoDaTrava, liberar, ROTULO_DONO, tentarTravar } from './trava-whatsapp';
+import { useTrava } from './trava';
 import { pedir } from './whatsapp';
 
 interface Props {
   db: Banco;
   crm: CrmPainel;
+  /** A aba está à vista: recarrega as listas (a reativação grava itens aqui enquanto a aba está escondida). */
+  ativa?: boolean;
 }
 
 type Lista = 'cobranca' | 'precisa' | 'saiu' | 'resolvido';
@@ -48,10 +51,11 @@ export const TEXTO_RISCO =
 
 /** Pausas por horário/teto/painel escondido: o ciclo tenta de novo sozinho. Qualquer outra (freio, erro) exige "Retomar". */
 export function pausaBenigna(motivo: string | null | undefined): boolean {
-  return motivo != null && (/^(domingo|fora do horário|teto diário)/.test(motivo) || motivo === MOTIVO_PAINEL_FECHADO);
+  return motivo != null && (/^(domingo|fora do horário|teto diário|CRM indisponível)/.test(motivo) || motivo === MOTIVO_PAINEL_FECHADO);
 }
 
-export function Followup({ db, crm }: Props) {
+export function Followup({ db, crm, ativa }: Props) {
+  const trava = useTrava(db, crm);
   const motor = useMemo(
     () =>
       new MotorFollowup({
@@ -65,8 +69,10 @@ export function Followup({ db, crm }: Props) {
         agora: () => new Date(),
         aleatorio: Math.random,
         esperar: (ms) => new Promise((r) => setTimeout(r, ms)),
+        // Trava de agendamento: quem tem agendamento futuro no CRM não é cobrado (lista fresca no começo da rodada).
+        travar: trava ? (contatos) => trava.varios(contatos, true) : undefined,
       }),
-    [db, crm.repo],
+    [db, crm.repo, trava],
   );
 
   const [visao, setVisao] = useState<VisaoFollowup | null>(null);
@@ -94,7 +100,7 @@ export function Followup({ db, crm }: Props) {
 
   useEffect(() => {
     void recarregar();
-  }, [recarregar]);
+  }, [recarregar, ativa]);
   useEffect(() => assinarTrava(() => setDono(donoDaTrava())), []);
 
   // ── Executor da cobrança (o mesmo das campanhas) ──────────────────────────
@@ -143,7 +149,7 @@ export function Followup({ db, crm }: Props) {
     let vivo = true;
     void motor.campanhaEmVoo().then(async (c) => {
       if (!c || !vivo) return;
-      const ex = new Executor({ db, pedir, agora: () => new Date(), aleatorio: Math.random, agendar: (fn, ms) => { const t = setTimeout(fn, ms); return () => clearTimeout(t); }, obterEnvioAutomatico: () => true }, c);
+      const ex = new Executor({ db, pedir, agora: () => new Date(), aleatorio: Math.random, agendar: (fn, ms) => { const t = setTimeout(fn, ms); return () => clearTimeout(t); }, obterEnvioAutomatico: () => true, trava: trava?.executor }, c);
       ex.setEnvioAutomatico(true);
       const ok = await ex.reconciliar();
       await motor.aplicarCampanha(ex.atual.campanha);
@@ -155,7 +161,7 @@ export function Followup({ db, crm }: Props) {
     return () => {
       vivo = false;
     };
-  }, [motor, db, recarregar]);
+  }, [motor, db, recarregar, trava]);
 
   // Envio detectado numa resposta que VOCÊ mandou ("Abrir e colar"): sai de "Precisa de você".
   useEffect(() => {
@@ -189,6 +195,7 @@ export function Followup({ db, crm }: Props) {
           },
           // Envio automático É a decisão do dono para o follow-up (com a confirmação do risco): mesma rotina das campanhas.
           obterEnvioAutomatico: () => true,
+          trava: trava?.executor,
         },
         campanha,
       );
@@ -197,7 +204,7 @@ export function Followup({ db, crm }: Props) {
       await ex.iniciar();
       return true;
     },
-    [motor, db, recarregar],
+    [motor, db, recarregar, trava],
   );
 
   /** Verifica (lê as conversas, IA) e, se a cobrança automática está ligada e nada pausa, manda as cobranças. */
@@ -491,7 +498,7 @@ export function Followup({ db, crm }: Props) {
                 return (
                   <li key={f.id}>
                     <b>{f.nome}</b>{' '}
-                    {revisar ? <span className="aviso" style={{ padding: '1px 6px' }}>revisar</span> : f.classe && <small>{ROTULO_CLASSE[f.classe]}</small>}
+                    {revisar ? <span className="aviso" style={{ padding: '1px 6px' }}>revisar</span> : f.classe && <small>{ROTULO_CLASSE[f.classe]}</small>}{f.origem === 'reativacao' && <small> · reativação</small>}
                     <div className="ajuda">{revisar ? f.motivo : f.resumo}</div>
                     {f.lembreteCriadoEm && f.lembreteDias != null && <div className="info">Lembrete criado para daqui a {f.lembreteDias} dia(s), às 9h.</div>}
                     {!revisar && (
@@ -515,7 +522,7 @@ export function Followup({ db, crm }: Props) {
                           Abrir conversa
                         </button>
                       )}
-                      {revisar && (
+                      {revisar && f.origem !== 'reativacao' && (
                         <button type="button" className="pequeno" title="Só depois de conferir no WhatsApp" onClick={acao(() => motor.voltarAMonitorar(f.id))}>
                           Conferi: voltar a acompanhar
                         </button>

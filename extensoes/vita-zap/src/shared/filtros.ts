@@ -1,6 +1,9 @@
 // Filtros da campanha. Cada contato sai com uma decisão e o MOTIVO, que a prévia mostra.
 
 import { DIAS_SEM_REPETIR } from './constantes';
+
+/** A reativação respeita o mesmo piso entre campanhas da política (quem recebeu campanha há menos disso não entra). */
+export const DIAS_SEM_REPETIR_PADRAO_REATIVACAO = DIAS_SEM_REPETIR;
 import type { ContatoVarrido } from './contatos';
 import { rotuloDaFase, type Contato, type Fase } from './crm-tipos';
 import { diferencaDias, formatarDataBr, hojeNoFuso, type DataIso } from './datas';

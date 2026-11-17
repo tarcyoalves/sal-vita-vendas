@@ -36,6 +36,15 @@ const CHATS: ChatFalso[] = [
       { id: '3EB0C2', texto: '', autor: 'Caio Cliente', hora: '12:00', data: '14/11/2026' }, // áudio/figurinha: sem texto
     ],
   },
+  {
+    nome: 'Zeca Cliente',
+    data: '14/11/2026',
+    previa: 'ok',
+    mensagens: [
+      { id: 'true_5584999990000@c.us_3EB0Z1', texto: 'Oi Zeca, tudo bem?', minha: true, hora: '10:00', data: '14/11/2026' },
+      { id: 'false_5584999990000@c.us_3EB0Z2', texto: 'tudo ótimo', autor: 'Zeca Cliente', hora: '10:05', data: '14/11/2026' },
+    ],
+  },
   { nome: 'Grupo Atacado', data: '14/11/2026', grupo: 'icone', previa: 'Pedro: tabela nova' },
   { nome: 'Dupla Cliente', data: '13/11/2026', previa: 'oi' },
   { nome: 'Dupla Cliente', data: '12/11/2026', previa: 'oi' },
@@ -81,6 +90,15 @@ describe('lerConversa (só leitura)', () => {
     expect(analisarLeitura(bia.mensagens ?? [], DISPARO.replace('Ana', 'Bia'), ref).tipo).toBe('sem_resposta');
     // áudio/figurinha do cliente (sem texto): resposta → nunca cobra
     expect(analisarLeitura(caio.mensagens ?? [], DISPARO.replace('Ana', 'Caio'), ref).tipo).toBe('respondeu');
+  });
+
+  it('devolve o telefone da conversa quando o id das mensagens traz o JID (para casar com o CRM); sem JID, não inventa', async () => {
+    const zeca = await rodar(lerConversa('Zeca Cliente'));
+    expect(zeca).toMatchObject({ ok: true, telefone: '5584999990000' });
+    const ana = await rodar(lerConversa('Ana Cliente'));
+    expect(ana.ok && 'telefone' in ana).toBe(false); // ids só com hash (WhatsApp de 10/2026): nenhum telefone, nenhum palpite
+    expect(wa.textoDaCaixa()).toBe('');
+    expect(wa.proibido).toEqual([]);
   });
 
   it('não cola nada na caixa mesmo se houver texto do atendente antes (só lê)', async () => {

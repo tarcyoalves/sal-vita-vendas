@@ -3,7 +3,7 @@ import { salvarCampanha, type Banco } from '../shared/banco';
 import { type Campanha, criarItens, type ItemCampanha, novoId, textoDoItem, validarParaAprovar } from '../shared/campanha';
 import { DIAS_SEM_REPETIR, MARCADOR_PRIMEIRO_NOME, MAX_VARIACOES } from '../shared/constantes';
 import { formatarDataBr, lerDataIso, hojeNoFuso, somarDias, diferencaDias } from '../shared/datas';
-import { aplicarFiltros, type Filtros, MOTIVO_SEM_MENSAGEM_MINHA, MOTIVO_SINAL_DESCONHECIDO, temRegistroDoAtendente, ultimoEnvioPorChave } from '../shared/filtros';
+import { aplicarFiltros, type ContatoAvaliado, type Filtros, MOTIVO_SEM_MENSAGEM_MINHA, MOTIVO_SINAL_DESCONHECIDO, temRegistroDoAtendente, ultimoEnvioPorChave } from '../shared/filtros';
 import { separarTermos } from '../shared/nomes';
 import { validarModelos } from '../shared/texto';
 import type { DadosLocais } from './App';
@@ -14,6 +14,8 @@ import { CORES_ETIQUETA, FASES, type Fase } from '../shared/crm-tipos';
 import { chaveDaConversa } from '../shared/crm-regras';
 import { novaRotina, type Rotina } from '../shared/rotinas';
 import { normalizarTexto } from '../shared/nomes';
+import type { ResultadoTrava } from '../shared/trava-agendamento';
+import { useTrava } from './trava';
 
 interface Props {
   db: Banco;
@@ -155,7 +157,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
     [contem, naoContem, antesDe, depoisDe, dias, incluirSemConversa, tagsSelecionadas, fasesSelecionadas, aguardandoResposta, soMinha],
   );
 
-  const avaliados = useMemo(
+  const avaliadosBase = useMemo(
     () =>
       aplicarFiltros(dados.contatos, filtros, {
         agora: new Date(),
@@ -168,6 +170,33 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       }),
     [dados, filtros, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente],
   );
+
+  // Trava de agendamento (0.7.56): quem tem agendamento futuro no CRM NÃO entra na campanha (o agendamento prevalece).
+  // Uma consulta ao CRM por varredura (cache de 5 min no serviço); o Executor confere de novo antes de abrir cada contato.
+  const trava = useTrava(db, crm);
+  const [travas, setTravas] = useState<ReadonlyMap<string, ResultadoTrava>>(() => new Map());
+  useEffect(() => {
+    if (!trava) return;
+    const alvo = dados.contatos.filter((c) => c.temConversa && !c.soNumero && !c.pareceGrupo).map((c) => ({ nome: c.nome, chave: c.chave }));
+    if (alvo.length === 0) {
+      setTravas(new Map());
+      return;
+    }
+    let vivo = true;
+    void trava.varios(alvo, true).then((rs) => {
+      if (vivo) setTravas(new Map(alvo.map((c, i) => [c.chave, rs[i]] as const)));
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [trava, dados.contatos]);
+  const travaIndisponivel = useMemo(() => [...travas.values()].find((t) => t.tipo === 'indisponivel') ?? null, [travas]);
+  const comTrava = (lista: ContatoAvaliado[]): ContatoAvaliado[] =>
+    lista.map((a) => {
+      const t = travas.get(a.contato.chave);
+      return t?.tipo === 'agendado' && a.decisao.situacao !== 'excluido' ? { ...a, decisao: { situacao: 'excluido' as const, motivo: t.motivo } } : a;
+    });
+  const avaliados = useMemo(() => comTrava(avaliadosBase), [avaliadosBase, travas]);
 
   const contagemPorRotina = useMemo(() => {
     const res = new Map<string, number>();
@@ -303,7 +332,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       soComMensagemMinha: false,
     };
     const { modelos: mods } = validarModelos(r.textoBase, novasVar);
-    const av = aplicarFiltros(dados.contatos, filtrosRotina, {
+    const av = comTrava(aplicarFiltros(dados.contatos, filtrosRotina, {
       agora: new Date(),
       naoEnviar: new Set(dados.naoEnviar.map((n) => n.chave)),
       ultimoEnvioPorChave: ultimoEnvioPorChave(dados.envios),
@@ -311,7 +340,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       fasePorChave,
       aguardandoPorChave,
       comRegistroDoAtendente,
-    });
+    }));
     const contatosInc = av.filter((x) => x.decisao.situacao === 'incluido').map((x) => x.contato);
     const contatosRev = av.filter((x) => x.decisao.situacao === 'revisar' && !x.contato.duplicado).map((x) => x.contato);
     const itensInc = criarItens(contatosInc, mods, termos).map((i) => ({ ...i, marcado: true }));
@@ -382,7 +411,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
     salvarPreferencia('textoBase', base);
     setErrosAprovacao([]);
     const f: Filtros = { ...filtros, incluirSemConversa: true };
-    const av = aplicarFiltros(dados.contatos, f, {
+    const av = comTrava(aplicarFiltros(dados.contatos, f, {
       agora: new Date(),
       naoEnviar: new Set(dados.naoEnviar.map((n) => n.chave)),
       ultimoEnvioPorChave: ultimoEnvioPorChave(dados.envios),
@@ -390,7 +419,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       fasePorChave,
       aguardandoPorChave,
       comRegistroDoAtendente,
-    });
+    }));
     const contatosInc = av.filter((x) => x.decisao.situacao === 'incluido').map((x) => x.contato);
     const contatosRev = av.filter((x) => x.decisao.situacao === 'revisar' && !x.contato.duplicado).map((x) => x.contato);
     const itensInc = criarItens(contatosInc, modelos, f.contem).map((i) => ({ ...i, marcado: true }));
@@ -459,6 +488,16 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
 
   return (
     <section>
+      {travaIndisponivel && (
+        <p className="aviso" role="alert">
+          Não consegui conferir os agendamentos do CRM ({travaIndisponivel.motivo}). Confira antes de enviar: o envio automático NÃO envia sem conferir, e o manual só avisa.
+        </p>
+      )}
+      {[...travas.values()].some((t) => t.tipo === 'agendado') && (
+        <p className="info">
+          {[...travas.values()].filter((t) => t.tipo === 'agendado').length} contato(s) com agendamento futuro no CRM ficam de fora (o agendamento prevalece): veja o motivo em "Excluídos".
+        </p>
+      )}
       <div className="cartao" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <h3 style={{ margin: 0, color: '#166534', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>

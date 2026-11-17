@@ -15,9 +15,10 @@ import { Execucao } from './Execucao';
 import { Followup } from './Followup';
 import { Lembretes } from './Lembretes';
 import { Previa } from './Previa';
+import { Reativacao } from './Reativacao';
 import { Varredura } from './Varredura';
 
-type Aba = 'lembretes' | 'acompanhar' | 'clientes' | 'varredura' | 'previa' | 'execucao' | 'followup' | 'dados';
+type Aba = 'lembretes' | 'acompanhar' | 'clientes' | 'varredura' | 'previa' | 'execucao' | 'followup' | 'reativacao' | 'dados';
 
 export interface DadosLocais {
   contatos: ContatoVarrido[];
@@ -34,6 +35,7 @@ const ABAS: Array<{ id: Aba; rotulo: string }> = [
   { id: 'previa', rotulo: '2. Prévia' },
   { id: 'execucao', rotulo: '3. Envio' },
   { id: 'followup', rotulo: 'Follow-up' },
+  { id: 'reativacao', rotulo: 'Reativação' },
   { id: 'dados', rotulo: 'Dados' },
 ];
 
@@ -97,8 +99,8 @@ export function App() {
     void recarregar();
   }, [recarregar]);
 
-  // A aba 3 só lista campanhas comuns: as de cobrança do follow-up têm o painel próprio.
-  const dadosDasCampanhas = useMemo(() => ({ ...dados, campanhas: dados.campanhas.filter((c) => c.tipo !== 'followup') }), [dados]);
+  // A aba 3 só lista campanhas comuns: as de cobrança do follow-up e as de reativação têm o painel próprio.
+  const dadosDasCampanhas = useMemo(() => ({ ...dados, campanhas: dados.campanhas.filter((c) => c.tipo == null) }), [dados]);
 
   if (erro) return <div className="erro">{erro}</div>;
   if (!db) return <div className="carregando">Carregando…</div>;
@@ -176,7 +178,11 @@ export function App() {
         </div>
         {/* Também sempre montada: a cobrança automática do follow-up continua com a aba fechada. */}
         <div hidden={aba !== 'followup'}>
-          <Followup db={db} crm={crm} />
+          <Followup db={db} crm={crm} ativa={aba === 'followup'} />
+        </div>
+        {/* Também sempre montada: a reativação automática continua com a aba fechada. */}
+        <div hidden={aba !== 'reativacao'}>
+          <Reativacao db={db} crm={crm} dados={dados} ativa={aba === 'reativacao'} />
         </div>
         {aba === 'dados' && <Dados db={db} dados={dados} aoMudar={recarregar} crm={crm} />}
       </main>

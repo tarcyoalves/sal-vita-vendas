@@ -62,6 +62,8 @@ export type RespostaConteudo =
       situacao?: 'enviado' | 'nao_encontrado';
       /** lerConversa: as últimas mensagens da conversa, da mais antiga para a mais nova. */
       mensagens?: MensagemLida[];
+      /** lerConversa: telefone da conversa (dígitos com DDI), lido do id das mensagens ou do título quando é só o número. Ausente = não deu para ler. */
+      telefone?: string;
     }
   | { ok: false; codigo: CodigoErro; erro: string };
 

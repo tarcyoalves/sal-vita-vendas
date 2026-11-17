@@ -8,6 +8,7 @@
 
 import type { ErroCrm } from './crm-rede';
 import { LOTE_IA, MAX_MENSAGENS_IA, type ClasseIa, type ClassificacaoIa } from './followup';
+import { LOTE_IA_REATIVACAO, type AvaliacaoReativacao, type ConversaReativacaoParaIa, type DecisaoReativacao } from './reativacao';
 
 export type ResultadoIa<T> = { ok: true; valor: T } | { ok: false; erro: ErroCrm };
 
@@ -80,8 +81,16 @@ export interface EstiloDoDono {
  * 500 caracteres de estilo e 10 exemplos de 300). Erro = a IA está fora ou o texto não passou nas regras: o motor usa um
  * dos textos do dono. `validacao` = o servidor recusou o texto da IA (não derruba as outras cobranças do lote).
  */
-export async function escreverCobranca(ap: ApoioIa, primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2, estilo?: EstiloDoDono): Promise<ResultadoIa<string>> {
-  const entrada: Record<string, unknown> = { primeiroNome: primeiroNome.slice(0, 60), mensagemCampanha: mensagemCampanha.slice(0, 1000), tentativa };
+export async function escreverCobranca(
+  ap: ApoioIa,
+  primeiroNome: string,
+  mensagemCampanha: string,
+  tentativa: 1 | 2 | 3,
+  estilo?: EstiloDoDono,
+  /** 'reativacao' (v0.7.56): retomar contato com quem está há semanas sem conversar (a etapa vem em `tentativa`, 1 a 3). */
+  contexto?: 'reativacao',
+): Promise<ResultadoIa<string>> {
+  const entrada: Record<string, unknown> = { primeiroNome: primeiroNome.slice(0, 60), mensagemCampanha: mensagemCampanha.slice(0, 1000), tentativa, ...(contexto ? { contexto } : {}) };
   const instrucoes = estilo?.estilo.trim().slice(0, 500) ?? '';
   const exemplos = (estilo?.exemplos ?? []).map((e) => e.trim().slice(0, 300)).filter(Boolean).slice(0, 10);
   if (instrucoes !== '') entrada.estilo = instrucoes;
@@ -93,4 +102,39 @@ export async function escreverCobranca(ap: ApoioIa, primeiroNome: string, mensag
     return falha(o.codigo === 'texto_invalido' ? 'validacao' : 'servidor', typeof o.mensagem === 'string' ? o.mensagem : 'A IA não devolveu um texto utilizável.');
   }
   return { ok: true, valor: o.texto.trim() };
+}
+
+// ── Reativação por inatividade (v0.7.56) ────────────────────────────────────
+
+const DECISOES: ReadonlySet<string> = new Set<DecisaoReativacao>(['precisa_agora', 'precisa_mais_tempo', 'aguardando_cliente', 'delicado', 'pediu_para_sair', 'sem_contexto']);
+
+/** Lê um item da resposta do servidor. Fora do contrato → null (o motor trata como "Precisa de você"). */
+export function avaliacaoDaIa(bruto: unknown): AvaliacaoReativacao | null {
+  const o = obj(bruto);
+  if (typeof o.ref !== 'string' || typeof o.decisao !== 'string' || !DECISOES.has(o.decisao)) return null;
+  const dias = typeof o.diasSugeridos === 'number' && Number.isInteger(o.diasSugeridos) ? o.diasSugeridos : undefined;
+  return { ref: o.ref, decisao: o.decisao as DecisaoReativacao, resumo: typeof o.resumo === 'string' ? o.resumo : '', ...(dias != null ? { diasSugeridos: dias } : {}) };
+}
+
+/**
+ * Um lote de até LOTE_IA_REATIVACAO conversas (a última conversa de cada contato parado). Só texto: o servidor ainda remove
+ * telefone/CPF/e-mail e usa só o primeiro nome. Falha da IA/limite diário vira erro amigável (nada é enviado em lugar nenhum).
+ */
+export async function avaliarReativacao(ap: ApoioIa, conversas: ConversaReativacaoParaIa[]): Promise<ResultadoIa<AvaliacaoReativacao[]>> {
+  if (conversas.length === 0) return { ok: true, valor: [] };
+  if (conversas.length > LOTE_IA_REATIVACAO) return falha('validacao', `No máximo ${LOTE_IA_REATIVACAO} conversas por lote.`);
+  const entrada = {
+    conversas: conversas.map((c) => ({
+      ref: c.ref,
+      primeiroNome: c.primeiroNome.slice(0, 60),
+      diasSemConversa: Math.max(0, Math.min(3650, Math.floor(c.diasSemConversa))),
+      mensagens: c.mensagens.slice(-MAX_MENSAGENS_IA).map((m) => ({ de: m.de, texto: m.texto.slice(0, 1000), ...(m.quando ? { quando: m.quando } : {}) })),
+    })),
+  };
+  const r = await ap.chamar(() => ap.alterar<unknown>('zapIa.avaliarReativacao', entrada));
+  if (!r.ok) return r;
+  const o = obj(r.valor);
+  if (o.ok !== true) return falha('servidor', typeof o.mensagem === 'string' ? o.mensagem : 'A IA não respondeu.');
+  const itens = Array.isArray(o.itens) ? o.itens.map(avaliacaoDaIa).filter((x): x is AvaliacaoReativacao => x !== null) : [];
+  return { ok: true, valor: itens };
 }

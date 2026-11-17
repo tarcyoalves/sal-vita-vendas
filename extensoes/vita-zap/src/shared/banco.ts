@@ -7,6 +7,7 @@ import type { ContatoVarrido } from './contatos';
 import type { Backup, Envio, NaoEnviar } from './exportar';
 import { normalizarConfigFollowup, type ConfigFollowup, type Followup } from './followup';
 import { normalizarConfig, type ConfigPolitica } from './politica';
+import { normalizarConfigReativacao, type ConfigReativacao, type Reativacao } from './reativacao';
 
 interface EsquemaVitaZap extends DBSchema {
   contatos: { key: string; value: ContatoVarrido };
@@ -16,11 +17,13 @@ interface EsquemaVitaZap extends DBSchema {
   config: { key: string; value: { id: 'politica'; valor: ConfigPolitica } };
   /** Follow-up (v0.7.54): um registro por contato/campanha de origem (`${campanhaId}:${chave}`). */
   followups: { key: string; value: Followup };
-  followupConfig: { key: string; value: { id: 'followup'; valor: ConfigFollowup } };
+  followupConfig: { key: string; value: { id: 'followup'; valor: ConfigFollowup } | { id: 'reativacao'; valor: ConfigReativacao } };
+  /** Reativação por inatividade (v0.7.56): um registro por contato (chave = nome normalizado). */
+  reativacoes: { key: string; value: Reativacao };
 }
 
 export const NOME_BANCO = 'vita-zap';
-const VERSAO_BANCO = 2;
+const VERSAO_BANCO = 3;
 
 export type Banco = IDBPDatabase<EsquemaVitaZap>;
 
@@ -40,6 +43,10 @@ export function abrirBanco(nome: string = NOME_BANCO): Promise<Banco> {
       if (versaoAnterior < 2) {
         db.createObjectStore('followups', { keyPath: 'id' });
         db.createObjectStore('followupConfig', { keyPath: 'id' });
+      }
+      // v3 (0.7.56): reativação. Só ACRESCENTA uma loja (a configuração dela fica em followupConfig, id 'reativacao').
+      if (versaoAnterior < 3) {
+        db.createObjectStore('reativacoes', { keyPath: 'chave' });
       }
     },
   });
@@ -145,12 +152,39 @@ export function listarFollowups(db: Banco): Promise<Followup[]> {
 
 export async function lerConfigFollowup(db: Banco): Promise<ConfigFollowup> {
   const r = await db.get('followupConfig', 'followup');
-  return normalizarConfigFollowup(r?.valor);
+  return normalizarConfigFollowup(r?.id === 'followup' ? r.valor : undefined);
 }
 
 export async function salvarConfigFollowup(db: Banco, cfg: ConfigFollowup): Promise<ConfigFollowup> {
   const valor = normalizarConfigFollowup(cfg);
   await db.put('followupConfig', { id: 'followup', valor });
+  return valor;
+}
+
+// ── Reativação por inatividade ───────────────────────────────────────────────
+
+export async function salvarReativacoes(db: Banco, itens: ReadonlyArray<Reativacao>): Promise<void> {
+  if (itens.length === 0) return;
+  const tx = db.transaction('reativacoes', 'readwrite');
+  await Promise.all([...itens.map((r) => tx.store.put(r)), tx.done]);
+}
+
+export function listarReativacoes(db: Banco): Promise<Reativacao[]> {
+  return db.getAll('reativacoes');
+}
+
+export function lerReativacao(db: Banco, chave: string): Promise<Reativacao | undefined> {
+  return db.get('reativacoes', chave);
+}
+
+export async function lerConfigReativacao(db: Banco): Promise<ConfigReativacao> {
+  const r = await db.get('followupConfig', 'reativacao');
+  return normalizarConfigReativacao(r?.id === 'reativacao' ? r.valor : undefined);
+}
+
+export async function salvarConfigReativacao(db: Banco, cfg: ConfigReativacao): Promise<ConfigReativacao> {
+  const valor = normalizarConfigReativacao(cfg);
+  await db.put('followupConfig', { id: 'reativacao', valor });
   return valor;
 }
 

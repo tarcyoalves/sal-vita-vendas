@@ -6,6 +6,7 @@ import { dentroDoHorario } from '../shared/politica';
 import { formatarDataBr } from '../shared/datas';
 import type { DadosLocais } from './App';
 import type { CrmPainel } from './crm';
+import { useTrava } from './trava';
 import { acharContato } from '../shared/crm-contatos';
 import { type EstadoExecutor, Executor } from './executor';
 import { iniciarBatimento, protegerContraFechamento } from './protecao';
@@ -31,6 +32,7 @@ const ROTULO_FASE: Record<EstadoExecutor['fase'], string> = {
 };
 
 export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Props) {
+  const trava = useTrava(db, crm);
   const campanhas = dados.campanhas;
   const idEscolhido = campanhaId ?? campanhas.find((c) => c.status !== 'concluida')?.id ?? campanhas[0]?.id ?? null;
   const campanhaInicial = campanhas.find((c) => c.id === idEscolhido) ?? null;
@@ -49,12 +51,14 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
                 const t = setTimeout(fn, ms);
                 return () => clearTimeout(t);
               },
+              // Trava de agendamento: quem tem agendamento futuro no CRM é pulado (o agendamento prevalece).
+              trava: trava?.executor,
             },
             campanhaInicial,
           )
         : null,
     // Recria só ao trocar de campanha (o executor mantém o próprio estado depois de criado).
-    [db, idEscolhido],
+    [db, idEscolhido, trava],
   );
   const [estado, setEstado] = useState<EstadoExecutor | null>(null);
   const [agora, setAgora] = useState(Date.now());
@@ -212,6 +216,7 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
         <h3>{ROTULO_FASE[estado.fase]}</h3>
         {estado.fase === 'intervalo' && faltaSeg != null && <p className="contagem">Próximo em {faltaSeg} s</p>}
         {estado.mensagem && <p className={estado.fase === 'concluida' ? 'info' : 'aviso'}>{estado.mensagem}</p>}
+        {estado.avisoTrava && <p className="aviso">{estado.avisoTrava}</p>}
         {item && (
           <>
             <p>

@@ -9,6 +9,7 @@
 import { lerCarimbo } from '../shared/followup';
 import type { EventoConteudo, MensagemLida, RespostaConteudo } from '../shared/mensagens';
 import { normalizarTexto } from '../shared/nomes';
+import { telefoneDoJid, telefoneDoNomeExibido } from '../shared/telefone';
 import { normalizarParaComparar } from '../shared/texto';
 import { abrirLinhaDaLista } from './abrir-conversa';
 import { colarComClipboard, colarDiretoNoParagrafo, escreverNoCampo, esperar, esperarAte, limparCampo, limparMarcas, textoComEmoji, textoDoCampoComEmoji } from './dom';
@@ -614,7 +615,9 @@ export async function lerConversa(nome: string): Promise<RespostaConteudo> {
       quando: carimboDaMensagem(el),
     };
   });
-  return { ok: true, mensagens };
+  // Telefone da conversa (só leitura): o JID dos ids das mensagens ("5584...@c.us") ou o título, se o contato não está salvo.
+  const telefone = telefoneDoNomeExibido(nome) ?? elementos.map((el) => telefoneDoJid(el.getAttribute('data-id') ?? '')).find((t): t is string => t != null) ?? null;
+  return { ok: true, mensagens, ...(telefone ? { telefone } : {}) };
 }
 
 /**
