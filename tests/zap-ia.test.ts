@@ -252,6 +252,90 @@ describe('zapIa.gerarCobranca', () => {
     expect(usuario).toContain('tentativa: 2');
   });
 
+  describe('estilo e exemplos do dono (Vita Zap 0.7.55)', () => {
+    const exemplos = ['Oi, {nome}! Passando para saber se você viu minha mensagem. Qualquer coisa me chama.', '{nome}, tudo certo por aí? Fico no aguardo.'];
+    const sistema = () => llm.completeWithFallback.mock.calls[0][0][0].content as string;
+    const usuario = () => llm.completeWithFallback.mock.calls[0][0][1].content as string;
+
+    it('chamada antiga (sem estilo nem exemplos) usa o prompt de sempre', async () => {
+      llm.completeWithFallback.mockResolvedValue({ text: 'Oi, Maria! Passando para saber se precisa de sal.', provider: 't' });
+      await chamador().gerarCobranca(entrada);
+      expect(sistema()).toContain('Até 2 frases e no máximo 220 caracteres');
+      expect(usuario()).not.toContain('exemplos_do_dono');
+      expect(usuario()).not.toContain('como_o_dono_quer_escrever');
+    });
+
+    it('estilo e exemplos entram no prompt: imitar o tom sem copiar, com o nome real nos exemplos', async () => {
+      llm.completeWithFallback.mockResolvedValue({ text: 'Maria, tudo bem por aí? Fico no aguardo do seu retorno.', provider: 't' });
+      const r = await chamador().gerarCobranca({ ...entrada, estilo: 'curto, informal, sem exclamação', exemplos });
+      expect(r).toMatchObject({ ok: true });
+      expect(sistema()).toMatch(/Imite o tom, o tamanho e o vocabulário/);
+      expect(sistema()).toMatch(/NÃO copie nenhum exemplo literalmente/);
+      expect(sistema()).toContain('NUNCA fale de saúde');
+      expect(usuario()).toContain('como_o_dono_quer_escrever: curto, informal, sem exclamação');
+      expect(usuario()).toContain('1. Oi, Maria! Passando para saber se você viu minha mensagem.');
+      expect(usuario()).toContain('2. Maria, tudo certo por aí?');
+      expect(usuario()).not.toContain('{nome}');
+      expect(usuario()).not.toContain('Souza');
+    });
+
+    it('só exemplos (sem estilo) também ativa o modo do dono', async () => {
+      llm.completeWithFallback.mockResolvedValue({ text: 'Maria, tudo certo? Estou por aqui.', provider: 't' });
+      await chamador().gerarCobranca({ ...entrada, exemplos });
+      expect(usuario()).toContain('exemplos_do_dono');
+      expect(usuario()).not.toContain('como_o_dono_quer_escrever');
+    });
+
+    it('estilo só com espaços e lista vazia = prompt de sempre', async () => {
+      llm.completeWithFallback.mockResolvedValue({ text: 'Oi, Maria! Passando para saber se precisa de sal.', provider: 't' });
+      await chamador().gerarCobranca({ ...entrada, estilo: '   ', exemplos: [] });
+      expect(sistema()).toContain('Até 2 frases e no máximo 220 caracteres');
+    });
+
+    it('telefone e e-mail digitados no estilo/exemplos não vão para a IA', async () => {
+      llm.completeWithFallback.mockResolvedValue({ text: 'Maria, tudo certo? Estou por aqui.', provider: 't' });
+      await chamador().gerarCobranca({ ...entrada, estilo: 'me liga no 84 99999-1234', exemplos: ['{nome}, escreva para joao@x.com'] });
+      expect(usuario()).not.toMatch(/99999|joao@x/);
+      expect(usuario()).toContain('[número]');
+      expect(usuario()).toContain('[e-mail]');
+    });
+
+    it('se a IA devolver {nome}, vira o primeiro nome antes de validar', async () => {
+      llm.completeWithFallback.mockResolvedValue({ text: 'Oi, {nome}! Fico no aguardo, qualquer coisa me chama.', provider: 't' });
+      const r = await chamador().gerarCobranca({ ...entrada, exemplos });
+      expect(r).toEqual({ ok: true, texto: 'Oi, Maria! Fico no aguardo, qualquer coisa me chama.' });
+    });
+
+    it.each([
+      ['link', 'Maria, veja www.salvita.com.br'],
+      ['alegação de saúde', 'Maria, nosso sal é natural e faz bem à saúde.'],
+      ['preço', 'Maria, o saco está R$ 20 hoje.'],
+      ['sem o nome', 'Tudo certo por aí? Fico no aguardo.'],
+      ['longo demais', `Maria, ${'aguardo '.repeat(50)}`],
+    ])('a mesma validação de saída vale no modo do dono (%s)', async (_n, texto) => {
+      llm.completeWithFallback.mockResolvedValue({ text: texto, provider: 't' });
+      expect(await chamador().gerarCobranca({ ...entrada, estilo: 'informal', exemplos })).toMatchObject({ ok: false, codigo: 'texto_invalido' });
+    });
+
+    it('limites de entrada: estilo > 500, exemplo > 300 e mais de 10 exemplos são recusados', async () => {
+      await expect(chamador().gerarCobranca({ ...entrada, estilo: 'a'.repeat(501) })).rejects.toBeTruthy();
+      await expect(chamador().gerarCobranca({ ...entrada, exemplos: ['a'.repeat(301)] })).rejects.toBeTruthy();
+      await expect(chamador().gerarCobranca({ ...entrada, exemplos: Array.from({ length: 11 }, () => 'oi {nome}') })).rejects.toBeTruthy();
+      expect(llm.completeWithFallback).not.toHaveBeenCalled();
+    });
+
+    it('aceita exatamente 500 / 300 / 10', async () => {
+      llm.completeWithFallback.mockResolvedValue({ text: 'Maria, tudo certo? Estou por aqui.', provider: 't' });
+      const r = await chamador().gerarCobranca({ ...entrada, estilo: 'a'.repeat(500), exemplos: Array.from({ length: 10 }, () => 'b'.repeat(300)) });
+      expect(r).toMatchObject({ ok: true });
+    });
+
+    it('IA fora do ar continua ia_indisponivel (a extensão usa os textos do dono)', async () => {
+      llm.completeWithFallback.mockRejectedValue(new Error('fora'));
+      expect(await chamador().gerarCobranca({ ...entrada, estilo: 'informal', exemplos })).toMatchObject({ ok: false, codigo: 'ia_indisponivel' });
+    });
+  });
+
   it('limite diário de cobranças', async () => {
     llm.completeWithFallback.mockResolvedValue({ text: 'Oi, Maria! Passando para saber se precisa de sal.', provider: 't' });
     const c = chamador();

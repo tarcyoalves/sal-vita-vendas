@@ -54,7 +54,11 @@ export const zapIaRouter = router({
     };
   }),
 
-  /** Texto curto e gentil de cobrança (sem link, sem mídia, com o primeiro nome). tentativa 1 ou 2. */
+  /**
+   * Texto curto e gentil de cobrança (sem link, sem mídia, com o primeiro nome). tentativa 1 ou 2.
+   * Opcional: `estilo` (até 500) e `exemplos` (até 10 de até 300) = o jeito de escrever do dono; a IA imita sem copiar
+   * e a saída passa pela mesma validação de sempre.
+   */
   gerarCobranca: protectedProcedure.input(cobrancaInputSchema).mutation(async ({ ctx, input }) => {
     const hoje = spDateStr();
     if (cobrancasDoDia.consumir(ctx.user.id, hoje, 1) === 0) return { ok: false, codigo: 'limite_diario', mensagem: MSG_LIMITE } satisfies ZapIaFalha;
