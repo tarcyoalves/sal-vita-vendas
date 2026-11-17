@@ -6,6 +6,7 @@ import type { Campanha } from './campanha';
 import type { ContatoVarrido } from './contatos';
 import type { Backup, Envio, NaoEnviar } from './exportar';
 import { normalizarConfigFollowup, type ConfigFollowup, type Followup } from './followup';
+import { normalizarEstadoPedidos, type EstadoPedidos } from './pedido-ia';
 import { normalizarConfig, type ConfigPolitica } from './politica';
 import { normalizarConfigReativacao, type ConfigReativacao, type Reativacao } from './reativacao';
 
@@ -17,7 +18,7 @@ interface EsquemaVitaZap extends DBSchema {
   config: { key: string; value: { id: 'politica'; valor: ConfigPolitica } };
   /** Follow-up (v0.7.54): um registro por contato/campanha de origem (`${campanhaId}:${chave}`). */
   followups: { key: string; value: Followup };
-  followupConfig: { key: string; value: { id: 'followup'; valor: ConfigFollowup } | { id: 'reativacao'; valor: ConfigReativacao } };
+  followupConfig: { key: string; value: { id: 'followup'; valor: ConfigFollowup } | { id: 'reativacao'; valor: ConfigReativacao } | { id: 'pedidos'; valor: EstadoPedidos } };
   /** Reativação por inatividade (v0.7.56): um registro por contato (chave = nome normalizado). */
   reativacoes: { key: string; value: Reativacao };
 }
@@ -185,6 +186,20 @@ export async function lerConfigReativacao(db: Banco): Promise<ConfigReativacao> 
 export async function salvarConfigReativacao(db: Banco, cfg: ConfigReativacao): Promise<ConfigReativacao> {
   const valor = normalizarConfigReativacao(cfg);
   await db.put('followupConfig', { id: 'reativacao', valor });
+  return valor;
+}
+
+// ── Pedir à IA (v0.7.57) ─────────────────────────────────────────────────────
+// Pedidos salvos + o último resultado para revisão. Fica na loja `followupConfig` (id 'pedidos'): sem versão nova do banco.
+
+export async function lerPedidos(db: Banco): Promise<EstadoPedidos> {
+  const r = await db.get('followupConfig', 'pedidos');
+  return normalizarEstadoPedidos(r?.id === 'pedidos' ? r.valor : undefined);
+}
+
+export async function salvarPedidos(db: Banco, estado: EstadoPedidos): Promise<EstadoPedidos> {
+  const valor = normalizarEstadoPedidos(estado);
+  await db.put('followupConfig', { id: 'pedidos', valor });
   return valor;
 }
 

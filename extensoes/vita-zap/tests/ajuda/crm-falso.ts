@@ -54,7 +54,7 @@ export interface CrmFalso {
   /** tasks.acompanhando não existe (servidor anterior). */
   semProcedureAcompanhando: boolean;
   /** IA do follow-up (zapIa.*): o teste define o que o servidor devolve. null = procedure inexistente (servidor anterior). */
-  zapIa: { classificar: (conversas: unknown[]) => unknown; cobranca: (entrada: Record<string, unknown>) => unknown; reativacao?: (conversas: unknown[]) => unknown } | null;
+  zapIa: { classificar: (conversas: unknown[]) => unknown; cobranca: (entrada: Record<string, unknown>) => unknown; reativacao?: (conversas: unknown[]) => unknown; interpretar?: (entrada: Record<string, unknown>) => unknown; conferir?: (entrada: Record<string, unknown>) => unknown } | null;
   /** zapCrm.* não existe (servidor anterior à 0.7.56). */
   semZapCrm: boolean;
   /** O servidor devolve a lista cortada (limite). */
@@ -172,6 +172,8 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
     }
     if (caminho === 'zapIa.classificarConversas' && crm.zapIa) return ok(crm.zapIa.classificar((dados as { conversas: unknown[] }).conversas));
     if (caminho === 'zapIa.gerarCobranca' && crm.zapIa) return ok(crm.zapIa.cobranca(dados as Record<string, unknown>));
+    if (caminho === 'zapIa.interpretarPedido' && crm.zapIa?.interpretar) return ok(crm.zapIa.interpretar(dados as Record<string, unknown>));
+    if (caminho === 'zapIa.conferirPedido' && crm.zapIa?.conferir) return ok(crm.zapIa.conferir(dados as Record<string, unknown>));
     if (caminho === 'zapIa.avaliarReativacao' && crm.zapIa?.reativacao) return ok(crm.zapIa.reativacao((dados as { conversas: unknown[] }).conversas));
     if (caminho === 'zapCrm.agendamentosFuturos' && !crm.semZapCrm) {
       // Igual ao servidor: pendente, lembrete ligado (nulo conta como ligado) e data FUTURA, sem teto de antecedência.

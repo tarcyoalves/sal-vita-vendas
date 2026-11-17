@@ -45,6 +45,8 @@ import * as ia from './servico-ia';
 import * as agendamentos from './servico-agendamentos';
 import type { AvaliacaoReativacao, ConversaReativacaoParaIa } from './reativacao';
 import type { RefTrava, ResultadoTrava } from './trava-agendamento';
+import { CHAVE_ORIENTACOES, normalizarOrientacoes } from './orientacoes';
+import type { ConferenciaIa, ConversaParaPedido, PedidoInterpretado, PlanoPedido } from './pedido-ia';
 import type { ClassificacaoIa } from './followup';
 
 const MAX_FILA = 200;
@@ -825,24 +827,44 @@ export class ServicoCrm implements LeadsCRM {
 
   // ── IA do follow-up (lógica em servico-ia.ts) ──────────────────────────────
 
+  /** Apoio das chamadas de IA: as orientações do dono (v0.7.57) são lidas AQUI, a cada chamada, e vão em todas. */
+  private async apoioIa(): Promise<ia.ApoioIa> {
+    const orientacoes = normalizarOrientacoes(await this.ler<string>(CHAVE_ORIENTACOES, ''));
+    return { orientacoes, alterar: (c, e) => this.alterar(c, e), chamar: (fn) => this.chamar(fn) };
+  }
+
   classificarRespostas(conversas: ia.ConversaParaIa[]): Promise<ia.ResultadoIa<ClassificacaoIa[]>> {
-    return this.exclusivo('follow-up: classificar respostas com a IA (ação do usuário)', () =>
-      ia.classificarRespostas({ alterar: (c, e) => this.alterar(c, e), chamar: (fn) => this.chamar(fn) }, conversas),
-    );
+    return this.exclusivo('follow-up: classificar respostas com a IA (ação do usuário)', async () => ia.classificarRespostas(await this.apoioIa(), conversas));
   }
 
   escreverCobranca(primeiroNome: string, mensagemCampanha: string, tentativa: 1 | 2 | 3, estilo?: ia.EstiloDoDono, contexto?: 'reativacao'): Promise<ia.ResultadoIa<string>> {
-    return this.exclusivo('follow-up: escrever cobrança com a IA (ação do usuário)', () =>
-      ia.escreverCobranca({ alterar: (c, e) => this.alterar(c, e), chamar: (fn) => this.chamar(fn) }, primeiroNome, mensagemCampanha, tentativa, estilo, contexto),
-    );
+    return this.exclusivo('follow-up: escrever cobrança com a IA (ação do usuário)', async () => ia.escreverCobranca(await this.apoioIa(), primeiroNome, mensagemCampanha, tentativa, estilo, contexto));
+  }
+
+  // ── Pedir à IA e orientações do dono (v0.7.57) ──────────────────────────────
+
+  interpretarPedido(texto: string): Promise<ia.ResultadoIa<PedidoInterpretado>> {
+    return this.exclusivo('pedir à IA: entender o pedido (ação do usuário)', async () => ia.interpretarPedido(await this.apoioIa(), texto));
+  }
+
+  conferirPedido(plano: PlanoPedido, conversas: ConversaParaPedido[]): Promise<ia.ResultadoIa<ConferenciaIa[]>> {
+    return this.exclusivo('pedir à IA: conferir as conversas lidas (ação do usuário)', async () => ia.conferirPedido(await this.apoioIa(), plano, conversas));
+  }
+
+  async orientacoesIa(): Promise<string> {
+    return normalizarOrientacoes(await this.ler<string>(CHAVE_ORIENTACOES, ''));
+  }
+
+  async salvarOrientacoesIa(texto: string): Promise<string> {
+    const t = normalizarOrientacoes(texto);
+    await this.arm.gravarChave(CHAVE_ORIENTACOES, t);
+    return t;
   }
 
   // ── Reativação por inatividade e trava de agendamento (v0.7.56) ────────────
 
   avaliarReativacao(conversas: ConversaReativacaoParaIa[]): Promise<ia.ResultadoIa<AvaliacaoReativacao[]>> {
-    return this.exclusivo('reativação: a IA lê a última conversa (ação do usuário)', () =>
-      ia.avaliarReativacao({ alterar: (c, e) => this.alterar(c, e), chamar: (fn) => this.chamar(fn) }, conversas),
-    );
+    return this.exclusivo('reativação: a IA lê a última conversa (ação do usuário)', async () => ia.avaliarReativacao(await this.apoioIa(), conversas));
   }
 
   private apoioAgendamentos(): agendamentos.ApoioAgendamentos {

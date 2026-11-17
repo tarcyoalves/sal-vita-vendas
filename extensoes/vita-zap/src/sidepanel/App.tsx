@@ -14,11 +14,12 @@ import { Dados } from './Dados';
 import { Execucao } from './Execucao';
 import { Followup } from './Followup';
 import { Lembretes } from './Lembretes';
+import { PedirIa } from './PedirIa';
 import { Previa } from './Previa';
 import { Reativacao } from './Reativacao';
 import { Varredura } from './Varredura';
 
-type Aba = 'lembretes' | 'acompanhar' | 'clientes' | 'varredura' | 'previa' | 'execucao' | 'followup' | 'reativacao' | 'dados';
+type Aba = 'lembretes' | 'acompanhar' | 'clientes' | 'varredura' | 'previa' | 'execucao' | 'followup' | 'reativacao' | 'pedir' | 'dados';
 
 export interface DadosLocais {
   contatos: ContatoVarrido[];
@@ -36,6 +37,7 @@ const ABAS: Array<{ id: Aba; rotulo: string }> = [
   { id: 'execucao', rotulo: '3. Envio' },
   { id: 'followup', rotulo: 'Follow-up' },
   { id: 'reativacao', rotulo: 'Reativação' },
+  { id: 'pedir', rotulo: 'Pedir à IA' },
   { id: 'dados', rotulo: 'Dados' },
 ];
 
@@ -183,6 +185,20 @@ export function App() {
         {/* Também sempre montada: a reativação automática continua com a aba fechada. */}
         <div hidden={aba !== 'reativacao'}>
           <Reativacao db={db} crm={crm} dados={dados} ativa={aba === 'reativacao'} />
+        </div>
+        {/* Também montada sempre: a leitura das conversas continua com a aba fechada. */}
+        <div hidden={aba !== 'pedir'}>
+          <PedirIa
+            db={db}
+            crm={crm}
+            dados={dados}
+            ativa={aba === 'pedir'}
+            aoAprovar={async (id) => {
+              await recarregar();
+              setCampanhaAtiva(id);
+              setAba('execucao');
+            }}
+          />
         </div>
         {aba === 'dados' && <Dados db={db} dados={dados} aoMudar={recarregar} crm={crm} />}
       </main>

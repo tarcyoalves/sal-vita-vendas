@@ -368,6 +368,7 @@ export function Followup({ db, crm, ativa }: Props) {
 
   return (
     <section>
+      <p className="ajuda">As <b>Orientações para a IA</b> (aba "Pedir à IA") valem aqui também, sempre abaixo das regras de segurança.</p>
       <div className="cartao">
         <h3>Follow-up com IA</h3>
         <p className="ajuda">

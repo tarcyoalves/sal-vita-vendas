@@ -698,3 +698,9 @@ telefone.
 ### 3.5 Reativação por inatividade e trava de agendamento (v0.7.56)
 
 Aba **Reativação** (desligada de fábrica; liga só com texto da etapa 1 e confirmação do risco). A IA lê a última conversa de quem está há 25 dias sem falar (etapas 25/30/40 configuráveis), o resumo vai para as notas do lead no CRM e ela decide: retomar agora (mensagem sua, pelo mesmo Executor das campanhas), esperar (agendamento no CRM, sem mensagem), chamar você ou opt-out. "Avaliar agora" nunca envia. **Trava:** cliente com agendamento futuro no CRM não entra em reativação, campanha nem cobrança; CRM indisponível = envio automático pausa. Detalhes em `docs/PLANO-CAMPANHAS-WHATSAPP.md`, seção 11. Arquivos: `shared/reativacao.ts`, `shared/trava-agendamento.ts`, `shared/servico-agendamentos.ts`, `sidepanel/reativacao-motor.ts`, `sidepanel/Reativacao.tsx`, `sidepanel/trava.ts`. Banco local v3 (loja `reativacoes`).
+
+### 3.6 Pedir à IA e Orientações para a IA (v0.7.57)
+
+Aba **Pedir à IA**: escreva em português o que quer achar ("clientes a quem perguntei sobre estoque e não responderam"). A IA mostra o **plano** (período 1–60 dias, quem falou por último, respondeu, assunto, termos do nome) para você editar; só então a extensão **lê** as conversas candidatas (só leitura) e a IA confere cada uma. O resultado é uma lista para revisão com o motivo e a confiança (baixa vem desmarcada) e a marca da trava de agendamento. Ações: Enviar mensagem (prévia obrigatória, depois campanha comum na aba 3, pelo mesmo Executor), Agendar no CRM, Não enviar mais, Ignorar. Pedidos usados ficam salvos para repetir. O WhatsApp Web só guarda ~25–40 dias de histórico.
+
+**Orientações para a IA** (no topo da mesma aba, até 1500 caracteres): regras fixas suas, enviadas em todas as chamadas de IA, sempre abaixo das regras de segurança/LGPD/conformidade. Detalhes em `docs/PLANO-CAMPANHAS-WHATSAPP.md` seção 12.

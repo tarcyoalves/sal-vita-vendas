@@ -12,6 +12,7 @@ import type { ConversaParaIa, EstiloDoDono, ResultadoIa } from './servico-ia';
 import type { AvaliacaoReativacao, ConversaReativacaoParaIa } from './reativacao';
 import type { PedidoRegistroReativacao, ResultadoRegistroReativacao } from './servico-agendamentos';
 import type { RefTrava, ResultadoTrava } from './trava-agendamento';
+import type { ConferenciaIa, ConversaParaPedido, PedidoInterpretado, PlanoPedido } from './pedido-ia';
 import type { EmailDoLead, EnvioApresentacao, PedidoApresentacao, ResultadoEmail } from './servico-email';
 
 /** Chaves e valores guardados pela integração (só o RepositorioLocal toca em chrome.storage). */
@@ -139,6 +140,15 @@ export interface LeadsCRM {
   verificarAgendamentos(refs: RefTrava[], opcoes?: { forcar?: boolean }): Promise<ResultadoTrava[]>;
   /** Grava o resumo da última conversa (e o agendamento) no lead do CRM, sem contar como contato. */
   registrarReativacao(pedido: PedidoRegistroReativacao): Promise<ResultadoRegistroReativacao>;
+
+  // "Pedir à IA" e orientações do dono (v0.7.57). Nada aqui envia mensagem de WhatsApp.
+  /** Passo 1: o pedido em português vira um plano (zapIa.interpretarPedido). Não lê conversa nenhuma. */
+  interpretarPedido(texto: string): Promise<ResultadoIa<PedidoInterpretado>>;
+  /** Passo 2: a IA diz, para cada conversa lida, se corresponde ao plano (zapIa.conferirPedido). */
+  conferirPedido(plano: PlanoPedido, conversas: ConversaParaPedido[]): Promise<ResultadoIa<ConferenciaIa[]>>;
+  /** Orientações fixas do dono (até 1500 caracteres): o serviço as manda em TODA chamada de IA. */
+  orientacoesIa(): Promise<string>;
+  salvarOrientacoesIa(texto: string): Promise<string>;
 }
 
 export const METODOS_LEADS = [
@@ -146,6 +156,7 @@ export const METODOS_LEADS = [
   'criarLead', 'registrarContatoNoLead', 'reagendar', 'alterarEtiquetas', 'catalogoTags', 'marcarConvertido', 'registrarContatoNaTask', 'acompanhando', 'reagendarTask', 'sincronizarLembretes', 'reenviarFila',
   'emailDoLead', 'salvarEmailDoLead', 'modelosEmail', 'sequenciasEmail', 'inscricoesDoLead', 'mandarApresentacao', 'inscreverNaSequencia',
   'classificarRespostas', 'escreverCobranca', 'avaliarReativacao', 'verificarAgendamentos', 'registrarReativacao',
+  'interpretarPedido', 'conferirPedido', 'orientacoesIa', 'salvarOrientacoesIa',
 ] as const satisfies ReadonlyArray<keyof LeadsCRM>;
 
 export function ehLeadsCRM(r: unknown): r is LeadsCRM {

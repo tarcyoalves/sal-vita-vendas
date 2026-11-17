@@ -311,6 +311,7 @@ export function Reativacao({ db, crm, dados, ativa }: Props) {
 
   return (
     <section>
+      <p className="ajuda">As <b>Orientações para a IA</b> (aba "Pedir à IA") valem aqui também, sempre abaixo das regras de segurança.</p>
       <div className="cartao">
         <h3>Reativação por inatividade</h3>
         <p className="ajuda">

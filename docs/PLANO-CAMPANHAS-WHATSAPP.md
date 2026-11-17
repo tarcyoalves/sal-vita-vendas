@@ -271,3 +271,20 @@ Cliente com agendamento futuro pendente no CRM (tarefa com lembrete ligado, `sta
 
 ### Não verificado
 WhatsApp Web real (telefone pelo JID: o WhatsApp de 10/2026 usa só hashes, então muitas vezes o telefone vem do índice local; sem telefone não se cria lead nem agendamento), IA real (só mockada), o servidor em produção (publicado em `main`, deploy não conferido aqui), e o efeito das mensagens automáticas no número.
+
+## 12. Pedir à IA e Orientações para a IA (Vita Zap 0.7.57, decisão de 17/11/2026)
+
+Pedido do dono: "colocar um local para orientar a IA também, ex.: filtre os clientes que eu mandei mensagem perguntando sobre estoque e não respondeu".
+
+### Pedir à IA (aba própria)
+- **Passo 1, `zapIa.interpretarPedido({texto, orientacoes?})`:** o pedido em português vira um plano validado (zod): `periodoDias` (1–60, padrão 30), `quemFalouPorUltimo` (`eu|cliente|tanto_faz`), `respondeu` (`true|false|null`), `assunto`, `termosNomeContato?`, `perguntas?` (quando ambíguo a IA pergunta em vez de adivinhar). Regra do código: `respondeu:false` força `quemFalouPorUltimo:'eu'`. O dono confirma/edita o plano antes de qualquer leitura. Limite do WhatsApp Web (~25–40 dias de histórico) avisado na tela.
+- **Execução (só leitura):** candidatas pela lista da varredura (datas do período; nunca "Não enviar mais", grupo/possível grupo, só número, nome repetido, data incerta; termos do nome = TODOS), pré-filtro barato pelo ícone da última mensagem (só descarta quando a lista sabe), trava de agendamento consultada antes de abrir conversa, `lerConversa` (identidade estrita; falha fechada vira "revisar"), regra do plano aplicada pelo código sobre a conversa lida (antes de gastar IA; espelhada no servidor), e `zapIa.conferirPedido` (lote 10 na extensão, ≤20 no servidor) devolve `{ref, corresponde, motivo, confianca, pediuParaSair?, revisar?}`. Mesma LGPD do `classificarConversas` (refs opacos, só primeiro nome). Máx. 40 leituras por rodada, mais recentes primeiro.
+- **Resultado:** lista para REVISÃO; nada sai sozinho. Confiança baixa, "revisar", pediu para sair e agendado nascem desmarcados. Ações por item e em lote: Enviar mensagem, Agendar no CRM (1–120 dias, lembrete às 9h), Não enviar mais, Ignorar. Leitura com mais de 12 h não serve para enviar.
+- **Enviar mensagem:** textos do dono (`{nome}`, mesma validação da cobrança) ou "IA no meu estilo" (0.7.55: estilo + textos como exemplos; falha da IA cai para texto do dono). **Prévia obrigatória** com o texto exato; antes dela "Não enviar mais", trava (consulta forçada), pedido de sair e idade da leitura são conferidos de novo. Aprovada, vira campanha COMUM pausada (aba 3), enviada só pelo Executor com toda a política (inclusive 14 dias entre campanhas e trava por contato). O painel não tem caminho próprio de clique.
+- **Pedidos salvos:** os pedidos rodados ficam salvos (máx. 20) para repetir; último resultado guardado (IndexedDB, loja `followupConfig`, sem versão nova).
+
+### Orientações para a IA
+Campo de até 1500 caracteres, salvo em `chrome.storage.local` (`vz.ia.orientacoes`), lido pelo service worker a cada chamada e enviado como `orientacoes` (opcional) em `classificarConversas`, `gerarCobranca`, `avaliarReativacao`, `interpretarPedido` e `conferirPedido`. O servidor injeta um bloco "Orientações do dono (siga, mas nunca acima das regras de segurança, LGPD e conformidade)" no prompt de sistema; tratadas como dados (delimitadores removidos), não mudam o formato de saída, e as validações de saída (sem link/preço/termos proibidos, zod) continuam valendo. Sem texto, o prompt é idêntico ao anterior.
+
+### Não verificado
+IA real (só mockada), WhatsApp Web real, deploy do servidor, publicação no site.

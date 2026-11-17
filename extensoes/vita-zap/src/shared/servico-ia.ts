@@ -9,6 +9,8 @@
 import type { ErroCrm } from './crm-rede';
 import { LOTE_IA, MAX_MENSAGENS_IA, type ClasseIa, type ClassificacaoIa } from './followup';
 import { LOTE_IA_REATIVACAO, type AvaliacaoReativacao, type ConversaReativacaoParaIa, type DecisaoReativacao } from './reativacao';
+import { orientacoesParaEnvio } from './orientacoes';
+import { LOTE_CONFERENCIA, conferenciaDoServidor, planoDoServidor, type ConferenciaIa, type ConversaParaPedido, type PedidoInterpretado, type PlanoPedido } from './pedido-ia';
 
 export type ResultadoIa<T> = { ok: true; valor: T } | { ok: false; erro: ErroCrm };
 
@@ -21,6 +23,11 @@ export interface ConversaParaIa {
 }
 
 export interface ApoioIa {
+  /**
+   * Orientações do dono (v0.7.57), lidas pelo ServicoCrm a cada chamada. Vão como `orientacoes` em TODA chamada de IA:
+   * o servidor as injeta abaixo das regras de segurança. Vazio/ausente = o campo nem é enviado.
+   */
+  orientacoes?: string;
   alterar<T>(caminho: string, entrada?: unknown): Promise<T>;
   chamar<T>(fn: () => Promise<T>): Promise<{ ok: true; valor: T } | { ok: false; erro: ErroCrm }>;
 }
@@ -62,7 +69,7 @@ export async function classificarRespostas(ap: ApoioIa, conversas: ConversaParaI
       mensagens: c.mensagens.slice(-MAX_MENSAGENS_IA).map((m) => ({ de: m.de, texto: m.texto.slice(0, 1000), ...(m.quando ? { quando: m.quando } : {}) })),
     })),
   };
-  const r = await ap.chamar(() => ap.alterar<unknown>('zapIa.classificarConversas', entrada));
+  const r = await ap.chamar(() => ap.alterar<unknown>('zapIa.classificarConversas', { ...entrada, ...orientacoesParaEnvio(ap.orientacoes) }));
   if (!r.ok) return r;
   const o = obj(r.valor);
   if (o.ok !== true) return falha('servidor', typeof o.mensagem === 'string' ? o.mensagem : 'A IA não respondeu.');
@@ -90,7 +97,7 @@ export async function escreverCobranca(
   /** 'reativacao' (v0.7.56): retomar contato com quem está há semanas sem conversar (a etapa vem em `tentativa`, 1 a 3). */
   contexto?: 'reativacao',
 ): Promise<ResultadoIa<string>> {
-  const entrada: Record<string, unknown> = { primeiroNome: primeiroNome.slice(0, 60), mensagemCampanha: mensagemCampanha.slice(0, 1000), tentativa, ...(contexto ? { contexto } : {}) };
+  const entrada: Record<string, unknown> = { primeiroNome: primeiroNome.slice(0, 60), mensagemCampanha: mensagemCampanha.slice(0, 1000), tentativa, ...(contexto ? { contexto } : {}), ...orientacoesParaEnvio(ap.orientacoes) };
   const instrucoes = estilo?.estilo.trim().slice(0, 500) ?? '';
   const exemplos = (estilo?.exemplos ?? []).map((e) => e.trim().slice(0, 300)).filter(Boolean).slice(0, 10);
   if (instrucoes !== '') entrada.estilo = instrucoes;
@@ -131,10 +138,54 @@ export async function avaliarReativacao(ap: ApoioIa, conversas: ConversaReativac
       mensagens: c.mensagens.slice(-MAX_MENSAGENS_IA).map((m) => ({ de: m.de, texto: m.texto.slice(0, 1000), ...(m.quando ? { quando: m.quando } : {}) })),
     })),
   };
-  const r = await ap.chamar(() => ap.alterar<unknown>('zapIa.avaliarReativacao', entrada));
+  const r = await ap.chamar(() => ap.alterar<unknown>('zapIa.avaliarReativacao', { ...entrada, ...orientacoesParaEnvio(ap.orientacoes) }));
   if (!r.ok) return r;
   const o = obj(r.valor);
   if (o.ok !== true) return falha('servidor', typeof o.mensagem === 'string' ? o.mensagem : 'A IA não respondeu.');
   const itens = Array.isArray(o.itens) ? o.itens.map(avaliacaoDaIa).filter((x): x is AvaliacaoReativacao => x !== null) : [];
+  return { ok: true, valor: itens };
+}
+
+// ── Pedir à IA (v0.7.57) ────────────────────────────────────────────────────
+
+/**
+ * Passo 1: o pedido do dono em português vira um plano (período, quem falou por último, respondeu, assunto, termos do nome).
+ * Não lê conversa nenhuma. Se o pedido é ambíguo, o servidor devolve `perguntas` em vez de adivinhar.
+ */
+export async function interpretarPedido(ap: ApoioIa, texto: string): Promise<ResultadoIa<PedidoInterpretado>> {
+  const limpo = texto.replace(/\s+/g, ' ').trim().slice(0, 600);
+  if (limpo.length < 3) return falha('validacao', 'Escreva o que você quer encontrar nas conversas.');
+  const r = await ap.chamar(() => ap.alterar<unknown>('zapIa.interpretarPedido', { texto: limpo, ...orientacoesParaEnvio(ap.orientacoes) }));
+  if (!r.ok) return r;
+  const o = obj(r.valor);
+  if (o.ok !== true) return falha(o.codigo === 'texto_invalido' ? 'validacao' : 'servidor', typeof o.mensagem === 'string' ? o.mensagem : 'A IA não respondeu.');
+  const plano = planoDoServidor(o.plano);
+  return plano ? { ok: true, valor: plano } : falha('servidor', 'A IA devolveu um plano fora do formato. Tente escrever o pedido de outro jeito.');
+}
+
+/**
+ * Passo 2: para cada conversa lida (até LOTE_CONFERENCIA), a IA diz se corresponde ao plano. Só o primeiro nome e as últimas
+ * mensagens vão ao servidor (que ainda remove telefone/CPF/e-mail). Item que o servidor não devolveu NÃO aparece aqui:
+ * quem chama trata a falta como "revisar" (falha fechada).
+ */
+export async function conferirPedido(ap: ApoioIa, plano: PlanoPedido, conversas: ConversaParaPedido[]): Promise<ResultadoIa<ConferenciaIa[]>> {
+  if (conversas.length === 0) return { ok: true, valor: [] };
+  if (conversas.length > LOTE_CONFERENCIA) return falha('validacao', `No máximo ${LOTE_CONFERENCIA} conversas por lote.`);
+  const entrada = {
+    assunto: plano.assunto.slice(0, 200),
+    quemFalouPorUltimo: plano.quemFalouPorUltimo,
+    respondeu: plano.respondeu,
+    conversas: conversas.map((c) => ({
+      ref: c.ref,
+      primeiroNome: c.primeiroNome.slice(0, 60),
+      mensagens: c.mensagens.slice(-MAX_MENSAGENS_IA).map((m) => ({ de: m.de, texto: m.texto.slice(0, 1000), ...(m.quando ? { quando: m.quando } : {}) })),
+    })),
+    ...orientacoesParaEnvio(ap.orientacoes),
+  };
+  const r = await ap.chamar(() => ap.alterar<unknown>('zapIa.conferirPedido', entrada));
+  if (!r.ok) return r;
+  const o = obj(r.valor);
+  if (o.ok !== true) return falha('servidor', typeof o.mensagem === 'string' ? o.mensagem : 'A IA não respondeu.');
+  const itens = Array.isArray(o.itens) ? o.itens.map(conferenciaDoServidor).filter((x): x is ConferenciaIa => x !== null) : [];
   return { ok: true, valor: itens };
 }
