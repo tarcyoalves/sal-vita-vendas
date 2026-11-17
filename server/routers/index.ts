@@ -19,6 +19,7 @@ import { catalogRouter } from './catalog';
 import { prospectingRadarRouter } from './prospectingRadar';
 import { creditoRouter } from './credito';
 import { premiumAuthRouter } from './premiumAuth';
+import { zapIaRouter } from './zapIa';
 export const appRouter = router({
   auth: authRouter,
   reminders: remindersRouter,
@@ -43,6 +44,8 @@ export const appRouter = router({
   credito: creditoRouter,
   // Login da loja Premium: sem banco, independente do `auth` do CRM.
   premiumAuth: premiumAuthRouter,
+  // IA do follow-up do Vita Zap (classificar respostas e escrever cobrança). Só lê texto; nunca envia.
+  zapIa: zapIaRouter,
 });
 
 export type AppRouter = typeof appRouter;
