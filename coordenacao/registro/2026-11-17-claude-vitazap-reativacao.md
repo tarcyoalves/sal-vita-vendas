@@ -2,8 +2,8 @@
 
 - **Agente:** claude
 - **Início:** 2026-11-17
-- **Fim:** (preencher ao concluir)
-- **Status:** em andamento
+- **Fim:** 2026-11-17
+- **Status:** parcial (servidor em `main`; extensão 0.7.56 só na branch, não publicada no site)
 - **Branch:** `claude/magical-fermi-wrdxjy` (extensão, NÃO vai para `main`); só os commits do servidor vão para `main`
 
 ## Objetivo
@@ -28,5 +28,20 @@ futuro no CRM não entra em reativação, campanha nem cobrança; o agendamento 
 
 ## Progresso
 
-- [ ] servidor: avaliarReativacao + agendamentos futuros + testes (main)
-- [ ] extensão: regras, trava, motor, tela, testes, build, zip local
+- [x] servidor: avaliarReativacao + agendamentos futuros + testes (main)
+- [x] extensão: regras, trava, motor, tela, testes, build, zip local
+
+## Resultado
+Servidor (main): `zapIa.avaliarReativacao`, `gerarCobranca` com `contexto: 'reativacao'`, `zapCrm.agendamentosFuturos`, `zapCrm.registrarReativacao` (resumo nas notas do lead sem contar contato). Sem migração. Extensão 0.7.56: aba Reativação, trava de agendamento (Prévia, Executor, cobrança, reativação), IndexedDB v3.
+
+## Commits
+main: `e5a4910`, `b2e19f8`, `65e677d`. Branch `claude/magical-fermi-wrdxjy`: os mesmos + commit da extensão 0.7.56.
+
+## Verificado
+Main (worktree de origin/main, env de IA simulado): check 0 erros, 125 arquivos / 1774 testes. Extensão: tsc ok, build ok, `npm test` 1131 ok + só `publicacao.test.ts` (pré-existente); Chromium real 21/21 (`run-reativacao.cjs`).
+
+## Não verificado
+WhatsApp real, IA real, deploy do servidor, envio real pelo Executor no Chromium (horário), `npm run publicar` NÃO feito.
+
+## Armadilhas
+`tasks.update` conta contato ao mudar notas (por isso procedimento próprio); `tasks.reminders` só olha 7 dias; nomes com dígito ("A1") não geram primeiro nome; Followup/Reativação ficam montados escondidos: precisam recarregar ao ficar à vista (`ativa`).
