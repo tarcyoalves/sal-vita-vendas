@@ -20,6 +20,7 @@ import { prospectingRadarRouter } from './prospectingRadar';
 import { creditoRouter } from './credito';
 import { premiumAuthRouter } from './premiumAuth';
 import { zapIaRouter } from './zapIa';
+import { zapCrmRouter } from './zapCrm';
 export const appRouter = router({
   auth: authRouter,
   reminders: remindersRouter,
@@ -46,6 +47,8 @@ export const appRouter = router({
   premiumAuth: premiumAuthRouter,
   // IA do follow-up do Vita Zap (classificar respostas e escrever cobrança). Só lê texto; nunca envia.
   zapIa: zapIaRouter,
+  // Dados do CRM para a trava de agendamento do Vita Zap (só leitura).
+  zapCrm: zapCrmRouter,
 });
 
 export type AppRouter = typeof appRouter;
