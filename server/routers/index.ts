@@ -21,6 +21,7 @@ import { creditoRouter } from './credito';
 import { premiumAuthRouter } from './premiumAuth';
 import { zapIaRouter } from './zapIa';
 import { zapCrmRouter } from './zapCrm';
+import { zapContatosRouter } from './zapContatos';
 export const appRouter = router({
   auth: authRouter,
   reminders: remindersRouter,
@@ -49,6 +50,7 @@ export const appRouter = router({
   zapIa: zapIaRouter,
   // Dados do CRM para a trava de agendamento do Vita Zap (só leitura).
   zapCrm: zapCrmRouter,
+  zapContatos: zapContatosRouter,
 });
 
 export type AppRouter = typeof appRouter;
