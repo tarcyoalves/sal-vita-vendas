@@ -26,6 +26,7 @@ import {
   sortearTexto,
   textoCobrancaValido,
   textoParaModelo,
+  textosParaContato,
   type ModoCobranca,
   type OrigemTexto,
 } from '../shared/followup-estilo';
@@ -335,8 +336,7 @@ export class MotorPedido {
 
   private async escolherTexto(item: ItemPedido, assunto: string, t: { modo: ModoCobranca; textos: string[]; estilo: string }, usados: Set<string>, ia: { fora: boolean }): Promise<{ modelo: string; origem: OrigemTexto } | null> {
     const nome = item.primeiroNome.trim();
-    if (nome === '') return null; // os textos do dono usam {nome}
-    if (t.modo === 'ia_estilo' && !ia.fora) {
+    if (t.modo === 'ia_estilo' && !ia.fora && nome !== '') {
       try {
         const res = await this.d.ia.escreverCobranca(nome, assunto, 1, { estilo: t.estilo, exemplos: t.textos });
         if (res.ok) {
@@ -350,7 +350,7 @@ export class MotorPedido {
         ia.fora = true;
       }
     }
-    const servem = t.textos.filter((x) => textoCobrancaValido(x, nome));
+    const servem = textosParaContato(t.textos, nome).filter((x) => textoCobrancaValido(x, nome));
     const escolhido = sortearTexto(servem, this.d.aleatorio, this.ultimoSorteado);
     if (escolhido === null) return null;
     this.ultimoSorteado = escolhido;
@@ -367,7 +367,7 @@ export class MotorPedido {
     const ultimo = e.ultimo;
     const textos = normalizarTextos(envio.textos);
     if (!ultimo) return { itens: [], excluidos: [], erro: 'Não há resultado de pedido para enviar.' };
-    if (textos.length === 0) return { itens: [], excluidos: [], erro: 'Escreva pelo menos um texto seu (com {nome}, sem link, sem preço) antes de montar a prévia.' };
+    if (textos.length === 0) return { itens: [], excluidos: [], erro: 'Escreva pelo menos um texto seu (sem link, sem preço; {nome} é opcional) antes de montar a prévia.' };
     const alvo = new Set(chaves);
     const itens = ultimo.itens.filter((i) => alvo.has(i.chave));
     if (itens.length === 0) return { itens: [], excluidos: [], erro: 'Marque pelo menos uma conversa.' };
@@ -385,10 +385,9 @@ export class MotorPedido {
       const pode = podeReceberMensagem(atual, agora);
       if (naoEnviar.has(i.chave)) previa.excluidos.push({ chave: i.chave, nome: i.nome, motivo: 'marcado "Não enviar mais"' });
       else if (!pode.ok) previa.excluidos.push({ chave: i.chave, nome: i.nome, motivo: pode.motivo });
-      else if (i.primeiroNome.trim() === '') previa.excluidos.push({ chave: i.chave, nome: i.nome, motivo: 'o contato não tem primeiro nome: escreva você' });
       else {
         const escolha = await this.escolherTexto(i, ultimo.plano.assunto, { modo: envio.modo, textos, estilo }, usados, ia);
-        if (escolha === null) previa.excluidos.push({ chave: i.chave, nome: i.nome, motivo: 'não achei um texto seu que sirva para este contato' });
+        if (escolha === null) previa.excluidos.push({ chave: i.chave, nome: i.nome, motivo: i.primeiroNome.trim() === '' ? 'o contato não tem primeiro nome e nenhum texto seu serve sem {nome}: escreva você' : 'não achei um texto seu que sirva para este contato' });
         else {
           usados.add(escolha.modelo);
           previa.itens.push({ chave: i.chave, nome: i.nome, primeiroNome: i.primeiroNome, modelo: escolha.modelo, origem: escolha.origem, texto: montarTextoCobranca(escolha.modelo.split(MARCADOR_PRIMEIRO_NOME).join(MARCADOR_NOME), i.primeiroNome) });

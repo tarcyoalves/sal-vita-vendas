@@ -704,6 +704,32 @@ describe('a mensagem é do dono (0.7.55): textos dele, IA no estilo dele, nunca 
     expect(await t.get('Ana')).toMatchObject({ estado: 'revisar' });
   });
 
+  it('{nome} é opcional: contato sem primeiro nome recebe um texto SEM {nome}; sem nenhum, vai para "escreva você"', async () => {
+    const SEM_NOME = 'Bom dia, tudo bem? Conseguiu dar uma olhada no estoque por aí?';
+    const t = await montar({ Ana: 'sem_resposta', Bia: 'sem_resposta' });
+    await t.motor.sincronizar();
+    const { salvarFollowups } = await import('../src/shared/banco');
+    await salvarFollowups(t.db, [{ ...(await t.get('Ana')), primeiroNome: '' }]);
+    await t.motor.verificar({ ...BASE, textos1: ['Oi, {nome}! Tudo certo por aí hoje?', SEM_NOME] }, { forcar: true });
+    expect(await t.get('Ana')).toMatchObject({ estado: 'cobranca', cobrancaModelo: SEM_NOME }); // sem marcador sobrando
+    const bia = await t.get('Bia'); // contato com nome: qualquer um dos textos serve
+    expect(bia.estado).toBe('cobranca');
+    expect(bia.cobrancaModelo === SEM_NOME || bia.cobrancaModelo === 'Oi, {primeiroNome}! Tudo certo por aí hoje?').toBe(true);
+
+    const u = await montar({ Ana: 'sem_resposta' });
+    await u.motor.sincronizar();
+    await salvarFollowups(u.db, [{ ...(await u.get('Ana')), primeiroNome: '' }]);
+    await u.motor.verificar({ ...BASE, textos1: ['Oi, {nome}! Tudo certo por aí hoje?'] }, { forcar: true });
+    expect(await u.get('Ana')).toMatchObject({ estado: 'revisar', motivo: expect.stringMatching(/escreva você/) });
+  });
+
+  it('{nome} é opcional: texto sem o marcador sai igual para quem tem nome', async () => {
+    const SEM_NOME = 'Bom dia, tudo bem? Conseguiu dar uma olhada no estoque por aí?';
+    const t = await montar({ Ana: 'sem_resposta' });
+    await t.motor.verificar({ ...BASE, textos1: [SEM_NOME] });
+    expect(await t.get('Ana')).toMatchObject({ estado: 'cobranca', cobrancaModelo: SEM_NOME });
+  });
+
   it('sem texto da 1ª cobrança nada é montado nem enviado (mesmo que alguém force a config)', async () => {
     const t = await montar({ Ana: 'sem_resposta' });
     await t.motor.verificar(BASE);

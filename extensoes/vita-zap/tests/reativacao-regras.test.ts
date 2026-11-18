@@ -100,8 +100,8 @@ describe('configuração: desligada de fábrica, só liga com risco confirmado e
     expect(podeLigarReativacao({ textos1: [TEXTO] }).ok).toBe(true);
   });
 
-  it('texto inválido (sem {nome}, com link, com termo proibido) é descartado: não conta como texto salvo', () => {
-    const c = normalizarConfigReativacao({ ligado: true, confirmouRisco: true, textos1: ['Oi sem marcador de nome nenhum aqui', 'Oi, {nome}! veja www.sal.com.br', 'Oi, {nome}! Nosso sal natural é bom'] });
+  it('texto inválido (chave quebrada, com link, com termo proibido) é descartado: não conta como texto salvo', () => {
+    const c = normalizarConfigReativacao({ ligado: true, confirmouRisco: true, textos1: ['Oi {nome, tudo bem por aí hoje?', 'Oi, {nome}! veja www.sal.com.br', 'Oi, {nome}! Nosso sal natural é bom'] });
     expect(c.textos1).toEqual([]);
     expect(c.ligado).toBe(false);
   });

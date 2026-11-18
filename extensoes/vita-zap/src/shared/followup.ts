@@ -352,8 +352,8 @@ export function decidirCobranca(f: Followup, ctx: ContextoCobranca): DecisaoCobr
 const escapar = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * Texto da IA (com o nome do cliente) → modelo da campanha (com {primeiroNome}). Chaves soltas são removidas; se o
- * nome não aparece, entra como abertura. Sem primeiro nome, o texto segue sem marcador.
+ * Texto da IA (com o nome do cliente) → modelo da campanha (com {primeiroNome}). Chaves soltas são removidas. Se o
+ * nome não aparece, o texto segue sem marcador (0.7.58: o nome é opcional; antes entrava "Oi, {nome}!" à força).
  */
 export function paraModelo(texto: string, primeiroNome: string): string {
   const nome = primeiroNome.trim();
@@ -361,7 +361,7 @@ export function paraModelo(texto: string, primeiroNome: string): string {
   if (nome === '') return limpo;
   const re = new RegExp(`(?<![\\p{L}])${escapar(nome)}(?![\\p{L}])`, 'giu');
   if (re.test(limpo)) return limpo.replace(new RegExp(`(?<![\\p{L}])${escapar(nome)}(?![\\p{L}])`, 'giu'), MARCADOR_PRIMEIRO_NOME);
-  return `Oi, ${MARCADOR_PRIMEIRO_NOME}! ${limpo}`;
+  return limpo;
 }
 
 /**

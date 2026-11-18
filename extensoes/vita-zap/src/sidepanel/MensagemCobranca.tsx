@@ -128,7 +128,7 @@ export function MensagemCobranca({ config, ocupado, onSalvar }: Props) {
     <div className="cartao" aria-label="Sua mensagem de cobrança">
       <h3>Sua mensagem de cobrança</h3>
       <p className="ajuda">
-        Você define o estilo: a cobrança automática só usa o que você escrever aqui. Use <b>{MARCADOR_NOME}</b> onde entra o primeiro nome do cliente. Sem link, sem preço e sem alegação sobre o produto.
+        Você define o estilo: a cobrança automática só usa o que você escrever aqui. Use <b>{MARCADOR_NOME}</b> se quiser o primeiro nome do cliente (opcional). Sem link, sem preço e sem alegação sobre o produto.
       </p>
       {config.desligadaSemTexto && !config.ligado && (
         <p className="aviso" role="alert">

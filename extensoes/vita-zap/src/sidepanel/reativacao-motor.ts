@@ -36,6 +36,7 @@ import {
   sortearTexto,
   textoCobrancaValido,
   textoParaModelo,
+  textosParaContato,
   type OrigemTexto,
 } from '../shared/followup-estilo';
 import { modeloDeCobrancaValido } from '../shared/followup';
@@ -433,7 +434,7 @@ export class MotorReativacao {
     if (r.estado === 'pronto') {
       const escolha = await this.escolherTexto(r, config, new Set(), { fora: false });
       if (escolha === null) {
-        r = { ...r, estado: 'precisa', motivo: r.primeiroNome.trim() === '' ? 'o contato não tem primeiro nome: escreva você' : 'não achei um texto seu que sirva para esta etapa (escreva mais variações)' };
+        r = { ...r, estado: 'precisa', motivo: r.primeiroNome.trim() === '' ? 'o contato não tem primeiro nome e nenhum texto seu serve sem {nome}: escreva você' : 'não achei um texto seu que sirva para esta etapa (escreva mais variações)' };
       } else {
         r = { ...r, textoPronto: { etapa: 1, modelo: escolha.modelo, origem: escolha.origem, assinatura: assinaturaReativacao(config) } };
       }
@@ -580,11 +581,10 @@ export class MotorReativacao {
   private async escolherTexto(r: Reativacao, config: ConfigReativacao, usados: Set<string>, ia: { fora: boolean }): Promise<{ modelo: string; origem: OrigemTexto } | null> {
     const etapa = Math.min(3, r.etapa + 1) as 1 | 2 | 3;
     const nome = r.primeiroNome.trim();
-    if (nome === '') return null; // os textos do dono usam {nome}
     const lista = textosDaEtapa(config, etapa);
     const jaRecebeu = r.enviados.map((e) => e.texto);
 
-    if (config.modo === 'ia_estilo' && !ia.fora) {
+    if (config.modo === 'ia_estilo' && !ia.fora && nome !== '') {
       try {
         const res = await this.d.ia.escreverCobranca(nome, '', etapa, { estilo: config.estilo, exemplos: lista }, 'reativacao');
         if (res.ok) {
@@ -600,7 +600,7 @@ export class MotorReativacao {
         ia.fora = true;
       }
     }
-    const servem = lista.filter((t) => textoCobrancaValido(t, nome) && !jaRecebeu.includes(montarTextoCobranca(t, nome)));
+    const servem = textosParaContato(lista, nome).filter((t) => textoCobrancaValido(t, nome) && !jaRecebeu.includes(montarTextoCobranca(t, nome)));
     const escolhido = sortearTexto(servem, this.d.aleatorio, this.ultimoSorteado[etapa]);
     if (escolhido === null) return null;
     this.ultimoSorteado[etapa] = escolhido;

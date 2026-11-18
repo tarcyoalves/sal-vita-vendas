@@ -310,10 +310,10 @@ describe('Enviar mensagem: prévia obrigatória e Executor das campanhas', () =>
     expect((await t.item('CLIENTE Ana')).estado).toBe('aberto');
   });
 
-  it('texto do dono inválido (sem {nome}, com link ou preço, termo proibido) não monta prévia', async () => {
+  it('texto do dono inválido (chave quebrada, com link ou preço, termo proibido) não monta prévia', async () => {
     const t = await montar({ 'CLIENTE Ana': conv(SEM_RESPOSTA) });
     await t.rodar();
-    for (const ruim of ['Oi! Veja o estoque.', 'Oi, {nome}! Veja www.salvita.com.br agora', 'Oi, {nome}! Sal por R$ 10 o saco', 'Oi, {nome}! Nosso sal é natural e puro, quer ver?']) {
+    for (const ruim of ['Oi {nome, veja o estoque.', 'Oi, {nome}! Veja www.salvita.com.br agora', 'Oi, {nome}! Sal por R$ 10 o saco', 'Oi, {nome}! Nosso sal é natural e puro, quer ver?']) {
       const p = await t.motor.montarPrevia(['cliente ana'], { ...TEXTOS, textos: [ruim] });
       expect(p.itens, ruim).toHaveLength(0);
       expect(p.erro, ruim).toMatch(/Escreva pelo menos um texto seu/);
@@ -337,6 +337,21 @@ describe('Enviar mensagem: prévia obrigatória e Executor das campanhas', () =>
     const p2 = await t.motor.montarPrevia(['cliente dora'], TEXTOS);
     expect(p2.itens).toHaveLength(0);
     expect(p2.excluidos[0].motivo).toMatch(/12 horas/);
+  });
+
+  it('{nome} é opcional: sem primeiro nome só entra com texto sem {nome}; texto sem {nome} também serve a quem tem nome', async () => {
+    const SEM_NOME = 'Bom dia, tudo bem? Conseguiu dar uma olhada no estoque por aí? 😛';
+    const t = await montar({ 'CLIENTE Ana': conv(SEM_RESPOSTA), '11 99999-0000': conv(SEM_RESPOSTA) });
+    await t.rodar();
+    const todas = ['cliente ana', '11 99999-0000'];
+    const mista = await t.motor.montarPrevia(todas, { ...TEXTOS, textos: [...TEXTOS.textos, SEM_NOME] });
+    const semNome = mista.itens.find((i) => i.nome === '11 99999-0000');
+    expect(semNome?.texto).toBe(SEM_NOME);
+    expect(mista.itens.every((i) => !/[{}]/.test(i.texto))).toBe(true);
+    const soSemNome = await t.motor.montarPrevia(todas, { ...TEXTOS, textos: [SEM_NOME] });
+    expect(soSemNome.itens.map((i) => i.texto)).toEqual([SEM_NOME, SEM_NOME]);
+    const soComNome = await t.motor.montarPrevia(todas, TEXTOS);
+    expect(soComNome.excluidos.find((x) => x.nome === '11 99999-0000')?.motivo).toMatch(/escreva você/);
   });
 
   it('falha ao conferir a trava na hora (CRM fora) = ninguém entra', async () => {

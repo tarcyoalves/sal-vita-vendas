@@ -110,7 +110,7 @@ describe('painel Reativação', () => {
     await montar({ ...dadosVazios, contatos: [contato('CLIENTE Ana')] });
     const c1 = campo('Etapa 1 (25 dias), variação 1');
     await digitar(c1, 'Oi! Veja www.salvita.com.br por R$ 20');
-    expect(el.textContent).toMatch(/precisa conter \{nome\}/);
+    expect(el.textContent).not.toMatch(/precisa conter/); // {nome} é opcional (0.7.58)
     expect(botao('Salvar minhas mensagens').disabled).toBe(true);
     await digitar(c1, TEXTO);
     expect(botao('Salvar minhas mensagens').disabled).toBe(false);

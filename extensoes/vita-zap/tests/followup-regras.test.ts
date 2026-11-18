@@ -211,7 +211,7 @@ describe('decidirCobranca', () => {
 describe('texto da cobrança', () => {
   it('paraModelo troca o primeiro nome pelo marcador, sem mexer em outras palavras', () => {
     expect(paraModelo('Oi, Ana! Passando para saber da banana.', 'Ana')).toBe('Oi, {primeiroNome}! Passando para saber da banana.');
-    expect(paraModelo('Passando para saber se precisa de sal.', 'Ana')).toBe('Oi, {primeiroNome}! Passando para saber se precisa de sal.');
+    expect(paraModelo('Passando para saber se precisa de sal.', 'Ana')).toBe('Passando para saber se precisa de sal.'); // nome opcional: nada é injetado
     expect(paraModelo('Oi, Ana!', '')).toBe('Oi, Ana!');
     expect(paraModelo('Olá {link} Ana', 'Ana')).not.toMatch(/\{link\}/);
   });

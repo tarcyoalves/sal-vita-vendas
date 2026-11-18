@@ -418,9 +418,9 @@ Nada do conteúdo é logado.
 cobranças automáticas no número. A IA só foi testada com LLM simulado.
 
 **Sua mensagem de cobrança (v0.7.55).** Cartão no topo da aba Follow-up:
-- *Usar os meus textos* (padrão): variações da 1ª (1 a 10) e da 2ª cobrança, com `{nome}`; o app sorteia uma por contato, sem repetir a mesma em sequência. Sem IA.
+- *Usar os meus textos* (padrão): variações da 1ª (1 a 10) e da 2ª cobrança, com `{nome}` se quiser o primeiro nome (opcional: a mensagem é livre); o app sorteia uma por contato, sem repetir a mesma em sequência. Sem IA.
 - *IA escreve no meu estilo*: "Como devo escrever" (até 500 caracteres) + seus textos como exemplos; se a IA falhar, sai um texto seu.
-- Sem pelo menos 1 texto da 1ª cobrança a cobrança automática **não liga**. Texto sem `{nome}`, com link, preço ou termo proibido não salva. "Ver exemplo" mostra o resultado com um nome fictício.
+- Sem pelo menos 1 texto da 1ª cobrança a cobrança automática **não liga**. Texto com link, preço, termo proibido ou chave quebrada (`{nome` sem fechar: "marcador incompleto") não salva; sem `{nome}` salva normalmente. Contato sem primeiro nome só recebe textos que não usam `{nome}`; se não houver nenhum, vai para "escreva você". "Ver exemplo" mostra o resultado com um nome fictício.
 - Mudou texto, modo ou estilo: quem já está na fila tem o texto refeito antes do envio; a fila mostra "seu texto" ou "IA no seu estilo". Lógica em `src/shared/followup-estilo.ts`, tela em `src/sidepanel/MensagemCobranca.tsx`.
 
 ### Dados e backup
@@ -702,5 +702,7 @@ Aba **Reativação** (desligada de fábrica; liga só com texto da etapa 1 e con
 ### 3.6 Pedir à IA e Orientações para a IA (v0.7.57)
 
 Aba **Pedir à IA**: escreva em português o que quer achar ("clientes a quem perguntei sobre estoque e não responderam"). A IA mostra o **plano** (período 1–60 dias, quem falou por último, respondeu, assunto, termos do nome) para você editar; só então a extensão **lê** as conversas candidatas (só leitura) e a IA confere cada uma. O resultado é uma lista para revisão com o motivo e a confiança (baixa vem desmarcada) e a marca da trava de agendamento. Ações: Enviar mensagem (prévia obrigatória, depois campanha comum na aba 3, pelo mesmo Executor), Agendar no CRM, Não enviar mais, Ignorar. Pedidos usados ficam salvos para repetir. O WhatsApp Web só guarda ~25–40 dias de histórico.
+
+**v0.7.58 — `{nome}` é opcional** em todos os textos do dono (cobrança, reativação, Pedir à IA): a mensagem é livre. O servidor recebe `usar_nome` (sim se algum exemplo do dono usa `{nome}`; sem exemplos, sim) e a IA só usa o nome nesse caso. Contato sem primeiro nome só recebe texto sem `{nome}`; sem nenhum, vai para "escreva você".
 
 **Orientações para a IA** (no topo da mesma aba, até 1500 caracteres): regras fixas suas, enviadas em todas as chamadas de IA, sempre abaixo das regras de segurança/LGPD/conformidade. Detalhes em `docs/PLANO-CAMPANHAS-WHATSAPP.md` seção 12.

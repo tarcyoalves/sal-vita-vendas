@@ -269,7 +269,7 @@ describe('painel Pedir à IA: resultado para revisão e ações', () => {
     expect(botao(/Aprovar e ir para o Envio/)).toBeUndefined();
     // texto inválido: mostra o motivo e continua travado
     await digitar(campo('Seus textos para este pedido, variação 1'), 'Oi! Veja o estoque em www.salvita.com.br');
-    expect(el.textContent).toMatch(/precisa conter \{nome\}/);
+    expect(el.textContent).not.toMatch(/precisa conter/); // {nome} é opcional (0.7.58)
     expect(botao('Montar a prévia').disabled).toBe(true);
     await digitar(campo('Seus textos para este pedido, variação 1'), 'Oi, {nome}! Passando para saber se você viu a minha pergunta sobre o estoque.');
     expect(botao('Montar a prévia').disabled).toBe(false);

@@ -24,6 +24,8 @@ import {
   sortearTexto,
   textoCobrancaValido,
   textoParaModelo,
+  textosParaContato,
+  usaNome,
   textosDaTentativa,
   validarTextoCobranca,
 } from '../src/shared/followup-estilo';
@@ -39,10 +41,11 @@ describe('validarTextoCobranca (espelha o servidor)', () => {
   });
 
   it.each([
-    ['sem {nome}', 'Oi! Passando para saber se você viu minha mensagem.', /precisa conter \{nome\}/],
     ['vazio', '   ', /vazio/],
-    ['outra chave', 'Oi, {nome}! Veja {link} aqui por favor.', /outras chaves/],
-    ['o marcador antigo não vale na tela', 'Oi, {primeiroNome}! Tudo certo por aí hoje?', /precisa conter|outras chaves/],
+    ['outra chave', 'Oi, {nome}! Veja {link} aqui por favor.', /marcador incompleto: use \{nome\} exatamente assim \(com as duas chaves\) ou tire as chaves/],
+    ['chave sem fechar (o caso do dono)', 'Bom dia {nome, tudo bem? Conseguiu dar uma olhada no estoque por aí? 😛', /marcador incompleto: use \{nome\} exatamente assim/],
+    ['chave sobrando', 'Bom dia nome}, tudo bem? Conseguiu olhar o estoque?', /marcador incompleto/],
+    ['o marcador antigo não vale na tela', 'Oi, {primeiroNome}! Tudo certo por aí hoje?', /marcador incompleto/],
     ['link', 'Oi, {nome}! Veja www.salvita.com.br para saber mais.', /link/],
     ['link sem www', 'Oi, {nome}! Acesse salvitarn.com.br e confira.', /link/],
     ['wa.me', 'Oi, {nome}! Me chama em wa.me/5584999999999 por favor.', /link/],
@@ -57,6 +60,33 @@ describe('validarTextoCobranca (espelha o servidor)', () => {
     expect(erros.length).toBeGreaterThan(0);
     expect(erros.join(' | ')).toMatch(esperado);
     expect(textoCobrancaValido(texto)).toBe(false);
+  });
+
+  it('{nome} é OPCIONAL: texto livre sem o marcador é aceito (0.7.58)', () => {
+    for (const t of ['Bom dia, tudo bem? Conseguiu dar uma olhada no estoque por aí? 😛', 'Oi! Passando para saber se você viu minha mensagem.']) {
+      expect(validarTextoCobranca(t), t).toEqual([]);
+      expect(textoCobrancaValido(t)).toBe(true);
+      expect(montarTextoCobranca(t, 'Ana')).toBe(t);
+      expect(textoParaModelo(t)).toBe(t);
+    }
+    expect(validarTextoCobranca('Bom dia, tudo bem? Conseguiu olhar o estoque?').join(' ')).not.toMatch(/nome/);
+  });
+
+  it('as demais regras continuam valendo sem {nome} (link, preço, termo proibido, tamanho, SAIR)', () => {
+    expect(validarTextoCobranca('Oi! Veja www.salvita.com.br agora mesmo.').join(' ')).toMatch(/link/);
+    expect(validarTextoCobranca('Oi! Sal por R$ 10 o saco hoje.').join(' ')).toMatch(/preço/);
+    expect(validarTextoCobranca('Oi! Nosso sal é natural, quer ver?').join(' ')).toMatch(/conformidade sanitária/);
+    expect(validarTextoCobranca('Oi! Se não quiser, responda SAIR para parar.').join(' ')).toMatch(/SAIR/);
+    expect(validarTextoCobranca(`Oi! ${'muito '.repeat(60)}`).join(' ')).toMatch(/longo demais/);
+  });
+
+  it('usaNome e textosParaContato: sem primeiro nome só servem os textos sem {nome}', () => {
+    const lista = ['Oi, {nome}! Tudo bem por aí?', 'Bom dia, tudo bem? Conseguiu olhar o estoque?'];
+    expect(usaNome(lista[0])).toBe(true);
+    expect(usaNome(lista[1])).toBe(false);
+    expect(textosParaContato(lista, 'Ana')).toEqual(lista);
+    expect(textosParaContato(lista, '  ')).toEqual([lista[1]]);
+    expect(textosParaContato([lista[0]], '')).toEqual([]);
   });
 
   it.each(TERMOS_PROIBIDOS.map((t) => [t]))('termo proibido da conformidade sanitária: %s', (termo) => {
@@ -88,7 +118,7 @@ describe('validarTextoCobranca (espelha o servidor)', () => {
 
 describe('normalizarTextos', () => {
   it('tira vazios, inválidos e repetidos (ignorando maiúsculas) e limita a 10', () => {
-    expect(normalizarTextos([OK, '  ', 'sem marcador aqui mesmo', OK.toUpperCase().replace('{NOME}', '{nome}'), 'Olá, {nome}! Fico à disposição por aqui.'])).toEqual([
+    expect(normalizarTextos([OK, '  ', 'texto {incompleto aqui mesmo', OK.toUpperCase().replace('{NOME}', '{nome}'), 'Olá, {nome}! Fico à disposição por aqui.'])).toEqual([
       OK,
       'Olá, {nome}! Fico à disposição por aqui.',
     ]);
@@ -150,7 +180,7 @@ describe('configuração: normalização e migração', () => {
     expect(normalizarConfigFollowup(c)).toEqual(c);
   });
   it('modo desconhecido volta para "meus textos"; estilo é cortado em 500; textos inválidos guardados são descartados', () => {
-    const c = normalizarConfigFollowup({ modo: 'xyz' as never, estilo: 'a'.repeat(900), textos1: ['sem marcador', OK] });
+    const c = normalizarConfigFollowup({ modo: 'xyz' as never, estilo: 'a'.repeat(900), textos1: ['texto {quebrado aqui', OK] });
     expect(c.modo).toBe('meus_textos');
     expect(c.estilo).toHaveLength(MAX_ESTILO);
     expect(c.textos1).toEqual([OK]);
@@ -216,9 +246,9 @@ describe('rascunho do editor', () => {
     expect(rascunhoMudou({ ...r, textos1: [OK, '   '] }, salvo)).toBe(false); // linha vazia não conta
   });
   it('erros por linha, repetidos e estilo > 500', () => {
-    const e = errosDoRascunho({ modo: 'ia_estilo', textos1: [OK, 'sem marcador', OK, ''], textos2: [], estilo: 'a'.repeat(501) });
+    const e = errosDoRascunho({ modo: 'ia_estilo', textos1: [OK, 'texto {quebrado aqui', OK, ''], textos2: [], estilo: 'a'.repeat(501) });
     expect(e.textos1[0]).toEqual([]);
-    expect(e.textos1[1].join(' ')).toMatch(/\{nome\}/);
+    expect(e.textos1[1].join(' ')).toMatch(/marcador incompleto/);
     expect(e.textos1[2].join(' ')).toMatch(/repetido/);
     expect(e.textos1[3]).toEqual([]);
     expect(e.estilo).toMatch(/500/);

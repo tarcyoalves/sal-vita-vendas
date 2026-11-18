@@ -595,7 +595,7 @@ function MensagensReativacao({ config, ocupado, onSalvar }: { config: ConfigReat
     <div className="cartao" aria-label="Suas mensagens de reativação">
       <h3>Suas mensagens de reativação</h3>
       <p className="ajuda">
-        Você define o estilo: a reativação só usa o que você escrever aqui (textos próprios, separados da cobrança). Use <b>{MARCADOR_NOME}</b> onde entra o primeiro nome do cliente. Sem link, sem preço e sem alegação sobre o produto.
+        Você define o estilo: a reativação só usa o que você escrever aqui (textos próprios, separados da cobrança). Use <b>{MARCADOR_NOME}</b> se quiser o primeiro nome do cliente (opcional). Sem link, sem preço e sem alegação sobre o produto.
       </p>
       <div role="radiogroup" aria-label="Modo da mensagem de reativação" style={{ display: 'grid', gap: 6, fontSize: 13 }}>
         {(

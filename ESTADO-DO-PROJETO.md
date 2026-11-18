@@ -488,6 +488,7 @@ saíram desta lista e estão no registro `coordenacao/registro/2026-10-07-claude
     v0.7.54: **follow-up com IA** (decisão do dono de 17/11/2026): cobrança automática de quem não respondeu (mesmo motor/política das
     campanhas, máx. 2 por contato) e "Precisa de você" com resposta sugerida (nunca sai sozinho); IA no servidor do CRM (`zapIa.*`,
     sem tabela nova). Seção 10 do plano. Não validado com WhatsApp real nem IA real.
+    v0.7.58 (18/11/2026, pedido do dono): `{nome}` OPCIONAL em todos os textos (a mensagem é livre); contato sem primeiro nome só recebe texto sem `{nome}`, senão "escreva você"; servidor manda `usar_nome` à IA.
     Publicada no site do CRM em /vita-zap. Plano: docs/PLANO-CAMPANHAS-WHATSAPP.md.
 
 ### 🔵 Operacional

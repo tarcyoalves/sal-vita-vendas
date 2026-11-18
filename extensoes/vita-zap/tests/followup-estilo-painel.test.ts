@@ -105,10 +105,16 @@ describe('Sua mensagem de cobrança', () => {
     await montar();
     const campo = porRotulo('1ª cobrança, variação 1');
     await digitar(campo, 'Oi! Veja www.salvita.com.br por R$ 20');
-    expect(el.textContent).toMatch(/precisa conter \{nome\}/);
+    expect(el.textContent).not.toMatch(/precisa conter/); // {nome} é opcional (0.7.58)
     expect(el.textContent).toMatch(/sem link/);
     expect(el.textContent).toMatch(/preço/);
     expect(botao('Salvar minha mensagem').disabled).toBe(true);
+
+    await digitar(campo, 'Bom dia {nome, tudo bem? Conseguiu olhar o estoque por aí?');
+    expect(el.textContent).toMatch(/marcador incompleto: use \{nome\} exatamente assim/);
+    expect(botao('Salvar minha mensagem').disabled).toBe(true);
+    await digitar(campo, 'Bom dia, tudo bem? Conseguiu olhar o estoque por aí?'); // sem {nome} vale
+    expect(botao('Salvar minha mensagem').disabled).toBe(false);
 
     await digitar(campo, TEXTO);
     expect(botao('Salvar minha mensagem').disabled).toBe(false);

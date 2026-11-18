@@ -445,7 +445,7 @@ export function PedirIa({ db, crm, dados, aoAprovar, ativa }: Props) {
         <div className="cartao" aria-label="Enviar mensagem">
           <h3>Enviar mensagem a {paraEnviar.length} contato(s): prévia obrigatória</h3>
           <p className="ajuda">
-            A mensagem é SUA: escreva os textos (com {'{nome}'}, sem link e sem preço) ou deixe a IA escrever no seu estilo. Nada é enviado agora: depois da prévia aprovada, a campanha vai para a aba "3. Envio", onde o mesmo Executor das outras campanhas aplica a política
+            A mensagem é SUA: escreva os textos (sem link e sem preço; {'{nome}'} é opcional) ou deixe a IA escrever no seu estilo. Nada é enviado agora: depois da prévia aprovada, a campanha vai para a aba "3. Envio", onde o mesmo Executor das outras campanhas aplica a política
             (teto diário, horário, intervalo de 60 a 120 s, freio, "Não enviar mais", conferência da conversa e trava de agendamento do CRM, inclusive o intervalo mínimo de 14 dias entre campanhas).
           </p>
           <label className="check" style={{ display: 'flex', gap: 6 }}>
@@ -462,7 +462,7 @@ export function PedirIa({ db, crm, dados, aoAprovar, ativa }: Props) {
               <textarea aria-label="Estilo da mensagem" value={estilo} rows={2} maxLength={MAX_ESTILO} style={{ width: '100%' }} onChange={(e) => { setEstilo(e.target.value); setPrevia(null); }} />
             </label>
           )}
-          <EditorDeTextos titulo="Seus textos para este pedido" ajuda={`Use ${'{nome}'} para o primeiro nome do cliente.`} lista={textos} erros={errosTextos.textos1} sugestoes={SUGESTOES_ENVIO} idBase="pedido-texto" onChange={(l) => { setTextos(l); setPrevia(null); }} />
+          <EditorDeTextos titulo="Seus textos para este pedido" ajuda={`Use ${'{nome}'} se quiser o primeiro nome do cliente (opcional).`} lista={textos} erros={errosTextos.textos1} sugestoes={SUGESTOES_ENVIO} idBase="pedido-texto" onChange={(l) => { setTextos(l); setPrevia(null); }} />
           <div className="botoes">
             <button type="button" className="primario" disabled={trabalhando || !errosTextos.ok || textos.every((t) => t.trim() === '')} onClick={() => void montarPrevia()}>Montar a prévia</button>
             <button type="button" onClick={() => { setParaEnviar(null); setPrevia(null); }}>Cancelar</button>

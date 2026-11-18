@@ -45,14 +45,27 @@ export function textoParaModelo(texto: string): string {
   return texto.replace(RE_MARCADOR, '{primeiroNome}').replace(/\s+/g, ' ').trim();
 }
 
+/** O texto usa o marcador {nome}? */
+export function usaNome(texto: string): boolean {
+  return new RegExp(RE_MARCADOR.source, 'i').test(texto);
+}
+
+/**
+ * Textos que servem a um contato: com primeiro nome, todos; sem primeiro nome, só os que NÃO usam {nome}
+ * (nunca sai marcador sobrando). Lista vazia = "escreva você".
+ */
+export function textosParaContato(lista: ReadonlyArray<string>, primeiroNome: string): string[] {
+  return primeiroNome.trim() === '' ? lista.filter((t) => !usaNome(t)) : [...lista];
+}
+
 /** Por que este texto não pode ser usado? Lista vazia = pode. `nome` só serve para medir o tamanho final. */
 export function validarTextoCobranca(texto: string, nome: string = NOME_EXEMPLO): string[] {
   const erros: string[] = [];
   const t = texto.trim();
   if (t === '') return ['texto vazio'];
-  if (!new RegExp(RE_MARCADOR.source, 'i').test(t)) erros.push(`precisa conter ${MARCADOR_NOME} (o primeiro nome do cliente)`);
+  // {nome} é OPCIONAL (0.7.58: "a mensagem é livre"). Chave que não seja exatamente {nome} é erro de digitação.
   const semMarcador = t.replace(RE_MARCADOR, '');
-  if (RE_QUALQUER_CHAVE.test(semMarcador)) erros.push(`só o marcador ${MARCADOR_NOME} é permitido (sem outras chaves)`);
+  if (RE_QUALQUER_CHAVE.test(semMarcador)) erros.push(`marcador incompleto: use ${MARCADOR_NOME} exatamente assim (com as duas chaves) ou tire as chaves`);
   if (/[[\]<>]/.test(semMarcador)) erros.push('sem colchetes nem sinais < >');
   const final = montarTextoCobranca(t, nome);
   if (final.length > MAX_COBRANCA) erros.push(`longo demais (${final.length}/${MAX_COBRANCA} caracteres, já com o nome)`);

@@ -50,6 +50,7 @@ import {
   sortearTexto,
   textoCobrancaValido,
   textoParaModelo,
+  textosParaContato,
   textosDaTentativa,
   type OrigemTexto,
 } from '../shared/followup-estilo';
@@ -329,11 +330,10 @@ export class MotorFollowup {
   private async escolherTexto(f: Followup, config: ConfigFollowup, usados: Set<string>, ia: { fora: boolean }): Promise<{ modelo: string; origem: OrigemTexto } | null> {
     const tentativa = Math.min(2, f.cobrancas.length + 1) as 1 | 2;
     const nome = f.primeiroNome.trim();
-    if (nome === '') return null; // os textos do dono usam {nome}: sem primeiro nome não há como cobrar
     const lista = textosDaTentativa(config, tentativa);
     const jaRecebeu = f.cobrancas.map((c) => c.texto);
 
-    if (config.modo === 'ia_estilo' && !ia.fora) {
+    if (config.modo === 'ia_estilo' && !ia.fora && nome !== '') { // sem primeiro nome a IA não é chamada: só valem os textos do dono sem {nome}
       try {
         const r = await this.d.ia.escreverCobranca(nome, f.mensagemCampanha, tentativa, { estilo: config.estilo, exemplos: lista });
         if (r.ok) {
@@ -351,7 +351,7 @@ export class MotorFollowup {
       }
     }
 
-    const servem = lista.filter((t) => textoCobrancaValido(t, nome) && !jaRecebeu.includes(montarTextoCobranca(t, nome)));
+    const servem = textosParaContato(lista, nome).filter((t) => textoCobrancaValido(t, nome) && !jaRecebeu.includes(montarTextoCobranca(t, nome)));
     const escolhido = sortearTexto(servem, this.d.aleatorio, this.ultimoSorteado[tentativa]);
     if (escolhido === null) return null;
     this.ultimoSorteado[tentativa] = escolhido;
@@ -369,7 +369,7 @@ export class MotorFollowup {
         await this.gravar({
           ...f,
           estado: 'revisar',
-          motivo: f.primeiroNome.trim() === '' ? 'o contato não tem primeiro nome: escreva você' : 'não achei um texto seu que sirva para esta cobrança (escreva mais variações na mensagem de cobrança)',
+          motivo: f.primeiroNome.trim() === '' ? 'o contato não tem primeiro nome e nenhum texto seu serve sem {nome}: escreva você' : 'não achei um texto seu que sirva para esta cobrança (escreva mais variações na mensagem de cobrança)',
           cobrancaModelo: null,
           cobrancaOrigem: null,
           cobrancaAssinatura: null,

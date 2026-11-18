@@ -717,6 +717,15 @@ describe('a mensagem é do dono (mesmo sistema da 0.7.55)', () => {
     await t.rodada();
     expect((await t.registro('CLIENTE')).estado).toBe('precisa');
   });
+
+  it('{nome} é opcional: contato sem primeiro nome recebe um texto SEM {nome} (nunca marcador sobrando)', async () => {
+    const SEM_NOME = 'Bom dia, tudo bem? Conseguiu dar uma olhada no estoque por aí?';
+    const t = await montar({ CLIENTE: conv(CONVERSA_NORMAL) });
+    await t.rodada({ ...CONFIG, textos1: ['Oi, {nome}! Faz tempo que não nos falamos.', SEM_NOME] });
+    const r = await t.registro('CLIENTE');
+    expect(r.estado).toBe('pronto');
+    expect(r.textoPronto?.modelo).toBe(SEM_NOME);
+  });
 });
 
 describe('limites e ritmo da rodada', () => {
