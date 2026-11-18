@@ -155,6 +155,7 @@ export async function completeWithFallback(
   const label = opts.label ?? 'LLM_CHAIN';
 
   let lastErr: unknown;
+  const falhas: string[] = [];
   for (const cfg of chain) {
     try {
       const text = await callOnce(cfg, messages, callOpts);
@@ -163,9 +164,14 @@ export async function completeWithFallback(
       lastErr = err;
       // Nunca logar a chave nem o conteúdo das mensagens — só provedor e status.
       const codigo = (err as { codigo?: string } | undefined)?.codigo;
-      console.warn(`[${label}] provedor ${cfg.provider} falhou (status ${(err as { status?: number } | undefined)?.status ?? 'rede'}${codigo ? `, código ${codigo}` : ''})`);
+      const status = (err as { status?: number } | undefined)?.status ?? 'rede';
+      console.warn(`[${label}] provedor ${cfg.provider} falhou (status ${status}${codigo ? `, código ${codigo}` : ''})`);
+      falhas.push(`${cfg.provider}=${status}`);
       if (!isRetryable(err)) throw err;
     }
   }
+  // Uma linha só quando a cadeia INTEIRA falha (sem conteúdo nem chave): é o sinal de que a IA está fora do ar, por exemplo
+  // por um modelo aposentado em GROQ_MODEL/NVIDIA_MODEL (todos 404) ou por limite de cota (todos 429).
+  console.warn(`[${label}] cadeia inteira falhou: ${falhas.join(',')}`);
   throw lastErr instanceof Error ? lastErr : new Error('completeWithFallback: todos os provedores falharam');
 }

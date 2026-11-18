@@ -158,6 +158,39 @@ describe('completeWithFallback', () => {
   });
 });
 
+describe('completeWithFallback: cadeia inteira falhou', () => {
+  it('loga UMA linha-resumo "prov=status" (sem conteúdo nem chave) quando todos os provedores falham', async () => {
+    process.env.GROQ_API_KEY = 'chave-secreta-g';
+    process.env.CEREBRAS_API_KEY = 'chave-secreta-c';
+    process.env.NVIDIA_API_KEY = 'chave-secreta-n';
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 404, text: async () => '{"error":{"code":"model_not_found"}}' })
+      .mockResolvedValueOnce({ ok: false, status: 429, text: async () => 'limite' })
+      .mockRejectedValueOnce(new Error('aborted'));
+    vi.stubGlobal('fetch', fetchMock);
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(completeWithFallback([{ role: 'user', content: 'texto privado do cliente' }], { label: 'ZAP_IA' })).rejects.toThrow();
+    const resumos = aviso.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('cadeia inteira falhou'));
+    expect(resumos).toEqual(['[ZAP_IA] cadeia inteira falhou: groq=404,cerebras=429,nvidia=rede']);
+    const tudo = aviso.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(tudo).not.toMatch(/chave-secreta|texto privado/);
+    aviso.mockRestore();
+  });
+
+  it('não loga o resumo quando um provedor responde (nem em erro 400, que não tenta o próximo)', async () => {
+    process.env.GROQ_API_KEY = 'g';
+    process.env.CEREBRAS_API_KEY = 'c';
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce({ ok: false, status: 500, text: async () => '' }).mockResolvedValueOnce({ ok: true, json: async () => ({ choices: [{ message: { content: 'ok' } }] }) }));
+    await completeWithFallback([{ role: 'user', content: 'oi' }]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => 'ruim' }));
+    await expect(completeWithFallback([{ role: 'user', content: 'oi' }])).rejects.toThrow(/400/);
+    expect(aviso.mock.calls.map((c) => String(c[0])).some((l) => l.includes('cadeia inteira falhou'))).toBe(false);
+    aviso.mockRestore();
+  });
+});
+
 describe('codigoDoErro', () => {
   it('pega só o código curto do erro, nunca a mensagem', () => {
     expect(codigoDoErro('{"error":{"code":"AUTH_002","message":"Authentication required"}}')).toBe('AUTH_002');
