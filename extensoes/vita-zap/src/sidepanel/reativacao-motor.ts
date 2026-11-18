@@ -21,12 +21,16 @@ import {
   listarNaoEnviar,
   listarReativacoes,
   marcarNaoEnviar,
+  registrarAcaoIa,
+  registrarDecisao,
   salvarCampanha,
   salvarConfigReativacao,
   salvarFollowups,
   salvarReativacoes,
 } from '../shared/banco';
+import { emObservacao, novaAcao, novaDecisao } from '../shared/automaticos';
 import { type Campanha, novoId } from '../shared/campanha';
+import { compararProntosDaReativacao } from '../shared/fila';
 import type { ContatoVarrido } from '../shared/contatos';
 import { type ContextoFiltro, FILTROS_PADRAO, ultimoEnvioPorChave } from '../shared/filtros';
 import { aplicarClassificacao, analisarLeitura, paraModelo, type ClassificacaoIa, type Followup } from '../shared/followup';
@@ -45,6 +49,7 @@ import type { LeadsCRM } from '../shared/leads';
 import type { CodigoErro, MensagemLida, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
 import { primeiroNome as extrairPrimeiroNome } from '../shared/nomes';
 import { contarEnviosHoje } from '../shared/politica';
+import { montarMensagem } from '../shared/texto';
 import {
   type AvaliacaoReativacao,
   type ConfigReativacao,
@@ -56,6 +61,7 @@ import {
   MAX_LEITURAS_REATIVACAO,
   REELEGIVEL_APOS_DIAS,
   REELEGIVEL_RESOLVIDO_DIAS,
+  ROTULO_DECISAO,
   VALIDADE_LEITURA_REATIVACAO_MS,
   aplicarDecisao,
   aplicarResultadoCampanhaReativacao,
@@ -79,6 +85,7 @@ import type { PedidoRegistroReativacao, ResultadoRegistroReativacao } from '../s
 import type { ConversaParaIa } from '../shared/servico-ia';
 import { diaMes, type ResultadoTrava } from '../shared/trava-agendamento';
 import { hojeNoFuso } from '../shared/datas';
+import { anotarDecisaoDaResposta } from './registro-ia';
 
 const ERROS_GERAIS: ReadonlySet<CodigoErro> = new Set<CodigoErro>(['seletor', 'nao_pronto', 'ocupado', 'interno']);
 
@@ -211,6 +218,8 @@ export class MotorReativacao {
     for (const r of registrosLista) {
       if (opcoes.parar?.()) break;
       const devido = devidoParaLer(r, config, agora0);
+      // Observação: encerrar a sequência grava no CRM (nova tentativa agendada) e muda o estado; isso só acontece no modo Ligado.
+      if (devido && emObservacao(config) && devido.tipo === 'conclusao') continue;
       if (devido) trabalho.push({ tipo: 'sequencia', chave: r.chave, nome: r.nome, registro: r, devido });
     }
     const ctx: ContextoFiltro = { agora: agora0, naoEnviar, ultimoEnvioPorChave: ultimoEnvioPorChave(envios) };
@@ -280,7 +289,7 @@ export class MotorReativacao {
     }
 
     if (paraIa.length > 0) await this.avaliarComIa(paraIa, config, resumo);
-    if (paraClassificar.length > 0) await this.classificarRespostas(paraClassificar, resumo);
+    if (paraClassificar.length > 0) await this.classificarRespostas(paraClassificar, resumo, config);
     return resumo;
   }
 
@@ -395,39 +404,55 @@ export class MotorReativacao {
   /** A decisão da IA → registro, CRM (resumo/agendamento) e, se for o caso, o texto da mensagem. */
   private async aplicarAvaliacao(inicial: Reativacao, av: AvaliacaoReativacao, config: ConfigReativacao, resumo: ResumoReativacao): Promise<void> {
     const agora = this.d.agora();
+    const observando = emObservacao(config);
     const plano = aplicarDecisao(inicial, av, config.etapas[0], agora);
     let r = plano.registro;
 
-    if (plano.optOut) {
-      await marcarNaoEnviar(this.d.db, { chave: r.chave, nome: r.nome, desde: agora.toISOString(), motivo: 'pediu para sair (lido pela IA na reativação)' });
-      resumo.saidas += 1;
-    }
+    if (observando) {
+      // Observação: nada de opt-out, nada de CRM (nem resumo nem agendamento). A decisão vira um item para o dono julgar.
+      if (plano.optOut) {
+        r = { ...r, estado: 'precisa', motivo: 'Observação: a IA marcaria "Não enviar mais" (pediu para sair). Nada foi marcado.', reelegivelEm: null, observado: true };
+        resumo.saidas += 1;
+      } else if (r.estado === 'agendado') r = { ...r, observado: true };
+    } else {
+      if (plano.optOut) {
+        await marcarNaoEnviar(this.d.db, { chave: r.chave, nome: r.nome, desde: agora.toISOString(), motivo: 'pediu para sair (lido pela IA na reativação)' });
+        await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'nao_enviar', origem: 'reativacao', chave: r.chave, nome: r.nome, resumo: `Pediu para sair. ${av.resumo}`, desfazer: { tipo: 'nao_enviar' } }, agora));
+        resumo.saidas += 1;
+      }
 
-    // CRM: o contexto não pode se perder. Agendamento é OBRIGATÓRIO para quem a IA mandou esperar; o resto é "melhor esforço" com nova tentativa.
-    if (plano.crm) {
-      const pedido: PedidoRegistroReativacao = { nome: r.nome, telefone: r.telefone, linha: plano.crm.linha, agendarEm: plano.crm.agendarEm, criar: plano.crm.criar };
-      const res = await this.salvarNoCrm(pedido);
-      if (res.ok) {
-        r = { ...r, crmSalvoEm: agora.toISOString(), crmPendente: null, crmAviso: null };
-        if (res.semAgenda === 'agendamento_existente' && plano.crm.agendarEm != null) {
-          // Já havia um agendamento futuro (a trava não pegou por nome/telefone): ele prevalece.
-          const ate = res.agendamentoExistente != null ? new Date(res.agendamentoExistente).toISOString() : null;
-          r = { ...r, estado: 'travado', motivo: res.agendamentoExistente != null ? `${MOTIVO_TRAVA_PREFIXO}${diaMes(res.agendamentoExistente)} (o agendamento prevalece)` : 'já tem agendamento no CRM', agendadoPara: ate, reelegivelEm: ate, diasSugeridos: undefined };
-          resumo.travados += 1;
-        } else if (r.estado === 'agendado' && !res.agendou) {
-          r = semAgendamentoNoCrm(r, res.semAgenda === 'tarefa_encerrada' ? 'a tarefa do cliente está encerrada no CRM' : 'o CRM recusou a data', agora);
+      // CRM: o contexto não pode se perder. Agendamento é OBRIGATÓRIO para quem a IA mandou esperar; o resto é "melhor esforço" com nova tentativa.
+      if (plano.crm) {
+        const pedido: PedidoRegistroReativacao = { nome: r.nome, telefone: r.telefone, linha: plano.crm.linha, agendarEm: plano.crm.agendarEm, criar: plano.crm.criar };
+        const res = await this.salvarNoCrm(pedido);
+        if (res.ok) {
+          r = { ...r, crmSalvoEm: agora.toISOString(), crmPendente: null, crmAviso: null };
+          if (res.agendou && plano.crm.agendarEm != null) {
+            await registrarAcaoIa(
+              this.d.db,
+              novaAcao({ tipo: 'agendou', origem: 'reativacao', chave: r.chave, nome: r.nome, resumo: `Agendou o retorno no CRM para ${new Date(plano.crm.agendarEm).toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' })}. ${av.resumo}`, desfazer: { tipo: 'agendamento', taskId: res.taskId, agendadoEm: plano.crm.agendarEm } }, agora),
+            );
+          }
+          if (res.semAgenda === 'agendamento_existente' && plano.crm.agendarEm != null) {
+            // Já havia um agendamento futuro (a trava não pegou por nome/telefone): ele prevalece.
+            const ate = res.agendamentoExistente != null ? new Date(res.agendamentoExistente).toISOString() : null;
+            r = { ...r, estado: 'travado', motivo: res.agendamentoExistente != null ? `${MOTIVO_TRAVA_PREFIXO}${diaMes(res.agendamentoExistente)} (o agendamento prevalece)` : 'já tem agendamento no CRM', agendadoPara: ate, reelegivelEm: ate, diasSugeridos: undefined };
+            resumo.travados += 1;
+          } else if (r.estado === 'agendado' && !res.agendou) {
+            r = semAgendamentoNoCrm(r, res.semAgenda === 'tarefa_encerrada' ? 'a tarefa do cliente está encerrada no CRM' : 'o CRM recusou a data', agora);
+          }
+        } else if (plano.crm.agendarEm != null) {
+          if (res.codigo === 'crm' || res.codigo === 'conflito') {
+            // Falha passageira (CRM fora do ar): nada é gravado, a próxima rodada refaz esta avaliação.
+            resumo.aviso = `Não consegui falar com o CRM (${res.mensagem}): deixei ${r.nome} para a próxima rodada.`;
+            return;
+          }
+          r = semAgendamentoNoCrm(r, res.mensagem, agora);
+        } else if (res.codigo === 'crm' || res.codigo === 'conflito') {
+          r = { ...r, crmPendente: { linha: plano.crm.linha, agendarEm: null, criar: plano.crm.criar }, crmAviso: res.mensagem };
+        } else {
+          r = { ...r, crmAviso: res.mensagem };
         }
-      } else if (plano.crm.agendarEm != null) {
-        if (res.codigo === 'crm' || res.codigo === 'conflito') {
-          // Falha passageira (CRM fora do ar): nada é gravado, a próxima rodada refaz esta avaliação.
-          resumo.aviso = `Não consegui falar com o CRM (${res.mensagem}): deixei ${r.nome} para a próxima rodada.`;
-          return;
-        }
-        r = semAgendamentoNoCrm(r, res.mensagem, agora);
-      } else if (res.codigo === 'crm' || res.codigo === 'conflito') {
-        r = { ...r, crmPendente: { linha: plano.crm.linha, agendarEm: null, criar: plano.crm.criar }, crmAviso: res.mensagem };
-      } else {
-        r = { ...r, crmAviso: res.mensagem };
       }
     }
 
@@ -441,11 +466,25 @@ export class MotorReativacao {
     }
 
     await this.gravar(r);
+    if (observando) await this.anotarDecisao(r, av, plano.optOut, agora);
     if (r.estado === 'pronto') resumo.prontos += 1;
     else if (r.estado === 'agendado') resumo.agendados += 1;
     else if (r.estado === 'precisa') {
       resumo.precisam += 1;
       await this.paraALista(r);
+    }
+  }
+
+  /** Observação: o que a IA faria com este contato (julgado pelo dono na aba "Automáticos"). */
+  private async anotarDecisao(r: Reativacao, av: AvaliacaoReativacao, optOut: boolean, agora: Date): Promise<void> {
+    const base = { origem: 'reativacao' as const, chave: r.chave, nome: r.nome, contexto: `${r.chave}:${r.baseConversa}:e${r.etapa + 1}` };
+    if (optOut) await registrarDecisao(this.d.db, novaDecisao({ ...base, tipo: 'sair', resumo: `Marcaria "não enviar mais": pediu para sair. ${av.resumo}` }, agora));
+    else if (r.estado === 'pronto' && r.textoPronto) {
+      await registrarDecisao(this.d.db, novaDecisao({ ...base, tipo: 'retomar', resumo: `Retomaria a conversa agora (etapa ${r.etapa + 1}). ${av.resumo}`, texto: montarMensagem(r.textoPronto.modelo, r.primeiroNome) }, agora));
+    } else if (r.estado === 'agendado') {
+      await registrarDecisao(this.d.db, novaDecisao({ ...base, tipo: 'agendar', resumo: `Agendaria o retorno no CRM em ${r.diasSugeridos ?? '?'} dia(s) (${ROTULO_DECISAO[av.decisao]}). ${av.resumo}` }, agora));
+    } else if (r.estado === 'precisa') {
+      await registrarDecisao(this.d.db, novaDecisao({ ...base, tipo: 'precisa', resumo: `Chamaria você (${ROTULO_DECISAO[av.decisao]}). ${av.resumo || r.motivo || ''}` }, agora));
     }
   }
 
@@ -504,6 +543,12 @@ export class MotorReativacao {
         resumo.precisam += 1;
       } else {
         await this.gravar({ ...base, estado: 'pronto', motivo: null, textoPronto: { etapa: base.etapa + 1, modelo: escolha.modelo, origem: escolha.origem, assinatura: assinaturaReativacao(config) } });
+        if (emObservacao(config)) {
+          await registrarDecisao(
+            this.d.db,
+            novaDecisao({ origem: 'reativacao', tipo: 'retomar', chave: base.chave, nome: base.nome, contexto: `${base.chave}:${base.baseConversa}:e${base.etapa + 1}`, resumo: `Mandaria a etapa ${base.etapa + 1} de 3: sem resposta há ${base.baseConversa ? diasDesdeData(base.baseConversa, agora) : '?'} dia(s) da última conversa`, texto: montarMensagem(escolha.modelo, base.primeiroNome) }, agora),
+          );
+        }
         resumo.prontos += 1;
       }
     } else if (t.devido.tipo === 'conclusao') {
@@ -511,13 +556,18 @@ export class MotorReativacao {
       const res = await this.salvarNoCrm({ nome: base.nome, telefone: base.telefone, ...fim.crm! });
       const registro = res.ok ? { ...fim.registro, crmSalvoEm: agora.toISOString() } : { ...fim.registro, crmAviso: res.mensagem, agendadoPara: null };
       await this.gravar(registro);
+      await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'encerrou', origem: 'reativacao', chave: base.chave, nome: base.nome, resumo: fim.registro.motivo ?? 'sem resposta: sequência encerrada', id: `encerrou:reativacao:${base.chave}:${base.enviados.length}` }, agora));
+      if (res.ok && res.agendou && fim.crm?.agendarEm != null) {
+        await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'agendou', origem: 'reativacao', chave: base.chave, nome: base.nome, resumo: `Agendou uma nova tentativa no CRM (${config.agendaLongaDias} dias)`, desfazer: { tipo: 'agendamento', taskId: res.taskId, agendadoEm: fim.crm.agendarEm } }, agora));
+      }
       resumo.concluidos += 1;
     } else {
       await this.gravar(base); // conferência: continua esperando
     }
   }
 
-  private async classificarRespostas(itens: Array<{ r: Reativacao; mensagens: MensagemLida[] }>, resumo: ResumoReativacao): Promise<void> {
+  private async classificarRespostas(itens: Array<{ r: Reativacao; mensagens: MensagemLida[] }>, resumo: ResumoReativacao, config: ConfigReativacao): Promise<void> {
+    const observando = emObservacao(config);
     for (let ini = 0; ini < itens.length; ini += 10) {
       const lote = itens.slice(ini, ini + 10);
       const conversas: ConversaParaIa[] = lote.map((x, k) => ({
@@ -549,11 +599,24 @@ export class MotorReativacao {
         } else {
           const efeito = aplicarClassificacao(f0, c, agora);
           f = efeito.followup;
-          if (efeito.optOut) await marcarNaoEnviar(this.d.db, { chave: x.r.chave, nome: x.r.nome, desde: agora.toISOString(), motivo: 'pediu para sair (lido pela IA, resposta à reativação)' });
-          if (efeito.lembrete) {
-            const erro = await this.d.criarLembrete(f.nome, efeito.lembrete.venceEm, agora);
-            f = erro === null ? { ...f, lembreteCriadoEm: agora.toISOString() } : { ...f, resumo: `${f.resumo ?? ''} (não consegui criar o lembrete: ${erro})`.trim() };
+          if (efeito.optOut) {
+            if (observando) f = { ...f, estado: 'revisar', motivo: 'Observação: a IA marcaria "Não enviar mais" (pediu para sair). Nada foi marcado.', sugestao: '', observado: true };
+            else {
+              await marcarNaoEnviar(this.d.db, { chave: x.r.chave, nome: x.r.nome, desde: agora.toISOString(), motivo: 'pediu para sair (lido pela IA, resposta à reativação)' });
+              await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'nao_enviar', origem: 'reativacao', chave: x.r.chave, nome: x.r.nome, resumo: `Pediu para sair (resposta à reativação). ${c.resumo}`, desfazer: { tipo: 'nao_enviar' } }, agora));
+            }
           }
+          if (efeito.lembrete) {
+            if (observando) f = { ...f, observado: true };
+            else {
+              const erro = await this.d.criarLembrete(f.nome, efeito.lembrete.venceEm, agora);
+              if (erro === null) {
+                f = { ...f, lembreteCriadoEm: agora.toISOString() };
+                await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'agendou', origem: 'reativacao', chave: x.r.chave, nome: x.r.nome, resumo: `Lembrete para daqui a ${efeito.lembrete.dias} dia(s), às 9h` }, agora));
+              } else f = { ...f, resumo: `${f.resumo ?? ''} (não consegui criar o lembrete: ${erro})`.trim() };
+            }
+          }
+          if (observando) await anotarDecisaoDaResposta(this.d.db, { origem: 'reativacao', chave: x.r.chave, nome: x.r.nome, contexto: `${x.r.chave}:resp:${x.r.enviados.length}`, estadoDepois: f.estado, motivoDepois: f.motivo, optOut: efeito.optOut, c }, agora);
         }
         await salvarFollowups(this.d.db, [{ ...f, origem: 'reativacao' }]);
         const saiu = f.estado === 'saiu';
@@ -563,6 +626,7 @@ export class MotorReativacao {
           motivo: f.estado === 'resolvido' ? (f.motivo ?? 'respondeu') : saiu ? 'pediu para sair' : null,
           textoPronto: null,
           reelegivelEm: saiu ? null : reelegivelDepoisDe(REELEGIVEL_APOS_DIAS, agora),
+          ...(f.observado ? { observado: true } : {}),
           atualizadoEm: agora.toISOString(),
         });
         resumo.respostas += 1;
@@ -652,7 +716,7 @@ export class MotorReativacao {
         );
       }
     }
-    const prontos = (await listarReativacoes(this.d.db)).filter((r) => r.estado === 'pronto' && r.textoPronto).sort((a, b) => a.baseConversa.localeCompare(b.baseConversa));
+    const prontos = (await listarReativacoes(this.d.db)).filter((r) => r.estado === 'pronto' && r.textoPronto).sort(compararProntosDaReativacao);
     if (prontos.length === 0) return null;
     const chaves = new Set(prontos.map((r) => r.chave));
     const igual = abertas.find((c) => {
@@ -716,6 +780,12 @@ export class MotorReativacao {
     const mudados = novos.filter((r, i) => r !== todos[i]);
     await salvarReativacoes(this.d.db, mudados);
     for (const r of mudados) if (r.estado === 'precisa') await this.paraALista(r);
+    // "O que a IA fez": cada mensagem que saiu (idempotente por contato+envio). Envio não tem desfazer.
+    for (const [i, r] of novos.entries()) {
+      if (r === todos[i] || r.enviados.length <= todos[i].enviados.length) continue;
+      const e = r.enviados[r.enviados.length - 1];
+      await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'enviou', origem: 'reativacao', chave: r.chave, nome: r.nome, resumo: `Etapa ${e.etapa} de 3 enviada: "${e.texto.slice(0, 120)}"`, id: `enviou:reativacao:${r.chave}:${e.em}` }, new Date(e.em)));
+    }
   }
 
   // ── Ações do atendente ────────────────────────────────────────────────────

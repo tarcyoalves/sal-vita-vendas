@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { abrirBanco, lerConfigFollowup, listarFollowups, salvarConfigFollowup, salvarFollowups, type Banco } from '../src/shared/banco';
 import { assinaturaTextos } from '../src/shared/followup-estilo';
 import type { Followup } from '../src/shared/followup';
+import { definirModo } from '../src/sidepanel/automaticos-motor';
 import type { CrmPainel } from '../src/sidepanel/crm';
 import { Followup as PainelFollowup } from '../src/sidepanel/Followup';
 import { instalarChromeFalso } from './ajuda/chrome-falso';
@@ -90,18 +91,15 @@ describe('Sua mensagem de cobrança', () => {
     expect(el.textContent).not.toContain('Como devo escrever');
   });
 
-  it('sem texto salvo NÃO liga: mostra "Escreva sua mensagem de cobrança antes de ligar" e nem pergunta o risco', async () => {
-    const confirmar = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('sem texto salvo NÃO liga: mostra "Escreva sua mensagem de cobrança antes de ligar" (nem Observação roda)', async () => {
     await montar();
     expect(el.textContent).toContain('Escreva sua mensagem de cobrança antes de ligar');
-    await clicar(el.querySelector('input[type="checkbox"]') as HTMLElement);
-    expect(confirmar).not.toHaveBeenCalled();
+    expect(await definirModo(db, 'observacao')).toMatchObject({ ok: false });
     expect((await lerConfigFollowup(db)).ligado).toBe(false);
     expect(el.textContent).toContain('Escreva sua mensagem de cobrança antes de ligar');
   });
 
-  it('texto inválido mostra o motivo e bloqueia o salvar; texto bom salva no IndexedDB e libera o ligar', async () => {
-    const confirmar = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('texto inválido mostra o motivo e bloqueia o salvar; texto bom salva no IndexedDB e libera a Observação', async () => {
     await montar();
     const campo = porRotulo('1ª cobrança, variação 1');
     await digitar(campo, 'Oi! Veja www.salvita.com.br por R$ 20');
@@ -123,9 +121,8 @@ describe('Sua mensagem de cobrança', () => {
     expect(el.textContent).toContain('Mensagem salva');
     expect(el.textContent).not.toContain('Escreva sua mensagem de cobrança antes de ligar');
 
-    await clicar(el.querySelector('input[type="checkbox"]') as HTMLElement);
-    expect(confirmar).toHaveBeenCalledTimes(1);
-    expect((await lerConfigFollowup(db)).ligado).toBe(true);
+    expect(await definirModo(db, 'observacao')).toMatchObject({ ok: true });
+    expect(await lerConfigFollowup(db)).toMatchObject({ ligado: true, automatico: 'observacao' });
   });
 
   it('adicionar e remover variações (máximo 10) e a 2ª cobrança tem lista própria', async () => {
@@ -174,7 +171,7 @@ describe('Sua mensagem de cobrança', () => {
     await db.put('followupConfig', { id: 'followup', valor: { ligado: true, dias: 3, pausado: false, confirmouRisco: true } as never });
     await montar();
     expect(el.textContent).toContain('A cobrança automática foi desligada');
-    expect((el.querySelector('input[type="checkbox"]') as HTMLInputElement).checked).toBe(false);
+    expect(el.querySelector('[aria-label="Modo atual"]')?.textContent).toBe('Desligado');
   });
 
   it('a fila mostra de onde veio o texto: "seu texto" / "IA no seu estilo"', async () => {

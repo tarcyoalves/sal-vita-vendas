@@ -23,13 +23,21 @@ import { diferencaDias, hojeNoFuso } from '../shared/datas';
 import {
   type Banco,
   lerConfig,
+  lerConfigFollowup,
+  lerConfigReativacao,
+  lerReativacao,
   listarEnvios,
+  listarFollowups,
   listarNaoEnviar,
   marcarNaoEnviar,
   registrarEnvio,
   salvarCampanha,
 } from '../shared/banco';
+import { podeEnviar, ROTULO_MODO } from '../shared/automaticos';
+import { MOTIVO_CLIENTE_RESPONDEU } from '../shared/constantes';
+import { referenciaDe, textoEsperadoDe } from '../shared/followup';
 import type { EventoConteudo, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
+import { type BaseDaDecisao, conferirAntesDeEnviar } from '../shared/reler-antes';
 import { contarEnviosHoje, podeAbrirProximo, sortearIntervaloSeg } from '../shared/politica';
 import type { ResultadoTrava } from '../shared/trava-agendamento';
 
@@ -52,6 +60,8 @@ export interface DependenciasExecutor {
 
 /** Pausa por não conseguir conferir os agendamentos: o ciclo do follow-up/reativação tenta de novo sozinho (ver pausaBenigna). */
 export const PREFIXO_PAUSA_CRM = 'CRM indisponível';
+/** Pausa porque o automático não está no modo Ligado (Observação ou Desligado): nada é enviado. Benigna: não exige "Retomar". */
+export const PREFIXO_PAUSA_MODO = 'automático em';
 
 export type FaseExecucao = 'parada' | 'abrindo' | 'aguardando_envio' | 'intervalo' | 'concluida';
 
@@ -73,6 +83,18 @@ export type AcaoManual = 'pulado' | 'nao_cliente' | 'problema' | 'nao_enviar';
 
 /** Erros do content script que indicam problema geral (não do contato): pausam sem marcar ninguém. */
 const ERROS_GERAIS = new Set(['seletor', 'nao_pronto', 'ocupado', 'interno']);
+
+/** O que o envio automático precisa saber da decisão: quando a conversa foi lida e qual foi a nossa última mensagem. */
+async function baseDaDecisao(db: Banco, c: Campanha, item: ItemCampanha): Promise<BaseDaDecisao> {
+  if (c.tipo === 'followup') {
+    const f = (await listarFollowups(db)).filter((x) => x.chave === item.chave && x.estado === 'cobranca').sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm))[0];
+    return f ? { desde: f.verificadoEm, ancoraTexto: textoEsperadoDe(f), ancoraEm: referenciaDe(f) } : { desde: null };
+  }
+  const r = await lerReativacao(db, item.chave);
+  if (!r) return { desde: null };
+  const ult = r.enviados[r.enviados.length - 1];
+  return { desde: r.verificadoEm, ...(ult ? { ancoraTexto: ult.texto, ancoraEm: ult.em } : {}) };
+}
 
 export class Executor {
   private estado: EstadoExecutor;
@@ -379,6 +401,38 @@ export class Executor {
     }
   }
 
+  /** Relê a conversa (só leitura) e confere com a decisão. 'ok' = pode seguir; qualquer outra coisa = o item já foi tratado aqui. */
+  private async relerAntesDeEnviar(item: ItemCampanha, c: Campanha): Promise<'ok' | 'tratado'> {
+    const base = await baseDaDecisao(this.deps.db, c, item);
+    this.publicar({ fase: 'abrindo', itemAtual: item, liberaEm: null, mensagem: null });
+    let r: RespostaConteudo;
+    try {
+      r = await this.deps.pedir({ tipo: 'lerConversa', nome: item.nome }, true);
+    } catch (e) {
+      r = { ok: false, codigo: 'interno', erro: e instanceof Error ? e.message : String(e) };
+    }
+    if (!this.ativo) {
+      this.publicar({ itemAtual: null });
+      return 'tratado';
+    }
+    if (!r.ok) {
+      this.publicar({ itemAtual: null });
+      if (ERROS_GERAIS.has(r.codigo)) {
+        await this.pausar(r.erro);
+        return 'tratado';
+      }
+      // Identidade da conversa não confere, grupo, nome repetido: nada colado, vai para "revisar" (não conta no freio).
+      if (await this.marcarComo(item, 'revisar', `não enviei: não consegui reler a conversa antes de enviar (${r.erro})`)) await this.passo();
+      return 'tratado';
+    }
+    const v = conferirAntesDeEnviar(r.mensagens ?? [], base);
+    if (v.ok) return 'ok';
+    this.publicar({ itemAtual: null });
+    const motivo = v.respondeu ? `${MOTIVO_CLIENTE_RESPONDEU}: ${v.motivo}` : `não enviei: ${v.motivo}`;
+    if (await this.marcarComo(item, 'pulado', motivo)) await this.passo();
+    return 'tratado';
+  }
+
   private async passo(): Promise<void> {
     this.limparTimer();
     const { db } = this.deps;
@@ -440,6 +494,15 @@ export class Executor {
     }
 
     const envioAuto = this.deps.obterEnvioAutomatico ? this.deps.obterEnvioAutomatico() : this.envioAutomatico;
+    // v0.7.59: o envio AUTOMÁTICO do follow-up e da reativação só acontece no modo Ligado (Observação e Desligado nunca enviam, nem se
+    // um Executor ficou rodando de antes). Campanha comum e envio manual (você aperta o Enter) não mudam.
+    if (envioAuto && c.tipo != null) {
+      const cfg = c.tipo === 'followup' ? await lerConfigFollowup(db) : await lerConfigReativacao(db);
+      if (!podeEnviar(cfg)) {
+        await this.pausar(`${PREFIXO_PAUSA_MODO} ${ROTULO_MODO[cfg.automatico]}: o envio automático só acontece no modo Ligado`);
+        return;
+      }
+    }
     // Trava de agendamento, ANTES de abrir o contato (e de novo a cada passo: depois de esperar o intervalo o CRM pode ter mudado).
     if (this.deps.trava) {
       let t: ResultadoTrava;
@@ -460,6 +523,13 @@ export class Executor {
         }
         this.publicar({ avisoTrava: `Não consegui conferir os agendamentos do CRM (${t.motivo}). Confira antes de enviar.` });
       } else if (this.estado.avisoTrava !== null) this.publicar({ avisoTrava: null });
+    }
+    // v0.7.59: RELER a conversa imediatamente antes de cada envio AUTOMÁTICO (este é o ponto ÚNICO por onde o follow-up e a reativação
+    // passam; não há segundo caminho de clique). A última mensagem tem que continuar sendo nossa e o cliente não pode ter respondido
+    // desde a decisão. Respondeu: não envia e o contato volta para a classificação. Dúvida: não envia.
+    if (envioAuto && c.tipo != null) {
+      const seguir = await this.relerAntesDeEnviar(item, c);
+      if (seguir !== 'ok') return;
     }
     this.publicar({ fase: 'abrindo', itemAtual: item, liberaEm: null, mensagem: null });
     const texto = textoDoItem(item);

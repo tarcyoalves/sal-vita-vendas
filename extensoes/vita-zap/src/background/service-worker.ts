@@ -6,6 +6,7 @@
 
 import { iniciarCrm, limparAlarmeSyncAntigo } from './crm-sync';
 import { criarAtendenteExterno } from './externo';
+import { aoAlarmeHistorico, aoClicarAvisoHistorico, garantirAlarmeHistorico, verificarHistorico } from './historico';
 import { aoAlarme, aoClicarNotificacao, sincronizar } from './lembretes';
 import { ehPedidoPainelAberto } from '../shared/mensagens';
 import { RepositorioLocal, repositorioPadrao, usarServicoCrm } from '../shared/repositorio-local';
@@ -19,12 +20,15 @@ function abrirPainelAoClicarNoIcone(): void {
 
 chrome.runtime.onInstalled.addListener(() => {
   abrirPainelAoClicarNoIcone();
+  void garantirAlarmeHistorico().catch(() => undefined);
   void limparAlarmeSyncAntigo().catch(() => undefined); // até a 0.5.0 havia um alarme de 5 min que mantinha o banco do CRM ligado
   void sincronizar().catch(() => undefined);
 });
 
 chrome.runtime.onStartup.addListener(() => {
   abrirPainelAoClicarNoIcone();
+  void garantirAlarmeHistorico().catch(() => undefined);
+  void verificarHistorico().catch(() => undefined); // computador desligado às 9h: avisa quando o Chrome abre (no máximo uma vez por dia)
   void sincronizar().catch(() => undefined);
 });
 
@@ -51,11 +55,16 @@ chrome.runtime.onMessageExternal.addListener(
 );
 
 chrome.alarms.onAlarm.addListener((alarme) => {
-  void aoAlarme(alarme.name).catch(() => undefined);
+  // Alarme diário do aviso "histórico sumindo" (v0.7.59) ou alarme de lembrete.
+  void aoAlarmeHistorico(alarme.name)
+    .then((eraDoHistorico) => (eraDoHistorico ? undefined : aoAlarme(alarme.name)))
+    .catch(() => undefined);
 });
 
 chrome.notifications.onClicked.addListener((id) => {
-  void aoClicarNotificacao(id).catch(() => undefined);
+  void aoClicarAvisoHistorico(id)
+    .then((era) => (era ? undefined : aoClicarNotificacao(id)))
+    .catch(() => undefined);
 });
 
 chrome.notifications.onButtonClicked.addListener((id) => {
@@ -64,3 +73,4 @@ chrome.notifications.onButtonClicked.addListener((id) => {
 
 // O service worker pode ter sido reiniciado pelo Chrome: confere a agenda toda vez que carrega.
 void sincronizar().catch(() => undefined);
+void garantirAlarmeHistorico().catch(() => undefined);

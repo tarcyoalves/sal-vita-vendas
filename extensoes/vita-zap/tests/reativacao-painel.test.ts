@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { abrirBanco, lerConfigReativacao, listarNaoEnviar, listarReativacoes, salvarReativacoes, type Banco } from '../src/shared/banco';
 import type { ContatoVarrido } from '../src/shared/contatos';
 import { novoRegistro, type Reativacao as RegistroReativacao } from '../src/shared/reativacao';
+import { definirModo } from '../src/sidepanel/automaticos-motor';
 import type { CrmPainel } from '../src/sidepanel/crm';
 import type { DadosLocais } from '../src/sidepanel/App';
 import { Reativacao } from '../src/sidepanel/Reativacao';
@@ -88,25 +89,22 @@ describe('painel Reativação', () => {
     expect(t).toContain('Trava de agendamento');
     expect(t).toMatch(/mesmo daqui a 60 dias/);
     expect(t).toMatch(/viola os Termos de Serviço do WhatsApp/);
-    expect((el.querySelector('input[type="checkbox"]') as HTMLInputElement).checked).toBe(false);
+    expect(el.querySelector('[aria-label="Modo atual"]')?.textContent).toBe('Desligado');
     expect([...el.querySelectorAll<HTMLInputElement>('input[aria-label^="Etapa "]')].map((i) => i.value)).toEqual(['25', '30', '40']);
     for (const rotulo of ['Vai receber hoje (0)', 'Agendados pela IA (0)', 'Precisa de você (0)', 'Travados por agendamento (0)']) expect(botao(rotulo), rotulo).toBeTruthy();
     expect(botao('Avaliar agora (não envia)')).toBeTruthy();
     expect(t).toMatch(/Faça a varredura primeiro/);
   });
 
-  it('sem mensagem salva NÃO liga (nem pergunta o risco); o editor nasce vazio (nenhum texto genérico)', async () => {
-    const confirmar = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('sem mensagem salva NÃO liga (nem em Observação); o editor nasce vazio (nenhum texto genérico)', async () => {
     await montar();
     expect(el.textContent).toContain('Escreva a mensagem da etapa 1 antes de ligar a reativação');
     expect([...el.querySelectorAll('textarea')].every((t) => t.value === '')).toBe(true);
-    await clicar(el.querySelector('input[type="checkbox"]') as HTMLElement);
-    expect(confirmar).not.toHaveBeenCalled();
+    expect(await definirModo(db, 'observacao')).toMatchObject({ ok: false });
     expect((await lerConfigReativacao(db)).ligado).toBe(false);
   });
 
-  it('texto inválido mostra o motivo e bloqueia o salvar; texto bom salva por etapa e libera o ligar com a confirmação do risco', async () => {
-    const confirmar = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('texto inválido mostra o motivo e bloqueia o salvar; texto bom salva por etapa e libera a Observação (o envio só com o placar)', async () => {
     await montar({ ...dadosVazios, contatos: [contato('CLIENTE Ana')] });
     const c1 = campo('Etapa 1 (25 dias), variação 1');
     await digitar(c1, 'Oi! Veja www.salvita.com.br por R$ 20');
@@ -118,20 +116,11 @@ describe('painel Reativação', () => {
     expect(await lerConfigReativacao(db)).toMatchObject({ modo: 'meus_textos', textos1: [TEXTO], ligado: false });
     expect(el.textContent).toContain('Mensagens salvas');
 
-    await clicar(el.querySelector('input[type="checkbox"]') as HTMLElement);
-    expect(confirmar).toHaveBeenCalledTimes(1);
-    expect(String(confirmar.mock.calls[0][0])).toMatch(/viola os Termos/);
-    expect(String(confirmar.mock.calls[0][0])).toMatch(/25, 30, 40 dias/);
-    expect(await lerConfigReativacao(db)).toMatchObject({ ligado: true, confirmouRisco: true });
-  });
-
-  it('recusar a confirmação do risco deixa desligado', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    await montar();
-    await digitar(campo('Etapa 1 (25 dias), variação 1'), TEXTO);
-    await clicar(botao('Salvar minhas mensagens'));
-    await clicar(el.querySelector('input[type="checkbox"]') as HTMLElement);
-    expect((await lerConfigReativacao(db)).ligado).toBe(false);
+    // Observação liga (nada é enviado); "Ligado" fica bloqueado até o placar da IA aprovar.
+    expect(await definirModo(db, 'observacao')).toMatchObject({ ok: true });
+    expect(await lerConfigReativacao(db)).toMatchObject({ ligado: true, automatico: 'observacao' });
+    expect(await definirModo(db, 'ligado', { confirmouRisco: true })).toMatchObject({ ok: false, motivo: expect.stringMatching(/Faltam 30/) });
+    expect(await lerConfigReativacao(db)).toMatchObject({ automatico: 'observacao' });
   });
 
   it('as etapas são configuráveis e sempre ficam crescentes, com 3 dias de intervalo', async () => {

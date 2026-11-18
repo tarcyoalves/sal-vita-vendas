@@ -59,3 +59,10 @@ export const URL_CRM_PADRAO = 'https://lembretes.salvitarn.com.br';
 
 /** Hora (ms) do último pedido de pausa da varredura, gravada pelo painel em chrome.storage.local. */
 export const CHAVE_PARAR_VARREDURA = 'vz.varredura.parar';
+
+/**
+ * Motivo (prefixo) com que o Executor pula um envio AUTOMÁTICO porque, ao reler a conversa imediatamente antes de enviar,
+ * o cliente já tinha respondido desde a decisão (v0.7.59). O item volta para a classificação das respostas em vez de ir
+ * para "revisar": ver aplicarResultadoCampanha (follow-up) e aplicarResultadoCampanhaReativacao.
+ */
+export const MOTIVO_CLIENTE_RESPONDEU = 'o cliente respondeu desde a decisão';

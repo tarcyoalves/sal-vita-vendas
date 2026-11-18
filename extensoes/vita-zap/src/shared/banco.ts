@@ -2,6 +2,7 @@
 // Backup/migração: exportarTudo / importarTudo (JSON).
 
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { type AcaoIa, type Julgamento, idsAcoesParaPodar, idsParaPodar } from './automaticos';
 import type { Campanha } from './campanha';
 import type { ContatoVarrido } from './contatos';
 import type { Backup, Envio, NaoEnviar } from './exportar';
@@ -18,13 +19,17 @@ interface EsquemaVitaZap extends DBSchema {
   config: { key: string; value: { id: 'politica'; valor: ConfigPolitica } };
   /** Follow-up (v0.7.54): um registro por contato/campanha de origem (`${campanhaId}:${chave}`). */
   followups: { key: string; value: Followup };
-  followupConfig: { key: string; value: { id: 'followup'; valor: ConfigFollowup } | { id: 'reativacao'; valor: ConfigReativacao } | { id: 'pedidos'; valor: EstadoPedidos } };
+  followupConfig: { key: string; value: { id: 'followup'; valor: ConfigFollowup } | { id: 'reativacao'; valor: ConfigReativacao } | { id: 'pedidos'; valor: EstadoPedidos } | { id: 'historico'; valor: { avisadoEm: string } } };
   /** Reativação por inatividade (v0.7.56): um registro por contato (chave = nome normalizado). */
   reativacoes: { key: string; value: Reativacao };
+  /** Modo Observação (v0.7.59): o que a IA faria + o julgamento do dono. Loja nova, aditiva. */
+  julgamentos: { key: string; value: Julgamento };
+  /** "O que a IA fez" (v0.7.59): cada ação automática, com como desfazer. Loja nova, aditiva. */
+  acoesIa: { key: string; value: AcaoIa };
 }
 
 export const NOME_BANCO = 'vita-zap';
-const VERSAO_BANCO = 3;
+const VERSAO_BANCO = 4;
 
 export type Banco = IDBPDatabase<EsquemaVitaZap>;
 
@@ -48,6 +53,11 @@ export function abrirBanco(nome: string = NOME_BANCO): Promise<Banco> {
       // v3 (0.7.56): reativação. Só ACRESCENTA uma loja (a configuração dela fica em followupConfig, id 'reativacao').
       if (versaoAnterior < 3) {
         db.createObjectStore('reativacoes', { keyPath: 'chave' });
+      }
+      // v4 (0.7.59): modo Observação e "O que a IA fez". Só ACRESCENTA duas lojas; nada do que já existe muda.
+      if (versaoAnterior < 4) {
+        db.createObjectStore('julgamentos', { keyPath: 'id' });
+        db.createObjectStore('acoesIa', { keyPath: 'id' });
       }
     },
   });
@@ -147,6 +157,10 @@ export async function salvarFollowups(db: Banco, itens: ReadonlyArray<Followup>)
   await Promise.all([...itens.map((f) => tx.store.put(f)), tx.done]);
 }
 
+export async function apagarFollowup(db: Banco, id: string): Promise<void> {
+  await db.delete('followups', id);
+}
+
 export function listarFollowups(db: Banco): Promise<Followup[]> {
   return db.getAll('followups');
 }
@@ -178,6 +192,10 @@ export function lerReativacao(db: Banco, chave: string): Promise<Reativacao | un
   return db.get('reativacoes', chave);
 }
 
+export async function apagarReativacao(db: Banco, chave: string): Promise<void> {
+  await db.delete('reativacoes', chave);
+}
+
 export async function lerConfigReativacao(db: Banco): Promise<ConfigReativacao> {
   const r = await db.get('followupConfig', 'reativacao');
   return normalizarConfigReativacao(r?.id === 'reativacao' ? r.valor : undefined);
@@ -187,6 +205,70 @@ export async function salvarConfigReativacao(db: Banco, cfg: ConfigReativacao): 
   const valor = normalizarConfigReativacao(cfg);
   await db.put('followupConfig', { id: 'reativacao', valor });
   return valor;
+}
+
+// ── Aviso "histórico sumindo" (v0.7.59): em que dia o service worker já avisou (no máximo um aviso por dia). Fica em followupConfig. ──
+
+export async function lerAvisoHistorico(db: Banco): Promise<string | null> {
+  const r = await db.get('followupConfig', 'historico');
+  return r?.id === 'historico' && typeof r.valor.avisadoEm === 'string' ? r.valor.avisadoEm : null;
+}
+
+export async function salvarAvisoHistorico(db: Banco, dia: string): Promise<void> {
+  await db.put('followupConfig', { id: 'historico', valor: { avisadoEm: dia } });
+}
+
+// ── Modo Observação: o que a IA faria (v0.7.59) ──────────────────────────────
+
+/** Guarda a decisão como "pendente de julgamento". Idempotente: a mesma decisão (mesmo id) nunca vira dois itens. Poda o excesso. */
+export async function registrarDecisao(db: Banco, j: Julgamento): Promise<boolean> {
+  const tx = db.transaction('julgamentos', 'readwrite');
+  const existe = await tx.store.get(j.id);
+  if (!existe) await tx.store.put(j);
+  await tx.done;
+  if (existe) return false;
+  await podarJulgamentos(db);
+  return true;
+}
+
+export function listarJulgamentos(db: Banco): Promise<Julgamento[]> {
+  return db.getAll('julgamentos');
+}
+
+export async function salvarJulgamento(db: Banco, j: Julgamento): Promise<void> {
+  await db.put('julgamentos', j);
+}
+
+export async function podarJulgamentos(db: Banco): Promise<void> {
+  const apagar = idsParaPodar(await db.getAll('julgamentos'));
+  if (apagar.length === 0) return;
+  const tx = db.transaction('julgamentos', 'readwrite');
+  await Promise.all([...apagar.map((id) => tx.store.delete(id)), tx.done]);
+}
+
+// ── "O que a IA fez" (v0.7.59) ────────────────────────────────────────────────
+
+/** Registra a ação (idempotente por id: o mesmo envio notificado várias vezes vira um registro só). */
+export async function registrarAcaoIa(db: Banco, a: AcaoIa): Promise<boolean> {
+  const tx = db.transaction('acoesIa', 'readwrite');
+  const existe = await tx.store.get(a.id);
+  if (!existe) await tx.store.put(a);
+  await tx.done;
+  if (existe) return false;
+  const apagar = idsAcoesParaPodar(await db.getAll('acoesIa'));
+  if (apagar.length > 0) {
+    const t2 = db.transaction('acoesIa', 'readwrite');
+    await Promise.all([...apagar.map((id) => t2.store.delete(id)), t2.done]);
+  }
+  return true;
+}
+
+export async function listarAcoesIa(db: Banco): Promise<AcaoIa[]> {
+  return (await db.getAll('acoesIa')).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+}
+
+export async function salvarAcaoIa(db: Banco, a: AcaoIa): Promise<void> {
+  await db.put('acoesIa', a);
 }
 
 // ── Pedir à IA (v0.7.57) ─────────────────────────────────────────────────────

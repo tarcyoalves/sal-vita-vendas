@@ -10,7 +10,7 @@ import type { RefContato } from './crm-tipos';
 import type { ClassificacaoIa } from './followup';
 import type { ConversaParaIa, EstiloDoDono, ResultadoIa } from './servico-ia';
 import type { AvaliacaoReativacao, ConversaReativacaoParaIa } from './reativacao';
-import type { PedidoRegistroReativacao, ResultadoRegistroReativacao } from './servico-agendamentos';
+import type { PedidoRegistroReativacao, ResultadoDesfazerAgendamento, ResultadoRegistroReativacao } from './servico-agendamentos';
 import type { RefTrava, ResultadoTrava } from './trava-agendamento';
 import type { ConferenciaIa, ConversaParaPedido, PedidoInterpretado, PlanoPedido } from './pedido-ia';
 import type { EmailDoLead, EnvioApresentacao, PedidoApresentacao, ResultadoEmail } from './servico-email';
@@ -140,6 +140,8 @@ export interface LeadsCRM {
   verificarAgendamentos(refs: RefTrava[], opcoes?: { forcar?: boolean }): Promise<ResultadoTrava[]>;
   /** Grava o resumo da última conversa (e o agendamento) no lead do CRM, sem contar como contato. */
   registrarReativacao(pedido: PedidoRegistroReativacao): Promise<ResultadoRegistroReativacao>;
+  /** Desfaz o agendamento que a IA criou (tela "O que a IA fez"): só remove o lembrete, e só se ainda for o que ela gravou. */
+  desfazerAgendamento(pedido: { taskId: number; agendadoEm: number }): Promise<ResultadoDesfazerAgendamento>;
 
   // "Pedir à IA" e orientações do dono (v0.7.57). Nada aqui envia mensagem de WhatsApp.
   /** Passo 1: o pedido em português vira um plano (zapIa.interpretarPedido). Não lê conversa nenhuma. */
@@ -155,7 +157,7 @@ export const METODOS_LEADS = [
   'conta', 'definirUrl', 'entrar', 'conectarPelaSessao', 'verificarSessao', 'sair', 'leadDoContato', 'procurarLeads', 'vincularLead', 'desvincularLead',
   'criarLead', 'registrarContatoNoLead', 'reagendar', 'alterarEtiquetas', 'catalogoTags', 'marcarConvertido', 'registrarContatoNaTask', 'acompanhando', 'reagendarTask', 'sincronizarLembretes', 'reenviarFila',
   'emailDoLead', 'salvarEmailDoLead', 'modelosEmail', 'sequenciasEmail', 'inscricoesDoLead', 'mandarApresentacao', 'inscreverNaSequencia',
-  'classificarRespostas', 'escreverCobranca', 'avaliarReativacao', 'verificarAgendamentos', 'registrarReativacao',
+  'classificarRespostas', 'escreverCobranca', 'avaliarReativacao', 'verificarAgendamentos', 'registrarReativacao', 'desfazerAgendamento',
   'interpretarPedido', 'conferirPedido', 'orientacoesIa', 'salvarOrientacoesIa',
 ] as const satisfies ReadonlyArray<keyof LeadsCRM>;
 

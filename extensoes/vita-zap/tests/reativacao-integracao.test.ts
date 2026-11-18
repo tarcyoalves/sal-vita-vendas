@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { abrirBanco, lerConfigFollowup, lerConfigReativacao, listarCampanhas, listarNaoEnviar, listarReativacoes, salvarCampanha, salvarConfig, salvarConfigFollowup, salvarConfigReativacao, salvarReativacoes } from '../src/shared/banco';
 import type { Campanha, ItemCampanha } from '../src/shared/campanha';
 import { FILTROS_PADRAO } from '../src/shared/filtros';
+import { CONFIG_FOLLOWUP_PADRAO } from '../src/shared/followup';
 import { CONFIG_PADRAO } from '../src/shared/politica';
 import { CONFIG_REATIVACAO_PADRAO, novoRegistro } from '../src/shared/reativacao';
 import { METODOS_LEADS } from '../src/shared/leads';
@@ -76,7 +77,7 @@ describe('ponte com o CRM (ServicoCrm → zapIa.avaliarReativacao e zapCrm.regis
   });
 
   it('os métodos novos passam pelo service worker (contrato LeadsCRM)', () => {
-    for (const m of ['avaliarReativacao', 'verificarAgendamentos', 'registrarReativacao']) expect(METODOS_LEADS).toContain(m);
+    for (const m of ['avaliarReativacao', 'verificarAgendamentos', 'registrarReativacao', 'desfazerAgendamento']) expect(METODOS_LEADS).toContain(m);
   });
 
   it('avaliarReativacao: manda só o que a IA precisa (ref opaco, primeiro nome, dias, mensagens) e lê a resposta; item inválido é descartado', async () => {
@@ -141,6 +142,41 @@ describe('ponte com o CRM (ServicoCrm → zapIa.avaliarReativacao e zapCrm.regis
     expect(crm.chamadas('zapCrm.registrarReativacao')[1].entrada).toMatchObject({ taskId: 1 });
   });
 
+  it('desfazerAgendamento: remove SÓ o lembrete que a IA criou, e só se ainda for o mesmo (notas e tarefa ficam)', async () => {
+    const quando = agora + 45 * 86_400_000;
+    const criou = await servico.registrarReativacao({ nome: 'CLIENTE Ana', telefone: '5584999990000', linha: 'Resumo da IA', agendarEm: quando, criar: true });
+    expect(criou).toMatchObject({ ok: true, agendou: true });
+    const taskId = (criou as { taskId: number }).taskId;
+    const ok = await servico.desfazerAgendamento({ taskId, agendadoEm: quando });
+    expect(ok).toEqual({ ok: true });
+    expect(crm.tasks[0].reminderDate).toBeNull();
+    expect(crm.tasks[0].reminderEnabled).toBe(false);
+    expect(crm.tasks[0].notes).toContain('Resumo da IA'); // a nota fica
+    expect(crm.tasks[0].status).toBe('pending');
+    expect(crm.chamadas('zapCrm.desfazerAgendamento')[0].entrada).toMatchObject({ taskId });
+  });
+
+  it('desfazerAgendamento: se o atendente mudou a data depois, nada é tocado e o motivo volta', async () => {
+    const quando = agora + 45 * 86_400_000;
+    const criou = await servico.registrarReativacao({ nome: 'CLIENTE Ana', telefone: '5584999990000', linha: 'x', agendarEm: quando, criar: true });
+    const taskId = (criou as { taskId: number }).taskId;
+    crm.tasks[0].reminderDate = new Date(quando + 86_400_000); // o atendente remarcou
+    const r = await servico.desfazerAgendamento({ taskId, agendadoEm: quando });
+    expect(r).toMatchObject({ ok: false, mensagem: expect.stringMatching(/já foi alterado/) });
+    expect(crm.tasks[0].reminderDate?.getTime()).toBe(quando + 86_400_000);
+  });
+
+  it('desfazerAgendamento: CRM antigo (sem a procedure), fora do ar ou sem login → erro claro, sem lançar', async () => {
+    crm.semZapCrm = true;
+    expect(await servico.desfazerAgendamento({ taskId: 1, agendadoEm: agora + 1 })).toMatchObject({ ok: false, mensagem: expect.stringMatching(/CRM precisa estar atualizado/) });
+    crm.semZapCrm = false;
+    crm.semRede = true;
+    expect(await servico.desfazerAgendamento({ taskId: 1, agendadoEm: agora + 1 })).toMatchObject({ ok: false });
+    crm.semRede = false;
+    await servico.sair();
+    expect(await servico.desfazerAgendamento({ taskId: 1, agendadoEm: agora + 1 })).toMatchObject({ ok: false, mensagem: expect.stringMatching(/Entre no CRM/) });
+  });
+
   it('agendamento: hoje + dias às 9h; se já há agendamento futuro ele PREVALECE (nada é sobrescrito)', async () => {
     const quando = agora + 45 * 86_400_000;
     const r = await servico.registrarReativacao({ nome: 'CLIENTE Ana', telefone: '5584999990000', linha: 'x', agendarEm: quando, criar: true });
@@ -174,6 +210,9 @@ describe('a trava vale para a CAMPANHA COMUM e para a cobrança: o Executor conf
   async function montar(tipo: Campanha['tipo'], nomes: string[], trava: (i: ItemCampanha) => ResultadoTrava, auto: boolean) {
     const db = await abrirBanco(`trava-${Date.now()}-${(n += 1)}`);
     await salvarConfig(db, { ...CONFIG_PADRAO, numeroComMaisDe30Dias: true });
+    // Modo Ligado nos dois automáticos: só ele deixa o Executor enviar (v0.7.59).
+    await salvarConfigFollowup(db, { ...CONFIG_FOLLOWUP_PADRAO, textos1: ['Oi, {nome}!'], automatico: 'ligado', placarAprovado: true, confirmouRisco: true });
+    await salvarConfigReativacao(db, { ...CONFIG_REATIVACAO_PADRAO, textos1: ['Oi, {nome}!'], automatico: 'ligado', placarAprovado: true, confirmouRisco: true });
     const itens: ItemCampanha[] = nomes.map((nome) => ({ chave: nome.toLowerCase(), nome, primeiroNome: nome, modelo: 'Oi {primeiroNome}, tudo bem? Como estão de sal por aí?', status: 'pendente', motivo: null, atualizadoEm: null }));
     const campanha: Campanha = { id: 'c1', ...(tipo ? { tipo } : {}), nome: 'C', criadaEm: AGORA.toISOString(), aprovadaEm: AGORA.toISOString(), termoBusca: 'CLIENTE', filtros: FILTROS_PADRAO, modelos: [], status: 'pausada', motivoPausa: null, itens, problemasSeguidos: 0, ultimoEnvioEm: null, intervaloAtualSeg: null };
     await salvarCampanha(db, campanha);
@@ -185,6 +224,7 @@ describe('a trava vale para a CAMPANHA COMUM e para a cobrança: o Executor conf
         db,
         pedir: async (p) => {
           if (p.tipo === 'abrirEColar') colados.push(p.nome);
+          if (p.tipo === 'lerConversa') return { ok: true, mensagens: [{ de: 'eu', texto: 'Oi, tudo bem?', quando: null }] }; // releitura antes do envio automático
           return p.tipo === 'abrirEColar' ? { ok: true, idsAntes: [] } : { ok: true };
         },
         agora: () => AGORA,

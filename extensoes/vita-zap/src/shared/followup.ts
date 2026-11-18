@@ -10,8 +10,9 @@
 //  - falha fechada: na dúvida (identidade da conversa, grupo, mensagem do disparo não encontrada) NÃO cobra e vai
 //    para "revisar".
 
+import { normalizarModo, type ModoAutomatico } from './automaticos';
 import { type Campanha, textoDoItem } from './campanha';
-import { MARCADOR_PRIMEIRO_NOME } from './constantes';
+import { MARCADOR_PRIMEIRO_NOME, MOTIVO_CLIENTE_RESPONDEU } from './constantes';
 import { instanteNoFuso } from './crm-lembretes';
 import { diferencaDias, hojeNoFuso, somarDias } from './datas';
 import type { Envio } from './exportar';
@@ -38,8 +39,17 @@ export const MAX_MENSAGENS_IA = 12;
 // ── Configuração ────────────────────────────────────────────────────────────
 
 export interface ConfigFollowup {
-  /** Liga a cobrança automática. Só liga com a confirmação do risco (confirmouRisco) E com pelo menos 1 texto da 1ª cobrança. */
+  /**
+   * O follow-up roda (Observação ou Ligado). DERIVADO de `automatico` (v0.7.59): a fonte da verdade é `automatico`.
+   * Só roda com pelo menos 1 texto da 1ª cobrança.
+   */
   ligado: boolean;
+  /** Desligado | Observação (decide e prepara, mas NADA é enviado/marcado) | Ligado (envia; exige confirmação do risco e o placar aprovado). */
+  automatico: ModoAutomatico;
+  /** Estava ligado numa versão anterior e caiu para Observação (a tela avisa). */
+  migradoParaObservacao: boolean;
+  /** O placar da IA já liberou o envio automático uma vez. */
+  placarAprovado: boolean;
   /** X dias sem resposta antes de cobrar (e intervalo mínimo entre cobranças). */
   dias: number;
   /** Pausa a cobrança automática sem desligar (o botão "Pausar follow-up"). */
@@ -61,6 +71,9 @@ export interface ConfigFollowup {
 
 export const CONFIG_FOLLOWUP_PADRAO: ConfigFollowup = {
   ligado: false,
+  automatico: 'desligado',
+  migradoParaObservacao: false,
+  placarAprovado: false,
   dias: DIAS_PADRAO,
   pausado: false,
   confirmouRisco: false,
@@ -80,11 +93,11 @@ export function normalizarConfigFollowup(c: Partial<ConfigFollowup> | null | und
   const confirmouRisco = c?.confirmouRisco === true;
   const textos1 = normalizarTextos(c?.textos1);
   const textos2 = normalizarTextos(c?.textos2);
-  const querLigar = c?.ligado === true && confirmouRisco;
-  const ligado = querLigar && textos1.length > 0;
+  const querLigar = (c?.ligado === true && confirmouRisco) || (c?.automatico != null && c.automatico !== 'desligado');
+  // Sem texto da 1ª cobrança nada roda; "Ligado" (envio) exige a confirmação do risco E o placar aprovado; config antiga ligada vira Observação.
+  const modo = normalizarModo({ ligado: c?.ligado, automatico: c?.automatico, confirmouRisco, placarAprovado: c?.placarAprovado, migradoParaObservacao: c?.migradoParaObservacao }, textos1.length > 0);
   return {
-    // Sem a confirmação do risco, ou sem texto da 1ª cobrança, nunca fica ligado.
-    ligado,
+    ...modo,
     dias: Math.min(DIAS_MAXIMO, Math.max(DIAS_MINIMO, bruto)),
     pausado: c?.pausado === true,
     confirmouRisco,
@@ -163,6 +176,8 @@ export interface Followup {
   lembreteCriadoEm?: string;
   /** 'reativacao': o item veio da reativação por inatividade (v0.7.56), não de um disparo: nunca é cobrado nem volta a 'monitorando'. */
   origem?: 'reativacao';
+  /** Decidido em modo Observação: o opt-out/lembrete da IA NÃO foi aplicado. Ao ligar, o item volta a ser lido (v0.7.59). */
+  observado?: boolean;
   atualizadoEm: string;
 }
 
@@ -430,6 +445,10 @@ export function aplicarResultadoCampanha(followups: ReadonlyArray<Followup>, cam
       return { ...f, estado: 'monitorando', motivo: null, cobrancas: [...f.cobrancas, { em, texto: textoDoItem(item) }], cobrancaModelo: null, cobrancaOrigem: null, atualizadoEm: agoraIso };
     }
     if (f.estado !== 'cobranca') return f;
+    // O Executor releu a conversa antes de enviar e o cliente já tinha respondido: volta para a classificação das respostas.
+    if (item.status === 'pulado' && (item.motivo ?? '').startsWith(MOTIVO_CLIENTE_RESPONDEU)) {
+      return { ...f, estado: 'monitorando', motivo: null, verificadoEm: null, cobrancaModelo: null, cobrancaOrigem: null, cobrancaAssinatura: null, atualizadoEm: agoraIso };
+    }
     if (item.status === 'nao_enviar' || item.status === 'nao_cliente') {
       return { ...f, estado: 'saiu', motivo: item.motivo ?? 'não enviar mais', cobrancaModelo: null, cobrancaOrigem: null, atualizadoEm: agoraIso };
     }

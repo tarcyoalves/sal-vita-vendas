@@ -288,3 +288,36 @@ Campo de até 1500 caracteres, salvo em `chrome.storage.local` (`vz.ia.orientaco
 
 ### Não verificado
 IA real (só mockada), WhatsApp Web real, deploy do servidor, publicação no site.
+
+---
+
+## 13. Lote 1 de segurança e confiança (Vita Zap 0.7.59, análise crítica de 18/11/2026)
+
+Pedido do dono: implementar as melhorias da análise crítica da extensão, lote 1 (segurança/confiança). Nada de função nova fora desta lista.
+
+### 13.1 Modo Observação e placar da IA
+- Estado dos automáticos (cobrança do follow-up e reativação): `automatico` = `desligado | observacao | ligado` (campo novo nas duas configurações; `ligado` virou derivado: "o automático roda"). Escolhido na aba **Automáticos**, vale para os dois.
+- **Observação:** lê, classifica, decide e prepara o texto, mas NADA é enviado, agendado no CRM (nem o resumo nas notas do lead) nem marcado opt-out nem lembrete criado. O que seria um opt-out vira "revisar" (nunca é cobrado); o que seria agendamento fica como "agendado" marcado `observado`. Cada decisão vira um item "o que a IA faria" (`Julgamento`, loja `julgamentos`, id determinístico: a mesma decisão nunca duplica) com **Acertou** / **Errou** (motivo ≤ 160 caracteres e a decisão certa numa lista). Tipos de decisão: `cobrar`, `retomar`, `agendar`, `precisa`, `resolver`, `sair`. Guarda os últimos 200 julgamentos e até 100 pendentes.
+- **Liberar o envio pela primeira vez:** `MIN_JULGAMENTOS = 30` julgamentos com `MIN_ACERTO_PERCENTUAL = 90` entre as decisões que GERAM ENVIO (`cobrar`, `retomar`). Abaixo disso, o botão explica ("Faltam N"; ou o percentual atingido). Passou uma vez: `placarAprovado` fica gravado e ligar de novo só pede a confirmação do risco. "Ligado" só existe com a confirmação do risco E o placar aprovado; senão a normalização devolve Observação.
+- **Migração:** config da 0.7.58 ligada (com confirmação do risco) vira **Observação** com o aviso `migradoParaObservacao`; desligada continua desligada. Sem texto do dono nada roda, em nenhum modo.
+- **Ao sair da Observação para Ligado:** o que ficou só "no papel" (`observado`) é refeito: follow-up volta a ser lido; reativação sem mensagem enviada é reavaliada do zero; com mensagem enviada volta a esperar a resposta.
+- **Defesa em profundidade:** o Executor lê o modo na configuração GRAVADA antes de cada envio automático; Observação/Desligado pausam ("automático em Observação: ..."), mesmo que um Executor tenha ficado rodando de antes.
+
+### 13.2 Reler antes de enviar
+Ponto único: `Executor.passo()`, depois da trava de agendamento e antes de `abrirEColar`, só para campanhas com `tipo` (follow-up e reativação) em envio automático. `lerConversa` (só leitura) + `conferirAntesDeEnviar` (`shared/reler-antes.ts`): a última mensagem tem que ser nossa, nenhuma mensagem do cliente com carimbo desde a leitura que gerou a decisão e a nossa última mensagem (disparo, cobrança ou etapa anterior) ainda é a âncora (`analisarLeitura`). Respondeu: o item vira `pulado` com o prefixo `MOTIVO_CLIENTE_RESPONDEU` (não conta no freio) e **volta para a classificação** (follow-up: `monitorando`, relido na próxima rodada; reativação: etapa 1 reavaliada, etapas 2/3 relem a resposta). Atendente já falou, âncora não achada, conversa vazia: não envia (vai para "revisar"). Erro geral do WhatsApp: pausa sem marcar ninguém. Campanha manual e comum: não muda. Teste de arquitetura: `tests/automaticos-arquitetura.test.ts`.
+
+### 13.3 Prioridade e previsão da fila
+Ordem fixa (`shared/fila.ts`): 1) cobrança de quem não respondeu, 2) reativação etapas 2 e 3, 3) reativação etapa 1; 4) campanhas comuns seguem como sempre (só quando o dono as inicia; aparecem como "N pendentes", fora da conta). Dentro da reativação, etapas 2/3 antes da etapa 1 e a conversa mais antiga primeiro. A reativação NÃO começa um envio enquanto o follow-up está Ligado, sem pausa e com cobrança na fila. Previsão: "Hoje saem até N (teto X, já saíram Y); ficam Z na fila para os próximos dias" (aba Automáticos).
+
+### 13.4 Aviso de histórico sumindo
+`background/historico.ts`: alarme diário às 9h de Fortaleza (também confere ao abrir o Chrome, no máximo uma vez por dia). Com o que já está salvo (varredura + registros da reativação, mesmas regras de público), conta quem está entre a etapa 1 da reativação e etapa 1 + 5 dias sem registro (nunca lido) e mostra UMA notificação "N conversas precisam ser lidas até dd/MM senão o histórico some do WhatsApp Web" (dd/MM = o mais urgente). Só se N > 0, no máximo um por dia (`followupConfig` id `historico`). Sem permissão nova (usa `alarms` e `notifications`); se a notificação falhar, usa o selo do ícone. Nunca abre o WhatsApp.
+
+### 13.5 "O que a IA fez" e Desfazer
+Loja `acoesIa` (últimas 300): `enviou`, `agendou`, `nao_enviar`, `encerrou`, com o resumo e a data. Desfazer: **opt-out automático** (remove da lista "Não enviar mais") e **agendamento criado pela IA** (`zapCrm.desfazerAgendamento({ taskId, agendadoEm })`: remove SÓ o lembrete e só se ainda for exatamente o instante gravado e a tarefa seguir pendente; as notas e a tarefa ficam; sem tabela nem coluna nova; mesma visibilidade de `tasks.update`). Envio e encerramento não têm desfazer (a tela diz).
+
+### 13.6 Reserva da IA
+`server/lib/llm.ts`: quando TODOS os provedores falham, um log único `[rótulo] cadeia inteira falhou: prov=status,...` (sem conteúdo nem chave). `GROQ_MODEL`/`CEREBRAS_MODEL`/`OPENROUTER_MODEL`/`NVIDIA_MODEL` precisam apontar para modelos vigentes; os padrões do código não foram alterados (não há como verificar o nome vigente daqui).
+
+### Não verificado
+WhatsApp Web real (releitura e seletores), IA real, o desfazer contra o CRM em produção (servidor novo em `main`; deploy não conferido aqui), o disparo real do alarme/notificação no Chrome, `npm run publicar` (NÃO feito).
+

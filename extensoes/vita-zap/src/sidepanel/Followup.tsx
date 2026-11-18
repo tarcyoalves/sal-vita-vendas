@@ -16,12 +16,14 @@ import {
   type ConfigFollowup,
   type Followup,
 } from '../shared/followup';
+import { podeEnviar, ROTULO_MODO } from '../shared/automaticos';
 import { MSG_ESCREVA_ANTES, podeLigar, rotuloOrigem, type RascunhoMensagem } from '../shared/followup-estilo';
 import { ehEventoConteudo } from '../shared/mensagens';
 import { dentroDoHorario } from '../shared/politica';
 import { montarMensagem } from '../shared/texto';
 import { formatarDataBr, hojeNoFuso } from '../shared/datas';
 import type { CrmPainel } from './crm';
+import { aoMudarModo } from './automaticos-motor';
 import { type EstadoExecutor, Executor } from './executor';
 import { MotorFollowup, type ResumoRodada, type VisaoFollowup } from './followup-motor';
 import { MensagemCobranca } from './MensagemCobranca';
@@ -35,6 +37,8 @@ interface Props {
   crm: CrmPainel;
   /** A aba está à vista: recarrega as listas (a reativação grava itens aqui enquanto a aba está escondida). */
   ativa?: boolean;
+  /** Abre a aba "Automáticos" (modo, placar, fila e "O que a IA fez"). */
+  aoAbrirAutomaticos?: () => void;
 }
 
 type Lista = 'cobranca' | 'precisa' | 'saiu' | 'resolvido';
@@ -43,18 +47,12 @@ type Lista = 'cobranca' | 'precisa' | 'saiu' | 'resolvido';
 const INTERVALO_CICLO_MS = 20 * 60_000;
 const PRIMEIRO_CICLO_MS = 20_000;
 
-export const TEXTO_RISCO =
-  'Atenção: o envio automático de mensagens pelo WhatsApp Web viola os Termos de Serviço do WhatsApp e pode levar ao bloqueio ou banimento do número. ' +
-  'Os limites do Vita Zap (teto diário compartilhado com as campanhas, horário comercial, intervalo de 60 a 120 s, freio e conferência da conversa antes do clique) ' +
-  'REDUZEM o risco, mas NÃO o eliminam. A cobrança só vai para quem não respondeu e nunca para quem está em "Não enviar mais". ' +
-  'Quem respondeu NUNCA recebe nada sozinho: você revisa e envia.';
-
 /** Pausas por horário/teto/painel escondido: o ciclo tenta de novo sozinho. Qualquer outra (freio, erro) exige "Retomar". */
 export function pausaBenigna(motivo: string | null | undefined): boolean {
-  return motivo != null && (/^(domingo|fora do horário|teto diário|CRM indisponível)/.test(motivo) || motivo === MOTIVO_PAINEL_FECHADO);
+  return motivo != null && (/^(domingo|fora do horário|teto diário|CRM indisponível|automático em)/.test(motivo) || motivo === MOTIVO_PAINEL_FECHADO);
 }
 
-export function Followup({ db, crm, ativa }: Props) {
+export function Followup({ db, crm, ativa, aoAbrirAutomaticos }: Props) {
   const trava = useTrava(db, crm);
   const motor = useMemo(
     () =>
@@ -102,6 +100,8 @@ export function Followup({ db, crm, ativa }: Props) {
     void recarregar();
   }, [recarregar, ativa]);
   useEffect(() => assinarTrava(() => setDono(donoDaTrava())), []);
+  // O modo (Desligado | Observação | Ligado) é escolhido na aba "Automáticos": recarrega a configuração quando ele muda.
+  useEffect(() => aoMudarModo(() => void recarregar()), [recarregar]);
 
   // ── Executor da cobrança (o mesmo das campanhas) ──────────────────────────
 
@@ -210,8 +210,7 @@ export function Followup({ db, crm, ativa }: Props) {
   /** Verifica (lê as conversas, IA) e, se a cobrança automática está ligada e nada pausa, manda as cobranças. */
   const executarCiclo = useCallback(
     async (manual: boolean): Promise<void> => {
-      const v = visaoRef.current;
-      if (!v || emCicloRef.current) return;
+      if (!visaoRef.current || emCicloRef.current) return;
       const dono0 = donoDaTrava();
       if (dono0 && dono0 !== 'followup') {
         if (manual) setAviso(`Agora não: ${ROTULO_DONO[dono0]}.`);
@@ -225,12 +224,14 @@ export function Followup({ db, crm, ativa }: Props) {
       let entregouAoExecutor = false;
       try {
         setOcupado('Lendo as conversas…');
-        const r = await motor.verificar(v.config, { recentes: manual, forcar: manual, parar: () => pararRef.current, aoProgredir: setOcupado });
+        // Configuração fresca: o modo pode ter mudado na aba "Automáticos" desde a última vez que esta aba carregou.
+        const r = await motor.verificar((await motor.carregar()).config, { recentes: manual, forcar: manual, parar: () => pararRef.current, aoProgredir: setOcupado });
         setResumo(r);
         if (r.aviso) setAviso(r.aviso);
         await recarregar();
         const config = (await motor.carregar()).config;
-        if (config.ligado && !config.pausado && !r.parou && !(precisaRetomarRef.current && !manual)) {
+        // Só o modo Ligado envia: em Observação a rodada lê, classifica, decide e prepara o texto, e para por aí.
+        if (podeEnviar(config) && !config.pausado && !r.parou && !(precisaRetomarRef.current && !manual)) {
           setOcupado('Preparando as cobranças…');
           entregouAoExecutor = await iniciarCobrancas(config);
         }
@@ -269,31 +270,10 @@ export function Followup({ db, crm, ativa }: Props) {
 
   const mudarConfig = async (mudanca: Partial<ConfigFollowup>): Promise<void> => {
     if (!visao) return;
-    const nova = await motor.salvarConfig({ ...visao.config, ...mudanca });
+    await motor.salvarConfig({ ...visao.config, ...mudanca });
     await recarregar();
     if (mudanca.pausado === true && executor && executorAtivo(executor.atual)) await executor.pausar('follow-up pausado por você');
     if (mudanca.pausado === false) precisaRetomarRef.current = false;
-    if (nova.ligado && mudanca.ligado === true) void executarCiclo(true);
-  };
-
-  const ligar = async (ligado: boolean): Promise<void> => {
-    if (!ligado) {
-      await mudarConfig({ ligado: false });
-      return;
-    }
-    // Os modelos genéricos não são mais enviados: sem texto do dono salvo, não liga.
-    const pode = podeLigar(visao?.config ?? { textos1: [] });
-    if (!pode.ok) {
-      setAviso(pode.motivo);
-      return;
-    }
-    setAviso(null);
-    const total = visao?.followups.filter((f) => f.estado === 'monitorando').length ?? 0;
-    const ok = window.confirm(
-      `${TEXTO_RISCO}\n\nHá ${total} contato(s) de disparos dos últimos ${JANELA_DIAS} dias sendo acompanhados. ` +
-        `Quem não responder em ${visao?.config.dias ?? 3} dia(s) será cobrado automaticamente (no máximo ${MAX_COBRANCAS} vezes).\n\nLigar a cobrança automática?`,
-    );
-    if (ok) await mudarConfig({ ligado: true, confirmouRisco: true, pausado: false });
   };
 
   /** Salva a mensagem do dono e refaz o texto de quem já está na fila (nunca sai texto preparado com a configuração antiga). */
@@ -376,10 +356,16 @@ export function Followup({ db, crm, ativa }: Props) {
           Quem <b>respondeu</b> e precisa de atenção (preço, interesse, reclamação, pergunta, compra depois) vai para <b>Precisa de você</b>, com uma resposta sugerida: você revisa e envia.
           Quem pede para sair vai para "não enviar mais".
         </p>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-          <input type="checkbox" checked={config.ligado} onChange={(e) => void ligar(e.target.checked)} />
-          <span>Cobrança automática de quem não respondeu</span>
-        </label>
+        <p style={{ fontSize: 13, fontWeight: 600, margin: '4px 0' }}>
+          Cobrança automática: <span aria-label="Modo atual">{ROTULO_MODO[config.automatico]}</span>
+          {aoAbrirAutomaticos && (
+            <button type="button" className="pequeno" style={{ marginLeft: 8 }} onClick={aoAbrirAutomaticos}>
+              Mudar o modo (aba Automáticos)
+            </button>
+          )}
+        </p>
+        {config.automatico === 'observacao' && <p className="info">Observação: a IA lê e decide, mas NADA é cobrado. Julgue o que ela faria na aba Automáticos.</p>}
+        {config.migradoParaObservacao && <p className="aviso" role="alert">A cobrança automática estava ligada numa versão anterior e agora está em Observação: nada é enviado até o placar da IA aprovar e você ligar de novo.</p>}
         {!podeLigar(config).ok && !config.ligado && <p className="aviso">{MSG_ESCREVA_ANTES}: use "Sua mensagem de cobrança", logo abaixo.</p>}
         <div style={{ marginTop: 8, fontSize: 12.5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
           <label htmlFor="followup-dias">Cobrar depois de</label>
@@ -392,7 +378,7 @@ export function Followup({ db, crm, ativa }: Props) {
           </select>
           <span>dia(s) sem resposta (também é o intervalo mínimo entre cobranças)</span>
         </div>
-        <p className="aviso" style={{ marginTop: 8 }}>{TEXTO_RISCO}</p>
+        <p className="aviso" style={{ marginTop: 8 }}>Atenção: o envio automático pelo WhatsApp Web viola os Termos de Serviço do WhatsApp e pode levar ao bloqueio ou banimento do número. Os limites do Vita Zap reduzem o risco, mas não o eliminam. Quem respondeu NUNCA recebe nada sozinho: você revisa e envia.</p>
         <div className="botoes">
           <button type="button" className="primario" disabled={trabalhando || bloqueadoPor != null} onClick={() => void verificarAgora()} title="Lê agora as conversas dos disparos (a partir de 2 horas) e manda as respostas para a IA">
             Verificar respostas agora
@@ -454,9 +440,10 @@ export function Followup({ db, crm, ativa }: Props) {
           <h3>
             Cobrança automática — {listas.cobranca.length} agendada(s), {visao.enviadasHoje} enviada(s) hoje
           </h3>
+          {config.automatico === 'observacao' && <p className="info">Observação: estas cobranças estão preparadas, mas NÃO saem.</p>}
           {estado && (
             <p className="ajuda">
-              {estado.fase === 'intervalo' ? 'Intervalo entre contatos…' : estado.fase === 'abrindo' ? 'Abrindo a conversa…' : estado.fase === 'aguardando_envio' ? 'Conferindo e enviando…' : estado.fase === 'concluida' ? 'Rodada concluída.' : 'Parado.'}
+              {estado.fase === 'intervalo' ? 'Intervalo entre contatos…' : estado.fase === 'abrindo' ? 'Relendo/abrindo a conversa…' : estado.fase === 'aguardando_envio' ? 'Conferindo e enviando…' : estado.fase === 'concluida' ? 'Rodada concluída.' : 'Parado.'}
               {estado.tetoDiario ? ` Teto diário (compartilhado com as campanhas): ${estado.enviosHoje}/${estado.tetoDiario}.` : ''}
               {estado.mensagem ? ` ${estado.mensagem}` : ''}
             </p>

@@ -29,7 +29,7 @@ describe('a reativação não tem caminho próprio de envio', () => {
   it('"Avaliar agora" só avalia: chama a rodada com enviar = false e nunca monta campanha nessa chamada', () => {
     const c = ler('src/sidepanel/Reativacao.tsx');
     expect(c).toMatch(/executarCiclo\(true, false\)/);
-    expect(c).toMatch(/if \(enviar && config\.ligado && !config\.pausado/);
+    expect(c).toMatch(/if \(enviar && podeEnviar\(config\) && !config\.pausado/);
   });
 
   it('a rodada só LÊ a conversa (lerConversa) e fala com a IA/CRM pelo contrato LeadsCRM, nunca por fetch', () => {
@@ -96,14 +96,16 @@ describe('a mensagem é do dono e a configuração nasce desligada', () => {
     expect(c).toMatch(/config\.textos1\.length === 0\) return null/);
     expect(c).not.toMatch(/modeloLocal|MODELOS_1|Passando só para saber|SUGESTOES_/);
     expect(ler('src/sidepanel/Reativacao.tsx')).toMatch(/podeLigarReativacao\(/);
-    expect(ler('src/shared/reativacao.ts')).toMatch(/ligado: querLigar && textos1\.length > 0/);
+    expect(ler('src/shared/reativacao.ts')).toMatch(/textos1\.length > 0\)/);
+    expect(ler('src/shared/reativacao.ts')).toMatch(/normalizarModo\(/);
     expect(ler('src/shared/reativacao.ts')).toMatch(/ligado: false,/);
   });
 
-  it('o ligar pede a confirmação do risco (window.confirm) antes de gravar confirmouRisco', () => {
-    const c = ler('src/sidepanel/Reativacao.tsx');
+  it('o ligar (aba Automáticos) pede a confirmação do risco (window.confirm) antes de gravar confirmouRisco', () => {
+    const c = ler('src/sidepanel/Automaticos.tsx');
     expect(c.indexOf('window.confirm(')).toBeGreaterThan(0);
-    expect(c.indexOf('window.confirm(')).toBeLessThan(c.indexOf('confirmouRisco: true'));
+    expect(c.indexOf('window.confirm(')).toBeLessThan(c.indexOf('confirmouRisco: modo'));
+    expect(ler('src/sidepanel/automaticos-motor.ts')).toMatch(/opcoes\.confirmouRisco !== true/);
   });
 
   it('lerConversa devolve o telefone só lendo (ids/título), sem escrever', () => {

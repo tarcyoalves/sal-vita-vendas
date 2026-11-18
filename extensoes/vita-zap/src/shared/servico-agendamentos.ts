@@ -116,3 +116,23 @@ export async function registrarReativacao(ap: ApoioAgendamentos, p: PedidoRegist
     ...(existente != null && Number.isFinite(existente) ? { agendamentoExistente: existente } : {}),
   };
 }
+
+// ── Desfazer o agendamento criado pela IA (v0.7.59) ─────────────────────────
+
+export type ResultadoDesfazerAgendamento = { ok: true } | { ok: false; mensagem: string };
+
+/**
+ * Remove SÓ o lembrete que a IA criou (zapCrm.desfazerAgendamento): o servidor só mexe se o lembrete ainda for exatamente o
+ * instante que a IA gravou e a tarefa seguir pendente. Se o atendente já mudou a data, nada é tocado e o motivo volta aqui.
+ */
+export async function desfazerAgendamento(ap: ApoioAgendamentos, p: { taskId: number; agendadoEm: number }): Promise<ResultadoDesfazerAgendamento> {
+  if (!(await ap.temLogin())) return { ok: false, mensagem: 'Entre no CRM na aba Dados.' };
+  const r = await ap.chamar(() => ap.alterar<unknown>('zapCrm.desfazerAgendamento', { taskId: p.taskId, agendadoEm: new Date(p.agendadoEm) }));
+  if (!r.ok) {
+    if (r.erro.tipo === 'nao-encontrado') return { ok: false, mensagem: 'O servidor do CRM ainda não tem o desfazer de agendamento (o CRM precisa estar atualizado). Nada foi alterado.' };
+    return { ok: false, mensagem: motivoDoErro(r.erro) };
+  }
+  const o = (typeof r.valor === 'object' && r.valor !== null ? r.valor : {}) as Record<string, unknown>;
+  if (o.ok === true) return { ok: true };
+  return { ok: false, mensagem: typeof o.mensagem === 'string' ? o.mensagem : 'O CRM não aceitou desfazer o agendamento.' };
+}

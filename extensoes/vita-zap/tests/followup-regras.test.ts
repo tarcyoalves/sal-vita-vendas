@@ -56,7 +56,7 @@ const cli = (texto: string, quando: string | null = null): MensagemLida => ({ de
 
 describe('configuração', () => {
   it('padrão desligado, 3 dias, sem confirmação do risco', () => {
-    expect(CONFIG_FOLLOWUP_PADRAO).toEqual({ ligado: false, dias: 3, pausado: false, confirmouRisco: false, modo: 'meus_textos', textos1: [], textos2: [], estilo: '', desligadaSemTexto: false });
+    expect(CONFIG_FOLLOWUP_PADRAO).toEqual({ ligado: false, automatico: 'desligado', migradoParaObservacao: false, placarAprovado: false, dias: 3, pausado: false, confirmouRisco: false, modo: 'meus_textos', textos1: [], textos2: [], estilo: '', desligadaSemTexto: false });
   });
 
   it('nunca fica ligado sem a confirmação do risco e prende os dias em 1–30', () => {

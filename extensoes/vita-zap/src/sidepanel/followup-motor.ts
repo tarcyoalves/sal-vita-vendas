@@ -18,16 +18,20 @@ import {
   listarNaoEnviar,
   lerConfigFollowup,
   marcarNaoEnviar,
+  registrarAcaoIa,
+  registrarDecisao,
   salvarCampanha,
   salvarConfigFollowup,
   salvarFollowups,
 } from '../shared/banco';
+import { emObservacao, novaAcao, novaDecisao } from '../shared/automaticos';
 import { type Campanha, novoId } from '../shared/campanha';
 import { FILTROS_PADRAO, ultimoEnvioPorChave } from '../shared/filtros';
 import {
   type ConfigFollowup,
   type Followup,
   LOTE_IA,
+  MAX_COBRANCAS,
   MAX_LEITURAS_POR_RODADA,
   aplicarClassificacao,
   aplicarResultadoCampanha,
@@ -38,6 +42,7 @@ import {
   novosFollowups,
   paraModelo,
   referenciaDe,
+  ROTULO_CLASSE,
   separarListas,
   textoDaFilaDesatualizado,
   textoEsperadoDe,
@@ -58,8 +63,10 @@ import { MARCADOR_PRIMEIRO_NOME } from '../shared/constantes';
 import type { LeadsCRM } from '../shared/leads';
 import type { CodigoErro, MensagemLida, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
 import { contarEnviosHoje } from '../shared/politica';
+import { montarMensagem } from '../shared/texto';
 import type { ConversaParaIa } from '../shared/servico-ia';
 import type { ResultadoTrava } from '../shared/trava-agendamento';
+import { anotarDecisaoDaResposta } from './registro-ia';
 
 /** Erros que indicam problema GERAL (não do contato): a rodada para sem marcar ninguém. */
 const ERROS_GERAIS: ReadonlySet<CodigoErro> = new Set<CodigoErro>(['seletor', 'nao_pronto', 'ocupado', 'interno']);
@@ -251,14 +258,20 @@ export class MotorFollowup {
           } else {
             await this.gravar({ ...base, estado: decisao.destino, motivo: decisao.motivo });
             if (decisao.destino === 'saiu') resumo.saidas += 1;
-            else resumo.resolvidos += 1;
+            else {
+              resumo.resolvidos += 1;
+              // Encerrou a sequência sozinho (sem resposta depois das cobranças): fica no "O que a IA fez" (só informa; não há o que desfazer).
+              if (decisao.destino === 'resolvido' && !emObservacao(config)) {
+                await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'encerrou', origem: 'followup', chave: f.chave, nome: f.nome, resumo: decisao.motivo, id: `encerrou:followup:${f.id}:${f.cobrancas.length}` }, agora));
+              }
+            }
           }
         }
       }
       if (i < devidos.length - 1) await this.d.esperar(1500 + Math.floor(this.d.aleatorio() * 2500));
     }
 
-    if (paraIa.length > 0) await this.classificar(paraIa, resumo);
+    if (paraIa.length > 0) await this.classificar(paraIa, resumo, config);
     if (paraCobrar.length > 0) await this.prepararCobrancas(paraCobrar, config, resumo);
     return resumo;
   }
@@ -269,7 +282,8 @@ export class MotorFollowup {
 
   // ── IA: entender as respostas ─────────────────────────────────────────────
 
-  private async classificar(itens: Array<{ f: Followup; mensagens: MensagemLida[] }>, resumo: ResumoRodada): Promise<void> {
+  private async classificar(itens: Array<{ f: Followup; mensagens: MensagemLida[] }>, resumo: ResumoRodada, config: ConfigFollowup): Promise<void> {
+    const observando = emObservacao(config);
     for (let ini = 0; ini < itens.length; ini += LOTE_IA) {
       const lote = itens.slice(ini, ini + LOTE_IA);
       // `ref` é só "c1", "c2"...: nem o nome, nem a chave, nem o id interno do contato vão para o servidor.
@@ -303,17 +317,30 @@ export class MotorFollowup {
         const efeito = aplicarClassificacao(x.f, c, agora);
         let f = efeito.followup;
         if (efeito.optOut) {
-          // Pedido explícito para sair: opt-out automático. Nunca mais cobrança, nem campanha.
-          await marcarNaoEnviar(this.d.db, { chave: f.chave, nome: f.nome, desde: agora.toISOString(), motivo: 'pediu para sair (lido pela IA)' });
-          resumo.saidas += 1;
+          if (observando) {
+            // Observação: NÃO marca "Não enviar mais". O contato fica em "revisar" (nunca é cobrado) e a decisão vai para o julgamento.
+            f = { ...f, estado: 'revisar', motivo: 'Observação: a IA marcaria "Não enviar mais" (pediu para sair). Nada foi marcado.', sugestao: '', observado: true };
+            resumo.revisar += 1;
+          } else {
+            // Pedido explícito para sair: opt-out automático. Nunca mais cobrança, nem campanha.
+            await marcarNaoEnviar(this.d.db, { chave: f.chave, nome: f.nome, desde: agora.toISOString(), motivo: 'pediu para sair (lido pela IA)' });
+            await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'nao_enviar', origem: 'followup', chave: f.chave, nome: f.nome, resumo: `Pediu para sair. ${c.resumo}`, desfazer: { tipo: 'nao_enviar' } }, agora));
+            resumo.saidas += 1;
+          }
         } else if (f.estado === 'precisa') resumo.precisam += 1;
         else if (f.estado === 'revisar') resumo.revisar += 1;
         else resumo.resolvidos += 1;
         if (efeito.lembrete) {
-          const erro = await this.d.criarLembrete(f.nome, efeito.lembrete.venceEm, agora);
-          if (erro === null) f = { ...f, lembreteCriadoEm: agora.toISOString() };
-          else f = { ...f, resumo: `${f.resumo ?? ''} (não consegui criar o lembrete: ${erro})`.trim() };
+          if (observando) f = { ...f, observado: true };
+          else {
+            const erro = await this.d.criarLembrete(f.nome, efeito.lembrete.venceEm, agora);
+            if (erro === null) {
+              f = { ...f, lembreteCriadoEm: agora.toISOString() };
+              await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'agendou', origem: 'followup', chave: f.chave, nome: f.nome, resumo: `Lembrete para daqui a ${efeito.lembrete.dias} dia(s), às 9h (${ROTULO_CLASSE[c.classe]})` }, agora));
+            } else f = { ...f, resumo: `${f.resumo ?? ''} (não consegui criar o lembrete: ${erro})`.trim() };
+          }
         }
+        if (observando) await anotarDecisaoDaResposta(this.d.db, { origem: 'followup', chave: x.f.chave, nome: x.f.nome, contexto: `${x.f.id}:${x.f.cobrancas.length}`, estadoDepois: f.estado, motivoDepois: f.motivo, optOut: efeito.optOut, c }, agora);
         await this.gravar(f);
       }
     }
@@ -378,6 +405,13 @@ export class MotorFollowup {
         continue;
       }
       usados.add(escolha.modelo);
+      if (emObservacao(config)) {
+        // Observação: a cobrança fica preparada na fila, mas NÃO sai. O dono julga se a IA acertou em cobrar.
+        await registrarDecisao(
+          this.d.db,
+          novaDecisao({ origem: 'followup', tipo: 'cobrar', chave: f.chave, nome: f.nome, contexto: `${f.id}:${f.cobrancas.length}`, resumo: `Cobraria agora (cobrança ${f.cobrancas.length + 1} de ${MAX_COBRANCAS}): sem resposta há ${config.dias}+ dia(s)`, texto: montarMensagem(escolha.modelo, f.primeiroNome) }, this.d.agora()),
+        );
+      }
       await this.gravar({
         ...f,
         estado: 'cobranca',
@@ -494,6 +528,12 @@ export class MotorFollowup {
     const novos = aplicarResultadoCampanha(todos, campanha, envios, this.d.agora());
     const mudados = novos.filter((f, i) => f !== todos[i]);
     await salvarFollowups(this.d.db, mudados);
+    // "O que a IA fez": cada cobrança que saiu (idempotente: a mesma cobrança notificada várias vezes é um registro só). Envio não tem desfazer.
+    for (const [i, f] of novos.entries()) {
+      if (f === todos[i] || f.cobrancas.length <= todos[i].cobrancas.length) continue;
+      const c = f.cobrancas[f.cobrancas.length - 1];
+      await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'enviou', origem: 'followup', chave: f.chave, nome: f.nome, resumo: `Cobrança ${f.cobrancas.length} enviada: "${c.texto.slice(0, 120)}"`, id: `enviou:followup:${f.id}:${c.em}` }, new Date(c.em)));
+    }
   }
 
   // ── Ações do atendente ────────────────────────────────────────────────────

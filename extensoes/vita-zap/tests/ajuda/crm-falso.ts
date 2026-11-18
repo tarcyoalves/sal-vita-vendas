@@ -209,6 +209,18 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
       }
       return ok({ ok: true, taskId: t.id, criou, agendou, ...(semAgenda ? { semAgenda } : {}), ...(semAgenda && futuro ? { agendamentoExistente: futuro } : {}) });
     }
+    if (caminho === 'zapCrm.desfazerAgendamento' && !crm.semZapCrm) {
+      // Espelho do servidor: só remove o lembrete se ele ainda for EXATAMENTE o instante que a IA gravou e a tarefa seguir pendente.
+      const d = dados as { taskId: number; agendadoEm: Date };
+      const t = crm.tasks.find((x) => x.id === d.taskId);
+      if (!t) return ok({ ok: false, codigo: 'sem_tarefa', mensagem: 'A tarefa não existe mais no CRM (ou não é sua). Nada foi alterado.' });
+      if (t.status === 'pending' && t.reminderDate && t.reminderDate.getTime() === new Date(d.agendadoEm).getTime()) {
+        t.reminderDate = null;
+        t.reminderEnabled = false;
+        return ok({ ok: true, taskId: t.id });
+      }
+      return ok({ ok: false, codigo: 'mudou', mensagem: 'O agendamento já foi alterado ou concluído depois que a IA o criou. Não mexi em nada.' });
+    }
     if (caminho === 'tags.list') {
       return ok([
         { id: 1, name: 'Cliente Ativo', color: '#16a34a' },

@@ -6,6 +6,8 @@ import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import {
   abrirBanco,
+  listarAcoesIa,
+  listarJulgamentos,
   listarCampanhas,
   listarEnvios,
   listarFollowups,
@@ -14,8 +16,10 @@ import {
   marcarNaoEnviar,
   registrarEnvio,
   salvarConfig,
+  salvarConfigReativacao,
   salvarContatos,
   salvarFollowups,
+  salvarReativacoes,
 } from '../src/shared/banco';
 import { type Campanha, textoDoItem } from '../src/shared/campanha';
 import type { ContatoVarrido } from '../src/shared/contatos';
@@ -23,7 +27,7 @@ import { instanteNoFuso } from '../src/shared/crm-lembretes';
 import type { ClassificacaoIa } from '../src/shared/followup';
 import type { MensagemLida, PedidoConteudo, RespostaConteudo } from '../src/shared/mensagens';
 import { CONFIG_PADRAO } from '../src/shared/politica';
-import { CONFIG_REATIVACAO_PADRAO, MOTIVO_TRAVA_PREFIXO, type AvaliacaoReativacao, type ConfigReativacao, type DecisaoReativacao } from '../src/shared/reativacao';
+import { CONFIG_REATIVACAO_PADRAO, MOTIVO_TRAVA_PREFIXO, assinaturaReativacao, novoRegistro, type AvaliacaoReativacao, type ConfigReativacao, type DecisaoReativacao } from '../src/shared/reativacao';
 import type { PedidoRegistroReativacao, ResultadoRegistroReativacao } from '../src/shared/servico-agendamentos';
 import type { ConversaParaIa, ResultadoIa } from '../src/shared/servico-ia';
 import type { ResultadoTrava } from '../src/shared/trava-agendamento';
@@ -34,7 +38,7 @@ let n = 0;
 const TEXTOS1 = ['Oi, {nome}! Faz um tempinho que não nos falamos. Precisa de sal?', '{nome}, tudo bem? Passando para saber se precisa de sal por aí.'];
 const TEXTOS2 = ['{nome}, só reforçando: estou à disposição para o que precisar de sal.'];
 const TEXTOS3 = ['Oi, {nome}! Deixo meu contato aberto, é só chamar.'];
-const CONFIG: ConfigReativacao = { ...CONFIG_REATIVACAO_PADRAO, ligado: true, confirmouRisco: true, textos1: TEXTOS1, textos2: TEXTOS2, textos3: TEXTOS3 };
+const CONFIG: ConfigReativacao = { ...CONFIG_REATIVACAO_PADRAO, ligado: true, automatico: 'ligado', placarAprovado: true, confirmouRisco: true, textos1: TEXTOS1, textos2: TEXTOS2, textos3: TEXTOS3 };
 
 const ISO = (d: string) => new Date(`${d}T12:00:00.000Z`).toISOString();
 const eu = (texto: string, quando = ISO('2026-10-20')): MensagemLida => ({ de: 'eu', texto, quando });
@@ -70,6 +74,7 @@ interface Opcoes {
 async function montar(contatos: Record<string, Conversa>, opcoes: Opcoes = {}, ajustes: Partial<ContatoVarrido> = {}) {
   const db = await abrirBanco(`reativacao-${Date.now()}-${(n += 1)}`);
   await salvarConfig(db, { ...CONFIG_PADRAO, numeroComMaisDe30Dias: true });
+  await salvarConfigReativacao(db, CONFIG); // modo Ligado: só ele deixa o Executor enviar (v0.7.59)
   let agora = new Date('2026-11-17T13:00:00.000Z'); // terça 10h em Fortaleza
   const conversas: Record<string, Conversa> = { ...contatos };
   const lista = Object.keys(contatos).map((nome) => contato(nome, ajustes));
@@ -260,7 +265,7 @@ describe('etapa 1: precisa_agora → mensagem do dono, pelo mesmo Executor das c
     await t.rodada();
     const campanha = (await t.motor.montarCampanha(CONFIG)) as Campanha;
     const ex = new Executor(
-      { db: t.db, pedir: async (p) => (p.tipo === 'abrirEColar' ? { ok: false, codigo: 'nao_encontrado', erro: 'não achei' } : { ok: true }), agora: t.agora, aleatorio: () => 0.5, agendar: () => () => undefined, obterEnvioAutomatico: () => true },
+      { db: t.db, pedir: async (p) => (p.tipo === 'abrirEColar' ? { ok: false, codigo: 'nao_encontrado', erro: 'não achei' } : p.tipo === 'lerConversa' ? { ok: true, mensagens: CONVERSA_NORMAL } : { ok: true }), agora: t.agora, aleatorio: () => 0.5, agendar: () => () => undefined, obterEnvioAutomatico: () => true },
       campanha,
     );
     await ex.iniciar();
@@ -772,5 +777,140 @@ describe('limites e ritmo da rodada', () => {
     await t.motor.carregar();
     expect((await t.registro('CLIENTE Ana')).estado).toBe('resolvido');
     expect((await t.registro('CLIENTE Bia')).estado).toBe('saiu');
+  });
+});
+
+// ── Lote 1 (0.7.59): modo Observação, releitura antes de enviar, prioridade e "O que a IA fez" ───────────────────
+
+describe('modo Observação (0.7.59): a IA decide, mas NADA é enviado, agendado no CRM nem marcado', () => {
+  const OBS: ConfigReativacao = { ...CONFIG, automatico: 'observacao', placarAprovado: false };
+
+  it('retomar agora: prepara o texto e guarda o julgamento, mas não grava nada no CRM e o Executor se recusa a enviar', async () => {
+    const t = await montar({ 'CLIENTE Ana': conv(CONVERSA_NORMAL, '5584999990000') });
+    await salvarConfigReativacao(t.db, OBS);
+    const r = await t.rodada(OBS);
+    expect(r).toMatchObject({ lidas: 1, prontos: 1 });
+    expect(t.pedidosCrm).toEqual([]); // nem o resumo vai para o CRM
+    expect((await t.registro('CLIENTE Ana')).estado).toBe('pronto');
+    const js = await listarJulgamentos(t.db);
+    expect(js).toHaveLength(1);
+    expect(js[0]).toMatchObject({ tipo: 'retomar', origem: 'reativacao', veredito: null });
+    expect(js[0].texto).toMatch(/^(Oi, Ana!|Ana,)/);
+
+    const ex = await t.enviar(OBS);
+    expect(t.colados).toHaveLength(0);
+    expect(ex?.atual.campanha.motivoPausa).toMatch(/^automático em Observação/);
+    expect((await listarEnvios(t.db)).length).toBe(0);
+  });
+
+  it('precisa_mais_tempo: NÃO agenda no CRM; o julgamento diz "agendaria em N dias"', async () => {
+    const t = await montar({ 'CLIENTE Ana': conv(CONVERSA_NORMAL, '5584999990000') }, { decisao: { Ana: { decisao: 'precisa_mais_tempo', diasSugeridos: 45, resumo: 'Tem estoque até janeiro.' } } });
+    await salvarConfigReativacao(t.db, OBS);
+    await t.rodada(OBS);
+    expect(t.pedidosCrm).toEqual([]);
+    expect(await t.registro('CLIENTE Ana')).toMatchObject({ estado: 'agendado', observado: true });
+    const j = (await listarJulgamentos(t.db))[0];
+    expect(j.tipo).toBe('agendar');
+    expect(j.resumo).toMatch(/Agendaria o retorno no CRM em 45 dia/);
+    expect(await listarAcoesIa(t.db)).toEqual([]);
+  });
+
+  it('pediu_para_sair: NÃO marca "Não enviar mais"; fica em "Precisa de você" e vira julgamento "sair"', async () => {
+    const t = await montar({ 'CLIENTE Ana': conv([eu('Oi!'), cli('não tenho interesse, me tira da lista')]) }, { decisao: { Ana: { decisao: 'pediu_para_sair' } } });
+    await salvarConfigReativacao(t.db, OBS);
+    await t.rodada(OBS);
+    expect(await listarNaoEnviar(t.db)).toEqual([]);
+    expect(t.pedidosCrm).toEqual([]);
+    expect(await t.registro('CLIENTE Ana')).toMatchObject({ estado: 'precisa', observado: true });
+    expect((await listarJulgamentos(t.db)).map((j) => j.tipo)).toEqual(['sair']);
+  });
+
+  it('delicado vira julgamento "precisa" (chamar você)', async () => {
+    const t = await montar({ 'CLIENTE Ana': conv(CONVERSA_NORMAL) }, { decisao: { Ana: { decisao: 'delicado', resumo: 'Reclamou de atraso.' } } });
+    await salvarConfigReativacao(t.db, OBS);
+    await t.rodada(OBS);
+    expect((await listarJulgamentos(t.db)).map((j) => j.tipo)).toEqual(['precisa']);
+    expect(t.pedidosCrm).toEqual([]);
+  });
+
+  it('em Observação a sequência não é encerrada nem agenda nova tentativa no CRM (nem lê o contato à toa)', async () => {
+    const t = await montar({ 'CLIENTE Ana': conv(CONVERSA_NORMAL) });
+    await t.rodada();
+    await t.enviar();
+    t.definirAgora('2026-12-10T13:00:00.000Z'); // bem depois da etapa 1 e do prazo de espera final
+    const reg = await t.registro('CLIENTE Ana');
+    await salvarReativacoes(t.db, [{ ...reg, etapa: 3, enviados: [...reg.enviados, { etapa: 2, em: '2026-11-20T12:00:00.000Z', texto: 'x' }, { etapa: 3, em: '2026-11-30T12:00:00.000Z', texto: 'y' }] }]);
+    await salvarConfigReativacao(t.db, OBS);
+    const antes = t.leituras();
+    await t.rodada(OBS);
+    expect(t.leituras()).toBe(antes);
+    expect(t.pedidosCrm.filter((p) => p.linha.startsWith('Reativação concluída'))).toEqual([]);
+    expect((await t.registro('CLIENTE Ana')).estado).toBe('aguardando');
+  });
+
+  it('respondeu a uma etapa: em Observação NÃO marca opt-out nem cria lembrete; vira julgamento', async () => {
+    const t = await montar({ 'CLIENTE Ana': conv(CONVERSA_NORMAL) });
+    await t.rodada();
+    await t.enviar();
+    const ana = await t.registro('CLIENTE Ana');
+    t.conversas['CLIENTE Ana'] = conv([...CONVERSA_NORMAL, eu(ana.enviados[0].texto, '2026-11-17T13:00:00.000Z'), cli('não quero mais, me tira da lista', '2026-11-19T13:00:00.000Z')]);
+    t.definirAgora('2026-11-20T13:00:00.000Z');
+    await salvarConfigReativacao(t.db, OBS);
+    await t.rodada(OBS);
+    expect(await listarNaoEnviar(t.db)).toEqual([]);
+  });
+});
+
+describe('modo Ligado: "O que a IA fez" guarda o agendamento (com como desfazer), o opt-out e o envio', () => {
+  it('agendamento criado pela IA guarda o id da tarefa e o instante EXATO; opt-out guarda o desfazer; envio não tem desfazer', async () => {
+    const t = await montar(
+      { 'CLIENTE Ana': conv(CONVERSA_NORMAL, '5584999990000'), 'CLIENTE Bia': conv([eu('Oi!'), cli('me tira da lista')]), 'CLIENTE Caio': conv(CONVERSA_NORMAL) },
+      { decisao: { Ana: { decisao: 'precisa_mais_tempo', diasSugeridos: 30, resumo: 'Volta em dezembro' }, Bia: { decisao: 'pediu_para_sair' } }, crm: (p) => ({ ok: true, taskId: p.nome === 'CLIENTE Ana' ? 77 : 78, criou: false, agendou: p.agendarEm != null }) },
+    );
+    await t.rodada();
+    await t.enviar();
+    const acoes = await listarAcoesIa(t.db);
+    const agendou = acoes.find((a) => a.tipo === 'agendou');
+    expect(agendou).toMatchObject({ chave: 'cliente ana', desfazer: { tipo: 'agendamento', taskId: 77, agendadoEm: instanteNoFuso('2026-12-17', 9, 0) } });
+    expect(acoes.find((a) => a.tipo === 'nao_enviar')).toMatchObject({ chave: 'cliente bia', desfazer: { tipo: 'nao_enviar' } });
+    expect(acoes.find((a) => a.tipo === 'enviou')).toMatchObject({ chave: 'cliente caio', desfazer: null });
+    expect(await listarJulgamentos(t.db)).toEqual([]);
+  });
+});
+
+describe('releitura antes do envio e prioridade da reativação', () => {
+  it('relê a conversa antes de colar; se o cliente respondeu desde a decisão, não envia e o contato será avaliado de novo', async () => {
+    const t = await montar({ 'CLIENTE Ana': conv(CONVERSA_NORMAL) });
+    await t.rodada();
+    expect((await t.registro('CLIENTE Ana')).estado).toBe('pronto');
+    t.conversas['CLIENTE Ana'] = conv([...CONVERSA_NORMAL, cli('oi, preciso de 30 sacos', '2026-11-17T13:05:00.000Z')]);
+    const ex = await t.enviar();
+    expect(t.colados).toHaveLength(0);
+    expect(ex?.atual.campanha.itens[0].motivo).toMatch(/^o cliente respondeu desde a decisão/);
+    const ana = await t.registro('CLIENTE Ana');
+    expect(ana).toMatchObject({ estado: 'resolvido', textoPronto: null });
+    expect(new Date(ana.reelegivelEm as string).getTime()).toBeLessThanOrEqual(t.agora().getTime());
+    // a conversa agora é recente (o cliente acabou de escrever): a próxima rodada não manda nada automático para ele
+    const r = await t.rodada();
+    expect(r).toMatchObject({ recentes: 1, prontos: 0 });
+    expect(t.colados).toHaveLength(0);
+  });
+
+  it('relê ANTES de colar: a ordem dos pedidos é lerConversa e só depois abrirEColar', async () => {
+    const t = await montar({ 'CLIENTE Ana': conv(CONVERSA_NORMAL) });
+    await t.rodada();
+    const antes = t.pedidos.length;
+    await t.enviar();
+    const tipos = t.pedidos.slice(antes).map((p) => p.tipo);
+    expect(tipos.indexOf('lerConversa')).toBeGreaterThanOrEqual(0);
+    expect(tipos.indexOf('lerConversa')).toBeLessThan(tipos.indexOf('abrirEColar'));
+  });
+
+  it('prioridade: na mesma campanha, etapas 2 e 3 saem antes da etapa 1', async () => {
+    const t = await montar({ 'CLIENTE Ana': conv(CONVERSA_NORMAL), 'CLIENTE Bia': conv(CONVERSA_NORMAL) });
+    const pronto = (chave: string, nome: string, etapa: number, base: string) => ({ ...novoRegistro({ chave, nome, primeiroNome: nome.split(' ')[1] }, base, t.agora()), estado: 'pronto' as const, etapa: etapa - 1, textoPronto: { etapa, modelo: 'Oi, {primeiroNome}!', origem: 'meus_textos' as const, assinatura: assinaturaReativacao(CONFIG) }, verificadoEm: t.agora().toISOString() });
+    await salvarReativacoes(t.db, [pronto('cliente ana', 'CLIENTE Ana', 1, '2026-10-01'), pronto('cliente bia', 'CLIENTE Bia', 2, '2026-10-20')]);
+    const campanha = await t.motor.montarCampanha(CONFIG);
+    expect(campanha?.itens.map((i) => i.nome)).toEqual(['CLIENTE Bia', 'CLIENTE Ana']); // etapa 2 antes da 1, mesmo a da etapa 1 sendo mais antiga
   });
 });

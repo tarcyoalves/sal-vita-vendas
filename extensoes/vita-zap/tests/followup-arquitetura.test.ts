@@ -65,6 +65,8 @@ describe('follow-up não tem caminho próprio de envio', () => {
     expect(motor).toMatch(/refazerFila\(config\)/);
     expect(motor).toMatch(/config\.textos1\.length === 0\) return null/);
     expect(ler('src/sidepanel/Followup.tsx')).toMatch(/podeLigar\(/);
-    expect(ler('src/shared/followup.ts')).toMatch(/ligado = querLigar && textos1\.length > 0/);
+    // o modo só roda com texto do dono (normalizarModo recebe `temTexto`) e "Ligado" exige o placar aprovado
+    expect(ler('src/shared/followup.ts')).toMatch(/textos1\.length > 0\)/);
+    expect(ler('src/shared/followup.ts')).toMatch(/normalizarModo\(/);
   });
 });

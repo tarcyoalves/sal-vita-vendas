@@ -8,7 +8,9 @@
 // ou chamar o dono. Etapas 2 e 3 (30 e 40 dias) só para quem recebeu a etapa anterior e NÃO respondeu.
 // TRAVA: agendamento futuro no CRM prevalece (shared/trava-agendamento.ts).
 
+import { normalizarModo, type ModoAutomatico } from './automaticos';
 import { type Campanha, textoDoItem } from './campanha';
+import { MOTIVO_CLIENTE_RESPONDEU } from './constantes';
 import type { ContatoVarrido } from './contatos';
 import { instanteNoFuso } from './crm-lembretes';
 import { diferencaDias, hojeNoFuso, somarDias, type DataIso } from './datas';
@@ -48,8 +50,12 @@ export const REELEGIVEL_RESOLVIDO_DIAS = 30;
 // ── Configuração ────────────────────────────────────────────────────────────
 
 export interface ConfigReativacao {
-  /** Liga o envio automático das mensagens de reativação. Só liga com a confirmação do risco E com pelo menos 1 texto da etapa 1. */
+  /** A reativação roda (Observação ou Ligado). DERIVADO de `automatico` (v0.7.59). Só roda com pelo menos 1 texto da etapa 1. */
   ligado: boolean;
+  /** Desligado | Observação (decide e prepara, mas NADA é enviado, agendado no CRM nem marcado) | Ligado (envia; exige confirmação do risco e o placar aprovado). */
+  automatico: ModoAutomatico;
+  migradoParaObservacao: boolean;
+  placarAprovado: boolean;
   pausado: boolean;
   confirmouRisco: boolean;
   /** Dias desde a ÚLTIMA conversa de cada etapa (crescente, com pelo menos INTERVALO_MIN_ENTRE_ETAPAS entre elas). */
@@ -74,6 +80,9 @@ export interface ConfigReativacao {
 
 export const CONFIG_REATIVACAO_PADRAO: ConfigReativacao = {
   ligado: false,
+  automatico: 'desligado',
+  migradoParaObservacao: false,
+  placarAprovado: false,
   pausado: false,
   confirmouRisco: false,
   etapas: [...ETAPAS_PADRAO],
@@ -108,10 +117,11 @@ export function normalizarEtapas(bruto: unknown): [number, number, number] {
 export function normalizarConfigReativacao(c: Partial<ConfigReativacao> | null | undefined): ConfigReativacao {
   const confirmouRisco = c?.confirmouRisco === true;
   const textos1 = normalizarTextos(c?.textos1);
-  const querLigar = c?.ligado === true && confirmouRisco;
+  const querLigar = (c?.ligado === true && confirmouRisco) || (c?.automatico != null && c.automatico !== 'desligado');
+  // Sem texto da etapa 1 nada roda; "Ligado" (envio) exige a confirmação do risco E o placar aprovado; config antiga ligada vira Observação.
+  const modo = normalizarModo({ ligado: c?.ligado, automatico: c?.automatico, confirmouRisco, placarAprovado: c?.placarAprovado, migradoParaObservacao: c?.migradoParaObservacao }, textos1.length > 0);
   return {
-    // Sem a confirmação do risco, ou sem texto da etapa 1, nunca fica ligado.
-    ligado: querLigar && textos1.length > 0,
+    ...modo,
     pausado: c?.pausado === true,
     confirmouRisco,
     etapas: normalizarEtapas(c?.etapas),
@@ -229,6 +239,8 @@ export interface Reativacao {
   leituraRespostaEm: string | null;
   /** Só volta a ser avaliado depois desta data (ISO). */
   reelegivelEm: string | null;
+  /** Decidido em modo Observação: o agendamento/opt-out da IA NÃO foi aplicado. Ao ligar, o registro é apagado e o contato reavaliado (v0.7.59). */
+  observado?: boolean;
   atualizadoEm: string;
 }
 
@@ -485,6 +497,13 @@ export function aplicarResultadoCampanhaReativacao(registros: ReadonlyArray<Reat
     if (r.estado !== 'pronto') return r;
     if (item.status === 'nao_enviar' || item.status === 'nao_cliente') return { ...r, estado: 'saiu', motivo: item.motivo ?? 'não enviar mais', textoPronto: null, atualizadoEm: agoraIso };
     if (item.status === 'pulado' && (item.motivo ?? '').startsWith(MOTIVO_TRAVA_PREFIXO)) return { ...r, estado: 'travado', motivo: item.motivo, textoPronto: null, atualizadoEm: agoraIso };
+    // O Executor releu a conversa antes de enviar e o cliente já tinha respondido: etapa 1 será avaliada de novo; etapas 2 e 3 voltam
+    // a ser lidas para classificar a resposta (a leitura de resposta é refeita).
+    if (item.status === 'pulado' && (item.motivo ?? '').startsWith(MOTIVO_CLIENTE_RESPONDEU)) {
+      return r.etapa === 0
+        ? { ...r, estado: 'resolvido', motivo: item.motivo, textoPronto: null, reelegivelEm: agoraIso, atualizadoEm: agoraIso }
+        : { ...r, estado: 'aguardando', motivo: null, textoPronto: null, leituraRespostaEm: null, atualizadoEm: agoraIso };
+    }
     // pulado / problema / revisar: nunca se tenta de novo sozinho (pode ter saído); o atendente confere.
     return { ...r, estado: 'precisa', motivo: `a mensagem não foi enviada (${item.status}${item.motivo ? `: ${item.motivo}` : ''})`, textoPronto: null, atualizadoEm: agoraIso };
   });

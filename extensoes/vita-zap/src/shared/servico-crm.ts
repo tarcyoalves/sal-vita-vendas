@@ -889,6 +889,10 @@ export class ServicoCrm implements LeadsCRM {
     return this.exclusivo('reativação: salvar o resumo no CRM (ação do usuário)', () => agendamentos.registrarReativacao(this.apoioAgendamentos(), pedido));
   }
 
+  desfazerAgendamento(pedido: { taskId: number; agendadoEm: number }): Promise<agendamentos.ResultadoDesfazerAgendamento> {
+    return this.exclusivo('desfazer o agendamento criado pela IA (ação do usuário)', () => agendamentos.desfazerAgendamento(this.apoioAgendamentos(), pedido));
+  }
+
   // ── Fila ───────────────────────────────────────────────────────────────────
 
   private async reenviarInterno(): Promise<{ enviados: number; restantes: number }> {

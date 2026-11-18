@@ -10,7 +10,9 @@
 // - Fica sempre montado (como a aba de envio): trocar de aba não interrompe a rodada.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type Banco } from '../shared/banco';
+import { podeEnviar, ROTULO_MODO } from '../shared/automaticos';
+import { type Banco, lerConfigFollowup, listarFollowups } from '../shared/banco';
+import { reativacaoDeveEsperar } from '../shared/fila';
 import { hojeNoFuso, formatarDataBr } from '../shared/datas';
 import { ehEventoConteudo } from '../shared/mensagens';
 import { dentroDoHorario } from '../shared/politica';
@@ -31,6 +33,7 @@ import {
   type Reativacao as RegistroReativacao,
 } from '../shared/reativacao';
 import type { DadosLocais } from './App';
+import { aoMudarModo } from './automaticos-motor';
 import type { CrmPainel } from './crm';
 import { type EstadoExecutor, Executor } from './executor';
 import { EditorDeTextos } from './MensagemCobranca';
@@ -46,6 +49,8 @@ interface Props {
   dados: DadosLocais;
   /** A aba está à vista: recarrega (o dono pode ter resolvido itens pela lista do Follow-up). */
   ativa?: boolean;
+  /** Abre a aba "Automáticos" (modo, placar, fila e "O que a IA fez"). */
+  aoAbrirAutomaticos?: () => void;
 }
 
 type Lista = 'pronto' | 'agendado' | 'precisa' | 'travado' | 'aguardando' | 'encerrado';
@@ -53,22 +58,16 @@ type Lista = 'pronto' | 'agendado' | 'precisa' | 'travado' | 'aguardando' | 'enc
 const INTERVALO_CICLO_MS = 20 * 60_000;
 const PRIMEIRO_CICLO_MS = 30_000;
 
-export const TEXTO_RISCO_REATIVACAO =
-  'Atenção: o envio automático de mensagens pelo WhatsApp Web viola os Termos de Serviço do WhatsApp e pode levar ao bloqueio ou banimento do número. ' +
-  'Os limites do Vita Zap (teto diário compartilhado com as campanhas e o follow-up, horário comercial, intervalo de 60 a 120 s, freio, conferência da conversa antes do clique ' +
-  'e a trava de agendamento do CRM) REDUZEM o risco, mas NÃO o eliminam. Só recebe mensagem quem a IA considerou em condição de ser retomado, ' +
-  'nunca quem está em "Não enviar mais", nunca grupo e nunca cliente com agendamento futuro no CRM. Assunto delicado vai para "Precisa de você".';
-
 /** Pausas que o ciclo tenta de novo sozinho (horário, teto, painel escondido, CRM fora do ar). Qualquer outra exige "Retomar". */
 export function pausaBenignaReativacao(motivo: string | null | undefined): boolean {
-  return motivo != null && (/^(domingo|fora do horário|teto diário|CRM indisponível)/.test(motivo) || motivo === MOTIVO_PAINEL_FECHADO);
+  return motivo != null && (/^(domingo|fora do horário|teto diário|CRM indisponível|automático em)/.test(motivo) || motivo === MOTIVO_PAINEL_FECHADO);
 }
 
 function dataCurta(iso: string | null | undefined): string {
   return iso ? formatarDataBr(hojeNoFuso(new Date(iso))).slice(0, 5) : '';
 }
 
-export function Reativacao({ db, crm, dados, ativa }: Props) {
+export function Reativacao({ db, crm, dados, ativa, aoAbrirAutomaticos }: Props) {
   const trava = useTrava(db, crm);
   const dadosCrm = useRef(crm.dados);
   dadosCrm.current = crm.dados;
@@ -116,6 +115,8 @@ export function Reativacao({ db, crm, dados, ativa }: Props) {
     void recarregar();
   }, [recarregar, ativa]);
   useEffect(() => assinarTrava(() => setDono(donoDaTrava())), []);
+  // O modo (Desligado | Observação | Ligado) é escolhido na aba "Automáticos": recarrega a configuração quando ele muda.
+  useEffect(() => aoMudarModo(() => void recarregar()), [recarregar]);
 
   // ── Executor (o mesmo das campanhas) ──────────────────────────────────────
 
@@ -210,8 +211,7 @@ export function Reativacao({ db, crm, dados, ativa }: Props) {
   /** Lê/avalia (só leitura) e, se `enviar` e a reativação está ligada e nada pausa, manda as mensagens prontas. */
   const executarCiclo = useCallback(
     async (manual: boolean, enviar: boolean): Promise<void> => {
-      const v = visaoRef.current;
-      if (!v || emCicloRef.current) return;
+      if (!visaoRef.current || emCicloRef.current) return;
       const dono0 = donoDaTrava();
       if (dono0 && dono0 !== 'reativacao') {
         if (manual) setAviso(`Agora não: ${ROTULO_DONO[dono0]}.`);
@@ -225,14 +225,22 @@ export function Reativacao({ db, crm, dados, ativa }: Props) {
       let entregouAoExecutor = false;
       try {
         setOcupado('Lendo as últimas conversas…');
-        const r = await motor.rodada(v.config, contatosRef.current, { manual, parar: () => pararRef.current, aoProgredir: setOcupado });
+        // Configuração fresca: o modo pode ter mudado na aba "Automáticos" desde a última vez que esta aba carregou.
+        const r = await motor.rodada((await motor.carregar()).config, contatosRef.current, { manual, parar: () => pararRef.current, aoProgredir: setOcupado });
         setResumo(r);
         if (r.aviso) setAviso(r.aviso);
         await recarregar();
         const config = (await motor.carregar()).config;
-        if (enviar && config.ligado && !config.pausado && !r.parou && !(precisaRetomarRef.current && !manual)) {
-          setOcupado('Preparando as mensagens…');
-          entregouAoExecutor = await iniciarEnvios(config);
+        // Só o modo Ligado envia: em Observação a rodada lê, decide e prepara o texto, e para por aí.
+        if (enviar && podeEnviar(config) && !config.pausado && !r.parou && !(precisaRetomarRef.current && !manual)) {
+          // Prioridade da fila (teto diário compartilhado): a cobrança de quem não respondeu sai ANTES da reativação.
+          const [cfgFollowup, followups] = await Promise.all([lerConfigFollowup(db), listarFollowups(db)]);
+          if (reativacaoDeveEsperar(cfgFollowup, followups.filter((f) => f.estado === 'cobranca').length)) {
+            setAviso('A cobrança do follow-up tem prioridade no teto diário: a reativação espera a fila de cobrança acabar.');
+          } else {
+            setOcupado('Preparando as mensagens…');
+            entregouAoExecutor = await iniciarEnvios(config);
+          }
         }
       } catch (e) {
         setAviso(e instanceof Error ? e.message : String(e));
@@ -273,28 +281,6 @@ export function Reativacao({ db, crm, dados, ativa }: Props) {
     if (mudanca.pausado === false) precisaRetomarRef.current = false;
   };
 
-  const ligar = async (ligado: boolean): Promise<void> => {
-    if (!visao) return;
-    if (!ligado) {
-      await mudarConfig({ ligado: false });
-      return;
-    }
-    const pode = podeLigarReativacao(visao.config);
-    if (!pode.ok) {
-      setAviso(pode.motivo);
-      return;
-    }
-    setAviso(null);
-    const elegiveis = elegiveisAgora(visao.config, dados, visao.registros).elegiveis.length;
-    const ok = window.confirm(
-      `${TEXTO_RISCO_REATIVACAO}\n\nHoje há ${elegiveis} contato(s) com a última conversa há ${visao.config.etapas[0]} dia(s) ou mais (da última varredura). ` +
-        `A IA lê cada conversa e só manda mensagem a quem estiver em condição; as etapas ${visao.config.etapas.join(', ')} dias só vão para quem recebeu a anterior e não respondeu.\n\nLigar a reativação automática?`,
-    );
-    if (!ok) return;
-    await mudarConfig({ ligado: true, confirmouRisco: true, pausado: false });
-    void executarCiclo(true, true);
-  };
-
   const pararTudo = async (): Promise<void> => {
     pararRef.current = true;
     if (executor && executorAtivo(executor.atual)) await executor.pausar('pausado por você');
@@ -322,13 +308,19 @@ export function Reativacao({ db, crm, dados, ativa }: Props) {
         <p className="aviso" style={{ margin: '6px 0' }}>
           <b>Trava de agendamento:</b> cliente com agendamento futuro no CRM (mesmo daqui a 60 dias) <b>não</b> entra na reativação, nas campanhas nem na cobrança: o agendamento prevalece.
         </p>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
-          <input type="checkbox" checked={config.ligado} onChange={(e) => void ligar(e.target.checked)} />
-          <span>Reativação automática (envio das mensagens)</span>
-        </label>
+        <p style={{ fontSize: 13, fontWeight: 600, margin: '4px 0' }}>
+          Reativação automática: <span aria-label="Modo atual">{ROTULO_MODO[config.automatico]}</span>
+          {aoAbrirAutomaticos && (
+            <button type="button" className="pequeno" style={{ marginLeft: 8 }} onClick={aoAbrirAutomaticos}>
+              Mudar o modo (aba Automáticos)
+            </button>
+          )}
+        </p>
+        {config.automatico === 'observacao' && <p className="info">Observação: a IA lê e decide, mas NADA é enviado, agendado no CRM nem marcado. Julgue o que ela faria na aba Automáticos.</p>}
+        {config.migradoParaObservacao && <p className="aviso" role="alert">A reativação automática estava ligada numa versão anterior e agora está em Observação: nada é enviado até o placar da IA aprovar e você ligar de novo.</p>}
         {!podeLigarReativacao(config).ok && !config.ligado && <p className="aviso">{MSG_ESCREVA_ANTES_REATIVACAO}: use "Suas mensagens de reativação", logo abaixo.</p>}
         {config.desligadaSemTexto && !config.ligado && <p className="aviso" role="alert">A reativação foi desligada: estava ligada sem uma mensagem sua. Escreva a mensagem e ligue de novo.</p>}
-        <p className="aviso" style={{ marginTop: 8 }}>{TEXTO_RISCO_REATIVACAO}</p>
+        <p className="aviso" style={{ marginTop: 8 }}>Atenção: o envio automático pelo WhatsApp Web viola os Termos de Serviço do WhatsApp e pode levar ao bloqueio ou banimento do número. Os limites do Vita Zap reduzem o risco, mas não o eliminam. Assunto delicado vai para "Precisa de você".</p>
         <div className="botoes">
           <button type="button" className="primario" disabled={trabalhando || bloqueadoPor != null} onClick={() => void executarCiclo(true, false)} title="Só lê as conversas e avalia com a IA. Não envia nada.">
             Avaliar agora (não envia)
@@ -388,7 +380,7 @@ export function Reativacao({ db, crm, dados, ativa }: Props) {
           <h3>Vai receber hoje — {listas.pronto.length} na fila, {visao.enviadasHoje} enviada(s) hoje</h3>
           {estado && (
             <p className="ajuda">
-              {estado.fase === 'intervalo' ? 'Intervalo entre contatos…' : estado.fase === 'abrindo' ? 'Abrindo a conversa…' : estado.fase === 'aguardando_envio' ? 'Conferindo e enviando…' : estado.fase === 'concluida' ? 'Rodada concluída.' : 'Parado.'}
+              {estado.fase === 'intervalo' ? 'Intervalo entre contatos…' : estado.fase === 'abrindo' ? 'Relendo/abrindo a conversa…' : estado.fase === 'aguardando_envio' ? 'Conferindo e enviando…' : estado.fase === 'concluida' ? 'Rodada concluída.' : 'Parado.'}
               {estado.tetoDiario ? ` Teto diário (compartilhado com campanhas e follow-up): ${estado.enviosHoje}/${estado.tetoDiario}.` : ''}
               {estado.mensagem ? ` ${estado.mensagem}` : ''}
             </p>
@@ -420,7 +412,7 @@ export function Reativacao({ db, crm, dados, ativa }: Props) {
             <>
               <b>{r.nome}</b> <small>{r.agendadoPara ? `agendado para ${dataCurta(r.agendadoPara)}` : ''} · {r.diasSugeridos != null ? `em ${r.diasSugeridos} dias` : ''}</small>
               <div className="ajuda">{r.resumo}</div>
-              {r.crmSalvoEm == null && <div className="aviso">O resumo ainda não chegou ao CRM.</div>}
+              {r.observado ? <div className="info">Observação: a IA agendaria, mas NADA foi agendado no CRM.</div> : r.crmSalvoEm == null && <div className="aviso">O resumo ainda não chegou ao CRM.</div>}
             </>
           )}
         </Cartao>

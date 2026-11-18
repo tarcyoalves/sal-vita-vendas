@@ -5,6 +5,8 @@ import 'fake-indexeddb/auto';
 import { describe, expect, it, vi } from 'vitest';
 import {
   abrirBanco,
+  listarAcoesIa,
+  listarJulgamentos,
   listarCampanhas,
   listarEnvios,
   listarFollowups,
@@ -14,6 +16,7 @@ import {
   registrarEnvio,
   salvarCampanha,
   salvarConfig,
+  salvarConfigFollowup,
   salvarFollowups,
 } from '../src/shared/banco';
 import { type Campanha, textoDoItem } from '../src/shared/campanha';
@@ -31,7 +34,7 @@ let n = 0;
 const TEXTO = 'Oi {primeiroNome}, tudo bem? Como estão de sal por aí?';
 const TEXTOS1 = ['Oi, {nome}! Passando para saber se você viu minha mensagem. Qualquer coisa me chama.', '{nome}, tudo certo por aí? Fico no aguardo.', 'Olá, {nome}! Conseguiu ver o que mandei? Estou à disposição.'];
 const TEXTOS2 = ['{nome}, última lembrança: fico à disposição se precisar de sal.', 'Oi, {nome}! Deixo meu contato aberto, é só chamar.'];
-const BASE: ConfigFollowup = { ligado: true, dias: 3, pausado: false, confirmouRisco: true, modo: 'meus_textos', textos1: TEXTOS1, textos2: TEXTOS2, estilo: '', desligadaSemTexto: false };
+const BASE: ConfigFollowup = { ligado: true, automatico: 'ligado', migradoParaObservacao: false, placarAprovado: true, dias: 3, pausado: false, confirmouRisco: true, modo: 'meus_textos', textos1: TEXTOS1, textos2: TEXTOS2, estilo: '', desligadaSemTexto: false };
 // A maioria dos testes usa a IA no estilo do dono (a IA falsa escreve "Oi, Nome! Passando para saber...").
 const CONFIG: ConfigFollowup = { ...BASE, modo: 'ia_estilo', estilo: 'curto e informal' };
 const dispara = (nome: string) => `Oi ${nome.split(' ')[0]}, tudo bem? Como estão de sal por aí?`;
@@ -44,6 +47,7 @@ type RespostaDaConversa = MensagemLida[] | { erro: string; codigo: Extract<Respo
 async function montar(contatos: Record<string, RespostaDaConversa | 'sem_resposta'>, opcoes: { iaClassifica?: (c: ConversaParaIa) => ClassificacaoIa | null; iaOff?: boolean; cobrancaIa?: boolean; trava?: (nome: string) => ResultadoTrava } = {}) {
   const db = await abrirBanco(`followup-${Date.now()}-${(n += 1)}`);
   await salvarConfig(db, { ...CONFIG_PADRAO, numeroComMaisDe30Dias: true });
+  await salvarConfigFollowup(db, CONFIG); // modo Ligado: só ele deixa o Executor enviar (v0.7.59)
   let agora = new Date('2026-11-17T13:00:00.000Z'); // terça 10h em Fortaleza
   const enviadoEm = new Date(agora.getTime() - 3 * 86_400_000).toISOString();
 
@@ -493,7 +497,7 @@ describe('a política das campanhas vale para a cobrança', () => {
     await t.motor.verificar(CONFIG);
     const campanha = (await t.motor.montarCampanhaDeCobranca(CONFIG)) as Campanha;
     const ex = new Executor(
-      { db: t.db, pedir: async (p) => (p.tipo === 'abrirEColar' ? { ok: false, codigo: 'nao_encontrado', erro: 'não achei' } : { ok: true }), agora: t.agora, aleatorio: () => 0.5, agendar: () => () => undefined, obterEnvioAutomatico: () => true },
+      { db: t.db, pedir: async (p) => (p.tipo === 'abrirEColar' ? { ok: false, codigo: 'nao_encontrado', erro: 'não achei' } : p.tipo === 'lerConversa' ? { ok: true, mensagens: [eu(dispara(p.nome))] } : { ok: true }), agora: t.agora, aleatorio: () => 0.5, agendar: () => () => undefined, obterEnvioAutomatico: () => true },
       campanha,
     );
     await ex.iniciar();
@@ -909,5 +913,180 @@ describe('TRAVA DE AGENDAMENTO na cobrança (0.7.56): o agendamento prevalece', 
     expect(todos.filter((f) => f.campanhaId === 'r1')).toEqual([]);
     expect(todos.some((f) => f.chave === 'zeca')).toBe(false);
     expect(existentes).toBeDefined();
+  });
+});
+
+// ── Lote 1 (0.7.59): modo Observação, releitura antes de enviar e registro "O que a IA fez" ──────────────────────
+
+describe('modo Observação (0.7.59): lê, decide e prepara o texto, mas NADA é enviado nem marcado', () => {
+  const OBS: ConfigFollowup = { ...CONFIG, automatico: 'observacao', placarAprovado: false };
+  const classifica = (mapa: Record<string, Partial<ClassificacaoIa>>) => (c: ConversaParaIa): ClassificacaoIa | null => {
+    const ultima = [...c.mensagens].reverse().find((m) => m.de === 'cliente')?.texto ?? '';
+    const base: ClassificacaoIa = { ref: c.ref, classe: 'sem_relacao', precisaAtencao: false, resumo: 'sem assunto', sugestao: '' };
+    for (const [trecho, extra] of Object.entries(mapa)) if (ultima.includes(trecho)) return { ...base, ...extra };
+    return base;
+  };
+
+  it('prepara a cobrança e guarda "o que a IA faria"; o Executor se recusa a enviar (modo Observação) e nada é colado', async () => {
+    const t = await montar({ 'Maria Souza': 'sem_resposta', 'Pedro Lima': 'sem_resposta' });
+    await salvarConfigFollowup(t.db, OBS);
+    const r = await t.motor.verificar(OBS);
+    expect(r).toMatchObject({ cobrancas: 2 });
+    expect((await t.get('Maria Souza')).estado).toBe('cobranca'); // texto pronto na fila, mas...
+    const js = await listarJulgamentos(t.db);
+    expect(js.map((j) => j.tipo)).toEqual(['cobrar', 'cobrar']);
+    expect(js.every((j) => j.veredito === null && j.origem === 'followup')).toBe(true);
+    expect(js.find((j) => j.nome === 'Maria Souza')?.texto).toBe('Oi, Maria! Passando para saber se ainda precisa de sal (tentativa 1).');
+
+    const ex = await t.cobrar(OBS);
+    expect(t.colados).toHaveLength(0);
+    expect(ex?.atual.campanha.status).toBe('pausada');
+    expect(ex?.atual.campanha.motivoPausa).toMatch(/^automático em Observação: o envio automático só acontece no modo Ligado/);
+    expect((await listarEnvios(t.db)).filter((e) => e.campanhaId !== 'origem')).toHaveLength(0);
+    // rodar de novo não duplica as decisões
+    await t.motor.refazerFila(OBS);
+    expect(await listarJulgamentos(t.db)).toHaveLength(2);
+  });
+
+  it('o modo DESLIGADO também nunca envia (o Executor confere a configuração antes de cada envio)', async () => {
+    const t = await montar({ Ana: 'sem_resposta' });
+    await t.motor.verificar(CONFIG);
+    await salvarConfigFollowup(t.db, { ...CONFIG, automatico: 'desligado' });
+    const ex = await t.cobrar(CONFIG);
+    expect(t.colados).toHaveLength(0);
+    expect(ex?.atual.campanha.motivoPausa).toMatch(/^automático em Desligado/);
+  });
+
+  it('pediu para sair: NÃO marca "Não enviar mais"; vai para "revisar" (nunca é cobrado) e vira julgamento "sair"', async () => {
+    const t = await montar({ Ana: [eu(dispara('Ana')), cli('não, obrigado')], Bia: 'sem_resposta' }, { iaClassifica: classifica({ 'não, obrigado': { classe: 'pediu_para_sair', precisaAtencao: false, resumo: 'Não quer', sugestao: '' } }) });
+    await salvarConfigFollowup(t.db, OBS);
+    await t.motor.verificar(OBS);
+    expect(await listarNaoEnviar(t.db)).toEqual([]);
+    expect(await listarAcoesIa(t.db)).toEqual([]);
+    const ana = await t.get('Ana');
+    expect(ana).toMatchObject({ estado: 'revisar', observado: true });
+    expect(ana.motivo).toMatch(/Observação.*marcaria "Não enviar mais"/);
+    expect((await listarJulgamentos(t.db)).find((j) => j.chave === 'ana')).toMatchObject({ tipo: 'sair', veredito: null });
+  });
+
+  it('compra_depois: NÃO cria lembrete; vira julgamento "precisa" (chamar você)', async () => {
+    const t = await montar({ Ana: [eu(dispara('Ana')), cli('compro só mês que vem')] }, { iaClassifica: classifica({ 'mês que vem': { classe: 'compra_depois', precisaAtencao: true, resumo: 'Compra mês que vem', sugestao: 'Combinado, Ana!', lembreteDias: 20 } }) });
+    await salvarConfigFollowup(t.db, OBS);
+    await t.motor.verificar(OBS);
+    expect(t.lembretes).toEqual([]);
+    expect(await t.get('Ana')).toMatchObject({ estado: 'precisa', observado: true });
+    expect((await listarJulgamentos(t.db)).map((j) => j.tipo)).toEqual(['precisa']);
+  });
+
+  it('em modo Ligado, o que a IA faz fica em "O que a IA fez": opt-out (com desfazer), lembrete e envio (sem desfazer)', async () => {
+    const t = await montar(
+      { Ana: [eu(dispara('Ana')), cli('não, obrigado')], Bia: [eu(dispara('Bia')), cli('compro mês que vem')], Caio: 'sem_resposta' },
+      { iaClassifica: classifica({ 'não, obrigado': { classe: 'pediu_para_sair', precisaAtencao: false, resumo: 'Não quer', sugestao: '' }, 'mês que vem': { classe: 'compra_depois', precisaAtencao: true, resumo: 'Compra depois', sugestao: 'Ok', lembreteDias: 10 } }) },
+    );
+    await t.motor.verificar(CONFIG);
+    await t.cobrar();
+    const acoes = await listarAcoesIa(t.db);
+    expect(acoes.map((a) => a.tipo).sort()).toEqual(['agendou', 'enviou', 'nao_enviar']);
+    expect(acoes.find((a) => a.tipo === 'nao_enviar')).toMatchObject({ chave: 'ana', desfazer: { tipo: 'nao_enviar' }, desfeitaEm: null });
+    expect(acoes.find((a) => a.tipo === 'enviou')).toMatchObject({ chave: 'caio', desfazer: null });
+    expect(acoes.find((a) => a.tipo === 'agendou')).toMatchObject({ chave: 'bia', desfazer: null });
+    expect(await listarJulgamentos(t.db)).toEqual([]); // julgamento é só da Observação
+    // notificar o mesmo envio várias vezes não duplica
+    await t.motor.aplicarCampanha((await listarCampanhas(t.db)).find((c) => c.tipo === 'followup') as Campanha);
+    expect((await listarAcoesIa(t.db)).filter((a) => a.tipo === 'enviou')).toHaveLength(1);
+  });
+
+  it('sem resposta depois de 2 cobranças: "encerrou a sequência" aparece em "O que a IA fez"', async () => {
+    const conversa: MensagemLida[] = [eu(dispara('Ana'))];
+    const t = await montar({ Ana: conversa });
+    await t.motor.verificar(CONFIG);
+    await t.cobrar();
+    conversa.push(eu((await t.get('Ana')).cobrancas[0].texto));
+    t.avancarDias(3);
+    await t.motor.verificar(CONFIG);
+    await t.cobrar();
+    conversa.push(eu((await t.get('Ana')).cobrancas[1].texto));
+    t.avancarDias(3);
+    await t.motor.verificar(CONFIG);
+    expect((await listarAcoesIa(t.db)).filter((a) => a.tipo === 'encerrou')).toHaveLength(1);
+  });
+});
+
+describe('releitura IMEDIATAMENTE antes de cada envio automático (0.7.59)', () => {
+  it('relê a conversa (lerConversa) ANTES de colar, pelo próprio Executor; tudo igual → envia', async () => {
+    const t = await montar({ Ana: 'sem_resposta' });
+    await t.motor.verificar(CONFIG);
+    const antes = t.pedidos.length;
+    await t.cobrar();
+    const depois = t.pedidos.slice(antes).map((p) => p.tipo);
+    expect(depois.indexOf('lerConversa')).toBeGreaterThanOrEqual(0);
+    expect(depois.indexOf('lerConversa')).toBeLessThan(depois.indexOf('abrirEColar'));
+    expect(t.colados).toHaveLength(1);
+  });
+
+  it('o cliente respondeu DEPOIS da decisão: não envia, não cola nada e o contato volta para a classificação (não para "revisar")', async () => {
+    const conversa: MensagemLida[] = [eu(dispara('Ana'))];
+    const t = await montar({ Ana: conversa }, { iaClassifica: (c) => ({ ref: c.ref, classe: 'pediu_preco', precisaAtencao: true, resumo: 'Pediu o preço', sugestao: 'Oi Ana, qual a quantidade?' }) });
+    await t.motor.verificar(CONFIG);
+    expect((await t.get('Ana')).estado).toBe('cobranca');
+    conversa.push(cli('quanto custa o saco?')); // chegou entre a decisão e o envio
+
+    const ex = await t.cobrar();
+    expect(t.colados).toHaveLength(0);
+    expect(t.pedidos.some((p) => p.tipo === 'abrirEColar')).toBe(false);
+    expect(ex?.atual.campanha.itens[0]).toMatchObject({ status: 'pulado' });
+    expect(ex?.atual.campanha.itens[0].motivo).toMatch(/^o cliente respondeu desde a decisão/);
+    expect(ex?.atual.campanha.problemasSeguidos).toBe(0); // não conta no freio
+    expect((await listarEnvios(t.db)).filter((e) => e.campanhaId !== 'origem')).toHaveLength(0);
+    expect(await t.get('Ana')).toMatchObject({ estado: 'monitorando', verificadoEm: null });
+
+    // a próxima rodada lê de novo e classifica a resposta ("Precisa de você" com sugestão)
+    await t.motor.verificar(CONFIG, { forcar: true, recentes: true });
+    expect(await t.get('Ana')).toMatchObject({ estado: 'precisa', classe: 'pediu_preco' });
+  });
+
+  it('a nossa última mensagem sumiu/foi apagada da conversa: não envia (falha fechada) e vai para "revisar"', async () => {
+    const conversa: MensagemLida[] = [eu(dispara('Ana'))];
+    const t = await montar({ Ana: conversa });
+    await t.motor.verificar(CONFIG);
+    conversa.splice(0, conversa.length, eu('uma mensagem qualquer, outra'));
+    await t.cobrar();
+    expect(t.colados).toHaveLength(0);
+    expect((await t.get('Ana')).estado).toBe('revisar');
+  });
+
+  it('o atendente falou com o cliente depois da decisão: não cobra por cima', async () => {
+    const conversa: MensagemLida[] = [eu(dispara('Ana'))];
+    const t = await montar({ Ana: conversa });
+    await t.motor.verificar(CONFIG);
+    conversa.push(eu('Oi Ana, vi que você precisa de sal, já te mando o preço'));
+    await t.cobrar();
+    expect(t.colados).toHaveLength(0);
+  });
+
+  it('erro GERAL ao reler (WhatsApp fora do ar): pausa sem marcar ninguém e nada é colado; erro do contato vai para "revisar" sem contar no freio', async () => {
+    const t = await montar({ Ana: 'sem_resposta', Bia: 'sem_resposta' });
+    await t.motor.verificar(CONFIG);
+    const campanha = (await t.motor.montarCampanhaDeCobranca(CONFIG)) as Campanha;
+    let colou = 0;
+    const exGeral = new Executor(
+      { db: t.db, pedir: async (p) => (p.tipo === 'lerConversa' ? { ok: false, codigo: 'nao_pronto', erro: 'WhatsApp Web não está pronto' } : p.tipo === 'abrirEColar' ? ((colou += 1), { ok: true, idsAntes: [] }) : { ok: true }), agora: t.agora, aleatorio: () => 0.5, agendar: () => () => undefined, obterEnvioAutomatico: () => true },
+      campanha,
+    );
+    await exGeral.iniciar();
+    expect(colou).toBe(0);
+    expect(exGeral.atual.campanha.status).toBe('pausada');
+    expect(exGeral.atual.campanha.motivoPausa).toMatch(/não está pronto/);
+    expect(exGeral.atual.campanha.itens.every((i) => i.status === 'pendente')).toBe(true);
+
+    const exContato = new Executor(
+      { db: t.db, pedir: async (p) => (p.tipo === 'lerConversa' ? { ok: false, codigo: 'nao_confirmado', erro: 'a conversa aberta não é a de Ana' } : p.tipo === 'abrirEColar' ? ((colou += 1), { ok: true, idsAntes: [] }) : { ok: true }), agora: t.agora, aleatorio: () => 0.5, agendar: () => () => undefined, obterEnvioAutomatico: () => true },
+      { ...exGeral.atual.campanha, status: 'pausada', motivoPausa: null },
+    );
+    await exContato.iniciar();
+    expect(colou).toBe(0);
+    expect(exContato.atual.campanha.itens.map((i) => i.status)).toEqual(['revisar', 'revisar']);
+    expect(exContato.atual.campanha.problemasSeguidos).toBe(0); // dúvida de identidade não conta no freio
+    expect(exContato.atual.campanha.itens[0].motivo).toMatch(/não consegui reler a conversa antes de enviar/);
   });
 });
