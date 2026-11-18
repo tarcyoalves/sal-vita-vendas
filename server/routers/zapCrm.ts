@@ -7,6 +7,7 @@ import { db } from '../db';
 import { tasks } from '../db/schema';
 import { phoneVariants } from '../lib/whatsappLead';
 import {
+  desfazerAgendamentoInput,
   LIMITE_AGENDAMENTOS,
   paraAgendamento,
   planejarRegistro,
@@ -29,6 +30,8 @@ function resultadoDoPlano(taskId: number, criou: boolean, plano: PlanoRegistro) 
     ...(plano.semAgenda ? { semAgenda: plano.semAgenda.motivo, ...(plano.semAgenda.existente ? { agendamentoExistente: plano.semAgenda.existente } : {}) } : {}),
   };
 }
+
+export type DesfazerFalha = { ok: false; codigo: 'sem_tarefa' | 'mudou'; mensagem: string };
 
 export const zapCrmRouter = router({
   /**
@@ -128,6 +131,24 @@ export const zapCrmRouter = router({
       tarefa = atual ?? null;
     }
     return { ok: false, codigo: 'conflito', mensagem: 'O lead foi alterado enquanto eu salvava. Tente de novo.' } satisfies RegistroFalha;
+  }),
+  /**
+   * Desfaz o agendamento que a IA criou (Vita Zap 0.7.59, "O que a IA fez" > Desfazer): remove SÓ o lembrete da tarefa, e somente se ele
+   * ainda for exatamente o instante que a IA gravou e a tarefa seguir pendente (se o atendente mudou a data, nada é tocado). As notas e a
+   * tarefa ficam como estão. Mesma visibilidade de tasks.update (admin: todas; demais: só as deles). Sem tabela nem coluna nova.
+   */
+  desfazerAgendamento: protectedProcedure.input(desfazerAgendamentoInput).mutation(async ({ ctx, input }) => {
+    const visivel = ctx.user.role === 'admin' ? undefined : await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
+    const base = and(eq(tasks.id, input.taskId), ...(visivel ? [visivel] : []));
+    const [tirou] = await db
+      .update(tasks)
+      .set({ reminderDate: null, reminderEnabled: false, updatedAt: new Date() })
+      .where(and(base, eq(tasks.reminderDate, input.agendadoEm), eq(tasks.status, 'pending')))
+      .returning({ id: tasks.id });
+    if (tirou) return { ok: true as const, taskId: tirou.id };
+    const [atual] = await db.select(COLUNAS).from(tasks).where(base).limit(1);
+    if (!atual) return { ok: false, codigo: 'sem_tarefa', mensagem: 'A tarefa não existe mais no CRM (ou não é sua). Nada foi alterado.' } satisfies DesfazerFalha;
+    return { ok: false, codigo: 'mudou', mensagem: 'O agendamento já foi alterado ou concluído depois que a IA o criou. Não mexi em nada.' } satisfies DesfazerFalha;
   }),
 });
 

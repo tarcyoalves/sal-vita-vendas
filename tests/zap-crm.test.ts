@@ -282,3 +282,38 @@ describe('zapCrm.registrarReativacao: procedimento', () => {
     await expect(c.registrarReativacao(entrada({ titulo: '' }) as never)).rejects.toThrow();
   });
 });
+
+describe('zapCrm.desfazerAgendamento (desfazer da tela "O que a IA fez")', () => {
+  const quando = dias(30);
+
+  it('remove SÓ o lembrete quando ele ainda é o instante que a IA gravou (notas e tarefa ficam)', async () => {
+    const r = await chamador('admin').desfazerAgendamento({ taskId: 5, agendadoEm: quando });
+    expect(r).toEqual({ ok: true, taskId: 1 });
+    expect(m.atualizacoes).toHaveLength(1);
+    expect(m.atualizacoes[0]).toMatchObject({ reminderDate: null, reminderEnabled: false });
+    expect(Object.keys(m.atualizacoes[0])).not.toContain('notes');
+    const q = todasAsConsultas();
+    expect(q).toMatch(/"reminder_date" = \$/);
+    expect(q).toMatch(/"status" = \$/);
+  });
+
+  it('se o atendente mudou a data (a guarda não casou), não mexe em nada e explica', async () => {
+    m.retornoUpdate = [];
+    m.fila = [[{ id: 5, title: 'Ana', notes: null, reminderDate: dias(10), reminderEnabled: true, status: 'pending' }]];
+    const r = await chamador('admin').desfazerAgendamento({ taskId: 5, agendadoEm: quando });
+    expect(r).toMatchObject({ ok: false, codigo: 'mudou' });
+  });
+
+  it('tarefa que não existe (ou não é do atendente): sem_tarefa', async () => {
+    m.retornoUpdate = [];
+    m.fila = [[]];
+    const r = await chamador('user').desfazerAgendamento({ taskId: 5, agendadoEm: quando });
+    expect(r).toMatchObject({ ok: false, codigo: 'sem_tarefa' });
+    expect(todasAsConsultas()).toMatch(/FILTRO_DO_DONO/);
+  });
+
+  it('exige o id e o instante (entrada inválida é recusada)', async () => {
+    await expect(chamador('admin').desfazerAgendamento({ taskId: 0, agendadoEm: quando })).rejects.toThrow();
+    await expect(chamador('admin').desfazerAgendamento({ taskId: 1, agendadoEm: 'amanhã' as unknown as Date })).rejects.toThrow();
+  });
+});
