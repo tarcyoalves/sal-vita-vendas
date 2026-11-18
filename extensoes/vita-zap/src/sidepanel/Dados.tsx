@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { desmarcarNaoEnviar, exportarTudo, importarTudo, lerConfig, salvarConfig, type Banco } from '../shared/banco';
+import { exportarTudo, importarTudo, lerConfig, salvarConfig, type Banco } from '../shared/banco';
 import { INTERVALO_MIN_SEG, TETO_DIARIO_MAXIMO } from '../shared/constantes';
 import { csvDasCampanhas, lerBackup } from '../shared/exportar';
 import { CONFIG_PADRAO, type ConfigPolitica } from '../shared/politica';
@@ -7,6 +7,8 @@ import type { DadosLocais } from './App';
 import { ContaCrm } from './ContaCrm';
 import { CrmBackup } from './CrmBackup';
 import type { CrmPainel } from './crm';
+import { useEquipe } from './equipe';
+import { ROTULO_ORIGEM_OPT_OUT } from '../shared/equipe';
 
 interface Props {
   db: Banco;
@@ -34,6 +36,8 @@ export function Dados({ db, dados, aoMudar, crm }: Props) {
   const [arquivo, setArquivo] = useState<Arquivo | null>(null);
   const [modoImport, setModoImport] = useState<'mesclar' | 'substituir'>('mesclar');
   const [msgImport, setMsgImport] = useState<string | null>(null);
+  const [msgNaoEnviar, setMsgNaoEnviar] = useState<string | null>(null);
+  const equipe = useEquipe(db, crm);
 
   useEffect(() => {
     void lerConfig(db).then(setCfg);
@@ -137,19 +141,22 @@ export function Dados({ db, dados, aoMudar, crm }: Props) {
 
       <div className="cartao">
         <h3>Não enviar mais ({dados.naoEnviar.length})</h3>
+        <p className="ajuda">Vale para toda a equipe e em todos os computadores (o CRM guarda a lista; aqui fica uma cópia). Tirar daqui tira também do CRM.</p>
+        {msgNaoEnviar && <p className="info" role="status">{msgNaoEnviar}</p>}
         <ul className="lista">
           {dados.naoEnviar.map((n) => (
             <li key={n.chave}>
               <div className="lista-topo">
                 <span>
-                  <b>{n.nome}</b> <small>— {n.motivo}, {new Date(n.desde).toLocaleDateString('pt-BR')}</small>
+                  <b>{n.nome}</b> <small>— {n.motivo}, {new Date(n.desde).toLocaleDateString('pt-BR')}{n.origem ? ` · ${ROTULO_ORIGEM_OPT_OUT[n.origem]}` : ''}{n.crm ? ' · no CRM' : ''}</small>
                 </span>
                 <button
                   type="button"
                   className="pequeno"
                   onClick={async () => {
                     if (!window.confirm(`Tirar "${n.nome}" da lista "não enviar mais"?`)) return;
-                    await desmarcarNaoEnviar(db, n.chave);
+                    const r = equipe ? await equipe.desmarcar(n.chave) : { ok: true as const, mensagem: '' };
+                    setMsgNaoEnviar(r.mensagem === '' ? null : r.mensagem);
                     await aoMudar();
                   }}
                 >

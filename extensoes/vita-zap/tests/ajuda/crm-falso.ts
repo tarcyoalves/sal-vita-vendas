@@ -5,6 +5,8 @@
 import superjson from 'superjson';
 import { executarTrpc, type Transporte } from '../../src/shared/crm-rede';
 import type { ArmazemChaves } from '../../src/shared/leads';
+// O servidor REAL decide o casamento do contato (telefone/hash do nome) e as janelas: o falso usa as mesmas funções (contrato de ponta a ponta).
+import { casarContatados, casarOptOuts, chaveDoContato, normalizarRef, prepararEnvios, type LinhaEnvio, type LinhaOptOut } from '../../../../server/lib/zapContatos';
 
 export const BASE = 'https://crm.teste.local';
 export const EMAIL = 'ana@teste.local';
@@ -59,6 +61,12 @@ export interface CrmFalso {
   semZapCrm: boolean;
   /** O servidor devolve a lista cortada (limite). */
   agendamentosTruncados: boolean;
+  /** zapContatos.* não existe (servidor anterior à 0.7.60). */
+  semZapContatos: boolean;
+  /** "Não enviar mais" e contato registrado da equipe (espelho do servidor; userId 7 = o usuário do login falso). */
+  equipe: { optOuts: Array<LinhaOptOut & { chave: string; nome: string | null; criadoEm: Date }>; envios: Array<LinhaEnvio & { chave: string }> };
+  /** A lista de opt-outs vem cortada (limite). */
+  optOutsTruncados: boolean;
   fetch: typeof fetch;
   transporte: Transporte;
   chamadas(caminho: string): Requisicao[];
@@ -86,6 +94,9 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
     zapIa: null,
     semZapCrm: false,
     agendamentosTruncados: false,
+    semZapContatos: false,
+    equipe: { optOuts: [], envios: [] },
+    optOutsTruncados: false,
     fetch: undefined as unknown as typeof fetch,
     transporte: undefined as unknown as Transporte,
     chamadas: (c) => crm.requisicoes.filter((r) => r.url.pathname === `/api/trpc/${c}`),
@@ -220,6 +231,43 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
         return ok({ ok: true, taskId: t.id });
       }
       return ok({ ok: false, codigo: 'mudou', mensagem: 'O agendamento já foi alterado ou concluído depois que a IA o criou. Não mexi em nada.' });
+    }
+    if (caminho.startsWith('zapContatos.') && !crm.semZapContatos) {
+      const UID = 7;
+      const d = (dados ?? {}) as Record<string, unknown>;
+      if (caminho === 'zapContatos.listarOptOuts') return ok({ itens: crm.equipe.optOuts, truncado: crm.optOutsTruncados, consultadoEm: new Date(agora()) });
+      if (caminho === 'zapContatos.marcarOptOuts') {
+        let criados = 0;
+        for (const it of d.itens as Array<{ telefone?: string; nomeHash: string; nome?: string; origem: string; marcadoEm?: Date }>) {
+          const ref = normalizarRef(it);
+          const chave = chaveDoContato(ref.telefone, ref.nomeHash);
+          if (crm.equipe.optOuts.some((o) => o.chave === chave)) continue;
+          crm.equipe.optOuts.push({ chave, telefone: ref.telefone, nomeHash: ref.nomeHash, nome: it.nome ?? null, userId: UID, origem: it.origem, criadoEm: it.marcadoEm ?? new Date(agora()) });
+          criados += 1;
+        }
+        return ok({ recebidos: (d.itens as unknown[]).length, criados });
+      }
+      if (caminho === 'zapContatos.desmarcarOptOuts') {
+        const refs = (d.itens as Array<{ telefone?: string; nomeHash: string }>).map(normalizarRef);
+        const antes = crm.equipe.optOuts.length;
+        crm.equipe.optOuts = crm.equipe.optOuts.filter((o) => !refs.some((r) => (r.telefone && o.telefone ? r.telefone === o.telefone : r.nomeHash === o.nomeHash)));
+        return ok({ removidos: antes - crm.equipe.optOuts.length });
+      }
+      if (caminho === 'zapContatos.registrarEnvios') {
+        const linhas = prepararEnvios(d.itens as Parameters<typeof prepararEnvios>[0], new Date(agora()));
+        for (const l of linhas) {
+          const atual = crm.equipe.envios.find((e) => e.chave === l.chave && e.tipo === l.tipo);
+          if (!atual) crm.equipe.envios.push({ chave: l.chave, telefone: l.telefone, nomeHash: l.nomeHash, tipo: l.tipo, enviadoEm: l.enviadoEm, userId: UID });
+          else if (l.enviadoEm > atual.enviadoEm) Object.assign(atual, { enviadoEm: l.enviadoEm, userId: UID });
+        }
+        return ok({ recebidos: (d.itens as unknown[]).length, gravados: linhas.length });
+      }
+      if (caminho === 'zapContatos.consultarContatados') {
+        const refs = (d.contatos as Array<{ telefone?: string; nomeHash: string }>).map(normalizarRef);
+        const desde = agora() - (d.dias as number) * 86_400_000;
+        const itens = casarContatados(refs, crm.equipe.envios.filter((e) => e.enviadoEm.getTime() >= desde), UID);
+        return ok({ itens, truncado: false, consultadoEm: new Date(agora()), dias: d.dias, ...(d.incluirOptOut ? { optOuts: casarOptOuts(refs, crm.equipe.optOuts, UID) } : {}) });
+      }
     }
     if (caminho === 'tags.list') {
       return ok([

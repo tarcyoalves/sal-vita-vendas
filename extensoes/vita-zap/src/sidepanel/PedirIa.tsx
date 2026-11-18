@@ -39,6 +39,7 @@ import { OrientacoesIa } from './OrientacoesIa';
 import { lerPreferencia, salvarPreferencia } from './preferencias';
 import { assinarTrava, donoDaTrava, liberar, ROTULO_DONO, tentarTravar } from './trava-whatsapp';
 import { useTrava } from './trava';
+import { useEquipe } from './equipe';
 import { pedir } from './whatsapp';
 
 interface Props {
@@ -86,6 +87,7 @@ const doEditavel = (e: PlanoEditavel): PlanoPedido => normalizarPlano({ periodoD
 
 export function PedirIa({ db, crm, dados, aoAprovar, ativa }: Props) {
   const trava = useTrava(db, crm);
+  const equipe = useEquipe(db, crm);
   const dadosCrm = useRef(crm.dados);
   dadosCrm.current = crm.dados;
   const contatosRef = useRef(dados.contatos);
@@ -106,8 +108,10 @@ export function PedirIa({ db, crm, dados, aoAprovar, ativa }: Props) {
         agora: () => new Date(),
         aleatorio: Math.random,
         esperar: (ms) => new Promise((r) => setTimeout(r, ms)),
+        // Equipe (0.7.60): "não enviar mais" fresco antes de montar a lista.
+        preparar: equipe ? (contatos) => equipe.preparar(contatos) : undefined,
       }),
-    [db, crm.repo, trava],
+    [db, crm.repo, trava, equipe],
   );
 
   const [estado, setEstado] = useState<EstadoPedidos | null>(null);

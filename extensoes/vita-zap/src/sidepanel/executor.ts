@@ -31,8 +31,12 @@ import {
   listarNaoEnviar,
   marcarNaoEnviar,
   registrarEnvio,
+  registrarEnvioDoTexto,
   salvarCampanha,
 } from '../shared/banco';
+import { origemDaCampanha } from '../shared/equipe';
+import { hashDoModelo } from '../shared/resultado-texto';
+import type { ResultadoEquipe } from './sincronia-equipe';
 import { podeEnviar, ROTULO_MODO } from '../shared/automaticos';
 import { MOTIVO_CLIENTE_RESPONDEU } from '../shared/constantes';
 import { referenciaDe, textoEsperadoDe } from '../shared/followup';
@@ -56,6 +60,14 @@ export interface DependenciasExecutor {
    * Sem esta dependência (testes antigos) nada é conferido.
    */
   trava?: (item: ItemCampanha, campanha: Campanha) => Promise<ResultadoTrava>;
+  /**
+   * Equipe (v0.7.60): conferida IMEDIATAMENTE antes de abrir cada contato, junto com a trava. Está em "não enviar mais" (de qualquer
+   * atendente/computador) ou foi contatado há menos de `limiteDias` por QUALQUER atendente → o contato é pulado. `indisponivel` (CRM
+   * fora do ar) → falha fechada: no envio automático a campanha PAUSA sem enviar; no manual só avisa. Ausente (testes antigos) = nada.
+   */
+  equipe?: (item: ItemCampanha, campanha: Campanha, limiteDias: number) => Promise<ResultadoEquipe>;
+  /** Depois de cada envio confirmado: avisa a equipe (melhor esforço; o registro local já está gravado). */
+  aoEnviar?: (item: ItemCampanha, campanha: Campanha, enviadoEm: string) => void | Promise<void>;
 }
 
 /** Pausa por não conseguir conferir os agendamentos: o ciclo do follow-up/reativação tenta de novo sozinho (ver pausaBenigna). */
@@ -148,6 +160,7 @@ export class Executor {
     const agora = this.deps.agora();
     if (r.situacao === 'enviado') {
       await registrarEnvio(this.deps.db, { campanhaId: c.id, chave: item.chave, nome: item.nome, enviadoEm: agora.toISOString(), textoConfere: true });
+      await this.depoisDoEnvio(item, c, agora.toISOString());
       const cfg = await lerConfig(this.deps.db);
       await this.gravar({
         ...marcarItem(c, item.chave, 'enviado', agora, 'confirmado ao reabrir o painel'),
@@ -162,6 +175,20 @@ export class Executor {
       emVoo: null,
     });
     return true;
+  }
+
+  /** Resultado por texto (só local) e aviso à equipe. Nada disto pode derrubar o envio: o registro do envio já foi gravado. */
+  private async depoisDoEnvio(item: ItemCampanha, c: Campanha, enviadoEm: string): Promise<void> {
+    try {
+      if (item.modelo.trim() !== '') await registrarEnvioDoTexto(this.deps.db, { id: `${c.id}:${item.chave}`, hash: hashDoModelo(item.modelo), chave: item.chave, enviadoEm, respondeuEm: null }, new Date(enviadoEm));
+    } catch {
+      /* contagem por texto é só informação */
+    }
+    try {
+      if (this.deps.aoEnviar) await this.deps.aoEnviar(item, c, enviadoEm);
+    } catch {
+      /* a equipe fica sabendo na próxima sincronização */
+    }
   }
 
   setEnvioAutomatico(ativo: boolean): void {
@@ -261,6 +288,7 @@ export class Executor {
       enviadoEm: agora.toISOString(),
       textoConfere: ev.textoConfere,
     });
+    await this.depoisDoEnvio(item, c, agora.toISOString());
     const marcada = marcarItem(c, item.chave, 'enviado', agora, ev.textoConfere ? null : 'texto enviado foi editado');
     const cfg = await lerConfig(this.deps.db);
     await this.gravar({
@@ -302,6 +330,7 @@ export class Executor {
         nome: item.nome,
         desde: this.deps.agora().toISOString(),
         motivo,
+        origem: origemDaCampanha(this.estado.campanha),
       });
     }
     const c = this.estado.campanha;
@@ -370,6 +399,7 @@ export class Executor {
         nome: item.nome,
         desde: agora.toISOString(),
         motivo: tipo === 'nao_cliente' ? 'não é cliente' : 'não enviar mais',
+        origem: origemDaCampanha(this.estado.campanha),
       });
     }
     return this.marcarComo(item, tipo, motivo);
@@ -503,6 +533,28 @@ export class Executor {
         return;
       }
     }
+    // Equipe (v0.7.60), ANTES de abrir o contato: "não enviar mais" de qualquer atendente e contato recente de qualquer atendente.
+    let avisoEquipe: string | null = null;
+    if (this.deps.equipe) {
+      let q: ResultadoEquipe;
+      try {
+        q = await this.deps.equipe(item, c, limiteSemRepetir);
+      } catch (e) {
+        q = { tipo: 'indisponivel', motivo: e instanceof Error ? e.message : String(e) };
+      }
+      if (!this.ativo) return;
+      if (q.tipo === 'bloqueado') {
+        if (await this.marcarComo(item, q.status, q.motivo)) await this.passo();
+        return;
+      }
+      if (q.tipo === 'indisponivel') {
+        if (envioAuto) {
+          await this.pausar(`${PREFIXO_PAUSA_CRM}: não envio sem conferir o "não enviar mais" e os contatos da equipe (${q.motivo})`);
+          return;
+        }
+        avisoEquipe = `Não consegui conferir o "não enviar mais" e os contatos da equipe no CRM (${q.motivo}). Confira antes de enviar.`;
+      }
+    }
     // Trava de agendamento, ANTES de abrir o contato (e de novo a cada passo: depois de esperar o intervalo o CRM pode ter mudado).
     if (this.deps.trava) {
       let t: ResultadoTrava;
@@ -522,8 +574,8 @@ export class Executor {
           return;
         }
         this.publicar({ avisoTrava: `Não consegui conferir os agendamentos do CRM (${t.motivo}). Confira antes de enviar.` });
-      } else if (this.estado.avisoTrava !== null) this.publicar({ avisoTrava: null });
-    }
+      } else if (this.estado.avisoTrava !== avisoEquipe) this.publicar({ avisoTrava: avisoEquipe });
+    } else if (this.estado.avisoTrava !== avisoEquipe && this.deps.equipe) this.publicar({ avisoTrava: avisoEquipe });
     // v0.7.59: RELER a conversa imediatamente antes de cada envio AUTOMÁTICO (este é o ponto ÚNICO por onde o follow-up e a reativação
     // passam; não há segundo caminho de clique). A última mensagem tem que continuar sendo nossa e o cliente não pode ter respondido
     // desde a decisão. Respondeu: não envia e o contato volta para a classificação. Dúvida: não envia.

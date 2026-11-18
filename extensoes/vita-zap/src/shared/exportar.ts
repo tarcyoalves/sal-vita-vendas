@@ -21,6 +21,10 @@ export interface NaoEnviar {
   nome: string;
   desde: string;
   motivo: string;
+  /** Quem/onde marcou (v0.7.60). Ausente em registros antigos: o motivo diz. */
+  origem?: 'manual' | 'ia' | 'campanha' | 'cobranca' | 'reativacao';
+  /** Já está no CRM (v0.7.60): se o CRM deixar de ter, alguém desfez e a entrada local sai. Ausente = ainda não subiu (migração). */
+  crm?: boolean;
 }
 
 export interface Backup {
@@ -103,7 +107,14 @@ const envioSchema = z.object({
   textoConfere: z.boolean(),
 });
 
-const naoEnviarSchema = z.object({ chave: z.string().min(1), nome: z.string(), desde: iso, motivo: z.string() });
+const naoEnviarSchema = z.object({
+  chave: z.string().min(1),
+  nome: z.string(),
+  desde: iso,
+  motivo: z.string(),
+  origem: z.enum(['manual', 'ia', 'campanha', 'cobranca', 'reativacao']).optional(),
+  crm: z.boolean().optional(),
+});
 
 const configSchema = z.object({
   tetoDiario: z.number(),

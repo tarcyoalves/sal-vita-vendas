@@ -52,6 +52,7 @@ import {
   removerPedido,
 } from '../shared/pedido-ia';
 import type { ResultadoTrava } from '../shared/trava-agendamento';
+import { falhaDaIa, iaFuncionou } from './saude-painel';
 
 const ERROS_GERAIS: ReadonlySet<CodigoErro> = new Set<CodigoErro>(['seletor', 'nao_pronto', 'ocupado', 'interno']);
 
@@ -61,6 +62,8 @@ export interface DependenciasPedido {
   ia: Pick<LeadsCRM, 'interpretarPedido' | 'conferirPedido' | 'escreverCobranca'>;
   /** Trava de agendamento: um resultado por contato. `forcar` consulta o CRM de novo. */
   travar: (contatos: ReadonlyArray<{ nome: string; chave: string; telefone?: string | null }>, forcar: boolean) => Promise<ResultadoTrava[]>;
+  /** Equipe (v0.7.60): o "não enviar mais" fresco antes de montar a lista. Nunca lança. Ausente = nada. */
+  preparar?: (contatos: ReadonlyArray<{ nome: string; chave: string }>) => Promise<unknown>;
   /** Cria o lembrete do CRM (agendamento). Devolve o erro ou null. */
   criarLembrete: (nome: string, venceEm: number, agora: Date) => Promise<string | null>;
   agora: () => Date;
@@ -161,6 +164,7 @@ export class MotorPedido {
     const erros = errosDoPlano(plano);
     if (erros.length > 0) return { ...base, avisos: [`Plano incompleto: ${erros.join('; ')}.`] };
 
+    await this.d.preparar?.(contatos.filter((c) => c.temConversa && !c.soNumero && !c.pareceGrupo).map((c) => ({ nome: c.nome, chave: c.chave })));
     const naoEnviar = new Set((await listarNaoEnviar(this.d.db)).map((n) => n.chave));
     const cand = candidatosDoPedido(contatos, plano, { hoje: hojeNoFuso(agora0), naoEnviar });
     const r: ResultadoPedido = { ...base, candidatos: cand.candidatos.length, cortados: cand.cortados, fora: cand.fora };
@@ -226,8 +230,10 @@ export class MotorPedido {
         // IA fora do ar / limite: o que falta NÃO vira "corresponde" nem some em silêncio: fica contado como "sem conferir".
         r.avisos.push(`A IA não respondeu (${resp.erro.mensagem}). ${paraIa.length - ini} conversa(s) ficaram sem conferir: rode de novo mais tarde.`);
         r.semConferir += paraIa.length - ini;
+        falhaDaIa(resp.erro.mensagem, this.d.agora().getTime());
         break;
       }
+      iaFuncionou();
       const porRef = new Map(resp.valor.map((x) => [x.ref, x]));
       for (const [k, x] of lote.entries()) {
         const conf = porRef.get(`c${k + 1}`);
@@ -304,7 +310,7 @@ export class MotorPedido {
     const alvo = new Set(chaves);
     const itens = (e.ultimo?.itens ?? []).filter((i) => alvo.has(i.chave) && i.estado === 'aberto');
     const agora = this.d.agora().toISOString();
-    for (const i of itens) await marcarNaoEnviar(this.d.db, { chave: i.chave, nome: i.nome, desde: agora, motivo: 'não enviar mais (Pedir à IA)' });
+    for (const i of itens) await marcarNaoEnviar(this.d.db, { chave: i.chave, nome: i.nome, desde: agora, motivo: 'não enviar mais (Pedir à IA)', origem: 'manual' });
     await this.mudarItens(itens.map((i) => i.chave), (i) => ({ ...i, estado: 'nao_enviar', marcado: false, atualizadoEm: agora }));
     return itens.length;
   }
@@ -372,6 +378,7 @@ export class MotorPedido {
     const itens = ultimo.itens.filter((i) => alvo.has(i.chave));
     if (itens.length === 0) return { itens: [], excluidos: [], erro: 'Marque pelo menos uma conversa.' };
 
+    await this.d.preparar?.(itens.map((i) => ({ nome: i.nome, chave: i.chave })));
     const naoEnviar = new Set((await listarNaoEnviar(this.d.db)).map((n) => n.chave));
     const travasBrutas = await this.d.travar(itens.map((i) => ({ nome: i.nome, chave: i.chave })), true).catch(() => [] as ResultadoTrava[]);
     const agora = this.d.agora();

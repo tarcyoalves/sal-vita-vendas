@@ -65,6 +65,8 @@ export const CHAVES_CRM = {
   acompanhando: 'vz.crm.acompanhando',
   /** Agendamentos futuros pendentes do CRM (a trava): { itens, truncado, em }. Só cache de 5 min. */
   agendamentos: 'vz.crm.agendamentos',
+  /** "Não enviar mais" da equipe (zapContatos.listarOptOuts): { itens, truncado, em }. Só cache de 5 min. */
+  optouts: 'vz.crm.optouts',
 } as const;
 
 /** Etiqueta do CRM dos clientes prestes a fechar que não podem ser esquecidos (botão "Acompanhar"). */

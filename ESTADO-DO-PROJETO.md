@@ -501,6 +501,12 @@ saíram desta lista e estão no registro `coordenacao/registro/2026-10-07-claude
     WhatsApp, sem permissão nova); **"O que a IA fez" com Desfazer** (opt-out e o agendamento que a IA criou; envio não tem desfazer).
     Servidor (em `main`): `zapCrm.desfazerAgendamento` (sem tabela) e log "cadeia inteira falhou". Seção 13 do plano. Não validado com WhatsApp
     real nem IA real; o site ainda publica a 0.7.46.
+    v0.7.60 (18/11/2026, lote 2): **"não enviar mais" e contato registrado COMPARTILHADOS** entre atendentes e computadores (CRM como fonte,
+    lista local como cache; "contatado há menos de X dias por qualquer atendente" entra na regra de não reenviar; CRM indisponível = automático
+    pausa, manual avisa; Desfazer também no CRM); aba **Hoje** (resumo só leitura com atalhos; é a aba inicial) e barra de abas que cabe em 400 px;
+    **resultado por texto** (enviado/respondeu por texto do dono, só local, hash do conteúdo). Servidor (em `main`): tabelas NOVAS `zap_opt_outs` e
+    `zap_contatos_enviados` + router `zapContatos` (`SCHEMA_VERSION` 2026-11-18a). Seção 14 do plano. Não validado com WhatsApp real nem com dois
+    computadores reais; o site ainda publica a 0.7.46.
     Publicada no site do CRM em /vita-zap. Plano: docs/PLANO-CAMPANHAS-WHATSAPP.md.
 
 ### 🔵 Operacional

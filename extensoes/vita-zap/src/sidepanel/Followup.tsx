@@ -30,6 +30,7 @@ import { MensagemCobranca } from './MensagemCobranca';
 import { iniciarBatimento, protegerContraFechamento, MOTIVO_PAINEL_FECHADO } from './protecao';
 import { assinarTrava, donoDaTrava, liberar, ROTULO_DONO, tentarTravar } from './trava-whatsapp';
 import { useTrava } from './trava';
+import { useEquipe } from './equipe';
 import { pedir } from './whatsapp';
 
 interface Props {
@@ -54,6 +55,7 @@ export function pausaBenigna(motivo: string | null | undefined): boolean {
 
 export function Followup({ db, crm, ativa, aoAbrirAutomaticos }: Props) {
   const trava = useTrava(db, crm);
+  const equipe = useEquipe(db, crm);
   const motor = useMemo(
     () =>
       new MotorFollowup({
@@ -69,8 +71,10 @@ export function Followup({ db, crm, ativa, aoAbrirAutomaticos }: Props) {
         esperar: (ms) => new Promise((r) => setTimeout(r, ms)),
         // Trava de agendamento: quem tem agendamento futuro no CRM não é cobrado (lista fresca no começo da rodada).
         travar: trava ? (contatos) => trava.varios(contatos, true) : undefined,
+        // Equipe (0.7.60): "não enviar mais" fresco e contato da equipe antes de decidir quem cobrar.
+        preparar: equipe ? (contatos) => equipe.preparar(contatos) : undefined,
       }),
-    [db, crm.repo, trava],
+    [db, crm.repo, trava, equipe],
   );
 
   const [visao, setVisao] = useState<VisaoFollowup | null>(null);
@@ -149,7 +153,7 @@ export function Followup({ db, crm, ativa, aoAbrirAutomaticos }: Props) {
     let vivo = true;
     void motor.campanhaEmVoo().then(async (c) => {
       if (!c || !vivo) return;
-      const ex = new Executor({ db, pedir, agora: () => new Date(), aleatorio: Math.random, agendar: (fn, ms) => { const t = setTimeout(fn, ms); return () => clearTimeout(t); }, obterEnvioAutomatico: () => true, trava: trava?.executor }, c);
+      const ex = new Executor({ db, pedir, agora: () => new Date(), aleatorio: Math.random, agendar: (fn, ms) => { const t = setTimeout(fn, ms); return () => clearTimeout(t); }, obterEnvioAutomatico: () => true, trava: trava?.executor, equipe: equipe?.executor, aoEnviar: equipe?.aoEnviar }, c);
       ex.setEnvioAutomatico(true);
       const ok = await ex.reconciliar();
       await motor.aplicarCampanha(ex.atual.campanha);
@@ -161,7 +165,7 @@ export function Followup({ db, crm, ativa, aoAbrirAutomaticos }: Props) {
     return () => {
       vivo = false;
     };
-  }, [motor, db, recarregar, trava]);
+  }, [motor, db, recarregar, trava, equipe]);
 
   // Envio detectado numa resposta que VOCÊ mandou ("Abrir e colar"): sai de "Precisa de você".
   useEffect(() => {
@@ -196,6 +200,8 @@ export function Followup({ db, crm, ativa, aoAbrirAutomaticos }: Props) {
           // Envio automático É a decisão do dono para o follow-up (com a confirmação do risco): mesma rotina das campanhas.
           obterEnvioAutomatico: () => true,
           trava: trava?.executor,
+          equipe: equipe?.executor,
+          aoEnviar: equipe?.aoEnviar,
         },
         campanha,
       );
@@ -204,7 +210,7 @@ export function Followup({ db, crm, ativa, aoAbrirAutomaticos }: Props) {
       await ex.iniciar();
       return true;
     },
-    [motor, db, recarregar, trava],
+    [motor, db, recarregar, trava, equipe],
   );
 
   /** Verifica (lê as conversas, IA) e, se a cobrança automática está ligada e nada pausa, manda as cobranças. */

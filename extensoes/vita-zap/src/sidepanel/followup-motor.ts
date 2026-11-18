@@ -18,6 +18,7 @@ import {
   listarNaoEnviar,
   lerConfigFollowup,
   marcarNaoEnviar,
+  registrarRespostaDoTexto,
   registrarAcaoIa,
   registrarDecisao,
   salvarCampanha,
@@ -67,6 +68,8 @@ import { montarMensagem } from '../shared/texto';
 import type { ConversaParaIa } from '../shared/servico-ia';
 import type { ResultadoTrava } from '../shared/trava-agendamento';
 import { anotarDecisaoDaResposta } from './registro-ia';
+import { contatadoPelaEquipe } from './sincronia-equipe';
+import { falhaDaIa, iaFuncionou } from './saude-painel';
 
 /** Erros que indicam problema GERAL (não do contato): a rodada para sem marcar ninguém. */
 const ERROS_GERAIS: ReadonlySet<CodigoErro> = new Set<CodigoErro>(['seletor', 'nao_pronto', 'ocupado', 'interno']);
@@ -89,6 +92,8 @@ export interface DependenciasMotor {
    * Ausente (testes antigos) = nada é conferido.
    */
   travar?: (contatos: ReadonlyArray<{ nome: string; chave: string }>) => Promise<ResultadoTrava[]>;
+  /** Equipe (v0.7.60): opt-out fresco e contato da equipe para estes contatos, ANTES de decidir quem cobrar. Nunca lança. Ausente = nada. */
+  preparar?: (contatos: ReadonlyArray<{ nome: string; chave: string }>) => Promise<unknown>;
 }
 
 export interface ResumoRodada {
@@ -194,9 +199,11 @@ export class MotorFollowup {
       .slice(0, MAX_LEITURAS_POR_RODADA);
     if (devidos.length === 0) return resumo;
 
+    await this.d.preparar?.(devidos.map((f) => ({ nome: f.nome, chave: f.chave })));
     const [naoEnviarLista, envios] = await Promise.all([listarNaoEnviar(this.d.db), listarEnvios(this.d.db)]);
     const naoEnviar = new Set(naoEnviarLista.map((n) => n.chave));
     const ultimo = ultimoEnvioPorChave(envios);
+    const daEquipe = contatadoPelaEquipe();
 
     const paraIa: Array<{ f: Followup; mensagens: MensagemLida[] }> = [];
     const paraCobrar: Followup[] = [];
@@ -237,10 +244,12 @@ export class MotorFollowup {
           await this.gravar({ ...base, estado: 'resolvido', motivo: leitura.motivo });
           resumo.resolvidos += 1;
         } else if (leitura.tipo === 'respondeu') {
+          // Resultado por texto (só local): a leitura achou resposta do cliente à nossa última mensagem (vale se foi em até 7 dias).
+          await registrarRespostaDoTexto(this.d.db, { ...(f.cobrancas.length === 0 ? { id: f.id } : {}), chave: f.chave, referencia: referenciaDe(f) }, agora).catch(() => false);
           // Ainda sem desfecho: só vira "Precisa de você"/"Resolvido" depois da IA. Se a IA falhar, repete depois.
           paraIa.push({ f: base, mensagens: leitura.mensagens });
         } else {
-          const decisao = decidirCobranca(f, { agora, dias: config.dias, naoEnviar, ultimoEnvioPorChave: ultimo });
+          const decisao = decidirCobranca(f, { agora, dias: config.dias, naoEnviar, ultimoEnvioPorChave: ultimo, contatadoPelaEquipePorChave: daEquipe });
           const trava = travas?.[i] ?? { tipo: 'livre' as const };
           if (decisao.pode && trava.tipo === 'agendado') {
             // O agendamento prevalece: nada de cobrança. Quando a data passar, o disparo já terá saído da janela de acompanhamento.
@@ -302,9 +311,11 @@ export class MotorFollowup {
       if (!r.ok) {
         // IA fora do ar / limite diário / sem login: NADA muda (continuam 'monitorando'); a próxima rodada tenta de novo.
         resumo.aviso = `A IA não respondeu (${r.erro.mensagem}). Tente de novo mais tarde.`;
+        falhaDaIa(r.erro.mensagem, this.d.agora().getTime());
         for (const x of lote) await this.gravar({ ...x.f, verificadoEm: null });
         continue;
       }
+      iaFuncionou();
       const porRef = new Map(r.valor.map((c) => [c.ref, c]));
       for (const [k, x] of lote.entries()) {
         const agora = this.d.agora();
@@ -323,7 +334,7 @@ export class MotorFollowup {
             resumo.revisar += 1;
           } else {
             // Pedido explícito para sair: opt-out automático. Nunca mais cobrança, nem campanha.
-            await marcarNaoEnviar(this.d.db, { chave: f.chave, nome: f.nome, desde: agora.toISOString(), motivo: 'pediu para sair (lido pela IA)' });
+            await marcarNaoEnviar(this.d.db, { chave: f.chave, nome: f.nome, desde: agora.toISOString(), motivo: 'pediu para sair (lido pela IA)', origem: 'ia' });
             await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'nao_enviar', origem: 'followup', chave: f.chave, nome: f.nome, resumo: `Pediu para sair. ${c.resumo}`, desfazer: { tipo: 'nao_enviar' } }, agora));
             resumo.saidas += 1;
           }
@@ -549,7 +560,7 @@ export class MotorFollowup {
     const f = (await listarFollowups(this.d.db)).find((x) => x.id === id);
     if (!f) return;
     const agora = this.d.agora();
-    await marcarNaoEnviar(this.d.db, { chave: f.chave, nome: f.nome, desde: agora.toISOString(), motivo: 'não enviar mais (follow-up)' });
+    await marcarNaoEnviar(this.d.db, { chave: f.chave, nome: f.nome, desde: agora.toISOString(), motivo: 'não enviar mais (follow-up)', origem: 'cobranca' });
     await this.gravar({ ...f, estado: 'saiu', motivo: 'você marcou "não enviar mais"', cobrancaModelo: null, cobrancaOrigem: null, atualizadoEm: agora.toISOString() });
   }
 

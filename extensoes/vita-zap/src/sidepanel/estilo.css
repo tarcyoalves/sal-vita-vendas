@@ -164,10 +164,11 @@ body {
 }
 
 .abas button {
-  flex: 1 1 0;
+  /* 0.7.60: o texto da aba NUNCA é cortado (a barra tem duas linhas de campanha para caber em 400 px). */
+  flex: 1 1 auto;
   min-width: 0;
   white-space: nowrap;
-  padding: 6px 4px;
+  padding: 6px 6px;
   font-size: 12px;
   font-weight: 500;
   border-radius: 7px;
@@ -180,8 +181,7 @@ body {
   align-items: center;
   justify-content: center;
   text-align: center;
-  text-overflow: ellipsis;
-  overflow: hidden;
+  overflow: visible;
   line-height: 1.25;
   box-shadow: var(--sombra-sm);
 }
@@ -857,3 +857,23 @@ button.pequeno {
   display: none;
 }
 
+
+/* Tela "Hoje" (0.7.60) */
+.hoje-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.hoje-topo h3 {
+  margin: 0;
+}
+.hoje-numero {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--azul);
+}
+.hoje-alerta {
+  margin-bottom: 8px;
+}

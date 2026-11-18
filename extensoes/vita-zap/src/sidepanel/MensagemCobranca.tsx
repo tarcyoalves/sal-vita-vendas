@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ConfigFollowup } from '../shared/followup';
+import { ResultadoDoTextoNaLinha, useResultadoDoTexto } from './ResultadosTexto';
 import {
   MARCADOR_NOME,
   MAX_COBRANCA,
@@ -40,6 +41,7 @@ interface EditorProps {
 
 export function EditorDeTextos({ titulo, ajuda, lista, erros, sugestoes, idBase, onChange }: EditorProps) {
   const cheio = lista.length >= MAX_TEXTOS;
+  const resultadoDe = useResultadoDoTexto();
   return (
     <fieldset style={{ border: 'none', padding: 0, margin: '10px 0 0' }}>
       <legend style={{ fontWeight: 600, fontSize: 13 }}>{titulo}</legend>
@@ -56,7 +58,10 @@ export function EditorDeTextos({ titulo, ajuda, lista, erros, sugestoes, idBase,
             onChange={(e) => onChange(lista.map((x, k) => (k === i ? e.target.value : x)))}
           />
           <div className="ajuda" style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-            <span>{t.trim() === '' ? '' : `${t.trim().replace(/\{\s*nome\s*\}/gi, NOME_EXEMPLO).length}/${MAX_COBRANCA} caracteres com o nome`}</span>
+            <span>
+              {t.trim() === '' ? '' : `${t.trim().replace(/\{\s*nome\s*\}/gi, NOME_EXEMPLO).length}/${MAX_COBRANCA} caracteres com o nome`}
+              {t.trim() !== '' && <ResultadoDoTextoNaLinha resultado={resultadoDe(t)} />}
+            </span>
             <button type="button" className="pequeno perigo" aria-label={`Remover ${titulo}, variação ${i + 1}`} onClick={() => onChange(lista.filter((_, k) => k !== i))}>
               Remover
             </button>

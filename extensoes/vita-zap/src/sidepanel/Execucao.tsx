@@ -7,6 +7,7 @@ import { formatarDataBr } from '../shared/datas';
 import type { DadosLocais } from './App';
 import type { CrmPainel } from './crm';
 import { useTrava } from './trava';
+import { useEquipe } from './equipe';
 import { acharContato } from '../shared/crm-contatos';
 import { type EstadoExecutor, Executor } from './executor';
 import { iniciarBatimento, protegerContraFechamento } from './protecao';
@@ -33,6 +34,7 @@ const ROTULO_FASE: Record<EstadoExecutor['fase'], string> = {
 
 export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Props) {
   const trava = useTrava(db, crm);
+  const equipe = useEquipe(db, crm);
   const campanhas = dados.campanhas;
   const idEscolhido = campanhaId ?? campanhas.find((c) => c.status !== 'concluida')?.id ?? campanhas[0]?.id ?? null;
   const campanhaInicial = campanhas.find((c) => c.id === idEscolhido) ?? null;
@@ -53,12 +55,15 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
               },
               // Trava de agendamento: quem tem agendamento futuro no CRM é pulado (o agendamento prevalece).
               trava: trava?.executor,
+              // Equipe (0.7.60): "não enviar mais" e contato recente de qualquer atendente; depois do envio avisa a equipe.
+              equipe: equipe?.executor,
+              aoEnviar: equipe?.aoEnviar,
             },
             campanhaInicial,
           )
         : null,
     // Recria só ao trocar de campanha (o executor mantém o próprio estado depois de criado).
-    [db, idEscolhido, trava],
+    [db, idEscolhido, trava, equipe],
   );
   const [estado, setEstado] = useState<EstadoExecutor | null>(null);
   const [agora, setAgora] = useState(Date.now());

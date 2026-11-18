@@ -43,6 +43,8 @@ import { normalizarTelefone } from './telefone';
 import * as email from './servico-email';
 import * as ia from './servico-ia';
 import * as agendamentos from './servico-agendamentos';
+import * as equipe from './servico-equipe';
+import type { RefEquipe } from './equipe';
 import type { AvaliacaoReativacao, ConversaReativacaoParaIa } from './reativacao';
 import type { RefTrava, ResultadoTrava } from './trava-agendamento';
 import { CHAVE_ORIENTACOES, normalizarOrientacoes } from './orientacoes';
@@ -891,6 +893,28 @@ export class ServicoCrm implements LeadsCRM {
 
   desfazerAgendamento(pedido: { taskId: number; agendadoEm: number }): Promise<agendamentos.ResultadoDesfazerAgendamento> {
     return this.exclusivo('desfazer o agendamento criado pela IA (ação do usuário)', () => agendamentos.desfazerAgendamento(this.apoioAgendamentos(), pedido));
+  }
+
+  // ── "Não enviar mais" e contato registrado da EQUIPE (v0.7.60) ──────────────
+
+  optOutsDaEquipe(opcoes: { forcar?: boolean } = {}): Promise<equipe.ResultadoOptOutsEquipe> {
+    return this.exclusivo(opcoes.forcar ? 'equipe: "não enviar mais" (consulta forçada)' : 'equipe: "não enviar mais"', () => equipe.listarOptOuts(this.apoioAgendamentos(), opcoes.forcar === true));
+  }
+
+  marcarOptOutsDaEquipe(itens: equipe.ItemOptOutEquipe[]): Promise<equipe.ResultadoSimplesEquipe> {
+    return this.exclusivo('equipe: marcar "não enviar mais" (ação do usuário)', () => equipe.marcarOptOuts(this.apoioAgendamentos(), itens));
+  }
+
+  desmarcarOptOutsDaEquipe(refs: RefEquipe[]): Promise<equipe.ResultadoSimplesEquipe> {
+    return this.exclusivo('equipe: desfazer "não enviar mais" (ação do usuário)', () => equipe.desmarcarOptOuts(this.apoioAgendamentos(), refs));
+  }
+
+  registrarEnviosDaEquipe(itens: equipe.ItemEnvioEquipe[]): Promise<equipe.ResultadoSimplesEquipe> {
+    return this.exclusivo('equipe: registrar contato enviado', () => equipe.registrarEnvios(this.apoioAgendamentos(), itens));
+  }
+
+  contatadosDaEquipe(refs: RefEquipe[], dias: number, opcoes: { incluirOptOut?: boolean } = {}): Promise<equipe.ResultadoContatadosEquipe> {
+    return this.exclusivo('equipe: contatado nos últimos dias', () => equipe.contatadosNosUltimosDias(this.apoioAgendamentos(), refs, dias, opcoes.incluirOptOut === true));
   }
 
   // ── Fila ───────────────────────────────────────────────────────────────────

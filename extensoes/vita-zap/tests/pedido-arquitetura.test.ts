@@ -56,7 +56,7 @@ describe('o Pedir à IA não tem caminho próprio de envio', () => {
 
   it('o painel fica montado sempre e a lista de abas tem "Pedir à IA"', () => {
     const a = ler('src/sidepanel/App.tsx');
-    expect(a).toMatch(/\{ id: 'pedir', rotulo: 'Pedir à IA' \}/);
+    expect(ler('src/sidepanel/abas.ts')).toMatch(/\{ id: 'pedir', rotulo: 'Pedir à IA' \}/);
     expect(a).toMatch(/<div hidden=\{aba !== 'pedir'\}>/);
   });
 

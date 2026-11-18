@@ -1,5 +1,6 @@
 // Filtros da campanha. Cada contato sai com uma decisão e o MOTIVO, que a prévia mostra.
 
+import { maisRecenteIso } from './equipe';
 import { DIAS_SEM_REPETIR } from './constantes';
 
 /** A reativação respeita o mesmo piso entre campanhas da política (quem recebeu campanha há menos disso não entra). */
@@ -61,6 +62,11 @@ export interface ContextoFiltro {
   aguardandoPorChave?: ReadonlyMap<string, boolean>;
   /** Chaves de contatos com registro do atendente no CRM da extensão (nota, fase ou conversão). */
   comRegistroDoAtendente?: ReadonlySet<string>;
+  /**
+   * Último contato da EQUIPE por chave (ISO, de qualquer atendente/computador; v0.7.60). Só entra no intervalo mínimo entre contatos
+   * (NÃO conta como "o atendente já falou com este contato": quem decide isso é `ultimoEnvioPorChave`).
+   */
+  contatadoPelaEquipePorChave?: ReadonlyMap<string, string>;
 }
 
 export type Situacao = 'incluido' | 'excluido' | 'revisar';
@@ -140,12 +146,15 @@ function avaliarSemFiltroDeMensagemMinha(c: ContatoVarrido, filtros: Filtros, ct
     }
   }
 
-  const ultimoEnvio = ctx.ultimoEnvioPorChave.get(c.chave);
+  const envioLocal = ctx.ultimoEnvioPorChave.get(c.chave);
+  const envioEquipe = ctx.contatadoPelaEquipePorChave?.get(c.chave);
+  const ultimoEnvio = maisRecenteIso(envioLocal, envioEquipe);
   if (ultimoEnvio) {
     const dias = diferencaDias(hojeNoFuso(ctx.agora), hojeNoFuso(new Date(ultimoEnvio)));
     const limite = diasSemRepetir(filtros);
     if (dias < limite) {
-      return { situacao: 'excluido', motivo: `recebeu campanha há ${dias} dia(s) (mínimo ${limite})` };
+      const deOutro = envioEquipe != null && ultimoEnvio === envioEquipe && ultimoEnvio !== envioLocal;
+      return { situacao: 'excluido', motivo: `recebeu campanha há ${dias} dia(s) ${deOutro ? 'de outro atendente ou computador ' : ''}(mínimo ${limite})` };
     }
   }
 

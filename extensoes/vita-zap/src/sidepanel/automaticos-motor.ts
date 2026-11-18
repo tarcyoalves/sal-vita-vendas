@@ -175,6 +175,11 @@ export interface DependenciasDesfazer {
   agora: () => Date;
   /** zapCrm.desfazerAgendamento (pelo contrato LeadsCRM). */
   desfazerAgendamento: (p: { taskId: number; agendadoEm: number }) => Promise<{ ok: true } | { ok: false; mensagem: string }>;
+  /**
+   * Tira do "não enviar mais" também no CRM (v0.7.60: a lista é da equipe; se só saísse daqui, a próxima sincronização a traria de volta).
+   * Ausente (testes antigos): só a lista local.
+   */
+  desmarcarNaoEnviar?: (chave: string) => Promise<{ ok: true; mensagem: string } | { ok: false; mensagem: string }>;
 }
 
 export type ResultadoDesfazer = { ok: true; mensagem: string } | { ok: false; mensagem: string };
@@ -187,7 +192,13 @@ export async function desfazerAcao(d: DependenciasDesfazer, id: string): Promise
   const agora = d.agora();
 
   if (a.desfazer.tipo === 'nao_enviar') {
-    await desmarcarNaoEnviar(d.db, a.chave);
+    if (d.desmarcarNaoEnviar) {
+      const r = await d.desmarcarNaoEnviar(a.chave);
+      if (!r.ok) {
+        await salvarAcaoIa(d.db, { ...a, avisoDesfazer: r.mensagem });
+        return { ok: false, mensagem: r.mensagem };
+      }
+    } else await desmarcarNaoEnviar(d.db, a.chave);
     // O contato volta a poder receber: sai do estado "saiu" nas duas listas (não é reavaliado para enviar sozinho: você decide).
     for (const f of await listarFollowups(d.db)) {
       if (f.chave === a.chave && f.estado === 'saiu') await salvarFollowups(d.db, [{ ...f, estado: 'resolvido', motivo: 'você desfez o "não enviar mais" feito pela IA', atualizadoEm: agora.toISOString() }]);

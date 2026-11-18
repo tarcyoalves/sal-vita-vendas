@@ -24,6 +24,7 @@ import type { Banco } from '../shared/banco';
 import { formatarDataBr, hojeNoFuso } from '../shared/datas';
 import { ORDEM_DA_FILA, ROTULO_GRUPO, textoDaPrevisao } from '../shared/fila';
 import type { CrmPainel } from './crm';
+import { useEquipe } from './equipe';
 import { aoMudarModo, carregarVisao, definirModo, desfazerAcao, julgarDecisao, reabrirJulgamento, type VisaoAutomaticos } from './automaticos-motor';
 
 interface Props {
@@ -66,6 +67,7 @@ export function Automaticos({ db, crm, ativa }: Props) {
   useEffect(() => aoMudarModo(() => void recarregar()), [recarregar]);
 
   const aprovadoAntes = visao != null && (visao.followup.placarAprovado || visao.reativacao.placarAprovado);
+  const equipe = useEquipe(db, crm);
   const desfazerDeps = useMemo(
     () => ({
       db,
@@ -77,8 +79,10 @@ export function Automaticos({ db, crm, ativa }: Props) {
           return { ok: false as const, mensagem: e instanceof Error ? e.message : String(e) };
         }
       },
+      // Desfazer o "não enviar mais" feito pela IA também tira da lista da equipe no CRM.
+      ...(equipe ? { desmarcarNaoEnviar: (chave: string) => equipe.desmarcar(chave) } : {}),
     }),
-    [db, crm.repo],
+    [db, crm.repo, equipe],
   );
 
   if (!visao) return <p className="carregando">Carregando…</p>;

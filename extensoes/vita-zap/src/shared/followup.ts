@@ -10,6 +10,7 @@
 //  - falha fechada: na dúvida (identidade da conversa, grupo, mensagem do disparo não encontrada) NÃO cobra e vai
 //    para "revisar".
 
+import { maisRecenteIso } from './equipe';
 import { normalizarModo, type ModoAutomatico } from './automaticos';
 import { type Campanha, textoDoItem } from './campanha';
 import { MARCADOR_PRIMEIRO_NOME, MOTIVO_CLIENTE_RESPONDEU } from './constantes';
@@ -343,6 +344,8 @@ export interface ContextoCobranca {
   naoEnviar: ReadonlySet<string>;
   /** Último envio de qualquer campanha por chave (ISO). */
   ultimoEnvioPorChave: ReadonlyMap<string, string>;
+  /** Último contato da EQUIPE por chave (ISO, qualquer atendente/computador; v0.7.60). Conta no intervalo mínimo entre contatos. */
+  contatadoPelaEquipePorChave?: ReadonlyMap<string, string>;
 }
 
 export type DecisaoCobranca =
@@ -355,7 +358,7 @@ export function decidirCobranca(f: Followup, ctx: ContextoCobranca): DecisaoCobr
     return { pode: false, destino: 'resolvido', motivo: `sem resposta depois de ${MAX_COBRANCAS} cobranças` };
   }
   if (ctx.naoEnviar.has(f.chave)) return { pode: false, destino: 'saiu', motivo: 'está em "Não enviar mais"' };
-  const ultimo = ctx.ultimoEnvioPorChave.get(f.chave);
+  const ultimo = maisRecenteIso(ctx.ultimoEnvioPorChave.get(f.chave), ctx.contatadoPelaEquipePorChave?.get(f.chave));
   if (ultimo && diasDesde(ultimo, ctx.agora) < Math.max(DIAS_MINIMO, ctx.dias)) {
     return { pode: false, destino: 'espera', motivo: `contatado há menos de ${ctx.dias} dia(s)` };
   }

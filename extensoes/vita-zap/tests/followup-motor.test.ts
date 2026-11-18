@@ -1090,3 +1090,59 @@ describe('releitura IMEDIATAMENTE antes de cada envio automático (0.7.59)', () 
     expect(exContato.atual.campanha.itens[0].motivo).toMatch(/não consegui reler a conversa antes de enviar/);
   });
 });
+
+describe('0.7.60: resultado por texto e saúde do painel (só local)', () => {
+  it('a leitura que acha resposta do cliente marca o ENVIO daquele texto como respondido (uma vez); quem não respondeu fica como enviado', async () => {
+    const { registrarEnvioDoTexto, listarResultadosTexto } = await import('../src/shared/banco');
+    const { hashDoModelo, resultadoDoTexto } = await import('../src/shared/resultado-texto');
+    const t = await montar({ Ana: [eu(dispara('Ana')), cli('quanto custa?')], Bia: 'sem_resposta' });
+    const enviadoEm = new Date(t.agora().getTime() - 3 * 86_400_000).toISOString();
+    for (const c of ['ana', 'bia']) await registrarEnvioDoTexto(t.db, { id: `origem:${c}`, hash: hashDoModelo(TEXTO), chave: c, enviadoEm, respondeuEm: null });
+    await t.motor.verificar(CONFIG);
+    const reg = await listarResultadosTexto(t.db);
+    expect(reg.find((e) => e.chave === 'ana')?.respondeuEm).toBe(t.agora().toISOString());
+    expect(reg.find((e) => e.chave === 'bia')?.respondeuEm).toBeNull();
+    expect(resultadoDoTexto(reg, hashDoModelo(TEXTO))).toMatchObject({ enviados: 2, responderam: 1, percentual: 50, amostraPequena: true });
+    // Ler de novo (forçado) não conta a mesma resposta duas vezes.
+    await t.motor.verificar(CONFIG, { forcar: true });
+    expect(resultadoDoTexto(await listarResultadosTexto(t.db), hashDoModelo(TEXTO)).responderam).toBe(1);
+  });
+
+  it('resposta vista depois de 7 dias do envio NÃO conta para o texto', async () => {
+    const { registrarEnvioDoTexto, listarResultadosTexto } = await import('../src/shared/banco');
+    const { hashDoModelo } = await import('../src/shared/resultado-texto');
+    const t = await montar({ Ana: [eu(dispara('Ana')), cli('oi')] });
+    await registrarEnvioDoTexto(t.db, { id: 'origem:ana', hash: hashDoModelo(TEXTO), chave: 'ana', enviadoEm: new Date(t.agora().getTime() - 9 * 86_400_000).toISOString(), respondeuEm: null });
+    await t.motor.verificar(CONFIG);
+    expect((await listarResultadosTexto(t.db))[0].respondeuEm).toBeNull();
+  });
+
+  it('IA que não responde aparece na saúde do painel (tela Hoje) e some quando volta', async () => {
+    const { falhaAtualDaIa } = await import('../src/sidepanel/saude-painel');
+    const off = await montar({ Ana: [eu(dispara('Ana')), cli('oi')] }, { iaOff: true });
+    await off.motor.verificar(CONFIG);
+    expect(falhaAtualDaIa()?.motivo).toMatch(/indisponível/);
+    const on = await montar({ Ana: [eu(dispara('Ana')), cli('oi')] });
+    await on.motor.verificar(CONFIG);
+    expect(falhaAtualDaIa()).toBeNull();
+  });
+
+  it('a equipe é preparada ANTES de decidir quem cobrar (opt-out fresco) e o contato da equipe vale no intervalo mínimo', async () => {
+    const { zerarEstadoDaEquipe } = await import('../src/sidepanel/sincronia-equipe');
+    zerarEstadoDaEquipe();
+    const t = await montar({ Ana: 'sem_resposta' });
+    const preparados: string[][] = [];
+    const motor2 = new MotorFollowup({
+      db: t.db,
+      pedir: async (p) => (p.tipo === 'lerConversa' ? { ok: true, mensagens: [eu(dispara('Ana'))] } : { ok: true }),
+      ia: { classificarRespostas: async () => ({ ok: true, valor: [] }), escreverCobranca: async (n) => ({ ok: true, valor: `Oi, ${n}! Passando para saber se ainda precisa de sal.` }) },
+      criarLembrete: async () => null,
+      agora: t.agora,
+      aleatorio: () => 0.5,
+      esperar: async () => undefined,
+      preparar: async (cs) => void preparados.push(cs.map((c) => c.chave)),
+    });
+    await motor2.verificar(CONFIG);
+    expect(preparados).toEqual([['ana']]);
+  });
+});

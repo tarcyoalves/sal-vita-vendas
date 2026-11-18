@@ -21,6 +21,7 @@ import {
   listarNaoEnviar,
   listarReativacoes,
   marcarNaoEnviar,
+  registrarRespostaDoTexto,
   registrarAcaoIa,
   registrarDecisao,
   salvarCampanha,
@@ -86,6 +87,8 @@ import type { ConversaParaIa } from '../shared/servico-ia';
 import { diaMes, type ResultadoTrava } from '../shared/trava-agendamento';
 import { hojeNoFuso } from '../shared/datas';
 import { anotarDecisaoDaResposta } from './registro-ia';
+import { contatadoPelaEquipe } from './sincronia-equipe';
+import { falhaDaIa, iaFuncionou } from './saude-painel';
 
 const ERROS_GERAIS: ReadonlySet<CodigoErro> = new Set<CodigoErro>(['seletor', 'nao_pronto', 'ocupado', 'interno']);
 
@@ -95,6 +98,8 @@ export interface DependenciasReativacao {
   ia: Pick<LeadsCRM, 'avaliarReativacao' | 'classificarRespostas' | 'escreverCobranca' | 'registrarReativacao'>;
   /** Trava de agendamento: um resultado por contato. `forcar` consulta o CRM de novo (começo da rodada). `telefone` = o que a conversa acabou de revelar. */
   travar: (contatos: ReadonlyArray<{ nome: string; chave: string; telefone?: string | null }>, forcar: boolean) => Promise<ResultadoTrava[]>;
+  /** Equipe (v0.7.60): opt-out fresco e contato da equipe para estes contatos, ANTES de montar a fila. Nunca lança. Ausente = nada. */
+  preparar?: (contatos: ReadonlyArray<{ nome: string; chave: string }>) => Promise<unknown>;
   /** Cria o lembrete local (compra depois / tem estoque), como o follow-up de respostas. Devolve o erro ou null. */
   criarLembrete: (nome: string, venceEm: number, agora: Date) => Promise<string | null>;
   /** Telefone que a extensão já conhece do contato (índice local do CRM da extensão). */
@@ -207,6 +212,7 @@ export class MotorReativacao {
     const resumo = vazio();
     await this.sincronizarComFollowups();
     const agora0 = this.d.agora();
+    await this.d.preparar?.(contatos.filter((c) => c.temConversa && !c.soNumero && !c.pareceGrupo).map((c) => ({ nome: c.nome, chave: c.chave })));
     const [registrosLista, naoEnviarLista, envios, campanhas] = await Promise.all([listarReativacoes(this.d.db), listarNaoEnviar(this.d.db), listarEnvios(this.d.db), listarCampanhas(this.d.db)]);
     const registros = new Map(registrosLista.map((r) => [r.chave, r]));
     const naoEnviar = new Set(naoEnviarLista.map((n) => n.chave));
@@ -222,7 +228,7 @@ export class MotorReativacao {
       if (devido && emObservacao(config) && devido.tipo === 'conclusao') continue;
       if (devido) trabalho.push({ tipo: 'sequencia', chave: r.chave, nome: r.nome, registro: r, devido });
     }
-    const ctx: ContextoFiltro = { agora: agora0, naoEnviar, ultimoEnvioPorChave: ultimoEnvioPorChave(envios) };
+    const ctx: ContextoFiltro = { agora: agora0, naoEnviar, ultimoEnvioPorChave: ultimoEnvioPorChave(envios), contatadoPelaEquipePorChave: contatadoPelaEquipe() };
     const novos = candidatosEtapa1(contatos, config, registros, ctx);
     // Sem acumular "prontos" que não cabem no teto de hoje (ficariam velhos antes de sair): só avalia gente nova se há vaga.
     const prontos = registrosLista.filter((r) => r.estado === 'pronto').length;
@@ -382,8 +388,10 @@ export class MotorReativacao {
       if (!r.ok) {
         // IA fora do ar / limite diário: NADA é gravado; a próxima rodada tenta de novo.
         resumo.aviso = `A IA não respondeu (${r.erro.mensagem}). Tente de novo mais tarde.`;
+        falhaDaIa(r.erro.mensagem, this.d.agora().getTime());
         continue;
       }
+      iaFuncionou();
       const porRef = new Map(r.valor.map((a) => [a.ref, a]));
       for (const [k, x] of lote.entries()) {
         const agora = this.d.agora();
@@ -416,7 +424,7 @@ export class MotorReativacao {
       } else if (r.estado === 'agendado') r = { ...r, observado: true };
     } else {
       if (plano.optOut) {
-        await marcarNaoEnviar(this.d.db, { chave: r.chave, nome: r.nome, desde: agora.toISOString(), motivo: 'pediu para sair (lido pela IA na reativação)' });
+        await marcarNaoEnviar(this.d.db, { chave: r.chave, nome: r.nome, desde: agora.toISOString(), motivo: 'pediu para sair (lido pela IA na reativação)', origem: 'ia' });
         await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'nao_enviar', origem: 'reativacao', chave: r.chave, nome: r.nome, resumo: `Pediu para sair. ${av.resumo}`, desfazer: { tipo: 'nao_enviar' } }, agora));
         resumo.saidas += 1;
       }
@@ -532,6 +540,8 @@ export class MotorReativacao {
       await this.gravar({ ...base, estado: 'resolvido', motivo: leitura.motivo, textoPronto: null, reelegivelEm: reelegivelDepoisDe(REELEGIVEL_RESOLVIDO_DIAS, agora) });
       resumo.concluidos += 1;
     } else if (leitura.tipo === 'respondeu') {
+      // Resultado por texto (só local): a leitura achou resposta do cliente à nossa última mensagem (vale se foi em até 7 dias).
+      await registrarRespostaDoTexto(this.d.db, { chave: r0.chave, referencia: ult.em }, agora).catch(() => false);
       // Respondeu: sai da sequência e vai para a classificação do follow-up de respostas (mesma IA, mesma lista).
       paraClassificar.push({ r: base, mensagens: leitura.mensagens });
     } else if (t.devido.tipo === 'proxima') {
@@ -585,9 +595,11 @@ export class MotorReativacao {
       if (!r.ok) {
         // IA fora do ar: o registro volta a esperar (será lido de novo).
         resumo.aviso = `A IA não respondeu (${r.erro.mensagem}). Tente de novo mais tarde.`;
+        falhaDaIa(r.erro.mensagem, this.d.agora().getTime());
         for (const x of lote) await this.gravar({ ...x.r, leituraRespostaEm: null });
         continue;
       }
+      iaFuncionou();
       const porRef = new Map<string, ClassificacaoIa>(r.valor.map((c) => [c.ref, c]));
       for (const [k, x] of lote.entries()) {
         const agora = this.d.agora();
@@ -602,7 +614,7 @@ export class MotorReativacao {
           if (efeito.optOut) {
             if (observando) f = { ...f, estado: 'revisar', motivo: 'Observação: a IA marcaria "Não enviar mais" (pediu para sair). Nada foi marcado.', sugestao: '', observado: true };
             else {
-              await marcarNaoEnviar(this.d.db, { chave: x.r.chave, nome: x.r.nome, desde: agora.toISOString(), motivo: 'pediu para sair (lido pela IA, resposta à reativação)' });
+              await marcarNaoEnviar(this.d.db, { chave: x.r.chave, nome: x.r.nome, desde: agora.toISOString(), motivo: 'pediu para sair (lido pela IA, resposta à reativação)', origem: 'ia' });
               await registrarAcaoIa(this.d.db, novaAcao({ tipo: 'nao_enviar', origem: 'reativacao', chave: x.r.chave, nome: x.r.nome, resumo: `Pediu para sair (resposta à reativação). ${c.resumo}`, desfazer: { tipo: 'nao_enviar' } }, agora));
             }
           }
@@ -794,7 +806,7 @@ export class MotorReativacao {
     const r = (await listarReativacoes(this.d.db)).find((x) => x.chave === chave);
     if (!r) return;
     const agora = this.d.agora();
-    await marcarNaoEnviar(this.d.db, { chave: r.chave, nome: r.nome, desde: agora.toISOString(), motivo: 'não enviar mais (reativação)' });
+    await marcarNaoEnviar(this.d.db, { chave: r.chave, nome: r.nome, desde: agora.toISOString(), motivo: 'não enviar mais (reativação)', origem: 'reativacao' });
     await this.gravar({ ...r, estado: 'saiu', motivo: 'você marcou "não enviar mais"', textoPronto: null, atualizadoEm: agora.toISOString() });
   }
 

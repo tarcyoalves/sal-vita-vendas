@@ -2,6 +2,7 @@
 // Backup/migração: exportarTudo / importarTudo (JSON).
 
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import { acharEnvioDaResposta, comResposta, idsParaPodarEnvios, type EnvioDoTexto } from './resultado-texto';
 import { type AcaoIa, type Julgamento, idsAcoesParaPodar, idsParaPodar } from './automaticos';
 import type { Campanha } from './campanha';
 import type { ContatoVarrido } from './contatos';
@@ -19,17 +20,27 @@ interface EsquemaVitaZap extends DBSchema {
   config: { key: string; value: { id: 'politica'; valor: ConfigPolitica } };
   /** Follow-up (v0.7.54): um registro por contato/campanha de origem (`${campanhaId}:${chave}`). */
   followups: { key: string; value: Followup };
-  followupConfig: { key: string; value: { id: 'followup'; valor: ConfigFollowup } | { id: 'reativacao'; valor: ConfigReativacao } | { id: 'pedidos'; valor: EstadoPedidos } | { id: 'historico'; valor: { avisadoEm: string } } };
+  followupConfig: { key: string; value: { id: 'followup'; valor: ConfigFollowup } | { id: 'reativacao'; valor: ConfigReativacao } | { id: 'pedidos'; valor: EstadoPedidos } | { id: 'historico'; valor: { avisadoEm: string } } | { id: 'equipe'; valor: EstadoEquipe } };
   /** Reativação por inatividade (v0.7.56): um registro por contato (chave = nome normalizado). */
   reativacoes: { key: string; value: Reativacao };
   /** Modo Observação (v0.7.59): o que a IA faria + o julgamento do dono. Loja nova, aditiva. */
   julgamentos: { key: string; value: Julgamento };
   /** "O que a IA fez" (v0.7.59): cada ação automática, com como desfazer. Loja nova, aditiva. */
   acoesIa: { key: string; value: AcaoIa };
+  /** Resultado por texto (v0.7.60): um registro por envio de texto do dono (hash do modelo + se respondeu). Só local. Loja nova, aditiva. */
+  resultadosTexto: { key: string; value: EnvioDoTexto };
+}
+
+/** Estado da sincronização com a equipe (v0.7.60). Fica em followupConfig, id 'equipe'. */
+export interface EstadoEquipe {
+  /** Envios locais até este instante (ISO) já subiram ao CRM. null = nunca: a primeira sincronização manda os dos últimos dias. */
+  enviosAte: string | null;
+  /** Última sincronização bem-sucedida (ISO). */
+  sincronizadoEm: string | null;
 }
 
 export const NOME_BANCO = 'vita-zap';
-const VERSAO_BANCO = 4;
+const VERSAO_BANCO = 5;
 
 export type Banco = IDBPDatabase<EsquemaVitaZap>;
 
@@ -58,6 +69,10 @@ export function abrirBanco(nome: string = NOME_BANCO): Promise<Banco> {
       if (versaoAnterior < 4) {
         db.createObjectStore('julgamentos', { keyPath: 'id' });
         db.createObjectStore('acoesIa', { keyPath: 'id' });
+      }
+      // v5 (0.7.60): resultado por texto. Só ACRESCENTA uma loja; nada do que já existe muda (o estado da sincronização com a equipe fica em followupConfig, id 'equipe').
+      if (versaoAnterior < 5) {
+        db.createObjectStore('resultadosTexto', { keyPath: 'id' });
       }
     },
   });
@@ -123,9 +138,19 @@ export function listarEnvios(db: Banco): Promise<Envio[]> {
 
 // ── Não enviar mais ──────────────────────────────────────────────────────────
 
-export async function marcarNaoEnviar(db: Banco, item: NaoEnviar): Promise<void> {
+// Quem quer saber quando alguém marca "não enviar mais" aqui (a sincronização com a equipe sobe a marcação logo, v0.7.60).
+const ouvintesNaoEnviar = new Set<() => void>();
+export function aoMarcarNaoEnviar(fn: () => void): () => void {
+  ouvintesNaoEnviar.add(fn);
+  return () => void ouvintesNaoEnviar.delete(fn);
+}
+
+/** `semAvisar`: a própria sincronização com a equipe está gravando (não precisa subir de novo). */
+export async function marcarNaoEnviar(db: Banco, item: NaoEnviar, opcoes: { semAvisar?: boolean } = {}): Promise<void> {
   const atual = await db.get('naoEnviar', item.chave);
-  if (!atual) await db.put('naoEnviar', item);
+  if (atual) return;
+  await db.put('naoEnviar', item);
+  if (opcoes.semAvisar !== true) for (const fn of [...ouvintesNaoEnviar]) fn();
 }
 
 export async function desmarcarNaoEnviar(db: Banco, chave: string): Promise<void> {
@@ -318,4 +343,47 @@ export async function importarTudo(db: Banco, b: Backup, modo: 'mesclar' | 'subs
   for (const n of b.naoEnviar) ops.push(tx.objectStore('naoEnviar').put(n));
   if (b.config) ops.push(tx.objectStore('config').put({ id: 'politica', valor: normalizarConfig(b.config) }));
   await Promise.all([...ops, tx.done]);
+}
+
+// ── Equipe: estado da sincronização (v0.7.60) ────────────────────────────────
+
+export async function lerEstadoEquipe(db: Banco): Promise<EstadoEquipe> {
+  const r = await db.get('followupConfig', 'equipe');
+  const v = r?.id === 'equipe' ? r.valor : undefined;
+  return { enviosAte: typeof v?.enviosAte === 'string' ? v.enviosAte : null, sincronizadoEm: typeof v?.sincronizadoEm === 'string' ? v.sincronizadoEm : null };
+}
+
+export async function salvarEstadoEquipe(db: Banco, estado: EstadoEquipe): Promise<void> {
+  await db.put('followupConfig', { id: 'equipe', valor: estado });
+}
+
+// ── Resultado por texto (v0.7.60) ────────────────────────────────────────────
+
+/** Registra o envio de um texto (idempotente por id: o mesmo envio nunca conta duas vezes). Poda os muito velhos. */
+export async function registrarEnvioDoTexto(db: Banco, e: EnvioDoTexto, agora: Date = new Date()): Promise<boolean> {
+  const tx = db.transaction('resultadosTexto', 'readwrite');
+  const existe = await tx.store.get(e.id);
+  if (!existe) await tx.store.put(e);
+  await tx.done;
+  if (existe) return false;
+  const velhos = idsParaPodarEnvios(await db.getAll('resultadosTexto'), agora);
+  if (velhos.length > 0) {
+    const t2 = db.transaction('resultadosTexto', 'readwrite');
+    await Promise.all([...velhos.map((id) => t2.store.delete(id)), t2.done]);
+  }
+  return true;
+}
+
+export function listarResultadosTexto(db: Banco): Promise<EnvioDoTexto[]> {
+  return db.getAll('resultadosTexto');
+}
+
+/** A leitura achou resposta do cliente: marca o envio correspondente (uma vez, dentro de 7 dias). Devolve true se marcou. */
+export async function registrarRespostaDoTexto(db: Banco, alvo: { id?: string; chave: string; referencia: string }, agora: Date): Promise<boolean> {
+  const envio = acharEnvioDaResposta(await db.getAll('resultadosTexto'), alvo);
+  if (!envio) return false;
+  const novo = comResposta(envio, agora);
+  if (!novo) return false;
+  await db.put('resultadosTexto', novo);
+  return true;
 }

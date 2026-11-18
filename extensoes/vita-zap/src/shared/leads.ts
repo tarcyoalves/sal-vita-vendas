@@ -14,6 +14,8 @@ import type { PedidoRegistroReativacao, ResultadoDesfazerAgendamento, ResultadoR
 import type { RefTrava, ResultadoTrava } from './trava-agendamento';
 import type { ConferenciaIa, ConversaParaPedido, PedidoInterpretado, PlanoPedido } from './pedido-ia';
 import type { EmailDoLead, EnvioApresentacao, PedidoApresentacao, ResultadoEmail } from './servico-email';
+import type { RefEquipe } from './equipe';
+import type { ItemEnvioEquipe, ItemOptOutEquipe, ResultadoContatadosEquipe, ResultadoOptOutsEquipe, ResultadoSimplesEquipe } from './servico-equipe';
 
 /** Chaves e valores guardados pela integração (só o RepositorioLocal toca em chrome.storage). */
 export interface ArmazemChaves {
@@ -143,6 +145,15 @@ export interface LeadsCRM {
   /** Desfaz o agendamento que a IA criou (tela "O que a IA fez"): só remove o lembrete, e só se ainda for o que ela gravou. */
   desfazerAgendamento(pedido: { taskId: number; agendadoEm: number }): Promise<ResultadoDesfazerAgendamento>;
 
+  // "Não enviar mais" e contato registrado da EQUIPE (v0.7.60, zapContatos.*). Nada aqui envia mensagem de WhatsApp nem guarda texto de mensagem.
+  /** Todos os "não enviar mais" do time (cache de 5 min; `forcar` consulta o CRM). */
+  optOutsDaEquipe(opcoes?: { forcar?: boolean }): Promise<ResultadoOptOutsEquipe>;
+  marcarOptOutsDaEquipe(itens: ItemOptOutEquipe[]): Promise<ResultadoSimplesEquipe>;
+  desmarcarOptOutsDaEquipe(refs: RefEquipe[]): Promise<ResultadoSimplesEquipe>;
+  registrarEnviosDaEquipe(itens: ItemEnvioEquipe[]): Promise<ResultadoSimplesEquipe>;
+  /** Quem foi contatado nos últimos N dias por QUALQUER atendente (e, se pedido, quem está em "não enviar mais"). Um resultado por contato. */
+  contatadosDaEquipe(refs: RefEquipe[], dias: number, opcoes?: { incluirOptOut?: boolean }): Promise<ResultadoContatadosEquipe>;
+
   // "Pedir à IA" e orientações do dono (v0.7.57). Nada aqui envia mensagem de WhatsApp.
   /** Passo 1: o pedido em português vira um plano (zapIa.interpretarPedido). Não lê conversa nenhuma. */
   interpretarPedido(texto: string): Promise<ResultadoIa<PedidoInterpretado>>;
@@ -159,6 +170,7 @@ export const METODOS_LEADS = [
   'emailDoLead', 'salvarEmailDoLead', 'modelosEmail', 'sequenciasEmail', 'inscricoesDoLead', 'mandarApresentacao', 'inscreverNaSequencia',
   'classificarRespostas', 'escreverCobranca', 'avaliarReativacao', 'verificarAgendamentos', 'registrarReativacao', 'desfazerAgendamento',
   'interpretarPedido', 'conferirPedido', 'orientacoesIa', 'salvarOrientacoesIa',
+  'optOutsDaEquipe', 'marcarOptOutsDaEquipe', 'desmarcarOptOutsDaEquipe', 'registrarEnviosDaEquipe', 'contatadosDaEquipe',
 ] as const satisfies ReadonlyArray<keyof LeadsCRM>;
 
 export function ehLeadsCRM(r: unknown): r is LeadsCRM {

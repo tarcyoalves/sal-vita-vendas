@@ -601,6 +601,25 @@ describe('a sequência 25 → 30 → 40: só para quem recebeu a anterior e NÃO
     expect((await t.rodada()).lidas).toBe(0);
   });
 
+  it('resultado por texto (0.7.60): o envio conta para o texto DO DONO (mesmo hash do editor) e a resposta lida em até 7 dias marca respondeu', async () => {
+    const { listarResultadosTexto } = await import('../src/shared/banco');
+    const { hashDoTextoDoDono, resultadoDoTexto } = await import('../src/shared/resultado-texto');
+    const t = await comEtapa1();
+    const enviadoCom = TEXTOS1.find((x) => x.replace('{nome}', 'Ana') === t.colados[0].texto) as string;
+    expect(enviadoCom).toBeDefined();
+    let reg = await listarResultadosTexto(t.db);
+    expect(reg).toHaveLength(1);
+    expect(reg[0].hash).toBe(hashDoTextoDoDono(enviadoCom)); // o editor identifica o texto pelo MESMO hash
+    expect(resultadoDoTexto(reg, hashDoTextoDoDono(enviadoCom))).toMatchObject({ enviados: 1, responderam: 0 });
+    t.definirAgora('2026-11-20T13:00:00.000Z');
+    naConversa(t, [cli('Oi! Quanto está o saco de 25kg?', t.agora().toISOString())]);
+    await t.rodada();
+    reg = await listarResultadosTexto(t.db);
+    expect(resultadoDoTexto(reg, hashDoTextoDoDono(enviadoCom))).toMatchObject({ enviados: 1, responderam: 1, percentual: 100, amostraPequena: true });
+    // Editar o texto (mesmo uma vírgula) é OUTRO texto: a contagem dele começa do zero.
+    expect(resultadoDoTexto(reg, hashDoTextoDoDono(`${enviadoCom}!`))).toMatchObject({ enviados: 0, responderam: 0, percentual: null });
+  });
+
   it('respondeu pedindo para sair → opt-out ("Não enviar mais"), sem etapa 2', async () => {
     const t = await comEtapa1({ classifica: (c) => ({ ref: c.ref, classe: 'pediu_para_sair', precisaAtencao: false, resumo: 'Pediu para sair', sugestao: '' }) });
     t.definirAgora('2026-11-20T13:00:00.000Z');

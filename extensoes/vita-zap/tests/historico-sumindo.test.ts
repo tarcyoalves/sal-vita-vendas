@@ -131,7 +131,7 @@ describe('sem permissão nova no manifest', () => {
   it('o manifest continua só com sidePanel, scripting, storage, alarms e notifications (o aviso usa as que já existem)', () => {
     const m = JSON.parse(readFileSync(join(__dirname, '..', 'public', 'manifest.json'), 'utf8')) as { permissions: string[]; version: string };
     expect(m.permissions.sort()).toEqual(['alarms', 'notifications', 'scripting', 'sidePanel', 'storage']);
-    expect(m.version).toBe('0.7.59');
+    expect(m.version).toMatch(/^0\.7\.\d+$/); // a versão sobe a cada lote; o que este teste guarda são as permissões
   });
 
   it('o service worker liga o alarme e o clique do aviso', () => {

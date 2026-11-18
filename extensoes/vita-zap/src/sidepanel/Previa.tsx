@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { salvarCampanha, type Banco } from '../shared/banco';
 import { type Campanha, criarItens, type ItemCampanha, novoId, textoDoItem, validarParaAprovar } from '../shared/campanha';
 import { DIAS_SEM_REPETIR, MARCADOR_PRIMEIRO_NOME, MAX_VARIACOES } from '../shared/constantes';
@@ -16,6 +16,8 @@ import { novaRotina, type Rotina } from '../shared/rotinas';
 import { normalizarTexto } from '../shared/nomes';
 import type { ResultadoTrava } from '../shared/trava-agendamento';
 import { useTrava } from './trava';
+import { useEquipe, useVersaoEquipe } from './equipe';
+import { contatadoPelaEquipe, indisponibilidadeDaEquipe } from './sincronia-equipe';
 
 interface Props {
   db: Banco;
@@ -23,11 +25,13 @@ interface Props {
   aoAprovar: (campanhaId: string) => Promise<void>;
   crm?: CrmPainel;
   aoIrParaVarredura?: () => void;
+  /** Os dados locais mudaram por fora (ex.: o "não enviar mais" de outro atendente chegou): recarrega. */
+  aoMudar?: () => Promise<void>;
 }
 
 const TEXTO_EXEMPLO = `Boa tarde, ${MARCADOR_PRIMEIRO_NOME}, tudo bem? Como estão de sal por aí?`;
 
-export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) {
+export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }: Props) {
   const hojeBr = new Date().toLocaleDateString('pt-BR');
   const [nome, setNome] = useState(`Campanha ${hojeBr}`);
   const [contem, setContem] = useState(() => lerPreferencia('termo', 'CLIENTE'));
@@ -157,18 +161,25 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
     [contem, naoContem, antesDe, depoisDe, dias, incluirSemConversa, tagsSelecionadas, fasesSelecionadas, aguardandoResposta, soMinha],
   );
 
+  // Equipe (0.7.60): "não enviar mais" de qualquer atendente (vai para a lista local) e contato recente de qualquer atendente.
+  const equipe = useEquipe(db, crm);
+  const versaoEquipe = useVersaoEquipe();
+  const daEquipe = useMemo(() => contatadoPelaEquipe(), [versaoEquipe]);
+  const equipeIndisponivel = useMemo(() => indisponibilidadeDaEquipe(), [versaoEquipe]);
+
   const avaliadosBase = useMemo(
     () =>
       aplicarFiltros(dados.contatos, filtros, {
         agora: new Date(),
         naoEnviar: new Set(dados.naoEnviar.map((n) => n.chave)),
         ultimoEnvioPorChave: ultimoEnvioPorChave(dados.envios),
+        contatadoPelaEquipePorChave: daEquipe,
         tagsPorChave,
         fasePorChave,
         aguardandoPorChave,
         comRegistroDoAtendente,
       }),
-    [dados, filtros, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente],
+    [dados, filtros, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente, daEquipe],
   );
 
   // Trava de agendamento (0.7.56): quem tem agendamento futuro no CRM NÃO entra na campanha (o agendamento prevalece).
@@ -190,6 +201,20 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       vivo = false;
     };
   }, [trava, dados.contatos]);
+  // Antes de montar a prévia: o "não enviar mais" fresco (se mudou, o painel recarrega) e quem a equipe já contatou. Cache de 5 min.
+  const aoMudarRef = useRef(aoMudar);
+  aoMudarRef.current = aoMudar;
+  useEffect(() => {
+    if (!equipe) return;
+    const alvo = dados.contatos.filter((c) => c.temConversa && !c.soNumero && !c.pareceGrupo).map((c) => ({ nome: c.nome, chave: c.chave }));
+    let vivo = true;
+    void equipe.preparar(alvo).then((r) => {
+      if (vivo && r.mudouLista) void aoMudarRef.current?.();
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [equipe, dados.contatos]);
   const travaIndisponivel = useMemo(() => [...travas.values()].find((t) => t.tipo === 'indisponivel') ?? null, [travas]);
   const comTrava = (lista: ContatoAvaliado[]): ContatoAvaliado[] =>
     lista.map((a) => {
@@ -221,6 +246,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
         agora,
         naoEnviar: new Set(dados.naoEnviar.map((n) => n.chave)),
         ultimoEnvioPorChave: ultimoEnvioPorChave(dados.envios),
+        contatadoPelaEquipePorChave: daEquipe,
         tagsPorChave,
         fasePorChave,
         aguardandoPorChave,
@@ -230,7 +256,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       res.set(r.id, qtd);
     }
     return res;
-  }, [rotinas, dados, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente, contem]);
+  }, [rotinas, dados, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente, contem, daEquipe]);
   const motivoPorChave = useMemo(() => new Map(avaliados.map((a) => [a.contato.chave, a.decisao.motivo])), [avaliados]);
   const contatoPorChave = useMemo(() => new Map(dados.contatos.map((c) => [c.chave, c])), [dados.contatos]);
 
@@ -336,6 +362,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       agora: new Date(),
       naoEnviar: new Set(dados.naoEnviar.map((n) => n.chave)),
       ultimoEnvioPorChave: ultimoEnvioPorChave(dados.envios),
+      contatadoPelaEquipePorChave: daEquipe,
       tagsPorChave,
       fasePorChave,
       aguardandoPorChave,
@@ -415,6 +442,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
       agora: new Date(),
       naoEnviar: new Set(dados.naoEnviar.map((n) => n.chave)),
       ultimoEnvioPorChave: ultimoEnvioPorChave(dados.envios),
+      contatadoPelaEquipePorChave: daEquipe,
       tagsPorChave,
       fasePorChave,
       aguardandoPorChave,
@@ -488,6 +516,11 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura }: Props) 
 
   return (
     <section>
+      {equipeIndisponivel && (
+        <p className="aviso" role="alert">
+          Não consegui consultar o "não enviar mais" e os contatos da equipe no CRM ({equipeIndisponivel}). O "não enviar mais" deste computador continua valendo e o envio confere de novo antes de cada contato: o automático NÃO envia sem conferir, e o manual só avisa.
+        </p>
+      )}
       {travaIndisponivel && (
         <p className="aviso" role="alert">
           Não consegui conferir os agendamentos do CRM ({travaIndisponivel.motivo}). Confira antes de enviar: o envio automático NÃO envia sem conferir, e o manual só avisa.
