@@ -231,6 +231,11 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
   só entram se forem http(s).
 - IA: provedor opcional `antigravity` (3 variáveis `ANTIGRAVITY_*`) primeiro na cadeia
   de todo o CRM; sem elas, nada muda.
+- IA, reserva (18/11/2026): quando TODOS os provedores da cadeia (`server/lib/llm.ts`) falham, o log traz UMA linha-resumo
+  `[ROTULO] cadeia inteira falhou: prov=status,...` (só provedor e status, nunca conteúdo nem chave). Se todos aparecem com 404 ou
+  400, o mais provável é um modelo aposentado: `GROQ_MODEL`, `CEREBRAS_MODEL`, `OPENROUTER_MODEL` e `NVIDIA_MODEL` (variáveis da
+  Vercel) precisam apontar para modelos VIGENTES do provedor; se o modelo sair do ar a IA do CRM inteira cai. Os padrões do código
+  (`DEFAULT_MODELS`) não foram trocados: conferir nome de modelo exige olhar o painel de cada provedor. Quem confere é o dono.
 - **Fluxo (26/09):** a busca é uma lista; o atendente contata do card e só depois
   transforma em tarefa ou descarta. Descartes são permanentes (histórico em
   `radar_lead_events`, só admin/gerente restaura).
