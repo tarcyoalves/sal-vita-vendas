@@ -395,6 +395,12 @@ export function PedirIa({ db, crm, dados, aoAprovar, ativa }: Props) {
             <input aria-label="Termos do nome" value={plano.termos} onChange={(e) => setPlano({ ...plano, termos: e.target.value })} placeholder="ex.: padaria, central" />
           </label>
           <p className="ajuda">{AVISO_HISTORICO} A lista vem da última varredura (aba 1): {dados.contatos.length === 0 ? 'faça a varredura primeiro.' : `${dados.contatos.length} contatos salvos.`} Grupos, "Não enviar mais" e nomes repetidos nunca entram.</p>
+          {dados.contatos.length === 0 && (
+            <p className="aviso" role="alert">
+              O botão abaixo está desligado porque ainda não há contatos lidos neste Chrome. Abra a aba "1. Varredura", faça a varredura e volte aqui: o pedido continua salvo.
+            </p>
+          )}
+          {bloqueadoPor && <p className="aviso" role="alert">O botão abaixo está desligado enquanto termina: {bloqueadoPor}.</p>}
           <div className="botoes">
             <button type="button" className="primario" disabled={trabalhando || bloqueadoPor != null || dados.contatos.length === 0} onClick={() => void buscar()} title="Só lê as conversas e confere com a IA. Não envia nada.">
               Buscar nas conversas (não envia)
