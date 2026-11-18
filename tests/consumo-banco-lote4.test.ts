@@ -95,9 +95,11 @@ describe('item 4 — índice em fat_orders(criado_em)', () => {
   it('migração cria o índice e a versão do schema subiu', () => {
     const m = ler('server/db/migrate.ts');
     expect(m).toContain('CREATE INDEX IF NOT EXISTS fat_orders_criado_em_idx ON fat_orders(criado_em)');
-    expect(m).toMatch(/const SCHEMA_VERSION = '2026-10-20a'/);
+    // A versão só pode SUBIR (cada migração nova sobe a constante): este teste não pode travar numa versão fixa.
+    const versao = /const SCHEMA_VERSION = '([^']+)'/.exec(m)?.[1] ?? '';
+    expect(versao >= '2026-10-20a').toBe(true);
     const lock = JSON.parse(ler('tests/schema-version.lock.json'));
-    expect(JSON.stringify(lock)).toContain('2026-10-20a');
+    expect(JSON.stringify(lock)).toContain(versao);
   });
 });
 
