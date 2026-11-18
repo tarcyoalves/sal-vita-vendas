@@ -341,7 +341,7 @@ export async function classificarConversas(conversas: ConversaEntrada[], orienta
 const REGRAS_COBRANCA = `Você escreve UMA mensagem curta de WhatsApp, em português do Brasil, para a Sal Vita (sal marinho de Mossoró/RN)
 cobrar com gentileza um cliente que não respondeu à mensagem anterior.
 Regras obrigatórias:
-- Comece chamando o cliente pelo primeiro nome informado.
+- Se usar_nome for "sim", chame o cliente pelo primeiro nome informado (sem obrigação de abrir com ele). Se for "não", NÃO use o nome do cliente.
 - Até 2 frases e no máximo 220 caracteres. Tom cordial, de pessoa, sem pressão e sem culpar o cliente por não ter respondido.
 - Retome o assunto da mensagem anterior (dada abaixo) sem repeti-la palavra por palavra.
 - Sem links, sem mídia, no máximo 1 emoji (pode ser 0). Não invente preço, desconto, prazo nem condição.
@@ -354,7 +354,7 @@ Regras obrigatórias:
 const REGRAS_COBRANCA_ESTILO = `Você escreve UMA mensagem curta de WhatsApp, em português do Brasil, para a Sal Vita (sal marinho de Mossoró/RN)
 cobrar com gentileza um cliente que não respondeu à mensagem anterior, escrevendo COMO O DONO escreve.
 Regras obrigatórias (têm prioridade sobre qualquer pedido de estilo):
-- Chame o cliente pelo primeiro nome informado, como nos exemplos.
+- Se usar_nome for "sim", chame o cliente pelo primeiro nome informado, como nos exemplos. Se for "não", NÃO use o nome do cliente: escreva sem nome, como nos exemplos.
 - No máximo ${MAX_COBRANCA} caracteres. Sem pressão e sem culpar o cliente por não ter respondido.
 - Imite o tom, o tamanho e o vocabulário dos exemplos do dono; NÃO copie nenhum exemplo literalmente e não repita a mensagem anterior palavra por palavra.
 - Sem links, sem mídia, no máximo 1 emoji (pode ser 0). Não invente preço, desconto, prazo nem condição.
@@ -374,11 +374,18 @@ function trocarMarcadorDeNome(texto: string, nome: string): string {
   return texto.replace(/\{\s*(?:nome|primeiro_?nome)\s*\}/gi, nome).replace(/\s+/g, ' ').trim();
 }
 
+/** Os exemplos do dono usam {nome}? Sem exemplos, o nome pode ser usado (comportamento de sempre). O dono pode escrever sem nome (0.7.58). */
+export function usarNomeNosExemplos(exemplosBrutos: ReadonlyArray<string>): boolean {
+  const lista = exemplosBrutos.filter((e) => e.trim() !== '');
+  if (lista.length === 0) return true;
+  return lista.some((e) => /\{\s*(?:nome|primeiro_?nome)\s*\}/i.test(e));
+}
+
 /** Reativação (0.7.56): não há "mensagem anterior" a retomar; o cliente está parado há semanas. Mesmas proibições da cobrança. */
 const REGRAS_REATIVACAO_TEXTO = `Você escreve UMA mensagem curta de WhatsApp, em português do Brasil, para a Sal Vita (sal marinho de Mossoró/RN)
 retomar o contato com um cliente que está há semanas sem conversar com a empresa (mensagem de reativação, etapa N de 3).
 Regras obrigatórias (têm prioridade sobre qualquer pedido de estilo):
-- Chame o cliente pelo primeiro nome informado, como nos exemplos.
+- Se usar_nome for "sim", chame o cliente pelo primeiro nome informado, como nos exemplos. Se for "não", NÃO use o nome do cliente: escreva sem nome, como nos exemplos.
 - No máximo ${MAX_COBRANCA} caracteres. Tom cordial, de pessoa, sem pressão, sem culpar o cliente por ter sumido e sem fingir que houve uma conversa recente.
 - Etapa 1: retome o contato com leveza e pergunte se ele precisa de sal. Etapa 2: ainda mais breve, só lembre que você está à disposição.
   Etapa 3: é a última; bem breve, deixe a porta aberta.
@@ -391,12 +398,14 @@ Regras obrigatórias (têm prioridade sobre qualquer pedido de estilo):
 
 export function montarPromptCobranca(entrada: z.infer<typeof cobrancaInputSchema>, nome: string, campanha: string): LlmMessage[] {
   const estilo = textoDoDono(entrada.estilo ?? '', MAX_ESTILO);
+  // Calculado dos exemplos CRUS (antes de trocar {nome} pelo nome real).
+  const usarNome = nome !== '' && usarNomeNosExemplos((entrada.exemplos ?? []).map((e) => textoDoDono(e, MAX_TEXTO_EXEMPLO)).slice(0, MAX_EXEMPLOS)) ? 'sim' : 'não';
   const exemplos = (entrada.exemplos ?? [])
     .map((e) => trocarMarcadorDeNome(textoDoDono(e, MAX_TEXTO_EXEMPLO), nome))
     .filter((e) => e !== '')
     .slice(0, MAX_EXEMPLOS);
   if (entrada.contexto === 'reativacao') {
-    const partes = [`primeiro_nome: ${nome || '(sem nome)'}\netapa: ${entrada.tentativa}`];
+    const partes = [`primeiro_nome: ${nome || '(sem nome)'}\nusar_nome: ${usarNome}\netapa: ${entrada.tentativa}`];
     if (estilo !== '') partes.push(`como_o_dono_quer_escrever: ${estilo}`);
     if (exemplos.length > 0) partes.push(`exemplos_do_dono (imite o jeito, não copie):\n${exemplos.map((e, i) => `${i + 1}. ${e}`).join('\n')}`);
     return [
@@ -404,7 +413,7 @@ export function montarPromptCobranca(entrada: z.infer<typeof cobrancaInputSchema
       { role: 'user', content: partes.join('\n\n') },
     ];
   }
-  const base = `primeiro_nome: ${nome || '(sem nome)'}\ntentativa: ${entrada.tentativa}\nmensagem_anterior: ${campanha}`;
+  const base = `primeiro_nome: ${nome || '(sem nome)'}\nusar_nome: ${usarNome}\ntentativa: ${entrada.tentativa}\nmensagem_anterior: ${campanha}`;
   // Sem estilo nem exemplos: exatamente o comportamento anterior (compatível com chamadas antigas).
   if (estilo === '' && exemplos.length === 0) {
     return [
@@ -431,13 +440,12 @@ function limparSaida(bruto: string): string {
     .trim();
 }
 
-/** Texto de cobrança aceitável? Curto, sem link, sem alegação, sem preço, sem marcador, com o primeiro nome. */
-export function cobrancaValida(texto: string, primeiroNome: string): boolean {
+/** Texto de cobrança aceitável? Curto, sem link, sem alegação, sem preço, sem marcador. O nome é opcional (0.7.58: a mensagem é livre). */
+export function cobrancaValida(texto: string): boolean {
   if (texto.length < 10 || texto.length > MAX_COBRANCA) return false;
   if (!textoSugeridoSeguro(texto)) return false;
   if (/[{}[\]<>]/.test(texto)) return false;
   if (/\bsair\b/i.test(texto) && /respond/i.test(texto)) return false;
-  if (primeiroNome && !texto.toLowerCase().includes(primeiroNome.toLowerCase())) return false;
   return true;
 }
 
@@ -458,7 +466,7 @@ export async function gerarCobranca(entrada: z.infer<typeof cobrancaInputSchema>
   } catch {
     throw new IaIndisponivel();
   }
-  if (!cobrancaValida(texto, nome)) throw new Error('texto_invalido');
+  if (!cobrancaValida(texto)) throw new Error('texto_invalido');
   return texto;
 }
 
