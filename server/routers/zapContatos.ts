@@ -7,6 +7,7 @@ import { db } from '../db';
 import { zapContatosEnviados, zapOptOuts } from '../db/schema';
 import {
   casarContatados,
+  casarOptOuts,
   chaveDoContato,
   consultarContatadosInput,
   dataDoEnvio,
@@ -102,7 +103,22 @@ export const zapContatosRouter = router({
       .from(zapContatosEnviados)
       .where(and(gte(zapContatosEnviados.enviadoEm, desde), or(...(telefones.length > 0 ? [inArray(zapContatosEnviados.telefone, telefones)] : []), inArray(zapContatosEnviados.nomeHash, hashes))))
       .limit(LIMITE_LINHAS_CONSULTA + 1);
-    return { itens: casarContatados(refs, linhas.slice(0, LIMITE_LINHAS_CONSULTA), ctx.user.id), truncado: linhas.length > LIMITE_LINHAS_CONSULTA, consultadoEm: agora, dias: input.dias };
+    let optOuts: ReturnType<typeof casarOptOuts> | undefined;
+    if (input.incluirOptOut) {
+      const bloqueados = await db
+        .select({ telefone: zapOptOuts.telefone, nomeHash: zapOptOuts.nomeHash, origem: zapOptOuts.origem, userId: zapOptOuts.userId })
+        .from(zapOptOuts)
+        .where(or(...(telefones.length > 0 ? [inArray(zapOptOuts.telefone, telefones)] : []), inArray(zapOptOuts.nomeHash, hashes)))
+        .limit(LIMITE_LINHAS_CONSULTA);
+      optOuts = casarOptOuts(refs, bloqueados, ctx.user.id);
+    }
+    return {
+      itens: casarContatados(refs, linhas.slice(0, LIMITE_LINHAS_CONSULTA), ctx.user.id),
+      truncado: linhas.length > LIMITE_LINHAS_CONSULTA,
+      consultadoEm: agora,
+      dias: input.dias,
+      ...(optOuts ? { optOuts } : {}),
+    };
   }),
 });
 

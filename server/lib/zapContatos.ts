@@ -65,6 +65,8 @@ export const registrarEnviosInput = z.object({
 export const consultarContatadosInput = z.object({
   contatos: z.array(refContato).min(1).max(LIMITE_LOTE_CONSULTA),
   dias: z.number().int().min(1).max(DIAS_MAX_CONSULTA),
+  /** Devolve também quem dos contatos está em "não enviar mais" (confere o opt-out sem baixar a lista inteira: usado antes de cada envio). */
+  incluirOptOut: z.boolean().optional(),
 });
 
 export interface RefNormalizada {
@@ -136,6 +138,29 @@ export function casarContatados(contatos: ReadonlyArray<RefNormalizada>, linhas:
       if (!atual || l.enviadoEm.getTime() > atual.enviadoEm.getTime()) porTipo.set(l.tipo, l);
     }
     for (const l of porTipo.values()) saida.push({ i, tipo: l.tipo, enviadoEm: l.enviadoEm, meu: l.userId === userId });
+  });
+  return saida;
+}
+
+export interface LinhaOptOut {
+  telefone: string | null;
+  nomeHash: string;
+  origem: string;
+  userId: number;
+}
+
+export interface OptOutEncontrado {
+  i: number;
+  origem: string;
+  meu: boolean;
+}
+
+/** Quais dos contatos pedidos estão em "não enviar mais" (um item por contato). */
+export function casarOptOuts(contatos: ReadonlyArray<RefNormalizada>, linhas: ReadonlyArray<LinhaOptOut>, userId: number): OptOutEncontrado[] {
+  const saida: OptOutEncontrado[] = [];
+  contatos.forEach((c, i) => {
+    const l = linhas.find((x) => mesmoContato(c, x));
+    if (l) saida.push({ i, origem: l.origem, meu: l.userId === userId });
   });
   return saida;
 }
