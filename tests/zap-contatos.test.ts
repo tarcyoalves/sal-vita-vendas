@@ -251,6 +251,17 @@ describe('zapContatos.consultarContatados', () => {
     expect(q).toMatch(/"nome_hash" in \(/i);
     expect(q).not.toMatch(/"user_id"/); // não filtra por atendente
   });
+  it('com incluirOptOut devolve também quem está em "não enviar mais" (por telefone, ou por nome quando falta telefone)', async () => {
+    m.leituras = [[], [{ telefone: '558499990000', nomeHash: H2, origem: 'ia', userId: 3 }, { telefone: null, nomeHash: H2, origem: 'manual', userId: 7 }]];
+    const r = await chamador(7).consultarContatados({ contatos: [{ telefone: '84999990000', nomeHash: H1 }, { nomeHash: H2 }], dias: 14, incluirOptOut: true });
+    expect(r.optOuts).toEqual([{ i: 0, origem: 'ia', meu: false }, { i: 1, origem: 'ia', meu: false }]);
+    expect(m.limites).toHaveLength(2);
+  });
+  it('sem incluirOptOut não consulta o opt-out nem devolve o campo', async () => {
+    const r = await chamador().consultarContatados({ contatos: [{ nomeHash: H1 }], dias: 14 });
+    expect(r.optOuts).toBeUndefined();
+    expect(m.limites).toHaveLength(1);
+  });
   it('só nomes: não gera IN vazio de telefone', async () => {
     await chamador().consultarContatados({ contatos: [{ nomeHash: H1 }], dias: 7 });
     expect(sqlDe(m.wheres[0])).not.toMatch(/in \(\)/i);
