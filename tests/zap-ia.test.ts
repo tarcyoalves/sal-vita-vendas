@@ -232,7 +232,6 @@ describe('zapIa.gerarCobranca', () => {
 
   it.each([
     ['link', 'Oi, Maria! Veja nosso site www.salvita.com.br'],
-    ['sem o primeiro nome', 'Olá! Passando para saber se precisa de sal.'],
     ['alegação de saúde', 'Oi, Maria! Nosso sal é natural, faz bem à saúde.'],
     ['preço', 'Oi, Maria! Temos o saco a R$ 20 hoje.'],
     ['texto longo', `Oi, Maria! ${'muito '.repeat(60)}`],
@@ -240,6 +239,11 @@ describe('zapIa.gerarCobranca', () => {
   ])('texto inválido (%s) volta como texto_invalido', async (_n, texto) => {
     llm.completeWithFallback.mockResolvedValue({ text: texto, provider: 't' });
     expect(await chamador().gerarCobranca(entrada)).toMatchObject({ ok: false, codigo: 'texto_invalido' });
+  });
+
+  it('texto sem o primeiro nome é válido (a mensagem é livre, 0.7.58)', async () => {
+    llm.completeWithFallback.mockResolvedValue({ text: 'Olá! Passando para saber se precisa de sal.', provider: 't' });
+    expect(await chamador().gerarCobranca(entrada)).toEqual({ ok: true, texto: 'Olá! Passando para saber se precisa de sal.' });
   });
 
   it('IA fora do ar: ia_indisponivel', async () => {
@@ -283,6 +287,25 @@ describe('zapIa.gerarCobranca', () => {
       expect(usuario()).not.toContain('Souza');
     });
 
+    it('usar_nome: sim quando algum exemplo usa {nome}; não quando nenhum usa; sim sem exemplos', async () => {
+      llm.completeWithFallback.mockResolvedValue({ text: 'Maria, tudo certo? Estou por aqui.', provider: 't' });
+      await chamador().gerarCobranca({ ...entrada, exemplos });
+      expect(usuario()).toContain('usar_nome: sim');
+      llm.completeWithFallback.mockClear();
+      await chamador().gerarCobranca({ ...entrada, exemplos: ['Bom dia, tudo bem? Conseguiu olhar o estoque por aí?', 'Tudo certo por aí? Fico no aguardo.'] });
+      expect(usuario()).toContain('usar_nome: não');
+      expect(sistema()).toMatch(/Se for "não", NÃO use o nome/);
+      llm.completeWithFallback.mockClear();
+      await chamador().gerarCobranca(entrada);
+      expect(usuario()).toContain('usar_nome: sim');
+      expect(sistema()).not.toMatch(/Comece chamando/);
+    });
+
+    it('exemplos sem {nome}: texto da IA sem nome é aceito', async () => {
+      llm.completeWithFallback.mockResolvedValue({ text: 'Tudo certo por aí? Fico no aguardo.', provider: 't' });
+      expect(await chamador().gerarCobranca({ ...entrada, estilo: 'informal', exemplos: ['Bom dia, tudo bem? Conseguiu olhar o estoque?'] })).toMatchObject({ ok: true });
+    });
+
     it('só exemplos (sem estilo) também ativa o modo do dono', async () => {
       llm.completeWithFallback.mockResolvedValue({ text: 'Maria, tudo certo? Estou por aqui.', provider: 't' });
       await chamador().gerarCobranca({ ...entrada, exemplos });
@@ -314,7 +337,6 @@ describe('zapIa.gerarCobranca', () => {
       ['link', 'Maria, veja www.salvita.com.br'],
       ['alegação de saúde', 'Maria, nosso sal é natural e faz bem à saúde.'],
       ['preço', 'Maria, o saco está R$ 20 hoje.'],
-      ['sem o nome', 'Tudo certo por aí? Fico no aguardo.'],
       ['longo demais', `Maria, ${'aguardo '.repeat(50)}`],
     ])('a mesma validação de saída vale no modo do dono (%s)', async (_n, texto) => {
       llm.completeWithFallback.mockResolvedValue({ text: texto, provider: 't' });
@@ -364,7 +386,9 @@ describe('funções puras', () => {
   it('textoSugeridoSeguro e cobrancaValida', () => {
     expect(textoSugeridoSeguro('Oi Ana, qual a quantidade?')).toBe(true);
     expect(textoSugeridoSeguro('')).toBe(false);
-    expect(cobrancaValida('Oi, Ana! Tudo bem? Passando para saber do sal.', 'Ana')).toBe(true);
+    expect(cobrancaValida('Oi, Ana! Tudo bem? Passando para saber do sal.')).toBe(true);
+    expect(cobrancaValida('Tudo bem? Passando para saber do sal.')).toBe(true); // o nome é opcional
+    expect(cobrancaValida('Oi, {nome}! Tudo bem?')).toBe(false); // marcador sobrando
   });
 
   it('extrairJson e prepararMensagens', () => {
