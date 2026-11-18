@@ -239,6 +239,40 @@ async function ensureCreditColumns() {
   await sql`ALTER TABLE credit_settings ADD COLUMN IF NOT EXISTS teto_por_consulta_reais DOUBLE PRECISION NOT NULL DEFAULT 30`;
 }
 
+/** Vita Zap lote 2 (18/11/2026): "não enviar mais" e contato registrado, COMPARTILHADOS pelo time. Só tabelas novas (aditivo). */
+async function ensureZapContatos() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS zap_opt_outs (
+      id         SERIAL PRIMARY KEY,
+      chave      TEXT NOT NULL,
+      telefone   TEXT,
+      nome_hash  TEXT NOT NULL,
+      nome       TEXT,
+      user_id    INTEGER NOT NULL,
+      origem     TEXT NOT NULL,
+      criado_em  TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS zap_opt_outs_chave_uq ON zap_opt_outs(chave)`;
+  await sql`CREATE INDEX IF NOT EXISTS zap_opt_outs_telefone_idx ON zap_opt_outs(telefone)`;
+  await sql`CREATE INDEX IF NOT EXISTS zap_opt_outs_nome_hash_idx ON zap_opt_outs(nome_hash)`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS zap_contatos_enviados (
+      id         SERIAL PRIMARY KEY,
+      chave      TEXT NOT NULL,
+      telefone   TEXT,
+      nome_hash  TEXT NOT NULL,
+      user_id    INTEGER NOT NULL,
+      tipo       TEXT NOT NULL,
+      enviado_em TIMESTAMP NOT NULL,
+      criado_em  TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS zap_contatos_enviados_chave_tipo_uq ON zap_contatos_enviados(chave, tipo)`;
+  await sql`CREATE INDEX IF NOT EXISTS zap_contatos_enviados_telefone_idx ON zap_contatos_enviados(telefone)`;
+  await sql`CREATE INDEX IF NOT EXISTS zap_contatos_enviados_nome_hash_idx ON zap_contatos_enviados(nome_hash)`;
+}
+
 async function ensureRecentSchema() {
   const [cols, reg, robotCols] = await Promise.all([
     sql`SELECT column_name FROM information_schema.columns
@@ -259,7 +293,9 @@ async function ensureRecentSchema() {
           AND to_regclass('public.credit_report_links') IS NOT NULL AS credito_ok,
           (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public'
              AND ((table_name = 'credit_queries' AND column_name = 'produto')
-               OR (table_name = 'credit_settings' AND column_name = 'teto_por_consulta_reais'))) = 2 AS credito_cols_ok`,
+               OR (table_name = 'credit_settings' AND column_name = 'teto_por_consulta_reais'))) = 2 AS credito_cols_ok,
+          to_regclass('public.zap_opt_outs') IS NOT NULL
+          AND to_regclass('public.zap_contatos_enviados') IS NOT NULL AS zap_contatos_ok`,
     sql`SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'smbi_robot_state'`,
   ]);
@@ -423,11 +459,15 @@ async function ensureRecentSchema() {
 
   const radarOk = (reg as unknown as Array<{ radar_ok: boolean }>)[0]?.radar_ok === true;
   if (!radarOk) await ensureRadarTables();
+
+  // Vita Zap lote 2: tabelas NOVAS do "não enviar mais" e do contato registrado (rede de segurança; a migração longa também as cria).
+  const zapContatosOk = (reg as unknown as Array<{ zap_contatos_ok: boolean }>)[0]?.zap_contatos_ok === true;
+  if (!zapContatosOk) await ensureZapContatos();
 }
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-10-20a';
+const SCHEMA_VERSION = '2026-11-18a';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -1320,6 +1360,7 @@ export async function ensureTablesExist() {
   `;
 
   await ensureRadarTables();
+  await ensureZapContatos();
 
   // Depois do DDL: em banco novo a tabela `users` só existe a partir daqui, e
   // o fast path acima nunca roda na primeira inicialização. Se o bootstrap

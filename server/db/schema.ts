@@ -1053,3 +1053,29 @@ export const creditReportLinks = pgTable('credit_report_links', {
   vinculadoPorUserId: integer('vinculado_por_user_id'),
   origem: text('origem').notNull(), // CONSULTA_NO_PEDIDO | ENVIO_SMBI | MANUAL
 });
+
+// ── Vita Zap, lote 2 (0.7.60): "não enviar mais" e registro de contato COMPARTILHADOS pelo time ──────────────────
+// Nunca guardam texto de mensagem. Chave do contato: telefone canônico (55 + DDD + número, sem o 9 extra) quando existe;
+// senão `n:<hash do nome normalizado>`. A extensão manda os dois (telefone e hash do nome) para casar o mesmo contato por
+// qualquer um deles. Ver server/lib/zapContatos.ts.
+export const zapOptOuts = pgTable('zap_opt_outs', {
+  id: serial('id').primaryKey(),
+  chave: text('chave').notNull(),
+  telefone: text('telefone'),
+  nomeHash: text('nome_hash').notNull(),
+  nome: text('nome'), // só para mostrar na lista "Não enviar mais" dos outros atendentes
+  userId: integer('user_id').notNull(),
+  origem: text('origem').notNull(), // manual | ia | campanha | cobranca | reativacao
+  criadoEm: timestamp('criado_em').defaultNow().notNull(),
+}, (t) => ({ chaveUq: uniqueIndex('zap_opt_outs_chave_uq').on(t.chave) }));
+
+export const zapContatosEnviados = pgTable('zap_contatos_enviados', {
+  id: serial('id').primaryKey(),
+  chave: text('chave').notNull(),
+  telefone: text('telefone'),
+  nomeHash: text('nome_hash').notNull(),
+  userId: integer('user_id').notNull(), // quem enviou o ÚLTIMO desse tipo
+  tipo: text('tipo').notNull(), // campanha | cobranca | reativacao | pedido
+  enviadoEm: timestamp('enviado_em').notNull(), // o envio mais recente desse tipo para esse contato
+  criadoEm: timestamp('criado_em').defaultNow().notNull(),
+}, (t) => ({ chaveTipoUq: uniqueIndex('zap_contatos_enviados_chave_tipo_uq').on(t.chave, t.tipo) }));
