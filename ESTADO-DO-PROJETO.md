@@ -231,6 +231,11 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
   só entram se forem http(s).
 - IA: provedor opcional `antigravity` (3 variáveis `ANTIGRAVITY_*`) primeiro na cadeia
   de todo o CRM; sem elas, nada muda.
+- IA, reserva (18/11/2026): quando TODOS os provedores da cadeia (`server/lib/llm.ts`) falham, o log traz UMA linha-resumo
+  `[ROTULO] cadeia inteira falhou: prov=status,...` (só provedor e status, nunca conteúdo nem chave). Se todos aparecem com 404 ou
+  400, o mais provável é um modelo aposentado: `GROQ_MODEL`, `CEREBRAS_MODEL`, `OPENROUTER_MODEL` e `NVIDIA_MODEL` (variáveis da
+  Vercel) precisam apontar para modelos VIGENTES do provedor; se o modelo sair do ar a IA do CRM inteira cai. Os padrões do código
+  (`DEFAULT_MODELS`) não foram trocados: conferir nome de modelo exige olhar o painel de cada provedor. Quem confere é o dono.
 - **Fluxo (26/09):** a busca é uma lista; o atendente contata do card e só depois
   transforma em tarefa ou descarta. Descartes são permanentes (histórico em
   `radar_lead_events`, só admin/gerente restaura).
@@ -489,6 +494,13 @@ saíram desta lista e estão no registro `coordenacao/registro/2026-10-07-claude
     campanhas, máx. 2 por contato) e "Precisa de você" com resposta sugerida (nunca sai sozinho); IA no servidor do CRM (`zapIa.*`,
     sem tabela nova). Seção 10 do plano. Não validado com WhatsApp real nem IA real.
     v0.7.58 (18/11/2026, pedido do dono): `{nome}` OPCIONAL em todos os textos (a mensagem é livre); contato sem primeiro nome só recebe texto sem `{nome}`, senão "escreva você"; servidor manda `usar_nome` à IA.
+    v0.7.59 (18/11/2026, lote 1 da análise crítica: segurança e confiança): aba **Automáticos** com o modo dos automáticos
+    (Desligado | **Observação** | Ligado) e o **placar da IA** (30 julgamentos com 90% de acerto nas decisões que geram envio para ligar o
+    envio pela primeira vez; quem estava ligado cai para Observação); **releitura da conversa antes de cada envio automático** (ponto único
+    no Executor); **prioridade e previsão da fila** com o teto compartilhado; **aviso diário "histórico sumindo"** (service worker, sem abrir o
+    WhatsApp, sem permissão nova); **"O que a IA fez" com Desfazer** (opt-out e o agendamento que a IA criou; envio não tem desfazer).
+    Servidor (em `main`): `zapCrm.desfazerAgendamento` (sem tabela) e log "cadeia inteira falhou". Seção 13 do plano. Não validado com WhatsApp
+    real nem IA real; o site ainda publica a 0.7.46.
     Publicada no site do CRM em /vita-zap. Plano: docs/PLANO-CAMPANHAS-WHATSAPP.md.
 
 ### 🔵 Operacional
