@@ -62,6 +62,14 @@ export const registrarReativacaoInput = z.object({
 });
 export type RegistrarReativacaoInput = z.infer<typeof registrarReativacaoInput>;
 
+// Desfazer o agendamento que a IA criou (Vita Zap 0.7.59, tela "O que a IA fez"): só o lembrete, nada além.
+export const desfazerAgendamentoInput = z.object({
+  taskId: z.number().int().positive(),
+  /** O instante EXATO que a IA gravou como lembrete. Só se o lembrete ainda for esse, ele é removido. */
+  agendadoEm: z.date(),
+});
+export type DesfazerAgendamentoInput = z.infer<typeof desfazerAgendamentoInput>;
+
 export interface TarefaParaRegistro {
   id: number;
   title: string;
