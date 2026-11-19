@@ -10,7 +10,11 @@ import type { LinhaBruta } from './contatos';
 export type PedidoConteudo =
   | { tipo: 'verificar' }
   | { tipo: 'varrer'; termo: string }
-  | { tipo: 'abrirEColar'; nome: string; texto: string; envioAutomatico?: boolean }
+  /**
+   * `substituirRascunho` só vale no envio MANUAL e só com clique explícito do atendente ("Substituir pelo texto da campanha"):
+   * troca o rascunho diferente da caixa pelo texto da campanha. Só escreve na caixa; nunca clica em enviar. Ignorado no automático.
+   */
+  | { tipo: 'abrirEColar'; nome: string; texto: string; envioAutomatico?: boolean; substituirRascunho?: boolean }
   | { tipo: 'abrirPorTelefone'; telefone: string; nomeDica?: string }
   | { tipo: 'limparCaixa'; texto: string }
   | { tipo: 'pararObservacao' }
@@ -42,6 +46,7 @@ export type CodigoErro =
   | 'nao_confirmado' // não deu para confirmar que é conversa individual
   | 'cabecalho' // a conversa aberta não é a do contato
   | 'caixa_ocupada' // já havia rascunho na caixa (não sobrescrevemos)
+  | 'rascunho_diferente' // a caixa tem texto diferente do que seria colado (nem igual, nem vazia): não mexemos; o atendente decide
   | 'colar_falhou' // o texto não ficou na caixa
   | 'botao_enviar_ausente' // envio automático: sem botão Enviar confiável (nunca cai no microfone)
   | 'ocupado' // outra operação em andamento

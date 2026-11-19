@@ -28,6 +28,7 @@ const ROTULO_FASE: Record<EstadoExecutor['fase'], string> = {
   parada: 'Parada',
   abrindo: 'Abrindo a conversa…',
   aguardando_envio: 'Aguardando envio',
+  rascunho_diferente: 'Já há um texto na caixa',
   intervalo: 'Intervalo entre contatos',
   concluida: 'Concluída',
 };
@@ -272,6 +273,12 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
           </p>
         )}
 
+        {estado.fase === 'rascunho_diferente' && item != null && (
+          <div className="botoes">
+            <button type="button" className="primario" onClick={() => void executor.manterRascunho()}>Manter o rascunho</button>
+            <button type="button" onClick={() => void executor.substituirRascunho()}>Substituir pelo texto da campanha</button>
+          </div>
+        )}
         <div className="botoes">
           {!rodando && c.status !== 'concluida' && (
             <button

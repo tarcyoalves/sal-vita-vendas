@@ -75,7 +75,7 @@ export const PREFIXO_PAUSA_CRM = 'CRM indisponível';
 /** Pausa porque o automático não está no modo Ligado (Observação ou Desligado): nada é enviado. Benigna: não exige "Retomar". */
 export const PREFIXO_PAUSA_MODO = 'automático em';
 
-export type FaseExecucao = 'parada' | 'abrindo' | 'aguardando_envio' | 'intervalo' | 'concluida';
+export type FaseExecucao = 'parada' | 'abrindo' | 'aguardando_envio' | 'rascunho_diferente' | 'intervalo' | 'concluida';
 
 export interface EstadoExecutor {
   campanha: Campanha;
@@ -583,14 +583,19 @@ export class Executor {
       const seguir = await this.relerAntesDeEnviar(item, c);
       if (seguir !== 'ok') return;
     }
+    await this.abrirEColarItem(item, envioAuto, false);
+  }
+
+  /** Abre a conversa do item e cola o texto (ou, com `substituir` explícito no manual, troca o rascunho diferente). */
+  private async abrirEColarItem(item: ItemCampanha, envioAuto: boolean, substituir: boolean): Promise<void> {
     this.publicar({ fase: 'abrindo', itemAtual: item, liberaEm: null, mensagem: null });
     const texto = textoDoItem(item);
     // Marcador "em voo": ANTES de colar. A foto dos ids chega na resposta (a conversa só abre lá dentro).
-    const marcador: EmVoo = { chave: item.chave, nome: item.nome, texto, idsAntes: null, desde: agora.toISOString() };
+    const marcador: EmVoo = { chave: item.chave, nome: item.nome, texto, idsAntes: null, desde: this.deps.agora().toISOString() };
     await this.gravarMarcador(marcador);
     let r: RespostaConteudo;
     try {
-      r = await this.deps.pedir({ tipo: 'abrirEColar', nome: item.nome, texto, envioAutomatico: envioAuto }, true);
+      r = await this.deps.pedir({ tipo: 'abrirEColar', nome: item.nome, texto, envioAutomatico: envioAuto, ...(substituir && !envioAuto ? { substituirRascunho: true } : {}) }, true);
     } catch (e) {
       r = { ok: false, codigo: 'interno', erro: e instanceof Error ? e.message : String(e) };
     }
@@ -610,6 +615,16 @@ export class Executor {
     // Erro 'interno' pode ter acontecido depois de colar: o marcador fica (a retomada consulta a conversa).
     // Qualquer outro erro é anterior à colagem (ou o content script já limpou a caixa).
     if (r.codigo !== 'interno') await this.gravarMarcador(null);
+    // Rascunho diferente na caixa: nada foi tocado. Envio automático NUNCA substitui: o item vai para "revisar" (não conta no
+    // freio) e a campanha segue. No manual de campanha comum o atendente decide (Manter / Substituir).
+    if (r.codigo === 'rascunho_diferente') {
+      if (envioAuto || this.estado.campanha.tipo != null) {
+        if (await this.marcarComo(item, 'revisar', `${r.erro} Não substituí: confira no WhatsApp.`)) await this.passo();
+        return;
+      }
+      this.publicar({ fase: 'rascunho_diferente', itemAtual: item, mensagem: r.erro });
+      return;
+    }
     if (ERROS_GERAIS.has(r.codigo)) {
       this.publicar({ itemAtual: null });
       await this.pausar(r.erro);
@@ -621,5 +636,24 @@ export class Executor {
       return;
     }
     if (await this.marcar(item, 'problema', r.erro)) await this.passo();
+  }
+
+  /** Atendente escolheu "Manter o rascunho": nada é escrito; o item fica em "revisar" (não conta no freio) e a campanha segue. */
+  async manterRascunho(): Promise<void> {
+    const item = this.estado.itemAtual;
+    if (!item || this.estado.fase !== 'rascunho_diferente') return;
+    if (await this.marcarComo(item, 'revisar', 'rascunho do atendente mantido na caixa; decida no WhatsApp')) await this.avancar();
+  }
+
+  /**
+   * Atendente escolheu "Substituir pelo texto da campanha" (clique explícito). Só escreve na caixa; quem envia segue sendo o
+   * atendente (Enter). Nunca no automático.
+   */
+  async substituirRascunho(): Promise<void> {
+    const item = this.estado.itemAtual;
+    if (!item || this.estado.fase !== 'rascunho_diferente' || !this.ativo) return;
+    const envioAuto = this.deps.obterEnvioAutomatico ? this.deps.obterEnvioAutomatico() : this.envioAutomatico;
+    if (envioAuto) return;
+    await this.abrirEColarItem(item, false, true);
   }
 }

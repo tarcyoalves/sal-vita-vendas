@@ -443,16 +443,62 @@ export function reconferirAntesDoClique(nome: string, textoColado: string, estri
 
 type Emitir = (evento: EventoConteudo) => void;
 
-/** Apaga a caixa SÓ se o texto dela ainda é exatamente o nosso. */
-function limparSeForNosso(texto: string): boolean {
-  const caixa = encontrar(document, 'caixaMensagem');
-  if (!caixa) return false;
-  const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
-  const alvo = normalizarParaComparar(texto);
-  if (atual === '' || atual !== alvo) return false;
-  limparCampo(caixa);
-  return true;
+// ── Texto que a PRÓPRIA extensão inseriu ─────────────────────────────────────
+
+/** O que a extensão escreveu na caixa e em qual conversa (título do cabeçalho na hora da colagem). */
+interface TextoInserido {
+  texto: string;
+  titulo: string;
 }
+let inserido: TextoInserido | null = null;
+
+function registrarInserido(texto: string): void {
+  inserido = { texto, titulo: tituloAberto() ?? '' };
+}
+
+/** Como a caixa está em relação ao texto que seria colado (mesma normalização de sempre). */
+export type SituacaoDaCaixa = 'vazia' | 'igual' | 'diferente';
+export function situacaoDaCaixa(caixa: HTMLElement, texto: string): SituacaoDaCaixa {
+  const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
+  if (atual === '') return 'vazia';
+  return atual === normalizarParaComparar(texto) ? 'igual' : 'diferente';
+}
+
+/**
+ * Apaga a caixa SÓ se o texto foi inserido pela extensão, a conversa aberta ainda é a da colagem e o texto continua
+ * exatamente o nosso. Texto que já estava lá (rascunho do atendente), editado depois ou em outra conversa: não mexe.
+ */
+function limparSeInseridoPorMim(texto: string): { limpou: boolean; aviso?: string } {
+  const caixa = encontrar(document, 'caixaMensagem');
+  if (!caixa) return { limpou: false, aviso: 'caixa de mensagem não encontrada' };
+  const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
+  const meu = inserido;
+  // Qualquer desfecho sem apagar encerra o registro: ele só vale enquanto o texto é o que inserimos e a conversa é a mesma.
+  if (atual === '') {
+    inserido = null;
+    return { limpou: false };
+  }
+  const alvo = normalizarParaComparar(texto);
+  if (!meu || normalizarParaComparar(meu.texto) !== alvo) return { limpou: false, aviso: 'esse texto não foi colado por mim; deixei como está' };
+  const titulo = tituloAberto();
+  if (meu.titulo === '' || titulo !== meu.titulo) {
+    inserido = null;
+    return { limpou: false, aviso: 'a conversa aberta mudou desde a colagem; deixei como está' };
+  }
+  if (atual !== alvo) {
+    inserido = null;
+    return { limpou: false, aviso: 'o texto da caixa foi editado; deixei como está' };
+  }
+  limparCampo(caixa);
+  inserido = null;
+  return { limpou: true };
+}
+
+function limparSeForNosso(texto: string): boolean {
+  return limparSeInseridoPorMim(texto).limpou;
+}
+
+const MSG_RASCUNHO = (nome: string): string => `A conversa de "${nome}" já tem outro texto na caixa. Não mexi nele.`;
 
 export async function abrirEColar(
   nome: string,
@@ -460,8 +506,10 @@ export async function abrirEColar(
   aoDetectarEnvio: (texto: string, confere: boolean) => void,
   envioAutomatico = false,
   emitir: Emitir = () => undefined,
+  substituirRascunho = false,
 ): Promise<RespostaConteudo> {
   pararObservacao();
+  inserido = null;
   registrarBatimento(); // o próprio pedido do painel prova que ele está vivo
   const falha = await abrirConversaPorNome(nome, true, true);
   if (falha) return falha;
@@ -474,20 +522,23 @@ export async function abrirEColar(
   if (tipo === 'grupo') return erro('grupo', `"${nome}" é grupo, comunidade ou lista de transmissão.`);
   if (tipo === 'desconhecido') return erro('nao_confirmado', `Não consegui confirmar que "${nome}" é conversa individual. Não colei nada.`);
 
-  // 4. Colar o texto (sem sobrescrever rascunho do usuário).
+  // 4. Colar o texto. Caixa vazia → cola. Exatamente o texto da campanha → já está pronto (não é nosso: não limpamos depois).
+  // QUALQUER outra coisa (prefixo, complemento, texto diferente) é rascunho do atendente: não mexe. Só o clique explícito
+  // "Substituir" (manual, nunca no automático) troca o rascunho; e só escreve na caixa, não clica em nada.
   const caixa = encontrar(document, 'caixaMensagem');
   if (!caixa) return erro('seletor', 'Caixa de mensagem não encontrada.');
-  const existente = normalizarParaComparar(textoDoCampoComEmoji(caixa));
+  const podeSubstituir = substituirRascunho && !envioAutomatico;
   const alvo = normalizarParaComparar(texto);
-  if (existente !== '') {
-    if (existente !== alvo && !existente.includes(alvo) && !alvo.includes(existente)) {
-      return erro('caixa_ocupada', `A conversa de "${nome}" já tem um rascunho na caixa. Não mexi nele.`);
-    }
-  }
+  if (situacaoDaCaixa(caixa, texto) === 'diferente' && !podeSubstituir) return erro('rascunho_diferente', MSG_RASCUNHO(nome));
   await esperar(800); // deixa o histórico carregar antes da "foto"
   const idsAntes = idsDasMensagens();
   const antes = new Set(idsAntes);
-  if (existente === '' || (!existente.includes(alvo) && existente !== alvo)) {
+  // Reconfere depois da espera: o atendente pode ter digitado nesse meio-tempo.
+  const situacao = situacaoDaCaixa(caixa, texto);
+  if (situacao === 'diferente' && !podeSubstituir) return erro('rascunho_diferente', MSG_RASCUNHO(nome));
+  if (situacao !== 'igual') {
+    if (situacao === 'diferente') limparCampo(caixa);
+    registrarInserido(texto);
     escreverNoCampo(caixa, texto);
   }
   let colou = await esperarAte(() => {
@@ -515,6 +566,7 @@ export async function abrirEColar(
 
   if (!colou) {
     limparCampo(caixa);
+    inserido = null;
     return erro('colar_falhou', 'O texto não ficou na caixa de mensagem.');
   }
   caixa.focus();
@@ -524,6 +576,7 @@ export async function abrirEColar(
   const detectado = (textoEnviado: string): void => {
     if (resolvido) return;
     resolvido = true;
+    inserido = null; // a mensagem saiu: a caixa não tem mais nada nosso
     pararObservacao(); // também cancela o envio automático ainda agendado
     aoDetectarEnvio(textoEnviado, true);
   };
@@ -626,16 +679,8 @@ export async function lerConversa(nome: string): Promise<RespostaConteudo> {
  */
 export function limparCaixa(texto: string): RespostaConteudo {
   pararObservacao();
-  const caixa = encontrar(document, 'caixaMensagem');
-  if (!caixa) return { ok: true, limpou: false, avisos: ['caixa de mensagem não encontrada'] };
-  const atual = normalizarParaComparar(textoDoCampoComEmoji(caixa));
-  const alvo = normalizarParaComparar(texto);
-  if (atual === '') return { ok: true, limpou: false };
-  if (atual !== alvo) {
-    return { ok: true, limpou: false, avisos: ['o texto da caixa foi editado; deixei como está'] };
-  }
-  limparCampo(caixa);
-  return { ok: true, limpou: true };
+  const r = limparSeInseridoPorMim(texto);
+  return { ok: true, limpou: r.limpou, ...(r.aviso ? { avisos: [r.aviso] } : {}) };
 }
 
 /**
@@ -643,7 +688,7 @@ export function limparCaixa(texto: string): RespostaConteudo {
  * o usuário confere e aperta Enter. Não observa nem registra envio. Não sobrescreve texto
  * que o usuário já tenha na caixa.
  */
-export async function abrirEPrepararRascunho(nome: string, rascunho: string | null): Promise<RespostaConteudo> {
+export async function abrirEPrepararRascunho(nome: string, rascunho: string | null, substituirRascunho = false): Promise<RespostaConteudo> {
   const aberto = tituloAberto();
   const jaAberta = aberto === nome || (aberto != null && mesmoNome(aberto, nome));
   if (!jaAberta) {
@@ -659,13 +704,14 @@ export async function abrirEPrepararRascunho(nome: string, rascunho: string | nu
   if (!rascunho || rascunho.trim() === '') return { ok: true };
   const caixa = await esperarAte(() => encontrar(document, 'caixaMensagem'), 4000);
   if (!caixa) return erro('seletor', 'Caixa de mensagem não encontrada.');
-  const existente = normalizarParaComparar(textoDoCampoComEmoji(caixa));
   const alvoRascunho = normalizarParaComparar(rascunho);
-  if (existente !== '') {
-    if (existente !== alvoRascunho && !existente.includes(alvoRascunho) && !alvoRascunho.includes(existente)) {
-      return erro('caixa_ocupada', `A conversa de "${nome}" já tem um rascunho na caixa. Não mexi nele.`);
-    }
-  } else {
+  // Mesma regra do abrirEColar: vazia → cola; exatamente igual → pronto; qualquer outra coisa → não mexe (só "Substituir" explícito).
+  inserido = null;
+  const situacao = situacaoDaCaixa(caixa, rascunho);
+  if (situacao === 'diferente' && !substituirRascunho) return erro('rascunho_diferente', MSG_RASCUNHO(nome));
+  if (situacao !== 'igual') {
+    if (situacao === 'diferente') limparCampo(caixa);
+    registrarInserido(rascunho);
     escreverNoCampo(caixa, rascunho);
   }
   const colouRascunho = await esperarAte(() => {
@@ -675,6 +721,7 @@ export async function abrirEPrepararRascunho(nome: string, rascunho: string | nu
 
   if (!colouRascunho) {
     limparCampo(caixa);
+    inserido = null;
     return erro('colar_falhou', 'O texto não ficou na caixa de mensagem.');
   }
   caixa.focus();
