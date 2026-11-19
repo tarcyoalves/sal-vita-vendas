@@ -3,7 +3,7 @@
 
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { acharEnvioDaResposta, comResposta, idsParaPodarEnvios, type EnvioDoTexto } from './resultado-texto';
-import { type AcaoIa, type Julgamento, idsAcoesParaPodar, idsParaPodar } from './automaticos';
+import { type AcaoIa, type Julgamento, type MarcoOrientacoes, idsAcoesParaPodar, idsParaPodar } from './automaticos';
 import type { Campanha } from './campanha';
 import type { ContatoVarrido } from './contatos';
 import { VERSAO_BACKUP, type Backup, type BackupArquivo, type Envio, type NaoEnviar } from './exportar';
@@ -20,7 +20,7 @@ interface EsquemaVitaZap extends DBSchema {
   config: { key: string; value: { id: 'politica'; valor: ConfigPolitica } };
   /** Follow-up (v0.7.54): um registro por contato/campanha de origem (`${campanhaId}:${chave}`). */
   followups: { key: string; value: Followup };
-  followupConfig: { key: string; value: { id: 'followup'; valor: ConfigFollowup } | { id: 'reativacao'; valor: ConfigReativacao } | { id: 'pedidos'; valor: EstadoPedidos } | { id: 'historico'; valor: { avisadoEm: string } } | { id: 'equipe'; valor: EstadoEquipe } };
+  followupConfig: { key: string; value: { id: 'followup'; valor: ConfigFollowup } | { id: 'reativacao'; valor: ConfigReativacao } | { id: 'pedidos'; valor: EstadoPedidos } | { id: 'historico'; valor: { avisadoEm: string } } | { id: 'equipe'; valor: EstadoEquipe } | { id: 'aprovacaoPlacar'; valor: MarcoOrientacoes } };
   /** Reativação por inatividade (v0.7.56): um registro por contato (chave = nome normalizado). */
   reativacoes: { key: string; value: Reativacao };
   /** Modo Observação (v0.7.59): o que a IA faria + o julgamento do dono. Loja nova, aditiva. */
@@ -294,6 +294,19 @@ export async function listarAcoesIa(db: Banco): Promise<AcaoIa[]> {
 
 export async function salvarAcaoIa(db: Banco, a: AcaoIa): Promise<void> {
   await db.put('acoesIa', a);
+}
+
+// ── Aprovação do placar × Orientações para a IA (v0.7.62). Fica em followupConfig, id 'aprovacaoPlacar': sem versão nova do banco. ──
+
+export async function lerMarcoOrientacoes(db: Banco): Promise<MarcoOrientacoes | null> {
+  const r = await db.get('followupConfig', 'aprovacaoPlacar');
+  const v = r?.id === 'aprovacaoPlacar' ? r.valor : undefined;
+  if (!v || typeof v.orientacoesHash !== 'string') return null;
+  return { orientacoesHash: v.orientacoesHash, desde: typeof v.desde === 'string' ? v.desde : null, legado: v.legado === true };
+}
+
+export async function salvarMarcoOrientacoes(db: Banco, marco: MarcoOrientacoes): Promise<void> {
+  await db.put('followupConfig', { id: 'aprovacaoPlacar', valor: marco });
 }
 
 // ── Pedir à IA (v0.7.57) ─────────────────────────────────────────────────────

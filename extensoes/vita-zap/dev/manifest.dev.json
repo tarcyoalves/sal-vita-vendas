@@ -1,0 +1,5 @@
+{
+  "name_sufixo": " (dev)",
+  "optional_host_permissions": ["http://localhost/*"],
+  "externally_connectable": { "matches": ["http://localhost:5173/*"] }
+}

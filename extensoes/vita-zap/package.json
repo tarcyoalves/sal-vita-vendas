@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit && vite build && vite build -c vite.content.config.ts",
+    "build:dev": "tsc --noEmit && vite build --mode development && vite build -c vite.content.config.ts --mode development",
     "check": "tsc --noEmit",
     "publicar": "npm run build && node dev/publicar.mjs",
     "harness": "npm run build && node dev/servir.mjs",

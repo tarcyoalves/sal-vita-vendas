@@ -9,10 +9,14 @@ import {
   type Liberacao,
   type LinhaPlacar,
   type ModoAutomatico,
+  type MarcoOrientacoes,
+  type SituacaoAprovacao,
   avaliarLiberacao,
   calcularPlacar,
+  hashDasOrientacoes,
   julgar,
   reabrir,
+  situacaoDaAprovacao,
 } from '../shared/automaticos';
 import {
   type Banco,
@@ -22,6 +26,7 @@ import {
   lerConfig,
   lerConfigFollowup,
   lerConfigReativacao,
+  lerMarcoOrientacoes,
   listarAcoesIa,
   listarCampanhas,
   listarEnvios,
@@ -33,6 +38,7 @@ import {
   salvarConfigReativacao,
   salvarFollowups,
   salvarJulgamento,
+  salvarMarcoOrientacoes,
   salvarReativacoes,
 } from '../shared/banco';
 import { type ConfigFollowup } from '../shared/followup';
@@ -63,6 +69,10 @@ export interface VisaoAutomaticos {
   fila: PrevisaoDaFila;
   /** Algum dos dois tinha o automático ligado numa versão anterior e caiu para Observação. */
   migrado: boolean;
+  /** A aprovação do placar frente às Orientações para a IA de hoje (v0.7.62). 'anterior' = registro antigo, mostrado como "Aprovado anteriormente". */
+  aprovacao: SituacaoAprovacao;
+  /** Desde quando o placar conta (as Orientações para a IA mudaram nesse instante); null = contagem inteira. */
+  placarDesde: string | null;
 }
 
 export function modoGlobal(f: Pick<ConfigFollowup, 'automatico'>, r: Pick<ConfigReativacao, 'automatico'>): ModoAutomatico {
@@ -71,7 +81,40 @@ export function modoGlobal(f: Pick<ConfigFollowup, 'automatico'>, r: Pick<Config
   return 'desligado';
 }
 
-export async function carregarVisao(db: Banco, agora: Date): Promise<VisaoAutomaticos> {
+// ── Aprovação do placar × Orientações para a IA (v0.7.62) ────────────────────
+
+/**
+ * Compara as Orientações de hoje com as da aprovação do placar.
+ *  - Sem registro: guarda o hash de hoje como registro LEGADO (aprovação antiga, de antes deste controle: a tela diz "Aprovado anteriormente").
+ *  - Hash diferente: as Orientações mudaram → a aprovação anterior é INVALIDADA (placarAprovado=false nos dois automáticos; quem estava
+ *    Ligado cai para Observação), e o placar recomeça: só contam julgamentos feitos a partir de agora.
+ * Devolve o registro vigente e se algo foi invalidado.
+ */
+export async function sincronizarOrientacoes(db: Banco, orientacoes: string, agora: Date): Promise<{ marco: MarcoOrientacoes; invalidou: boolean }> {
+  const hash = hashDasOrientacoes(orientacoes);
+  const marco = await lerMarcoOrientacoes(db);
+  if (!marco) {
+    const novo: MarcoOrientacoes = { orientacoesHash: hash, desde: null, legado: true };
+    await salvarMarcoOrientacoes(db, novo);
+    return { marco: novo, invalidou: false };
+  }
+  if (marco.orientacoesHash === hash) return { marco, invalidou: false };
+  const novo: MarcoOrientacoes = { orientacoesHash: hash, desde: agora.toISOString(), legado: false };
+  await salvarMarcoOrientacoes(db, novo);
+  const [f, r] = await Promise.all([lerConfigFollowup(db), lerConfigReativacao(db)]);
+  const tinha = f.placarAprovado || r.placarAprovado;
+  if (tinha) {
+    const queda = (c: { automatico: ModoAutomatico }) => ({ placarAprovado: false, ...(c.automatico === 'ligado' ? { automatico: 'observacao' as const } : {}) });
+    await salvarConfigFollowup(db, { ...f, ...queda(f) });
+    await salvarConfigReativacao(db, { ...r, ...queda(r) });
+    avisarMudancaDeModo();
+  }
+  return { marco: novo, invalidou: tinha };
+}
+
+export async function carregarVisao(db: Banco, agora: Date, orientacoes?: string): Promise<VisaoAutomaticos> {
+  if (orientacoes !== undefined) await sincronizarOrientacoes(db, orientacoes, agora);
+  const marco = await lerMarcoOrientacoes(db);
   const [followup, reativacao, julgamentos, acoes, followups, reativacoes, campanhas, envios, politica] = await Promise.all([
     lerConfigFollowup(db),
     lerConfigReativacao(db),
@@ -92,10 +135,12 @@ export async function carregarVisao(db: Banco, agora: Date): Promise<VisaoAutoma
     julgamentos: ordenados,
     pendentes: ordenados.filter((j) => j.veredito == null),
     placar: calcularPlacar(julgamentos),
-    liberacao: avaliarLiberacao(julgamentos),
+    liberacao: avaliarLiberacao(julgamentos, marco?.desde ?? null),
     acoes,
     fila: preverFila(contarFila(followups, reativacoes), politica.tetoDiario, contarEnviosHoje(envios, agora), comuns),
     migrado: followup.migradoParaObservacao || reativacao.migradoParaObservacao,
+    aprovacao: situacaoDaAprovacao(followup.placarAprovado || reativacao.placarAprovado, marco, orientacoes === undefined ? (marco?.orientacoesHash ?? '') : hashDasOrientacoes(orientacoes)),
+    placarDesde: marco?.desde ?? null,
   };
 }
 
@@ -112,16 +157,27 @@ export const MSG_SEM_TEXTO = 'Escreva a mensagem de cobrança (aba Follow-up) ou
  *    MIN_ACERTO_PERCENTUAL% de acerto nas decisões que geram envio. Depois de aprovado uma vez, não pergunta de novo.
  *  - Saindo da Observação para Ligado, o que ficou só "no papel" (opt-out/agendamento/lembrete não aplicados) é reavaliado.
  */
-export async function definirModo(db: Banco, modo: ModoAutomatico, opcoes: { confirmouRisco?: boolean } = {}): Promise<ResultadoModo> {
-  const [f, r, julgamentos] = await Promise.all([lerConfigFollowup(db), lerConfigReativacao(db), listarJulgamentos(db)]);
+export async function definirModo(db: Banco, modo: ModoAutomatico, opcoes: { confirmouRisco?: boolean; orientacoes?: string; agora?: Date } = {}): Promise<ResultadoModo> {
+  // As Orientações para a IA de hoje (quando o painel as informa) são comparadas com as da aprovação ANTES de decidir.
+  const sincronia = opcoes.orientacoes !== undefined ? await sincronizarOrientacoes(db, opcoes.orientacoes, opcoes.agora ?? new Date()) : null;
+  const [f, r, julgamentos, marco] = await Promise.all([lerConfigFollowup(db), lerConfigReativacao(db), listarJulgamentos(db), lerMarcoOrientacoes(db)]);
   if (modo !== 'desligado' && f.textos1.length === 0 && r.textos1.length === 0) return { ok: false, motivo: MSG_SEM_TEXTO };
   const antes = modoGlobal(f, r);
   let aprovado = f.placarAprovado || r.placarAprovado;
   if (modo === 'ligado') {
     if (opcoes.confirmouRisco !== true) return { ok: false, motivo: 'É preciso confirmar o risco do envio automático para ligar.' };
-    const lib = avaliarLiberacao(julgamentos);
-    if (!aprovado && !lib.liberado) return { ok: false, motivo: lib.motivo ?? 'O placar da IA ainda não liberou o envio automático.' };
+    const hash = opcoes.orientacoes !== undefined ? hashDasOrientacoes(opcoes.orientacoes) : (marco?.orientacoesHash ?? '');
+    const situacao = situacaoDaAprovacao(aprovado, marco, hash);
+    if (situacao === 'nunca' || situacao === 'invalidada') {
+      const lib = avaliarLiberacao(julgamentos, marco?.desde ?? null);
+      if (!lib.liberado) {
+        const aviso = sincronia?.invalidou ? 'As Orientações para a IA mudaram depois da última aprovação: a aprovação anterior foi cancelada. ' : '';
+        return { ok: false, motivo: aviso + (lib.motivo ?? 'O placar da IA ainda não liberou o envio automático.') };
+      }
+    }
     aprovado = true;
+    // Aprovação (nova, ou antiga reafirmada por você agora) passa a valer para as Orientações de hoje.
+    if (opcoes.orientacoes !== undefined) await salvarMarcoOrientacoes(db, { orientacoesHash: hash, desde: marco?.desde ?? null, legado: false });
   }
   const comum = { automatico: modo, migradoParaObservacao: false, placarAprovado: aprovado, ...(modo === 'ligado' ? { confirmouRisco: true, pausado: false } : {}) };
   await salvarConfigFollowup(db, { ...f, ...comum });

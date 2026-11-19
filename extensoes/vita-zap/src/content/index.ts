@@ -77,6 +77,7 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
         emitir({ tipo: 'vitaZap:envioDetectado', nome: pedido.nome, texto, textoConfere }),
         pedido.envioAutomatico,
         emitir,
+        pedido.substituirRascunho === true,
       );
   }
 }

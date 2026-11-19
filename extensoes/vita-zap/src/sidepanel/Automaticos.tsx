@@ -64,16 +64,24 @@ export function Automaticos({ db, crm, ativa }: Props) {
 
   const [naoEnviarLista, setNaoEnviarLista] = useState<NaoEnviar[]>([]);
   const versaoEquipe = useVersaoEquipe();
+  // As Orientações para a IA de hoje vão junto: se mudaram desde a aprovação do placar, a aprovação é cancelada (v0.7.62).
+  const orientacoes = useCallback(async (): Promise<string | undefined> => {
+    try {
+      return await Promise.resolve().then(() => crm.repo.orientacoesIa());
+    } catch {
+      return undefined; // sem ler as Orientações não dá para comparar: nada é invalidado nem aprovado às cegas
+    }
+  }, [crm.repo]);
   const recarregar = useCallback(async () => {
-    setVisao(await carregarVisao(db, new Date()));
+    setVisao(await carregarVisao(db, new Date(), await orientacoes()));
     setNaoEnviarLista(await listarNaoEnviar(db)); // o estado de cada "não enviar mais" (aqui × equipe) vem daqui
-  }, [db]);
+  }, [db, orientacoes]);
   useEffect(() => {
     void recarregar();
   }, [recarregar, ativa, versaoEquipe]);
   useEffect(() => aoMudarModo(() => void recarregar()), [recarregar]);
 
-  const aprovadoAntes = visao != null && (visao.followup.placarAprovado || visao.reativacao.placarAprovado);
+  const aprovadoAntes = visao != null && (visao.aprovacao === 'valida' || visao.aprovacao === 'anterior');
   const equipe = useEquipe(db, crm);
   const desfazerDeps = useMemo(
     () => ({
@@ -106,7 +114,7 @@ export function Automaticos({ db, crm, ativa }: Props) {
       }
       if (!window.confirm(`${TEXTO_RISCO_AUTOMATICOS}\n\nLigar o envio automático da cobrança e da reativação?`)) return;
     }
-    const r = await definirModo(db, modo, { confirmouRisco: modo === 'ligado' });
+    const r = await definirModo(db, modo, { confirmouRisco: modo === 'ligado', ...(modo === 'ligado' ? { orientacoes: await orientacoes() } : {}) });
     if (!r.ok) setAviso(r.motivo);
     else setInfo(modo === 'observacao' ? 'Modo Observação: nada será enviado. Julgue o que a IA faria abaixo.' : modo === 'ligado' ? 'Envio automático ligado.' : 'Automáticos desligados.');
     await recarregar();
@@ -155,12 +163,15 @@ export function Automaticos({ db, crm, ativa }: Props) {
           Cobrança do Follow-up: <b>{ROTULO_MODO[visao.followup.automatico]}</b> · Reativação: <b>{ROTULO_MODO[visao.reativacao.automatico]}</b>
         </p>
         <p className={liberacao.liberado || aprovadoAntes ? 'info' : 'ajuda'}>
-          {aprovadoAntes
-            ? 'O placar já liberou o envio automático uma vez.'
-            : liberacao.liberado
-              ? `Placar aprovado: ${liberacao.acertos} de ${liberacao.julgados} (${liberacao.percentual}%) nas decisões que geram envio. Você já pode ligar.`
-              : `Para ligar o envio: ${MIN_JULGAMENTOS} julgamentos com ${MIN_ACERTO_PERCENTUAL}% de acerto nas decisões que geram envio. Progresso: ${liberacao.julgados} de ${MIN_JULGAMENTOS}${liberacao.julgados > 0 ? ` (${liberacao.percentual}% de acerto)` : ''}. ${liberacao.faltam > 0 ? `Faltam ${liberacao.faltam}.` : liberacao.motivo ?? ''}`}
+          {visao.aprovacao === 'anterior'
+            ? 'Aprovado anteriormente (registro antigo, de antes do controle das Orientações para a IA). Se você mudar as Orientações, a aprovação é cancelada e o placar recomeça.'
+            : aprovadoAntes
+              ? 'O placar já liberou o envio automático uma vez, com as Orientações para a IA de hoje.'
+              : liberacao.liberado
+                ? `Placar aprovado: ${liberacao.acertos} de ${liberacao.julgados} (${liberacao.percentualTexto}%) nas decisões que geram envio. Você já pode ligar.`
+                : `Para ligar o envio: ${MIN_JULGAMENTOS} julgamentos com ${MIN_ACERTO_PERCENTUAL}% de acerto nas decisões que geram envio. Progresso: ${liberacao.julgados} de ${MIN_JULGAMENTOS}${liberacao.julgados > 0 ? ` (${liberacao.percentualTexto}% de acerto)` : ''}. ${liberacao.faltam > 0 ? `Faltam ${liberacao.faltam}.` : liberacao.motivo ?? ''}`}
         </p>
+        {visao.placarDesde && !aprovadoAntes && <p className="ajuda">O placar recomeçou em {dataHora(visao.placarDesde)} porque as Orientações para a IA mudaram: só contam os julgamentos feitos depois disso.</p>}
         {info && <p className="info">{info}</p>}
         {aviso && <p className="aviso" role="alert">{aviso}</p>}
       </div>

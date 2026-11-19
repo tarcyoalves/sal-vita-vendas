@@ -8,7 +8,14 @@
 //   lembrete ou conversa. Não executa nenhuma ação pedida pela página.
 // - Não faz rede: lê só o que já está guardado na extensão.
 
-export const ORIGENS_EXTERNAS: readonly string[] = ['https://lembretes.salvitarn.com.br', 'http://localhost:5173'];
+export const ORIGENS_EXTERNAS: readonly string[] = ['https://lembretes.salvitarn.com.br'];
+
+/** Só no build de desenvolvimento (npm run build:dev, que também põe o localhost no manifesto: dev/manifest.dev.json). */
+export const ORIGENS_EXTERNAS_DEV: readonly string[] = ['http://localhost:5173'];
+
+/** Definido pelo vite.config.ts (`--mode development`); nos testes e na produção não existe → false. */
+declare const __VZ_DEV__: boolean | undefined;
+const BUILD_DE_DESENVOLVIMENTO = typeof __VZ_DEV__ !== 'undefined' && __VZ_DEV__ === true;
 
 export interface RespostaPing {
   ok: true;
@@ -39,8 +46,9 @@ export function origemDoRemetente(r: Remetente | undefined): string | null {
   }
 }
 
-export function origemPermitida(origem: string | null): boolean {
-  return origem !== null && ORIGENS_EXTERNAS.includes(origem);
+export function origemPermitida(origem: string | null, desenvolvimento: boolean = BUILD_DE_DESENVOLVIMENTO): boolean {
+  if (origem === null) return false;
+  return ORIGENS_EXTERNAS.includes(origem) || (desenvolvimento && ORIGENS_EXTERNAS_DEV.includes(origem));
 }
 
 export function ehPing(m: unknown): boolean {
