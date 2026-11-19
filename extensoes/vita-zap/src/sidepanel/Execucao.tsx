@@ -67,7 +67,7 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
   );
   const [estado, setEstado] = useState<EstadoExecutor | null>(null);
   const [agora, setAgora] = useState(Date.now());
-  const [filtroLista, setFiltroLista] = useState<'todos' | 'pendente' | 'problema' | 'revisar' | 'enviado' | 'pulado'>('todos');
+  const [filtroLista, setFiltroLista] = useState<'todos' | 'pendente' | 'problema' | 'revisar' | 'enviado' | 'pulado' | 'aguardando_crm'>('todos');
 
   useEffect(() => {
     if (!executor) {
@@ -190,8 +190,19 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
           <li><b>{r.pulado}</b> pulados</li>
           <li><b>{r.problema}</b> problemas</li>
           <li><b>{r.revisar}</b> a revisar</li>
+          {r.aguardando_crm > 0 && <li data-aguardando-crm><b>{r.aguardando_crm}</b> aguardando o CRM</li>}
           <li><b>{r.nao_cliente + r.nao_enviar}</b> não enviar</li>
         </ul>
+        {r.aguardando_crm > 0 && !rodando && (
+          <div role="status">
+            <p className="aviso">
+              {r.aguardando_crm} contato(s) não foram abertos nem enviados porque o CRM não respondeu (nem a conferência do "não enviar mais" e dos agendamentos). Ninguém foi perdido.
+            </p>
+            <button type="button" className="pequeno" disabled={donoDoWhatsApp != null && donoDoWhatsApp !== 'campanha'} onClick={() => void executor.conferirCrmNovamente()}>
+              Conferir CRM novamente
+            </button>
+          </div>
+        )}
         {r.problema > 0 && !rodando && (
           <p style={{ marginTop: 8 }}>
             <button type="button" style={{ fontSize: '.82rem', padding: '4px 8px', cursor: 'pointer' }} onClick={() => void executor.recolocarProblemasComoPendentes()}>
@@ -287,7 +298,7 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
                 });
               }}
             >
-              {c.status === 'em_execucao' || r.enviado + r.pulado + r.problema > 0 ? 'Retomar' : 'Iniciar'}
+              {c.status === 'em_execucao' || r.enviado + r.pulado + r.problema + r.aguardando_crm > 0 ? 'Retomar' : 'Iniciar'}
             </button>
           )}
           {rodando && (
@@ -330,14 +341,14 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
       <details className="cartao" open>
         <summary>Contatos da campanha ({c.itens.length})</summary>
         <div className="botoes" style={{ margin: '8px 0', gap: 4 }}>
-          {(['todos', 'pendente', 'problema', 'revisar', 'enviado', 'pulado'] as const).map((st) => (
+          {(['todos', 'pendente', 'problema', 'revisar', 'enviado', 'pulado', ...(r.aguardando_crm > 0 ? (['aguardando_crm'] as const) : [])] as const).map((st) => (
             <button
               key={st}
               type="button"
               className={filtroLista === st ? 'primario pequeno' : 'pequeno'}
               onClick={() => setFiltroLista(st)}
             >
-              {st === 'todos' ? `Todos (${c.itens.length})` : `${st === 'pendente' ? 'Pendentes' : st === 'problema' ? 'Problemas' : st === 'revisar' ? 'Revisar' : st === 'enviado' ? 'Enviados' : 'Pulados'} (${r[st] ?? 0})`}
+              {st === 'todos' ? `Todos (${c.itens.length})` : `${st === 'pendente' ? 'Pendentes' : st === 'problema' ? 'Problemas' : st === 'revisar' ? 'Revisar' : st === 'enviado' ? 'Enviados' : st === 'aguardando_crm' ? 'Aguardando CRM' : 'Pulados'} (${r[st] ?? 0})`}
             </button>
           ))}
         </div>
@@ -382,7 +393,7 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
                     )}
                   </div>
                   <small style={{ marginLeft: 6, color: i.status === 'enviado' ? 'var(--ok)' : i.status === 'problema' ? 'var(--erro)' : 'var(--suave)' }}>
-                    — {i.status.replace('_', ' ')}{i.motivo ? ` (${i.motivo})` : ''}
+                    — {i.status === 'aguardando_crm' ? (i.motivo ?? 'aguardando verificação do CRM') : `${i.status.replace('_', ' ')}${i.motivo ? ` (${i.motivo})` : ''}`}
                   </small>
                 </div>
                 <div style={{ display: 'flex', gap: 4 }}>

@@ -10,6 +10,7 @@ import type { CrmPainel } from './crm';
 import { useEquipe } from './equipe';
 import { ROTULO_ORIGEM_OPT_OUT } from '../shared/equipe';
 import { versaoInstalada } from './versao-instalada';
+import { SeloOptOut } from './SeloOptOut';
 
 interface Props {
   db: Banco;
@@ -146,14 +147,16 @@ export function Dados({ db, dados, aoMudar, crm }: Props) {
 
       <div className="cartao">
         <h3>Não enviar mais ({dados.naoEnviar.length})</h3>
-        <p className="ajuda">Vale para toda a equipe e em todos os computadores (o CRM guarda a lista; aqui fica uma cópia). Tirar daqui tira também do CRM.</p>
+        <p className="ajuda">Vale NESTE computador na hora. Só vale para a equipe e para os outros computadores depois que o CRM confirmar cada contato (o CRM guarda a lista; aqui fica uma cópia). Tirar daqui tira também do CRM.</p>
         {msgNaoEnviar && <p className="info" role="status">{msgNaoEnviar}</p>}
         <ul className="lista">
           {dados.naoEnviar.map((n) => (
             <li key={n.chave}>
               <div className="lista-topo">
                 <span>
-                  <b>{n.nome}</b> <small>— {n.motivo}, {new Date(n.desde).toLocaleDateString('pt-BR')}{n.origem ? ` · ${ROTULO_ORIGEM_OPT_OUT[n.origem]}` : ''}{n.crm ? ' · no CRM' : ''}</small>
+                  <b>{n.nome}</b> <small>— {n.motivo}, {new Date(n.desde).toLocaleDateString('pt-BR')}{n.origem ? ` · ${ROTULO_ORIGEM_OPT_OUT[n.origem]}` : ''}</small>
+                  <br />
+                  <small><SeloOptOut n={n} equipe={equipe} aoMudar={aoMudar} /></small>
                 </span>
                 <button
                   type="button"

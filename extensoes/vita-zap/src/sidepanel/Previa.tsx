@@ -17,6 +17,7 @@ import { normalizarTexto } from '../shared/nomes';
 import type { ResultadoTrava } from '../shared/trava-agendamento';
 import { useTrava } from './trava';
 import { useEquipe, useVersaoEquipe } from './equipe';
+import { AvisoOptOutPendente } from './SeloOptOut';
 import { contatadoPelaEquipe, indisponibilidadeDaEquipe } from './sincronia-equipe';
 
 interface Props {
@@ -516,6 +517,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
 
   return (
     <section>
+      <AvisoOptOutPendente naoEnviar={dados.naoEnviar} equipe={equipe} aoMudar={aoMudar} />
       {equipeIndisponivel && (
         <p className="aviso" role="alert">
           Não consegui consultar o "não enviar mais" e os contatos da equipe no CRM ({equipeIndisponivel}). O "não enviar mais" deste computador continua valendo e o envio confere de novo antes de cada contato: o automático NÃO envia sem conferir, e o manual só avisa.

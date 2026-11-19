@@ -486,7 +486,7 @@ export function aplicarResultadoCampanhaReativacao(registros: ReadonlyArray<Reat
   const agoraIso = agora.toISOString();
   return registros.map((r) => {
     const item = porChave.get(r.chave);
-    if (!item || item.status === 'pendente') return r;
+    if (!item || item.status === 'pendente' || item.status === 'aguardando_crm') return r; // aguardando_crm: ainda nao foi decidido (envio manual esperando o CRM)
     if (item.status === 'enviado') {
       if (r.estado !== 'pronto') return r;
       const em = enviadoEm.get(r.chave) ?? item.atualizadoEm ?? agoraIso;

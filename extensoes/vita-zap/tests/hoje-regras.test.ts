@@ -160,3 +160,14 @@ describe('barra de abas (a 400 px sem cortar e sem remover função)', () => {
     for (const id of ['lembretes', 'acompanhar', 'clientes', 'varredura', 'previa', 'execucao', 'followup', 'reativacao', 'automaticos', 'pedir', 'dados']) expect(ABAS.map((a) => a.id)).toContain(id);
   });
 });
+
+describe('"não enviar mais" pendente de sincronização (0.7.62)', () => {
+  it('avisa quantos valem só neste computador; some quando o CRM confirmou todos', () => {
+    const n = (chave: string, crm?: boolean) => ({ chave, nome: chave, desde: AGORA.toISOString(), motivo: 'x', ...(crm === undefined ? {} : { crm }) });
+    const a = resumirHoje(entrada({ naoEnviar: [n('ana', true), n('bia'), n('caio', false)] })).alertas.find((x) => x.id === 'optout-pendente');
+    expect(a?.texto).toContain('2 contato(s)');
+    expect(a?.texto).toContain('só neste computador');
+    expect(a?.destino).toBe('dados');
+    expect(resumirHoje(entrada({ naoEnviar: [n('ana', true)] })).alertas.some((x) => x.id === 'optout-pendente')).toBe(false);
+  });
+});

@@ -5,8 +5,13 @@ import { registrarProblema } from './politica';
 import { montarMensagem, sortearModelo, usaPrimeiroNome, validarModelo } from './texto';
 import { primeiroNome as extrairPrimeiroNome } from './nomes';
 
-/** 'revisar': pode ter saído, ou a conversa não foi confirmada. Nunca é reenviado sozinho; o atendente confere. */
-export type StatusItem = 'pendente' | 'enviado' | 'pulado' | 'nao_cliente' | 'problema' | 'nao_enviar' | 'revisar';
+/**
+ * 'revisar': pode ter saído, ou a conversa não foi confirmada. Nunca é reenviado sozinho; o atendente confere.
+ * 'aguardando_crm' (0.7.62): envio MANUAL cujo contato não pôde ser conferido no CRM (opt-out/contatados da equipe ou trava de
+ * agendamento indisponíveis). Nada foi aberto nem colado. Não é bloqueio ('pulado'/'nao_enviar') nem envio: volta a 'pendente' em
+ * "Conferir CRM novamente" ou ao retomar a campanha.
+ */
+export type StatusItem = 'pendente' | 'enviado' | 'pulado' | 'nao_cliente' | 'problema' | 'nao_enviar' | 'revisar' | 'aguardando_crm';
 export type StatusCampanha = 'rascunho' | 'em_execucao' | 'pausada' | 'concluida';
 
 export interface ItemCampanha {
@@ -111,7 +116,7 @@ export function proximoPendente(c: Campanha): ItemCampanha | null {
 }
 
 export function resumo(c: Campanha): Record<StatusItem, number> {
-  const r: Record<StatusItem, number> = { pendente: 0, enviado: 0, pulado: 0, nao_cliente: 0, problema: 0, nao_enviar: 0, revisar: 0 };
+  const r: Record<StatusItem, number> = { pendente: 0, enviado: 0, pulado: 0, nao_cliente: 0, problema: 0, nao_enviar: 0, revisar: 0, aguardando_crm: 0 };
   for (const i of c.itens) r[i.status] += 1;
   return r;
 }
@@ -146,7 +151,8 @@ export function marcarItem(
     problemasSeguidos = 0;
   }
   const novo: Campanha = { ...c, itens, problemasSeguidos, status: statusCampanha, motivoPausa };
-  if (statusCampanha === 'em_execucao' && !novo.itens.some((i) => i.status === 'pendente')) {
+  // Quem aguarda o CRM ainda não foi decidido: a campanha não conclui sozinha (o Executor pausa e oferece "Conferir CRM novamente").
+  if (statusCampanha === 'em_execucao' && !novo.itens.some((i) => i.status === 'pendente' || i.status === 'aguardando_crm')) {
     return { ...novo, status: 'concluida', motivoPausa: null };
   }
   return novo;

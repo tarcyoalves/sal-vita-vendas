@@ -1,5 +1,5 @@
 // A equipe no Executor (0.7.60): antes de abrir cada contato (campanha comum, cobrança, reativação) o "não enviar mais" e o contato
-// recente de QUALQUER atendente são conferidos; CRM fora do ar = automático pausa (falha fechada), manual só avisa; depois do envio a
+// recente de QUALQUER atendente são conferidos; CRM fora do ar = automático pausa (falha fechada), manual fica 'aguardando_crm' (0.7.62); depois do envio a
 // equipe é avisada e o texto enviado entra na contagem local.
 
 import 'fake-indexeddb/auto';
@@ -91,12 +91,12 @@ for (const tipo of [undefined, 'followup', 'reativacao'] as const) {
       expect(t.ex.atual.mensagem).toContain('não enviar mais');
     });
 
-    it('CRM fora do ar no envio MANUAL: só avisa e cola (quem envia é você)', async () => {
+    it('CRM fora do ar no envio MANUAL (0.7.62): NÃO abre nem cola; o contato fica "aguardando verificação do CRM"', async () => {
       const t = await montar(tipo, ['Ana'], () => ({ tipo: 'indisponivel', motivo: 'sem rede' }), false);
       await t.ex.iniciar();
-      expect(t.colados).toEqual(['Ana']);
-      expect(t.ex.atual.fase).toBe('aguardando_envio');
-      expect(t.ex.atual.avisoTrava).toMatch(/não enviar mais/);
+      expect(t.colados).toEqual([]);
+      expect(t.ex.atual.campanha.itens[0]).toMatchObject({ status: 'aguardando_crm', motivo: expect.stringMatching(/Aguardando verificação do CRM.*não enviar mais.*sem rede/) });
+      expect(t.ex.atual.fase).toBe('parada');
     });
   });
 }

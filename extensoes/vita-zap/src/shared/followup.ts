@@ -437,7 +437,7 @@ export function aplicarResultadoCampanha(followups: ReadonlyArray<Followup>, cam
   const enviadoEm = new Map(envios.filter((e) => e.campanhaId === campanha.id).map((e) => [e.chave, e.enviadoEm]));
   return followups.map((f) => {
     const item = porChave.get(f.chave);
-    if (!item || item.status === 'pendente') return f;
+    if (!item || item.status === 'pendente' || item.status === 'aguardando_crm') return f; // aguardando_crm: ainda nao foi decidido (envio manual esperando o CRM)
     const agoraIso = agora.toISOString();
     if (item.status === 'enviado') {
       // Idempotente (o Executor publica várias vezes) e vale também para 'monitorando': uma cobrança que saiu NUNCA

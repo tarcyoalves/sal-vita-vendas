@@ -57,7 +57,13 @@ export type ResultadoEquipe =
   | { tipo: 'bloqueado'; status: 'nao_enviar' | 'pulado'; motivo: string }
   | { tipo: 'indisponivel'; motivo: string };
 
-export type ResultadoSincronia = { ok: true; novos: number; removidos: number; enviados: number; mudou: boolean } | { ok: false; motivo: string };
+/**
+ * `pendentes` = "não enviar mais" marcados aqui que o CRM ainda NÃO confirmou (valem neste computador, não "para a equipe").
+ * ok:true só quando não sobra nenhum; falha de envio (total ou parcial) volta ok:false com o que ficou pendente.
+ */
+export type ResultadoSincronia =
+  | { ok: true; novos: number; removidos: number; enviados: number; mudou: boolean; pendentes: 0 }
+  | { ok: false; motivo: string; pendentes: number; novos?: number; removidos?: number; enviados?: number; mudou?: boolean };
 
 // ── Estado compartilhado do painel (um por janela) ───────────────────────────
 
@@ -68,10 +74,12 @@ interface EstadoDoPainel {
   consultadoEm: Map<string, number>;
   /** Por que a equipe está indisponível agora (null = tudo certo na última tentativa). */
   indisponivel: string | null;
+  /** Por que a última tentativa de subir cada "não enviar mais" ao CRM falhou (chave local → motivo). Só enquanto pendente. */
+  falhasOptOut: Map<string, string>;
   versao: number;
 }
 
-const estado: EstadoDoPainel = { contatados: new Map(), consultadoEm: new Map(), indisponivel: null, versao: 0 };
+const estado: EstadoDoPainel = { contatados: new Map(), consultadoEm: new Map(), indisponivel: null, falhasOptOut: new Map(), versao: 0 };
 const ouvintes = new Set<() => void>();
 
 function mudou(): void {
@@ -85,6 +93,8 @@ export function contatadoPelaEquipe(): ReadonlyMap<string, string> {
 }
 
 export const indisponibilidadeDaEquipe = (): string | null => estado.indisponivel;
+/** Motivo da última falha ao subir este "não enviar mais" ao CRM (null = sem falha registrada nesta sessão do painel). */
+export const falhaDoOptOut = (chave: string): string | null => estado.falhasOptOut.get(chave) ?? null;
 export const versaoDaEquipe = (): number => estado.versao;
 
 export function aoMudarEquipe(fn: () => void): () => void {
@@ -97,6 +107,7 @@ export function zerarEstadoDaEquipe(): void {
   estado.contatados.clear();
   estado.consultadoEm.clear();
   estado.indisponivel = null;
+  estado.falhasOptOut.clear();
   estado.versao = 0;
 }
 
@@ -132,8 +143,13 @@ export async function sincronizarOptOuts(d: DependenciasEquipe, opcoes: { forcar
     r = { ok: false as const, motivo: e instanceof Error ? e.message : String(e) };
   }
   if (!r.ok) {
+    // Não deu nem para ler o CRM: tudo que ainda não foi confirmado fica PENDENTE (vale aqui), com o motivo à vista.
+    const pendentesLocais = (await listarNaoEnviar(d.db)).filter((n) => n.crm !== true);
+    const mudouMotivo = pendentesLocais.some((n) => estado.falhasOptOut.get(n.chave) !== r.motivo);
+    for (const n of pendentesLocais) estado.falhasOptOut.set(n.chave, r.motivo);
     indisponivel(r.motivo);
-    return { ok: false, motivo: r.motivo };
+    if (mudouMotivo) mudou();
+    return { ok: false, motivo: r.motivo, pendentes: pendentesLocais.length };
   }
   const locais = await listarNaoEnviar(d.db);
   const telLocais = new Map<string, string | null>();
@@ -152,8 +168,11 @@ export async function sincronizarOptOuts(d: DependenciasEquipe, opcoes: { forcar
   for (const n of plano.novosLocais) await marcarNaoEnviar(d.db, n, { semAvisar: true });
   for (const chave of plano.removerLocais) await desmarcarNaoEnviar(d.db, chave);
   await confirmarNoCrm(d.db, plano.confirmar);
+  for (const chave of [...plano.confirmar, ...plano.removerLocais]) estado.falhasOptOut.delete(chave);
 
   let enviados = 0;
+  let pendentes = 0;
+  let falha: string | null = null;
   if (plano.paraEnviar.length > 0) {
     const itens = plano.paraEnviar.map((l) => ({
       ...refDoContato(l.nome, telLocais.get(l.chave)),
@@ -167,14 +186,35 @@ export async function sincronizarOptOuts(d: DependenciasEquipe, opcoes: { forcar
     } catch (e) {
       s = { ok: false as const, motivo: e instanceof Error ? e.message : String(e) };
     }
-    if (s.ok) {
-      await confirmarNoCrm(d.db, plano.paraEnviar.map((l) => l.chave));
-      enviados = plano.paraEnviar.length;
-    } else indisponivel(s.motivo);
+    // Quem vale como "confirmado" é o que o CRM DEVOLVE na lista (nunca só o "ok" da gravação): lote que falhou no meio e CRM que
+    // aceitou só parte do lote deixam o resto pendente. Se nem a lista voltar, nada é dado como confirmado.
+    let confirmados: string[] = [];
+    let motivoSemLista: string | null = null;
+    try {
+      const v = await d.repo.optOutsDaEquipe({ forcar: true });
+      if (v.ok) confirmados = planejarOptOuts(plano.paraEnviar, v.lista, [], (n) => telLocais.get(n.chave) ?? null).confirmar;
+      else motivoSemLista = v.motivo;
+    } catch (e) {
+      motivoSemLista = e instanceof Error ? e.message : String(e);
+    }
+    await confirmarNoCrm(d.db, confirmados);
+    enviados = confirmados.length;
+    const feitos = new Set(confirmados);
+    const restantes = plano.paraEnviar.filter((l) => !feitos.has(l.chave));
+    for (const chave of feitos) estado.falhasOptOut.delete(chave);
+    pendentes = restantes.length;
+    if (pendentes > 0) {
+      falha = !s.ok ? s.motivo : motivoSemLista ? `não consegui confirmar no CRM (${motivoSemLista})` : 'o CRM não confirmou este contato';
+      for (const l of restantes) estado.falhasOptOut.set(l.chave, falha);
+      indisponivel(falha);
+      mudou();
+    }
   }
-  if (estado.indisponivel !== null) indisponivel(null);
-  if (plano.novosLocais.length + plano.removerLocais.length > 0) mudou(); // a tela Hoje e a prévia recalculam
-  return { ok: true, novos: plano.novosLocais.length, removidos: plano.removerLocais.length, enviados, mudou: plano.novosLocais.length + plano.removerLocais.length > 0 };
+  if (falha === null && estado.indisponivel !== null) indisponivel(null);
+  const mudouLista = plano.novosLocais.length + plano.removerLocais.length > 0;
+  if (mudouLista) mudou(); // a tela Hoje e a prévia recalculam
+  if (falha !== null) return { ok: false, motivo: falha, pendentes, novos: plano.novosLocais.length, removidos: plano.removerLocais.length, enviados, mudou: mudouLista };
+  return { ok: true, novos: plano.novosLocais.length, removidos: plano.removerLocais.length, enviados, mudou: mudouLista, pendentes: 0 };
 }
 
 async function confirmarNoCrm(db: Banco, chaves: ReadonlyArray<string>): Promise<void> {
@@ -250,9 +290,10 @@ export async function enviarContatos(d: DependenciasEquipe): Promise<{ ok: true;
 /** Ao abrir o painel: o "não enviar mais" e os envios daqui, nos dois sentidos. */
 export async function sincronizarTudo(d: DependenciasEquipe, opcoes: { forcar?: boolean } = {}): Promise<ResultadoSincronia> {
   const opt = await sincronizarOptOuts(d, opcoes);
-  if (!opt.ok) return opt;
+  if (!opt.ok && opt.novos === undefined) return opt; // nem a leitura do CRM funcionou
   const env = await enviarContatos(d);
-  return env.ok ? opt : { ok: false, motivo: env.motivo };
+  if (!opt.ok) return opt; // falha ao subir o "não enviar mais": continua pendente (os envios acima subiram se deu)
+  return env.ok ? opt : { ok: false, motivo: env.motivo, pendentes: 0 };
 }
 
 // ── Contato registrado: consultar quem foi contatado pela equipe ─────────────
@@ -294,8 +335,9 @@ export async function atualizarContatados(d: DependenciasEquipe, contatos: Reado
 export async function preparar(d: DependenciasEquipe, contatos: ReadonlyArray<ContatoParaEquipe>, opcoes: { forcar?: boolean } = {}): Promise<{ mudouLista: boolean }> {
   try {
     const s = await sincronizarOptOuts(d, opcoes);
-    if (s.ok) await atualizarContatados(d, contatos, opcoes);
-    return { mudouLista: s.ok && s.mudou };
+    // Falha ao SUBIR (a leitura funcionou, `novos` presente) não impede a consulta de contatados; falha ao LER sim.
+    if (s.ok || s.novos !== undefined) await atualizarContatados(d, contatos, opcoes);
+    return { mudouLista: s.mudou === true };
   } catch (e) {
     indisponivel(e instanceof Error ? e.message : String(e));
     return { mudouLista: false };

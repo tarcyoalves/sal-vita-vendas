@@ -103,7 +103,7 @@ export function App() {
     void equipe
       .sincronizar({ forcar: true })
       .then(async (r) => {
-        if (vivo && r.ok && r.mudou) void recarregar();
+        if (vivo) void recarregar(); // confirmado/pendente mudam o rótulo de cada "não enviar mais"
         // Quem a equipe contatou há pouco (uma consulta em lote, cache de 5 min): a tela Hoje e a prévia já abrem certas.
         if (vivo && r.ok && db) await equipe.preparar((await listarContatos(db)).filter((c) => c.temConversa && !c.soNumero && !c.pareceGrupo).map((c) => ({ nome: c.nome, chave: c.chave })));
       })
@@ -112,7 +112,7 @@ export function App() {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         void equipe.sincronizar({ soOptOuts: true }).then((r) => {
-          if (vivo && r.ok && r.mudou) void recarregar();
+          if (vivo) void recarregar();
         });
       }, 1500);
     });

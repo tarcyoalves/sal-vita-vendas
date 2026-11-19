@@ -67,6 +67,12 @@ export interface CrmFalso {
   equipe: { optOuts: Array<LinhaOptOut & { chave: string; nome: string | null; criadoEm: Date }>; envios: Array<LinhaEnvio & { chave: string }> };
   /** A lista de opt-outs vem cortada (limite). */
   optOutsTruncados: boolean;
+  /** marcarOptOuts: a N-ésima chamada (1 = primeira, contando desde que isto foi definido) devolve erro 500; null = nunca. */
+  marcarOptOutsFalhaNa: number | null;
+  /** marcarOptOuts: o servidor responde ok mas NÃO guarda os itens cujo nome passa neste teste (confirmação parcial). */
+  marcarOptOutsIgnorar: ((nome: string) => boolean) | null;
+  /** Chamadas a marcarOptOuts desde que o contador foi zerado. */
+  marcarOptOutsChamadas: number;
   fetch: typeof fetch;
   transporte: Transporte;
   chamadas(caminho: string): Requisicao[];
@@ -97,6 +103,9 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
     semZapContatos: false,
     equipe: { optOuts: [], envios: [] },
     optOutsTruncados: false,
+    marcarOptOutsFalhaNa: null,
+    marcarOptOutsIgnorar: null,
+    marcarOptOutsChamadas: 0,
     fetch: undefined as unknown as typeof fetch,
     transporte: undefined as unknown as Transporte,
     chamadas: (c) => crm.requisicoes.filter((r) => r.url.pathname === `/api/trpc/${c}`),
@@ -237,8 +246,11 @@ export function criarCrmFalso(tasks: TaskFalsa[] = [], agora: () => number = Dat
       const d = (dados ?? {}) as Record<string, unknown>;
       if (caminho === 'zapContatos.listarOptOuts') return ok({ itens: crm.equipe.optOuts, truncado: crm.optOutsTruncados, consultadoEm: new Date(agora()) });
       if (caminho === 'zapContatos.marcarOptOuts') {
+        crm.marcarOptOutsChamadas += 1;
+        if (crm.marcarOptOutsFalhaNa === crm.marcarOptOutsChamadas) return erroTrpc(500, 'INTERNAL_SERVER_ERROR', 'falha ao gravar');
         let criados = 0;
         for (const it of d.itens as Array<{ telefone?: string; nomeHash: string; nome?: string; origem: string; marcadoEm?: Date }>) {
+          if (crm.marcarOptOutsIgnorar?.(it.nome ?? '')) continue;
           const ref = normalizarRef(it);
           const chave = chaveDoContato(ref.telefone, ref.nomeHash);
           if (crm.equipe.optOuts.some((o) => o.chave === chave)) continue;

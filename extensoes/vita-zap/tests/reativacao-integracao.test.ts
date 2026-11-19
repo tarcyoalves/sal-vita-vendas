@@ -268,12 +268,11 @@ describe('a trava vale para a CAMPANHA COMUM e para a cobrança: o Executor conf
     });
   }
 
-  it('campanha comum em envio MANUAL com o CRM indisponível: AVISA e segue (quem aperta Enter é você)', async () => {
+  it('campanha comum em envio MANUAL com o CRM indisponível (0.7.62): não abre nem cola; fica aguardando o CRM, com o motivo', async () => {
     const t = await montar(undefined, ['Ana'], () => ({ tipo: 'indisponivel', motivo: 'sem rede' }), false);
     await t.ex.iniciar();
-    expect(t.colados).toEqual(['Ana']);
-    expect(t.ex.atual.avisoTrava).toMatch(/Não consegui conferir os agendamentos do CRM \(sem rede\)/);
-    expect(t.ex.atual.fase).toBe('aguardando_envio');
+    expect(t.colados).toEqual([]);
+    expect(t.ex.atual.campanha.itens[0]).toMatchObject({ status: 'aguardando_crm', motivo: expect.stringMatching(/agendamentos \(sem rede\)/) });
   });
 
   it('campanha comum em envio MANUAL com agendamento: também pula (o agendamento prevalece sempre)', async () => {

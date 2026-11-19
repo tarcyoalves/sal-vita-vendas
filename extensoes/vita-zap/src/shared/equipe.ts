@@ -299,3 +299,28 @@ export function tipoDoEnvio(campanha: { tipo?: 'followup' | 'reativacao' }): Tip
 export function origemDaCampanha(campanha: { tipo?: 'followup' | 'reativacao' }): OrigemOptOut {
   return campanha.tipo === 'followup' ? 'cobranca' : campanha.tipo === 'reativacao' ? 'reativacao' : 'campanha';
 }
+
+// ── "Não enviar mais": o que vale ONDE (v0.7.62) ─────────────────────────────
+
+export const ROTULO_BLOQUEIO_EQUIPE = 'Bloqueado para a equipe';
+export const ROTULO_BLOQUEIO_LOCAL = 'Bloqueado neste computador · sincronização pendente';
+
+export interface EstadoDoOptOut {
+  /** `equipe`: o CRM CONFIRMOU este contato. `neste_computador`: vale aqui, o CRM ainda não confirmou. */
+  tipo: 'equipe' | 'neste_computador';
+  rotulo: string;
+  /** Motivo da última falha ao subir (só pendente e só se houve tentativa que falhou). */
+  detalhe: string | null;
+}
+
+/** Estado POR CONTATO: só o CRM confirmar (`crm === true`) vira "para a equipe". */
+export function estadoDoOptOut(n: Pick<NaoEnviar, 'crm'>, falha: string | null = null): EstadoDoOptOut {
+  if (n.crm === true) return { tipo: 'equipe', rotulo: ROTULO_BLOQUEIO_EQUIPE, detalhe: null };
+  return { tipo: 'neste_computador', rotulo: ROTULO_BLOQUEIO_LOCAL, detalhe: falha ? `última falha: ${falha}` : null };
+}
+
+export const pendentesDeSincronia = (naoEnviar: ReadonlyArray<Pick<NaoEnviar, 'crm'>>): number => naoEnviar.filter((n) => n.crm !== true).length;
+
+/** Mensagem ao marcar: nunca diz "equipe" antes da confirmação do CRM. */
+export const textoAoMarcarNaoEnviar = (quantidade: number): string =>
+  `${quantidade} contato(s) bloqueado(s) neste computador · sincronização pendente. O bloqueio já vale aqui; o CRM ainda vai confirmar.`;

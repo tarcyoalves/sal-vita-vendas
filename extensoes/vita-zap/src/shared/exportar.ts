@@ -117,7 +117,7 @@ const itemSchema = z.object({
   nome: z.string(),
   primeiroNome: z.string(),
   modelo: z.string(),
-  status: z.enum(['pendente', 'enviado', 'pulado', 'nao_cliente', 'problema', 'nao_enviar', 'revisar']),
+  status: z.enum(['pendente', 'enviado', 'pulado', 'nao_cliente', 'problema', 'nao_enviar', 'revisar', 'aguardando_crm']),
   motivo: z.string().nullable(),
   atualizadoEm: z.string().nullable(),
 });
@@ -282,6 +282,7 @@ const ROTULO_STATUS: Record<string, string> = {
   problema: 'problema',
   nao_enviar: 'não enviar mais',
   revisar: 'revisar (conferir no WhatsApp)',
+  aguardando_crm: 'aguardando verificação do CRM',
 };
 
 /** Uma linha por contato de cada campanha. Não inclui telefone (a extensão não guarda). */

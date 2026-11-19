@@ -10,6 +10,7 @@ import type { Followup } from './followup';
 import { textoDaPrevisao, type PrevisaoDaFila } from './fila';
 import { historicoSumindo, textoDoAviso } from './historico-sumindo';
 import type { ConfigReativacao, Reativacao } from './reativacao';
+import { pendentesDeSincronia } from './equipe';
 import type { Envio, NaoEnviar } from './exportar';
 
 /** Abas do painel que a tela Hoje sabe abrir. */
@@ -163,6 +164,8 @@ export function resumirHoje(e: EntradaHoje): ResumoHoje {
   const alertas: AlertaHoje[] = [];
   if (!e.logadoNoCrm) alertas.push({ id: 'crm-login', tipo: 'crm', texto: 'Sem login no CRM: o envio automático não roda e a trava de agendamento não confere. Entre na aba Dados.', destino: 'dados' });
   else if (e.crmIndisponivel) alertas.push({ id: 'crm', tipo: 'crm', texto: `CRM indisponível (${e.crmIndisponivel}). O "não enviar mais" deste computador vale, mas o envio automático pausa e a campanha manual só avisa.`, destino: 'dados' });
+  const semConfirmar = pendentesDeSincronia(e.naoEnviar);
+  if (semConfirmar > 0) alertas.push({ id: 'optout-pendente', tipo: 'crm', texto: `${semConfirmar} contato(s) em "Não enviar mais" estão bloqueados só neste computador (sincronização pendente: o CRM ainda não confirmou). Abra Dados e use "Tentar sincronizar".`, destino: 'dados' });
   if (e.falhaDaIa) alertas.push({ id: 'ia', tipo: 'ia', texto: `IA indisponível desde ${hhmm(e.falhaDaIa.em)} (${e.falhaDaIa.motivo}). Nada é decidido nem cobrado sem ela; a próxima rodada tenta de novo.`, destino: 'automaticos' });
   if (e.followupPausado) alertas.push({ id: 'pausa-followup', tipo: 'pausa', texto: 'Cobrança do follow-up pausada por você: nada é cobrado sozinho até retomar.', destino: 'followup' });
   if (e.reativacaoPausada) alertas.push({ id: 'pausa-reativacao', tipo: 'pausa', texto: 'Reativação pausada por você: nada é enviado até retomar.', destino: 'reativacao' });
