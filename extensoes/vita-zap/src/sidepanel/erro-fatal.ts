@@ -21,7 +21,7 @@ export function recarregarPainel(): void {
 }
 
 /** Tecla que aciona o botão de recarregar: Enter ou Espaço. */
-export function teclaDeAcionar(e: Pick<KeyboardEvent, 'key'>): boolean {
+export function teclaDeAcionar(e: { key: string }): boolean {
   return e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar';
 }
 

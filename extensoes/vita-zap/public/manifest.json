@@ -16,13 +16,9 @@
     "https://web.whatsapp.com/*",
     "https://lembretes.salvitarn.com.br/*"
   ],
-  "optional_host_permissions": [
-    "http://localhost/*"
-  ],
   "externally_connectable": {
     "matches": [
-      "https://lembretes.salvitarn.com.br/*",
-      "http://localhost:5173/*"
+      "https://lembretes.salvitarn.com.br/*"
     ]
   },
   "background": {

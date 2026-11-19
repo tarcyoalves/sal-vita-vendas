@@ -102,6 +102,17 @@ flutua por cima com sombra e há um único `console.warn`.
 - Painel lateral, aba **Dados**: "Mostrar barra superior" (padrão ligado). Desligada, volta o layout antigo.
 - Nenhuma consulta periódica ao CRM: a barra só usa o que já está em memória/cache (testes `crm-consumo*`).
 
+**Manifesto de produção × desenvolvimento.** `public/manifest.json` (o que vai no `dist/` e no zip) **não tem** `localhost`
+nem `127.0.0.1` em lugar nenhum: o build de produção falha (plugin em `vite.config.ts` + `dev/manifesto.mjs`) e o teste
+`tests/manifesto-producao.test.ts` reprova se aparecer. Para desenvolver contra um CRM local rode `npm run build:dev`
+(`--mode development`): `dev/manifest.dev.json` acrescenta `http://localhost/*` em `optional_host_permissions` e
+`http://localhost:5173/*` em `externally_connectable`, marca o nome como "Vita Zap (dev)" e liga a origem de dev em
+`background/externo.ts`. Esse `dist/` é só para a sua máquina; **`npm run publicar` usa sempre o build de produção.**
+
+**Painel que não abre.** Se o painel falhar ao carregar, aparece uma tela simples com o botão **Recarregar painel**
+(clique, Enter ou Espaço) e um código de suporte curto (`VZ-XXXXXX`); o detalhe do erro vai só para o console. A tela é
+montada sem HTML inline (a CSP das extensões bloqueia `onclick=`); `tests/painel-recarregar.test.ts` confere.
+
 **Harness visual** (sem o WhatsApp real): `npm run harness` faz o build e serve em http://localhost:5288/ uma
 página estática que imita a estrutura do WhatsApp Web e carrega `dist/content.js` com um `chrome.*` falso.
 Adicione `?crm=1` para simular login e um lead na conversa aberta. Serve para ver layout, tema e rolagem; **não
@@ -206,7 +217,15 @@ e salve. Sem isso nenhuma campanha roda. Confira também se o WhatsApp Web está
 3. **Envio** — clique em *Iniciar*. Para cada contato a extensão:
    1. procura o nome na busca, abre a conversa e confere o nome no cabeçalho;
    2. confere que é conversa individual (não grupo/transmissão) por **sinal positivo** (ver 3.2.2);
-   3. cola o texto na caixa de mensagem (se já houver rascunho seu, não mexe e marca problema);
+   3. cola o texto na caixa de mensagem. **Caixa vazia** → cola. **Exatamente o texto da campanha** (mesma normalização de
+      espaços, quebras de linha e emoji de sempre) → já está pronto, não reescreve. **Qualquer outra coisa** (texto a meio,
+      texto a mais, texto diferente) é rascunho seu: **não mexe**, o painel mostra "Já há um texto na caixa" e pergunta
+      **Manter o rascunho** (o contato vai para "revisar", sem contar no freio) ou **Substituir pelo texto da campanha**
+      (só com o seu clique; só escreve na caixa, nunca clica em enviar). No **envio automático** nunca substitui: o contato
+      vai para "revisar" e a campanha segue. Os lembretes seguem a mesma regra (`abrirEPrepararRascunho`);
+   3b. ao **Pausar/Pular**, só apaga da caixa o texto que a PRÓPRIA extensão colou, se a conversa aberta ainda é a da colagem e
+      o texto continua intacto (o content script guarda o que colou e em qual conversa). Rascunho seu, texto editado depois ou
+      outra conversa: não apaga nada;
    4. **para e espera**. Você clica na caixa do WhatsApp, confere e aperta **Enter** (com o envio automático
       desligado, que é o padrão; ver 3.2.1);
    5. percebe a mensagem nova no chat, registra o envio, espera 60–120 s e abre o próximo.
@@ -317,7 +336,7 @@ em **Entrar**. Na primeira vez o Chrome pede permissão para acessar o endereço
 permissão opcional, pedida só aqui). A **senha não é guardada**: só a sessão do CRM (cookie de 7 dias do
 próprio navegador). O mesmo bloco mostra "Conectado como …", **Sincronizar lembretes agora**, **Sair**,
 as ações que estão esperando a internet e as que o CRM recusou. O endereço do CRM é editável (só
-`https://`, ou `http://localhost`); trocar o endereço derruba a sessão.
+`https://`, ou `http://localhost` só em build de desenvolvimento, ver abaixo); trocar o endereço derruba a sessão.
 
 **Faixa do lead** (logo abaixo do cabeçalho da conversa aberta, só com login):
 
@@ -571,7 +590,8 @@ número salvo como "CLIENTE TESTE").
 - [ ] Aperte Enter no WhatsApp: o painel registra "enviado" e mostra a contagem do intervalo.
 - [ ] Após o intervalo, abre o próximo sozinho.
 - [ ] *Pular* tira o texto da caixa e abre o próximo.
-- [ ] Deixe um rascunho seu num contato da lista: a extensão não sobrescreve (marca problema).
+- [ ] Deixe um rascunho seu num contato da lista (prefixo, texto a mais ou diferente): a extensão não sobrescreve e pergunta *Manter o rascunho* / *Substituir pelo texto da campanha*. Com o texto idêntico ao da campanha, deixa como está.
+- [ ] *Pausar* com o texto colado por ela, intacto: tira. Edite o texto (ou troque de conversa) e pause: não tira.
 - [ ] *Não enviar mais*: o contato some das próximas prévias (aba Dados lista ele).
 - [ ] *Pausar* e *Retomar* funcionam; fechar o painel pausa.
 - [ ] Contato inexistente/renomeado 3 vezes seguidas → campanha pausa (freio).
@@ -712,7 +732,7 @@ Aba **Pedir à IA**: escreva em português o que quer achar ("clientes a quem pe
 Aba **Automáticos** (nova). Um modo vale para a cobrança do Follow-up e para a Reativação: **Desligado | Observação | Ligado**.
 
 - **Observação.** Tudo roda igual (lê, classifica, decide, prepara o texto), mas **nada** é enviado, agendado no CRM nem marcado "Não enviar mais" (nem o resumo vai para as notas do lead). Cada decisão vira um item "o que a IA faria" com **Acertou** / **Errou** (motivo curto opcional e a decisão certa numa lista). O **placar** mostra acertos/total por tipo de decisão (cobrar, retomar, agendar, chamar você, resolver, sair); os últimos 200 julgamentos ficam no IndexedDB (loja nova `julgamentos`).
-- **Ligar o envio pela primeira vez** exige 30 julgamentos com 90% de acerto nas decisões que geram envio (cobrar e retomar); constantes `MIN_JULGAMENTOS` e `MIN_ACERTO_PERCENTUAL` em `shared/automaticos.ts`. Abaixo disso, o botão "Ligado" explica por quê ("Faltam N"). Quem estava ligado em versão anterior **cai para Observação**, com aviso. Depois da primeira aprovação, ligar de novo só pede a confirmação do risco.
+- **Ligar o envio pela primeira vez** exige 30 julgamentos com 90% de acerto nas decisões que geram envio (cobrar e retomar); constantes `MIN_JULGAMENTOS` e `MIN_ACERTO_PERCENTUAL` em `shared/automaticos.ts`. A comparação usa a **proporção exata** (`acertos × 100 ≥ 90 × total`, em inteiros): 27/30 passa; 35/39 (89,7%) **não passa** mesmo arredondando para 90%; o arredondamento só vale na exibição (e a tela mostra "89,7%" nesses casos). **A aprovação vale para as Orientações para a IA da época:** junto da aprovação fica o hash das Orientações (só o hash, nunca o texto; registro `aprovacaoPlacar` em `followupConfig`). Se as Orientações mudarem, a aprovação anterior é cancelada (os dois automáticos perdem `placarAprovado`, quem estava Ligado cai para Observação) e o placar recomeça: só contam julgamentos feitos depois da mudança. A comparação roda ao abrir a aba Automáticos, ao ligar o modo e ao salvar as Orientações (aba Pedir à IA). Aprovação de **registro antigo** (feita antes deste controle, sem hash) continua valendo, mas a tela diz **"Aprovado anteriormente"**; ela passa a ser amarrada às Orientações de hoje e, se você mudá-las, também é cancelada. Abaixo disso, o botão "Ligado" explica por quê ("Faltam N"). Quem estava ligado em versão anterior **cai para Observação**, com aviso. Depois da primeira aprovação, ligar de novo só pede a confirmação do risco.
 - **Releitura antes de cada envio automático** (cobrança e reativação): o Executor, no ponto único por onde todo envio passa, relê a conversa (`lerConversa`, só leitura) e só segue se a última mensagem ainda é nossa e o cliente não escreveu desde a decisão. Respondeu: não envia, não cola nada, não conta no freio e o contato volta para a classificação. Dúvida (mensagem nossa não achada, conversa vazia, identidade não confere): não envia. O Executor também confere o modo gravado: Observação e Desligado pausam sem enviar. Campanha comum e envio manual não mudam.
 - **Prioridade e previsão da fila** (teto diário compartilhado): 1) cobrança de quem não respondeu, 2) reativação etapas 2 e 3, 3) reativação etapa 1, 4) campanhas comuns (só saem quando você as inicia). A reativação espera a cobrança acabar. O painel mostra "Hoje saem até N (teto X, já saíram Y); ficam Z na fila para os próximos dias".
 - **Aviso de histórico sumindo.** Alarme diário (9h de Fortaleza) no service worker, **sem abrir o WhatsApp**: com o que já está salvo (varredura e registros da reativação) conta quem está entre a etapa 1 e etapa 1 + 5 dias sem ter sido lido e mostra UMA notificação "N conversas precisam ser lidas até dd/MM senão o histórico some do WhatsApp Web" (só se N > 0; sem notificação, usa o selo do ícone). Usa as permissões que já existem (`alarms`, `notifications`): nenhuma permissão nova no manifest.

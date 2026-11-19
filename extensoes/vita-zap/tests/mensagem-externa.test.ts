@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { criarAtendenteExterno, ORIGENS_EXTERNAS, origemDoRemetente, origemPermitida, type DependenciasExterno } from '../src/background/externo';
+import { criarAtendenteExterno, ORIGENS_EXTERNAS, ORIGENS_EXTERNAS_DEV, origemDoRemetente, origemPermitida, type DependenciasExterno } from '../src/background/externo';
 
 const manifesto = JSON.parse(readFileSync(join(__dirname, '..', 'public', 'manifest.json'), 'utf8')) as { externally_connectable: { matches: string[] }; version: string };
 
@@ -29,9 +29,17 @@ describe('origens aceitas', () => {
     expect(manifesto.externally_connectable.matches).toContain('https://lembretes.salvitarn.com.br/*');
   });
 
-  it('aceita o CRM e o dev local; recusa tudo o mais', () => {
+  it('o localhost é só do build de desenvolvimento: fora dele nem o código aceita, e o manifesto de produção não o lista', () => {
+    expect(ORIGENS_EXTERNAS).not.toContain('http://localhost:5173');
+    expect(ORIGENS_EXTERNAS_DEV).toEqual(['http://localhost:5173']);
+    expect(origemPermitida('http://localhost:5173')).toBe(false);
+    expect(origemPermitida('http://localhost:5173', false)).toBe(false);
+    expect(origemPermitida('http://localhost:5173', true)).toBe(true);
+    expect(origemPermitida('https://evil.com', true)).toBe(false);
+  });
+
+  it('aceita o CRM; recusa tudo o mais', () => {
     expect(origemPermitida('https://lembretes.salvitarn.com.br')).toBe(true);
-    expect(origemPermitida('http://localhost:5173')).toBe(true);
     for (const ruim of [
       'http://lembretes.salvitarn.com.br',
       'https://lembretes.salvitarn.com.br.evil.com',
@@ -81,7 +89,7 @@ describe('ping do CRM', () => {
         throw new Error('x');
       },
     });
-    const { responder } = await perguntar({ tipo: 'ping' }, { origin: 'http://localhost:5173' }, dep);
+    const { responder } = await perguntar({ tipo: 'ping' }, { origin: 'https://lembretes.salvitarn.com.br' }, dep);
     expect(responder.mock.calls[0][0]).toEqual({ ok: true, versao: '0.7.0', conectadoAoCrm: false, temPermissao: false });
   });
 });
