@@ -100,8 +100,9 @@ describe('backup JSON', () => {
   it('mesclar mantém o que já existia', async () => {
     const db = await novoBanco();
     await salvarCampanha(db, campanha('local'));
-    const b = await exportarTudo(await novoBanco(), AGORA);
-    await importarTudo(db, { ...b, campanhas: [campanha('importada')] }, 'mesclar');
+    const lido = lerBackup(JSON.stringify(await exportarTudo(await novoBanco(), AGORA)));
+    if (!lido.ok) throw new Error(lido.erro);
+    await importarTudo(db, { ...lido.backup, campanhas: [campanha('importada')] }, 'mesclar');
     expect((await listarCampanhas(db)).map((c) => c.id).sort()).toEqual(['importada', 'local']);
   });
 

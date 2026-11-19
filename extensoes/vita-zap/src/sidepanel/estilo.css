@@ -113,6 +113,11 @@ body {
   }
 }
 
+.topo-versao {
+  margin-left: 6px;
+  opacity: 0.6;
+  font-size: 10px;
+}
 .selo {
   font-size: 11px;
   color: var(--suave);

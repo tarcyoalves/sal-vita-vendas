@@ -45,7 +45,7 @@ export function CrmBackup({ crm }: { crm: CrmPainel }) {
   return (
     <div className="cartao">
       <h3>CRM: backup (JSON)</h3>
-      <p className="ajuda">Contatos, notas, etiquetas, fases, lembretes e respostas rápidas ficam só neste navegador. Exporte de vez em quando; o arquivo serve para levar os dados a outro Chrome.</p>
+      <p className="ajuda">Contatos, notas, etiquetas, fases, lembretes e respostas rápidas ficam só neste navegador. Exporte de vez em quando; o arquivo serve para levar os dados a outro Chrome. Não leva campanhas, follow-up nem a IA (isso é o backup do cartão "Backup e relatório"), e nunca leva senha, token ou login.</p>
       <div className="botoes">
         <button type="button" onClick={exportar} disabled={!crm.dados}>
           Exportar dados do CRM

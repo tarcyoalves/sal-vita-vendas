@@ -3,7 +3,12 @@
 import { z } from 'zod';
 import type { Campanha } from './campanha';
 import type { ContatoVarrido } from './contatos';
+import type { AcaoIa, Julgamento } from './automaticos';
+import type { ConfigFollowup, Followup } from './followup';
+import type { EstadoPedidos } from './pedido-ia';
 import type { ConfigPolitica } from './politica';
+import type { ConfigReativacao, Reativacao } from './reativacao';
+import type { EnvioDoTexto } from './resultado-texto';
 
 export interface Envio {
   /** `${campanhaId}:${chave}` — garante um envio por contato por campanha. */
@@ -27,15 +32,54 @@ export interface NaoEnviar {
   crm?: boolean;
 }
 
-export interface Backup {
+/** Campos que o formato 1 não tinha: ausentes ao ler um backup antigo (e então a importação não toca nessas lojas). */
+export interface ExtrasBackup {
+  followups?: Followup[];
+  /** Configurações guardadas em followupConfig. Nunca inclui o estado da sincronização com a equipe nem avisos (são do computador). */
+  configFollowup?: ConfigFollowup | null;
+  configReativacao?: ConfigReativacao | null;
+  pedidos?: EstadoPedidos | null;
+  reativacoes?: Reativacao[];
+  julgamentos?: Julgamento[];
+  acoesIa?: AcaoIa[];
+  resultadosTexto?: EnvioDoTexto[];
+}
+
+/** O backup já lido, em forma plana (vale para o formato 1 e para o 2). É o que a importação consome. */
+export interface Backup extends ExtrasBackup {
   formato: 'vita-zap-backup';
-  versao: 1;
+  versao: 1 | 2;
   exportadoEm: string;
   contatos: ContatoVarrido[];
   campanhas: Campanha[];
   envios: Envio[];
   naoEnviar: NaoEnviar[];
   config: ConfigPolitica | null;
+}
+
+export const VERSAO_BACKUP = 2;
+
+/** O arquivo gravado hoje (formato 2). SEM tokens, senhas ou sessão: só as lojas de dados do IndexedDB listadas aqui. */
+export interface BackupArquivo {
+  formato: 'vita-zap-backup';
+  versao: 2;
+  geradoEm: string;
+  versaoExtensao: string;
+  lojas: {
+    contatos: ContatoVarrido[];
+    campanhas: Campanha[];
+    envios: Envio[];
+    naoEnviar: NaoEnviar[];
+    config: ConfigPolitica | null;
+    followups: Followup[];
+    followupConfig: ConfigFollowup | null;
+    reativacaoConfig: ConfigReativacao | null;
+    pedidos: EstadoPedidos | null;
+    reativacoes: Reativacao[];
+    julgamentos: Julgamento[];
+    acoesIa: AcaoIa[];
+    resultadosTexto: EnvioDoTexto[];
+  };
 }
 
 const iso = z.string().min(1);
@@ -64,6 +108,8 @@ const filtrosSchema = z.object({
   tags: z.array(z.string()).optional(),
   fases: z.array(z.enum(['novo', 'orcamento', 'negociando', 'fechado', 'perdido'])).optional(),
   aguardandoResposta: z.boolean().optional(),
+  // Sem isto o backup apagava o filtro "só contatos com conversa minha" (achado no teste de restauração completa).
+  soComMensagemMinha: z.boolean().optional(),
 });
 
 const itemSchema = z.object({
@@ -114,7 +160,8 @@ const naoEnviarSchema = z.object({
   motivo: z.string(),
   origem: z.enum(['manual', 'ia', 'campanha', 'cobranca', 'reativacao']).optional(),
   crm: z.boolean().optional(),
-});
+  // passthrough: campos que esta versão não conhece (ex.: marcador de "pendente de sincronização") atravessam o backup intactos.
+}).passthrough();
 
 const configSchema = z.object({
   tetoDiario: z.number(),
@@ -123,29 +170,91 @@ const configSchema = z.object({
   numeroComMaisDe30Dias: z.boolean(),
 });
 
-const backupSchema = z.object({
+const baseSchema = {
   formato: z.literal('vita-zap-backup'),
-  versao: z.literal(1),
-  exportadoEm: iso,
   contatos: z.array(contatoSchema),
   campanhas: z.array(campanhaSchema),
   envios: z.array(envioSchema),
   naoEnviar: z.array(naoEnviarSchema),
   config: configSchema.nullable(),
+};
+
+const backupV1Schema = z.object({ ...baseSchema, versao: z.literal(1), exportadoEm: iso });
+
+/** Lojas novas: valida o formato (objeto com a chave) e preserva o resto do registro; a normalização acontece ao ler/usar. */
+const registro = (chave: string) => z.object({ [chave]: z.string().min(1) }).passthrough();
+const objetoOuNulo = z.record(z.string(), z.unknown()).nullable();
+
+const backupV2Schema = z.object({
+  formato: z.literal('vita-zap-backup'),
+  versao: z.literal(2),
+  geradoEm: iso,
+  versaoExtensao: z.string(),
+  lojas: z.object({
+    contatos: baseSchema.contatos,
+    campanhas: baseSchema.campanhas,
+    envios: baseSchema.envios,
+    naoEnviar: baseSchema.naoEnviar,
+    config: baseSchema.config,
+    followups: z.array(registro('id')),
+    followupConfig: objetoOuNulo,
+    reativacaoConfig: objetoOuNulo,
+    pedidos: objetoOuNulo,
+    reativacoes: z.array(registro('chave')),
+    julgamentos: z.array(registro('id')),
+    acoesIa: z.array(registro('id')),
+    resultadosTexto: z.array(registro('id')),
+  }),
 });
 
-export function lerBackup(texto: string): { ok: true; backup: Backup } | { ok: false; erro: string } {
+export type ResultadoLerBackup = { ok: true; backup: Backup } | { ok: false; erro: string };
+
+function erroZod(e: z.ZodError): ResultadoLerBackup {
+  const p = e.issues[0];
+  return { ok: false, erro: `backup inválido em "${p?.path.join('.') ?? '?'}": ${p?.message ?? 'formato'}` };
+}
+
+export function lerBackup(texto: string): ResultadoLerBackup {
   let json: unknown;
   try {
     json = JSON.parse(texto);
   } catch {
     return { ok: false, erro: 'arquivo não é JSON válido' };
   }
-  const r = backupSchema.safeParse(json);
-  if (!r.success) {
-    const p = r.error.issues[0];
-    return { ok: false, erro: `backup inválido em "${p?.path.join('.') ?? '?'}": ${p?.message ?? 'formato'}` };
+  const versao = typeof json === 'object' && json !== null ? (json as { versao?: unknown }).versao : undefined;
+  if (typeof versao === 'number' && versao > VERSAO_BACKUP) {
+    return { ok: false, erro: `este backup é de uma versão mais nova (formato ${versao}); atualize a extensão para importá-lo` };
   }
+  if (versao === 2) {
+    const r = backupV2Schema.safeParse(json);
+    if (!r.success) return erroZod(r.error);
+    const { lojas: l } = r.data;
+    // Os registros das lojas novas passaram pela checagem de chave; o conteúdo é normalizado por quem o usa (mesmas funções de leitura do banco).
+    const como = <T>(v: unknown): T => v as T;
+    return {
+      ok: true,
+      backup: {
+        formato: 'vita-zap-backup',
+        versao: 2,
+        exportadoEm: r.data.geradoEm,
+        contatos: l.contatos,
+        campanhas: l.campanhas,
+        envios: l.envios,
+        naoEnviar: l.naoEnviar,
+        config: l.config,
+        followups: como<Followup[]>(l.followups),
+        configFollowup: como<ConfigFollowup | null>(l.followupConfig),
+        configReativacao: como<ConfigReativacao | null>(l.reativacaoConfig),
+        pedidos: como<EstadoPedidos | null>(l.pedidos),
+        reativacoes: como<Reativacao[]>(l.reativacoes),
+        julgamentos: como<Julgamento[]>(l.julgamentos),
+        acoesIa: como<AcaoIa[]>(l.acoesIa),
+        resultadosTexto: como<EnvioDoTexto[]>(l.resultadosTexto),
+      },
+    };
+  }
+  const r = backupV1Schema.safeParse(json);
+  if (!r.success) return erroZod(r.error);
   return { ok: true, backup: r.data };
 }
 

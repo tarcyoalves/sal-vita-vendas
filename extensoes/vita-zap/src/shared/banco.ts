@@ -6,7 +6,7 @@ import { acharEnvioDaResposta, comResposta, idsParaPodarEnvios, type EnvioDoText
 import { type AcaoIa, type Julgamento, idsAcoesParaPodar, idsParaPodar } from './automaticos';
 import type { Campanha } from './campanha';
 import type { ContatoVarrido } from './contatos';
-import type { Backup, Envio, NaoEnviar } from './exportar';
+import { VERSAO_BACKUP, type Backup, type BackupArquivo, type Envio, type NaoEnviar } from './exportar';
 import { normalizarConfigFollowup, type ConfigFollowup, type Followup } from './followup';
 import { normalizarEstadoPedidos, type EstadoPedidos } from './pedido-ia';
 import { normalizarConfig, type ConfigPolitica } from './politica';
@@ -312,36 +312,102 @@ export async function salvarPedidos(db: Banco, estado: EstadoPedidos): Promise<E
 
 // ── Backup ───────────────────────────────────────────────────────────────────
 
-export async function exportarTudo(db: Banco, agora: Date = new Date()): Promise<Backup> {
+export async function exportarTudo(db: Banco, agora: Date = new Date(), versaoExtensao = ''): Promise<BackupArquivo> {
+  // Lista branca: só estas lojas/ids saem. Nunca o estado da sincronização com a equipe, o aviso do histórico nem nada do chrome.storage (token do CRM fica de fora).
   const r = await db.get('config', 'politica');
   return {
     formato: 'vita-zap-backup',
-    versao: 1,
-    exportadoEm: agora.toISOString(),
-    contatos: await db.getAll('contatos'),
-    campanhas: await db.getAll('campanhas'),
-    envios: await db.getAll('envios'),
-    naoEnviar: await db.getAll('naoEnviar'),
-    config: r?.valor ?? null,
+    versao: VERSAO_BACKUP,
+    geradoEm: agora.toISOString(),
+    versaoExtensao,
+    lojas: {
+      contatos: await db.getAll('contatos'),
+      campanhas: await db.getAll('campanhas'),
+      envios: await db.getAll('envios'),
+      naoEnviar: await db.getAll('naoEnviar'),
+      config: r?.valor ?? null,
+      followups: await db.getAll('followups'),
+      followupConfig: await lerConfigFollowup(db),
+      reativacaoConfig: await lerConfigReativacao(db),
+      pedidos: await lerPedidos(db),
+      reativacoes: await db.getAll('reativacoes'),
+      julgamentos: await db.getAll('julgamentos'),
+      acoesIa: await db.getAll('acoesIa'),
+      resultadosTexto: await db.getAll('resultadosTexto'),
+    },
   };
 }
 
+/** Dois registros "não enviar mais" do mesmo contato: vale o mais recente, e os campos do mais antigo que o novo não tem são mantidos (ex.: marcadores de sincronização). */
+export function mesclarNaoEnviar(existente: NaoEnviar, vindo: NaoEnviar): NaoEnviar {
+  const vindoMaisNovo = vindo.desde > existente.desde;
+  return vindoMaisNovo ? { ...existente, ...vindo } : { ...vindo, ...existente };
+}
+
 /**
- * Importa um backup já validado (lerBackup).
- * - 'mesclar': acrescenta/atualiza; envios e "não enviar mais" existentes nunca são apagados.
- * - 'substituir': apaga tudo e grava o backup.
+ * Importa um backup já validado (lerBackup), do formato 1 ou 2.
+ * - 'mesclar': acrescenta; o que já existe (campanhas, envios, follow-ups, placar...) nunca é sobrescrito por um backup mais velho.
+ * - 'substituir': apaga e grava o backup. EXCEÇÃO: "não enviar mais" nunca é apagado (sempre mescla): um bloqueio mais novo não pode sumir por restaurar um arquivo velho.
+ * Lojas que o backup não traz (formato 1) ficam como estão.
  */
 export async function importarTudo(db: Banco, b: Backup, modo: 'mesclar' | 'substituir'): Promise<void> {
-  const tx = db.transaction(['contatos', 'campanhas', 'envios', 'naoEnviar', 'config'], 'readwrite');
+  const lojas = ['contatos', 'campanhas', 'envios', 'naoEnviar', 'config', 'followups', 'followupConfig', 'reativacoes', 'julgamentos', 'acoesIa', 'resultadosTexto'] as const;
+  const tx = db.transaction(lojas, 'readwrite');
+  const substituir = modo === 'substituir';
+  // Lê o que existe ANTES de apagar/gravar (e dentro da transação: nada se intromete no meio).
+  const [contatos, campanhas, envios, naoEnviar, followups, reativacoes, julgamentos, acoes, textos] = await Promise.all([
+    tx.objectStore('contatos').getAll(),
+    tx.objectStore('campanhas').getAll(),
+    tx.objectStore('envios').getAll(),
+    tx.objectStore('naoEnviar').getAll(),
+    tx.objectStore('followups').getAll(),
+    tx.objectStore('reativacoes').getAll(),
+    tx.objectStore('julgamentos').getAll(),
+    tx.objectStore('acoesIa').getAll(),
+    tx.objectStore('resultadosTexto').getAll(),
+  ]);
   const ops: Promise<unknown>[] = [];
-  if (modo === 'substituir') {
-    for (const s of ['contatos', 'campanhas', 'envios', 'naoEnviar', 'config'] as const) ops.push(tx.objectStore(s).clear());
+  if (substituir) {
+    const limpar: Array<(typeof lojas)[number]> = ['contatos', 'campanhas', 'envios', 'config'];
+    if (b.followups) limpar.push('followups');
+    if (b.reativacoes) limpar.push('reativacoes');
+    if (b.julgamentos) limpar.push('julgamentos');
+    if (b.acoesIa) limpar.push('acoesIa');
+    if (b.resultadosTexto) limpar.push('resultadosTexto');
+    for (const s of limpar) ops.push(tx.objectStore(s).clear());
   }
-  for (const c of b.contatos) ops.push(tx.objectStore('contatos').put(c));
-  for (const c of b.campanhas) ops.push(tx.objectStore('campanhas').put(c));
-  for (const e of b.envios) ops.push(tx.objectStore('envios').put(e));
-  for (const n of b.naoEnviar) ops.push(tx.objectStore('naoEnviar').put(n));
+  const idsDe = <T,>(xs: T[], chave: (x: T) => string) => new Map(xs.map((x) => [chave(x), x]));
+  /** Grava o que o backup traz; no mesclar, o que já existe vence. */
+  const gravar = <T,>(loja: 'followups' | 'reativacoes' | 'julgamentos' | 'acoesIa' | 'resultadosTexto' | 'campanhas' | 'envios', vindos: T[] | undefined, existentes: T[], chave: (x: T) => string) => {
+    if (!vindos) return;
+    const ja = idsDe(existentes, chave);
+    const st = tx.objectStore(loja) as unknown as { put(v: T): Promise<unknown> };
+    for (const v of vindos) if (substituir || !ja.has(chave(v))) ops.push(st.put(v));
+  };
+
+  const jaContato = idsDe(contatos, (c) => c.chave);
+  for (const c of b.contatos) {
+    const e = jaContato.get(c.chave);
+    if (substituir || !e || c.varridoEm > e.varridoEm) ops.push(tx.objectStore('contatos').put(c));
+  }
+  gravar('campanhas', b.campanhas, campanhas, (c) => c.id);
+  gravar('envios', b.envios, envios, (e) => e.id);
+  // Opt-out: SEMPRE mescla, nunca apaga, nunca troca por um registro mais velho.
+  const jaBloqueio = idsDe(naoEnviar, (n) => n.chave);
+  for (const n of b.naoEnviar) {
+    const e = jaBloqueio.get(n.chave);
+    ops.push(tx.objectStore('naoEnviar').put(e ? mesclarNaoEnviar(e, n) : n));
+  }
   if (b.config) ops.push(tx.objectStore('config').put({ id: 'politica', valor: normalizarConfig(b.config) }));
+  gravar('followups', b.followups, followups, (f) => f.id);
+  gravar('reativacoes', b.reativacoes, reativacoes, (r) => r.chave);
+  gravar('julgamentos', b.julgamentos, julgamentos, (j) => j.id);
+  gravar('acoesIa', b.acoesIa, acoes, (a) => a.id);
+  gravar('resultadosTexto', b.resultadosTexto, textos, (t) => t.id);
+  const cfg = tx.objectStore('followupConfig');
+  if (b.configFollowup) ops.push(cfg.put({ id: 'followup', valor: normalizarConfigFollowup(b.configFollowup) }));
+  if (b.configReativacao) ops.push(cfg.put({ id: 'reativacao', valor: normalizarConfigReativacao(b.configReativacao) }));
+  if (b.pedidos) ops.push(cfg.put({ id: 'pedidos', valor: normalizarEstadoPedidos(b.pedidos) }));
   await Promise.all([...ops, tx.done]);
 }
 

@@ -9,6 +9,7 @@ import { CrmBackup } from './CrmBackup';
 import type { CrmPainel } from './crm';
 import { useEquipe } from './equipe';
 import { ROTULO_ORIGEM_OPT_OUT } from '../shared/equipe';
+import { versaoInstalada } from './versao-instalada';
 
 interface Props {
   db: Banco;
@@ -58,7 +59,7 @@ export function Dados({ db, dados, aoMudar, crm }: Props) {
   }
 
   async function exportarJson() {
-    const b = await exportarTudo(db);
+    const b = await exportarTudo(db, new Date(), versaoInstalada());
     setArquivo(prepararArquivo(JSON.stringify(b, null, 2), 'application/json', `vita-zap-backup-${carimbo()}.json`));
   }
 
@@ -74,11 +75,15 @@ export function Dados({ db, dados, aoMudar, crm }: Props) {
       setMsgImport(r.erro);
       return;
     }
-    if (modoImport === 'substituir' && !window.confirm('Substituir TODOS os dados locais por este backup?')) return;
+    if (modoImport === 'substituir' && !window.confirm('Substituir os dados locais por este backup? A lista "não enviar mais" nunca é apagada: ela sempre é mesclada.')) return;
     await importarTudo(db, r.backup, modoImport);
     setCfg(await lerConfig(db));
     await aoMudar();
-    setMsgImport(`Importado: ${r.backup.campanhas.length} campanhas, ${r.backup.envios.length} envios, ${r.backup.naoEnviar.length} "não enviar".`);
+    const b = r.backup;
+    setMsgImport(
+      `Importado (formato ${b.versao}): ${b.campanhas.length} campanhas, ${b.envios.length} envios, ${b.naoEnviar.length} "não enviar"` +
+        (b.versao === 2 ? `, ${b.followups?.length ?? 0} follow-ups, ${b.reativacoes?.length ?? 0} reativações, ${b.julgamentos?.length ?? 0} julgamentos, ${b.acoesIa?.length ?? 0} ações da IA, ${b.resultadosTexto?.length ?? 0} resultados por texto.` : '. Este backup é do formato antigo: follow-up, reativação e placar não estavam nele.'),
+    );
   }
 
   return (
@@ -171,6 +176,10 @@ export function Dados({ db, dados, aoMudar, crm }: Props) {
       <div className="cartao">
         <h3>Backup e relatório</h3>
         <p className="ajuda">Os dados ficam só neste navegador. Faça backup de vez em quando.</p>
+        <p className="ajuda">
+          <b>Exportar backup (JSON)</b> leva campanhas, envios, contatos varridos, "não enviar mais", política, follow-up, reativação, placar e histórico da IA, resultados por texto e pedidos salvos. Os contatos, notas, etiquetas, lembretes e respostas rápidas do CRM local têm backup à parte (cartão "CRM: backup"). Nenhum dos arquivos leva senha, token nem login. Importar mescla: nada que já existe é sobrescrito por um backup mais velho e ninguém sai da lista "não enviar mais".
+        </p>
+        <p className="ajuda" data-testid="versao-instalada">Versão instalada da extensão: {versaoInstalada()}</p>
         <div className="botoes">
           <button type="button" onClick={() => void exportarJson()}>
             Exportar backup (JSON)

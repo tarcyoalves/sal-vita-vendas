@@ -23,6 +23,7 @@ import { Previa } from './Previa';
 import { Reativacao } from './Reativacao';
 import { ProvedorResultadosTexto } from './ResultadosTexto';
 import { Varredura } from './Varredura';
+import { versaoInstalada } from './versao-instalada';
 
 export interface DadosLocais {
   contatos: ContatoVarrido[];
@@ -146,6 +147,7 @@ export function App() {
         <div className="topo-marca">
           <span className="topo-logo" aria-hidden="true">VZ</span>
           <strong>Vita Zap</strong>
+          <small className="topo-versao" title="Versão instalada da extensão">v{versaoInstalada()}</small>
         </div>
         <span className="selo">CRM · você aperta o Enter</span>
       </header>
