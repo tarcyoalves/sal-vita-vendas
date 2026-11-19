@@ -165,6 +165,29 @@ describe('backup completo (formato 2)', () => {
     expect((await listarNaoEnviar(db)).map((x) => x.chave)).toEqual(['y']);
   });
 
+  it('restaurar não perde "conversa minha", "possível grupo", a data e a marca do item (campos fora do schema eram descartados)', async () => {
+    const origem = await novoBanco();
+    const base = { rotuloData: '2026-10-01', ultimaConversa: '2026-10-01', revisarData: null, soNumero: false, pareceGrupo: false, temConversa: true, duplicado: false, varridoEm: AGORA.toISOString() };
+    await salvarContatos(origem, [
+      { ...base, chave: 'ana', nome: 'Ana', ultimaDeMim: true },
+      { ...base, chave: 'bia', nome: 'Bia', ultimaDeMim: false },
+      { ...base, chave: 'caio', nome: 'Caio', ultimaDeMim: null, possivelGrupo: true },
+    ]);
+    const c = campanha('c9', 'pendente');
+    c.itens = [{ ...c.itens[0], ultimaConversa: '2026-10-01', marcado: false }];
+    await salvarCampanha(origem, c);
+    const lido = lerBackup(JSON.stringify(await exportarTudo(origem, AGORA, '0.7.62')));
+    expect(lido.ok).toBe(true);
+    if (!lido.ok) return;
+    const destino = await novoBanco();
+    await importarTudo(destino, lido.backup, 'mesclar');
+    expect(await listarContatos(destino)).toEqual(await listarContatos(origem));
+    expect(await listarCampanhas(destino)).toEqual(await listarCampanhas(origem));
+    // o mesmo vale para o formato 1
+    const v1 = lerBackup(JSON.stringify({ formato: 'vita-zap-backup', versao: 1, exportadoEm: AGORA.toISOString(), contatos: await listarContatos(origem), campanhas: [c], envios: [], naoEnviar: [], config: null }));
+    expect(v1.ok && v1.backup.contatos.map((x) => [x.chave, x.ultimaDeMim, x.possivelGrupo])).toEqual([['ana', true, undefined], ['bia', false, undefined], ['caio', null, true]]);
+  });
+
   it('recusa formato mais novo que o conhecido e formato 2 malformado', () => {
     expect(lerBackup(JSON.stringify({ formato: 'vita-zap-backup', versao: 3 }))).toMatchObject({ ok: false });
     expect(lerBackup(JSON.stringify({ formato: 'vita-zap-backup', versao: 2, geradoEm: 'x', versaoExtensao: '1', lojas: { contatos: [] } }))).toMatchObject({ ok: false });

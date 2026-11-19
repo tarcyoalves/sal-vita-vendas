@@ -94,6 +94,10 @@ const contatoSchema = z.object({
   soNumero: z.boolean(),
   pareceGrupo: z.boolean(),
   temConversa: z.boolean(),
+  // Sem estes dois o zod os descartava na restauração: o contato perdia o sinal "conversa minha" (filtro padrão da Varredura) e a marca
+  // de "possível grupo" (proteção contra grupo com foto).
+  ultimaDeMim: z.boolean().nullable().optional(),
+  possivelGrupo: z.boolean().optional(),
   duplicado: z.boolean(),
   varridoEm: iso,
 });
@@ -120,6 +124,9 @@ const itemSchema = z.object({
   status: z.enum(['pendente', 'enviado', 'pulado', 'nao_cliente', 'problema', 'nao_enviar', 'revisar', 'aguardando_crm']),
   motivo: z.string().nullable(),
   atualizadoEm: z.string().nullable(),
+  // Também descartados antes: a data da última conversa mostrada no Envio e a marca da prévia.
+  ultimaConversa: z.string().nullable().optional(),
+  marcado: z.boolean().optional(),
 });
 
 const campanhaSchema = z.object({
