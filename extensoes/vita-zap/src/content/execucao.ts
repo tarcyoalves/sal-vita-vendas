@@ -498,7 +498,7 @@ function limparSeForNosso(texto: string): boolean {
   return limparSeInseridoPorMim(texto).limpou;
 }
 
-const MSG_RASCUNHO = (nome: string): string => `A conversa de "${nome}" já tem outro texto na caixa. Não mexi nele.`;
+const MSG_RASCUNHO = (nome: string): string => `A conversa de "${nome}" já tem um rascunho diferente na caixa. Não mexi nele.`;
 
 export async function abrirEColar(
   nome: string,
