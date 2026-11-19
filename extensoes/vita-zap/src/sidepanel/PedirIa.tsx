@@ -40,6 +40,8 @@ import { lerPreferencia, salvarPreferencia } from './preferencias';
 import { assinarTrava, donoDaTrava, liberar, ROTULO_DONO, tentarTravar } from './trava-whatsapp';
 import { useTrava } from './trava';
 import { useEquipe } from './equipe';
+import { AvisoOptOutPendente } from './SeloOptOut';
+import { textoAoMarcarNaoEnviar } from '../shared/equipe';
 import { pedir } from './whatsapp';
 
 interface Props {
@@ -221,9 +223,9 @@ export function PedirIa({ db, crm, dados, aoAprovar, ativa }: Props) {
 
   async function naoEnviar(chaves: string[]) {
     if (chaves.length === 0) return;
-    if (!window.confirm(`Marcar ${chaves.length} contato(s) como "Não enviar mais"? Eles nunca mais recebem mensagem por campanha, cobrança ou reativação.`)) return;
+    if (!window.confirm(`Marcar ${chaves.length} contato(s) como "Não enviar mais"? Eles nunca mais recebem mensagem por campanha, cobrança ou reativação neste computador; o CRM confirma logo em seguida (se estiver fora do ar, fica pendente e você pode tentar de novo).`)) return;
     const n = await motor.naoEnviarMais(chaves);
-    setInfo(`${n} contato(s) marcados como "Não enviar mais".`);
+    setInfo(textoAoMarcarNaoEnviar(n));
     await recarregar();
   }
 
@@ -282,7 +284,7 @@ export function PedirIa({ db, crm, dados, aoAprovar, ativa }: Props) {
         {i.trava.tipo === 'indisponivel' && <div className="aviso">Não consegui conferir os agendamentos do CRM: confira antes de enviar ({i.trava.motivo}).</div>}
         {velho && i.estado === 'aberto' && <div className="aviso">Leitura de mais de {Math.round(VALIDADE_LEITURA_PEDIDO_MS / 3_600_000)} horas: rode o pedido de novo antes de enviar.</div>}
         {i.estado !== 'aberto' ? (
-          <div className="ajuda">{{ na_campanha: 'Na campanha (aba 3. Envio)', agendado: 'Agendado no CRM', nao_enviar: 'Não enviar mais', ignorado: 'Ignorado', aberto: '' }[i.estado]}</div>
+          <div className="ajuda">{{ na_campanha: 'Na campanha (aba 3. Envio)', agendado: 'Agendado no CRM', nao_enviar: 'Não enviar mais (bloqueado neste computador; a equipe só depois que o CRM confirmar: veja o aviso acima)', ignorado: 'Ignorado', aberto: '' }[i.estado]}</div>
         ) : (
           <div className="botoes">
             <button type="button" className="pequeno" disabled={!pode.ok} title={pode.ok ? 'Monta a prévia do texto; nada é enviado agora.' : pode.motivo} onClick={() => abrirEnvio([i.chave])}>Enviar mensagem</button>
@@ -300,6 +302,7 @@ export function PedirIa({ db, crm, dados, aoAprovar, ativa }: Props) {
   return (
     <section>
       <OrientacoesIa crm={crm} />
+      <AvisoOptOutPendente naoEnviar={dados.naoEnviar} equipe={equipe} aoMudar={recarregar} />
       <div className="cartao">
         <h3>Pedir à IA</h3>
         <p className="ajuda">

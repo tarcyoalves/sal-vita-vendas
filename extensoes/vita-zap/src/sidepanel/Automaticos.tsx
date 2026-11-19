@@ -20,11 +20,13 @@ import {
   TIPOS_DE_DECISAO,
   type ModoAutomatico,
 } from '../shared/automaticos';
-import type { Banco } from '../shared/banco';
+import { listarNaoEnviar, type Banco } from '../shared/banco';
+import type { NaoEnviar } from '../shared/exportar';
 import { formatarDataBr, hojeNoFuso } from '../shared/datas';
 import { ORDEM_DA_FILA, ROTULO_GRUPO, textoDaPrevisao } from '../shared/fila';
 import type { CrmPainel } from './crm';
-import { useEquipe } from './equipe';
+import { useEquipe, useVersaoEquipe } from './equipe';
+import { SeloOptOut } from './SeloOptOut';
 import { aoMudarModo, carregarVisao, definirModo, desfazerAcao, julgarDecisao, reabrirJulgamento, type VisaoAutomaticos } from './automaticos-motor';
 
 interface Props {
@@ -60,10 +62,15 @@ export function Automaticos({ db, crm, ativa }: Props) {
   const [motivo, setMotivo] = useState('');
   const [certa, setCerta] = useState<DecisaoCerta | ''>('');
 
-  const recarregar = useCallback(async () => setVisao(await carregarVisao(db, new Date())), [db]);
+  const [naoEnviarLista, setNaoEnviarLista] = useState<NaoEnviar[]>([]);
+  const versaoEquipe = useVersaoEquipe();
+  const recarregar = useCallback(async () => {
+    setVisao(await carregarVisao(db, new Date()));
+    setNaoEnviarLista(await listarNaoEnviar(db)); // o estado de cada "não enviar mais" (aqui × equipe) vem daqui
+  }, [db]);
   useEffect(() => {
     void recarregar();
-  }, [recarregar, ativa]);
+  }, [recarregar, ativa, versaoEquipe]);
   useEffect(() => aoMudarModo(() => void recarregar()), [recarregar]);
 
   const aprovadoAntes = visao != null && (visao.followup.placarAprovado || visao.reativacao.placarAprovado);
@@ -257,6 +264,10 @@ export function Automaticos({ db, crm, ativa }: Props) {
               <li key={a.id}>
                 <b>{a.nome}</b> <small>{ROTULO_ACAO_IA[a.tipo]} · {dataHora(a.criadoEm)} · {a.origem === 'followup' ? 'follow-up' : 'reativação'}</small>
                 <div className="ajuda">{a.resumo}</div>
+                {a.tipo === 'nao_enviar' && !a.desfeitaEm && (() => {
+                  const n = naoEnviarLista.find((x) => x.chave === a.chave);
+                  return n ? <div className="ajuda"><SeloOptOut n={n} equipe={equipe} aoMudar={recarregar} /></div> : null;
+                })()}
                 {a.desfeitaEm ? (
                   <div className="info">Desfeita em {dataHora(a.desfeitaEm)}.</div>
                 ) : a.desfazer ? (
