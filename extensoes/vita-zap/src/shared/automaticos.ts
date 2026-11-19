@@ -7,6 +7,9 @@
 // MIN_JULGAMENTOS julgamentos com MIN_ACERTO_PERCENTUAL% de acerto NAS DECISÕES QUE GERAM ENVIO é que o envio automático pode
 // ser ligado pela primeira vez. Quem já estava ligado numa versão anterior cai para Observação (com aviso).
 
+import { hashTexto } from './hash';
+import { normalizarOrientacoes } from './orientacoes';
+
 export type ModoAutomatico = 'desligado' | 'observacao' | 'ligado';
 export const MODOS_AUTOMATICOS: readonly ModoAutomatico[] = ['desligado', 'observacao', 'ligado'];
 export const ROTULO_MODO: Record<ModoAutomatico, string> = { desligado: 'Desligado', observacao: 'Observação', ligado: 'Ligado' };
@@ -126,7 +129,27 @@ export interface LinhaPlacar {
   percentual: number | null;
 }
 
+/** Percentual ARREDONDADO: só para exibir (nunca para decidir). */
 const pct = (a: number, t: number): number | null => (t === 0 ? null : Math.round((a / t) * 100));
+
+/**
+ * A decisão compara a proporção EXATA (acertos/total >= MIN_ACERTO_PERCENTUAL/100) em inteiros, sem arredondar:
+ * 35/39 = 89,7% NÃO passa (arredondado daria 90%); 27/30 = 90% passa.
+ */
+export function acertoSuficiente(acertos: number, total: number): boolean {
+  return total > 0 && acertos * 100 >= MIN_ACERTO_PERCENTUAL * total;
+}
+
+/**
+ * Percentual para mostrar ao dono: inteiro arredondado, EXCETO quando o arredondamento chegaria ao mínimo sem chegar de verdade
+ * (89,7% aparece como "89,7", nunca "90"): aí uma casa decimal truncada.
+ */
+export function percentualParaExibir(acertos: number, total: number): string | null {
+  if (total === 0) return null;
+  const arredondado = Math.round((acertos / total) * 100);
+  if (arredondado < MIN_ACERTO_PERCENTUAL || acertoSuficiente(acertos, total)) return String(arredondado);
+  return (Math.floor((acertos * 1000) / total) / 10).toFixed(1).replace('.', ',');
+}
 
 /** Acertos/total por tipo de decisão (só o que já foi julgado). */
 export function calcularPlacar(julgamentos: ReadonlyArray<Julgamento>): LinhaPlacar[] {
@@ -143,18 +166,24 @@ export interface Liberacao {
   julgados: number;
   acertos: number;
   percentual: number | null;
+  /** Percentual para exibir (truncado, ver percentualParaExibir). */
+  percentualTexto: string | null;
   /** Quantos julgamentos ainda faltam para o mínimo. */
   faltam: number;
   /** Por que ainda não libera (mostrado ao dono). null = liberado. */
   motivo: string | null;
 }
 
-/** O envio automático já pode ser ligado? Só olha as decisões que geram envio (cobrar e retomar). */
-export function avaliarLiberacao(julgamentos: ReadonlyArray<Julgamento>): Liberacao {
-  const feitos = julgamentos.filter((j) => DECISOES_QUE_ENVIAM.has(j.tipo) && j.veredito != null);
+/**
+ * O envio automático já pode ser ligado? Só olha as decisões que geram envio (cobrar e retomar). `desde` (ISO): só contam os
+ * julgamentos feitos a partir desse instante (as Orientações para a IA mudaram: o placar recomeça). Sem `desde`, todos contam.
+ */
+export function avaliarLiberacao(julgamentos: ReadonlyArray<Julgamento>, desde: string | null = null): Liberacao {
+  const feitos = julgamentos.filter((j) => DECISOES_QUE_ENVIAM.has(j.tipo) && j.veredito != null && (desde == null || (j.julgadoEm ?? '') >= desde));
   const acertos = feitos.filter((j) => j.veredito === 'acertou').length;
   const julgados = feitos.length;
   const percentual = pct(acertos, julgados);
+  const percentualTexto = percentualParaExibir(acertos, julgados);
   const faltam = Math.max(0, MIN_JULGAMENTOS - julgados);
   if (faltam > 0) {
     return {
@@ -162,21 +191,49 @@ export function avaliarLiberacao(julgamentos: ReadonlyArray<Julgamento>): Libera
       julgados,
       acertos,
       percentual,
+      percentualTexto,
       faltam,
       motivo: `Faltam ${faltam} julgamento(s) das decisões que geram envio (${julgados} de ${MIN_JULGAMENTOS}) para ligar o envio automático. Fique em Observação e julgue o que a IA faria.`,
     };
   }
-  if ((percentual ?? 0) < MIN_ACERTO_PERCENTUAL) {
+  if (!acertoSuficiente(acertos, julgados)) {
     return {
       liberado: false,
       julgados,
       acertos,
       percentual,
+      percentualTexto,
       faltam: 0,
-      motivo: `A IA acertou ${percentual}% das decisões que geram envio (${acertos} de ${julgados}); o mínimo é ${MIN_ACERTO_PERCENTUAL}%. Continue em Observação (ajuste as Orientações para a IA) e julgue mais decisões.`,
+      motivo: `A IA acertou ${percentualTexto}% das decisões que geram envio (${acertos} de ${julgados}); o mínimo é ${MIN_ACERTO_PERCENTUAL}%. Continue em Observação (ajuste as Orientações para a IA) e julgue mais decisões.`,
     };
   }
-  return { liberado: true, julgados, acertos, percentual, faltam: 0, motivo: null };
+  return { liberado: true, julgados, acertos, percentual, percentualTexto, faltam: 0, motivo: null };
+}
+
+// ── A aprovação do placar vale para as Orientações da época (v0.7.62) ────────
+
+/** Hash das Orientações para a IA (normalizadas): identifica "com quais regras o placar foi aprovado". Vazio também tem hash. */
+export function hashDasOrientacoes(texto: unknown): string {
+  return hashTexto(normalizarOrientacoes(texto));
+}
+
+/**
+ * Registro guardado junto da aprovação. `desde`: só valem para o placar os julgamentos a partir deste instante (null = todos).
+ * `legado`: criado ao encontrar uma aprovação antiga, de antes do controle das Orientações (a tela mostra "Aprovado anteriormente").
+ */
+export interface MarcoOrientacoes {
+  orientacoesHash: string;
+  desde: string | null;
+  legado: boolean;
+}
+
+/** nunca = sem aprovação; valida = aprovada com as Orientações de hoje; anterior = aprovação de registro antigo; invalidada = as Orientações mudaram. */
+export type SituacaoAprovacao = 'nunca' | 'valida' | 'anterior' | 'invalidada';
+
+export function situacaoDaAprovacao(placarAprovado: boolean, marco: MarcoOrientacoes | null, hashAtual: string): SituacaoAprovacao {
+  if (!placarAprovado) return 'nunca';
+  if (marco == null || marco.legado) return marco != null && marco.orientacoesHash !== hashAtual ? 'invalidada' : 'anterior';
+  return marco.orientacoesHash === hashAtual ? 'valida' : 'invalidada';
 }
 
 // ── Estado do modo dentro de cada configuração ───────────────────────────────

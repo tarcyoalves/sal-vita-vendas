@@ -39,6 +39,7 @@ import { OrientacoesIa } from './OrientacoesIa';
 import { lerPreferencia, salvarPreferencia } from './preferencias';
 import { assinarTrava, donoDaTrava, liberar, ROTULO_DONO, tentarTravar } from './trava-whatsapp';
 import { useTrava } from './trava';
+import { sincronizarOrientacoes } from './automaticos-motor';
 import { useEquipe } from './equipe';
 import { pedir } from './whatsapp';
 
@@ -299,7 +300,7 @@ export function PedirIa({ db, crm, dados, aoAprovar, ativa }: Props) {
 
   return (
     <section>
-      <OrientacoesIa crm={crm} />
+      <OrientacoesIa crm={crm} aoSalvar={async (t) => void (await sincronizarOrientacoes(db, t, new Date()))} />
       <div className="cartao">
         <h3>Pedir à IA</h3>
         <p className="ajuda">

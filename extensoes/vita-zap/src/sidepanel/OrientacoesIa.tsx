@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { MAX_ORIENTACOES, PLACEHOLDER_ORIENTACOES, normalizarOrientacoes } from '../shared/orientacoes';
 import type { CrmPainel } from './crm';
 
-export function OrientacoesIa({ crm }: { crm: Pick<CrmPainel, 'repo'> }) {
+export function OrientacoesIa({ crm, aoSalvar }: { crm: Pick<CrmPainel, 'repo'>; /** Depois de salvar (v0.7.62): o placar do envio automático compara as Orientações com as da aprovação. */ aoSalvar?: (texto: string) => void | Promise<void> }) {
   const [salvo, setSalvo] = useState<string | null>(null);
   const [texto, setTexto] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
@@ -40,6 +40,11 @@ export function OrientacoesIa({ crm }: { crm: Pick<CrmPainel, 'repo'> }) {
       const t = await crm.repo.salvarOrientacoesIa(texto);
       setSalvo(t);
       setTexto(t);
+      try {
+        await aoSalvar?.(t);
+      } catch {
+        /* a comparação também roda ao abrir a aba Automáticos */
+      }
       setMsg(t === '' ? 'Orientações apagadas: a IA volta a seguir só as regras da Sal Vita.' : 'Orientações salvas. Valem para a próxima chamada de IA.');
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
