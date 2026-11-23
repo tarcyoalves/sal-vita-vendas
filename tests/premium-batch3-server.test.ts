@@ -115,7 +115,7 @@ describe('histórico de ações do admin', () => {
 
 describe('carrinho abandonado: link do e-mail leva o cupom', () => {
   it('link com ?cupom= codificado é o usado no e-mail', () => {
-    const src = read('api/index.ts');
+    const src = read('server/lib/recoveryRuns.ts'); // rotina compartilhada cron/botão (lote 2)
     expect(src).toContain('?cupom=${encodeURIComponent(ruleCfg.coupon)}');
     expect(src).toContain('abandonedCartHtml(cart.customerName, link, ruleCfg.coupon)');
   });

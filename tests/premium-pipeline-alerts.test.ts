@@ -64,9 +64,10 @@ describe('cadência de carrinho abandonado', () => {
   });
   it('fiação no cron: checagem de compra, um por telefone, release, gate do WhatsApp', () => {
     const api = readFileSync('api/index.ts', 'utf8');
-    expect(api).toMatch(/selecionarUmPorTelefone\(due\)[\s\S]{0,400}releaseClaimed\(adiar\.map/);
-    expect(api).toMatch(/telefoneTemPedidoDesde\(run\.customerPhone, inicioJanelaCompra\(cart\.createdAt\)\)/);
-    expect(api).toContain('regraDeAbandono(RULE_MAP[run.ruleName])');
+    const runs = readFileSync('server/lib/recoveryRuns.ts', 'utf8'); // rotina compartilhada cron/botão (lote 2)
+    expect(runs).toMatch(/selecionarUmPorTelefone\(due\)[\s\S]{0,400}releaseClaimed\(adiar\.map/);
+    expect(runs).toMatch(/telefoneTemPedidoDesde\(run\.customerPhone, inicioJanelaCompra\(cart\.createdAt\)\)/);
+    expect(runs).toContain('regraDeAbandono(RULE_MAP[run.ruleName])');
     const iLabels = api.indexOf("runIsolated('auto-labels'");
     const iTrack = api.indexOf("runIsolated('me-tracking'");
     const iGate = api.indexOf('const waUp = await isWhatsAppConnected()');
