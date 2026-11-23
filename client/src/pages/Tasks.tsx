@@ -32,6 +32,7 @@ import { DeleteOrderDialog } from '../components/faturamento/DeleteOrderDialog';
 import { useFatStore } from '../lib/faturamento/store';
 import { useConfirm } from '../components/useConfirm';
 import { totalPedido, formatBRL } from '../lib/faturamento/calc';
+import { PASSO_LISTA, chaveCriterios, fatiarLista, proximoLimite, rotuloMostrarMais, textoContador } from '../lib/tasks/paginacao';
 import { mensagemDoServidor } from '../lib/erroMensagem';
 import { textosParaEnviar, type TextosTarefa } from '../lib/tasks/textoEditado';
 import {
@@ -898,6 +899,16 @@ export default function Tasks() {
     return ordenarTarefas(result, ordem, now.getTime(), melhoresPrimeiro);
   }, [tasks, me, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, locationByTaskId, filterHot, reminderTab, isAdmin, deferredSearch, notesHits, ordem, melhoresPrimeiro]);
 
+  // Lista em pedaços de 50: a busca e os filtros valem sobre a lista inteira; só o desenho é limitado.
+  // Ao mudar busca, filtro, aba ou ordem a chave muda e a lista volta ao primeiro pedaço (um refetch não muda a chave).
+  const chaveLista = chaveCriterios([
+    reminderTab, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode,
+    filterStates, filterCities, filterHot, deferredSearch, ordem, melhoresPrimeiro,
+  ]);
+  const [pagina, setPagina] = useState<{ chave: string; limite: number }>({ chave: chaveLista, limite: PASSO_LISTA });
+  const limiteAtual = pagina.chave === chaveLista ? pagina.limite : PASSO_LISTA;
+  const pedaco = useMemo(() => fatiarLista(filteredTasks, limiteAtual), [filteredTasks, limiteAtual]);
+
   const clearAllFilters = useCallback(() => {
     setFilterStatus("all");
     setFilterAssignee(FILTER_ME);
@@ -952,8 +963,8 @@ export default function Tasks() {
   }, [searchQuery, reminderTab, filterStatus, filterAssignee, filterContact, filterReminder, filterConverted, filterTags, tagMatchMode, filterStates, filterCities, filterHot, isAdmin]);
 
   // ── E-mail Marketing: engagement badges (single batched query for visible tasks) ──
-  // O servidor aceita no máximo 500 ids por consulta (.max(500)): manda só os primeiros da lista.
-  const visibleTaskIds = useMemo(() => filteredTasks.slice(0, 500).map((t: Task) => t.id), [filteredTasks]);
+  // Só as linhas que estão na tela (o servidor aceita no máximo 500 ids por consulta).
+  const visibleTaskIds = useMemo(() => pedaco.visiveis.slice(0, 500).map((t: Task) => t.id), [pedaco]);
   const { data: engagementData } = trpc.emailMarketing.engagementByTaskIds.useQuery(
     { taskIds: visibleTaskIds },
     { enabled: visibleTaskIds.length > 0 }
@@ -1959,7 +1970,7 @@ export default function Tasks() {
             )}
           </div>
           <ul className="divide-y divide-slate-200">
-          {filteredTasks.map((task: Task) => {
+          {pedaco.visiveis.map((task: Task) => {
             const rem = reminderInfo(task);
             const rowPhone = phoneOfTask(task);
             const expanded = expandedTaskId === task.id;
@@ -2305,6 +2316,14 @@ export default function Tasks() {
             );
           })}
           </ul>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t border-slate-200 bg-slate-50 px-4 py-2.5">
+            <span className="text-xs text-slate-600" aria-live="polite">{textoContador(pedaco.mostrando, pedaco.total)}</span>
+            {pedaco.temMais && (
+              <Button size="sm" variant="outline" onClick={() => setPagina({ chave: chaveLista, limite: proximoLimite(limiteAtual) })}>
+                {rotuloMostrarMais(pedaco.restante)}
+              </Button>
+            )}
+          </div>
         </Panel>
       )}
 
