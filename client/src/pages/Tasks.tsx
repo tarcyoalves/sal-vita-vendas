@@ -32,6 +32,7 @@ import { DeleteOrderDialog } from '../components/faturamento/DeleteOrderDialog';
 import { useFatStore } from '../lib/faturamento/store';
 import { useConfirm } from '../components/useConfirm';
 import { totalPedido, formatBRL } from '../lib/faturamento/calc';
+import { mensagemDoServidor } from '../lib/erroMensagem';
 import { textosParaEnviar, type TextosTarefa } from '../lib/tasks/textoEditado';
 import {
   aplicarRascunho, armazenamentoLocal, chaveRascunho, formularioAlterado, lerRascunho, limparRascunho, salvarRascunho,
@@ -647,7 +648,7 @@ export default function Tasks() {
       resetForm(); setIsModalOpen(false);
       const { data: fresh } = await refetch();
       if (!isAdmin && fresh) highlightNextUrgent(fresh as any[]);
-    } catch { toast.error("Erro ao salvar tarefa"); }
+    } catch (e) { toast.error(mensagemDoServidor(e, "Erro ao salvar tarefa")); }
     finally { savingRef.current = false; }
   };
 
@@ -695,8 +696,8 @@ export default function Tasks() {
       await toggleConvertedMutation.mutateAsync({ id: task.id, converted: false });
       toast.success("Marcação de cliente ativo removida (tag \"ativo\" retirada)");
       refetch();
-    } catch {
-      toast.error("Erro ao atualizar conversão");
+    } catch (e) {
+      toast.error(mensagemDoServidor(e, "Erro ao atualizar conversão"));
     }
   };
 
@@ -713,8 +714,8 @@ export default function Tasks() {
         setOrderDialogTask(taskForOrder);
         setOrderDialogOpen(true);
       }
-    } catch {
-      toast.error("Erro ao atualizar conversão");
+    } catch (e) {
+      toast.error(mensagemDoServidor(e, "Erro ao atualizar conversão"));
     }
   };
 
@@ -727,7 +728,7 @@ export default function Tasks() {
       limparRascunho(armazenamentoLocal(), chaveRascunho(user?.id, deleteConfirm));
       resetForm();
       refetch();
-    } catch { toast.error("Erro ao deletar"); }
+    } catch (e) { toast.error(mensagemDoServidor(e, "Erro ao deletar")); }
     finally { setDeleteConfirm(null); setDeleteReason(""); }
   };
 
@@ -740,7 +741,7 @@ export default function Tasks() {
       toast.success(`${selectedTasks.size} tarefa(s) deletada(s)!`);
       setSelectedTasks(new Set());
       refetch();
-    } catch { toast.error("Erro ao deletar tarefas"); }
+    } catch (e) { toast.error(mensagemDoServidor(e, "Erro ao deletar tarefas")); }
     finally { setBulkDeleteConfirm(false); setDeleteReason(""); }
   };
 
@@ -1045,8 +1046,9 @@ export default function Tasks() {
       let completa: { notes?: string | null; description?: string | null };
       try {
         completa = await utils.tasks.getById.fetch({ id: task.id });
-      } catch {
-        toast.error("Não foi possível carregar as anotações desta tarefa. Tente novamente.");
+      } catch (e) {
+        const detalhe = mensagemDoServidor(e, "");
+        toast.error(`Não foi possível carregar as anotações desta tarefa.${detalhe ? ` ${detalhe}` : " Tente novamente."}`);
         return;
       }
       const notes = completa.notes ?? "";
