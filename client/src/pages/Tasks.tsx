@@ -2142,19 +2142,19 @@ export default function Tasks() {
                 <div className="flex shrink-0 items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                   {rowPhone !== null && (
                     <>
-                      <Button asChild variant="ghost" size="icon-sm" className="text-green-700 hover:bg-green-50 hover:text-green-800">
+                      <Button asChild variant="ghost" size="icon-sm" className="text-green-700 hover:bg-green-50 hover:text-green-800 max-md:size-11">
                         <a href={waLink(rowPhone)} target="_blank" rel="noopener noreferrer" aria-label={`Chamar ${task.title} no WhatsApp`} title="WhatsApp">
                           <MessageCircle aria-hidden />
                         </a>
                       </Button>
-                      <Button asChild variant="ghost" size="icon-sm">
+                      <Button asChild variant="ghost" size="icon-sm" className="max-md:size-11">
                         <a href={telLink(rowPhone)} aria-label={`Ligar para ${task.title}`} title="Ligar">
                           <Phone aria-hidden />
                         </a>
                       </Button>
                     </>
                   )}
-                  <Button variant="ghost" size="icon-sm" className="max-md:hidden" aria-label={`Editar ${task.title}`} title="Editar" disabled={carregandoEdicao} onClick={() => handleEdit(task)}>
+                  <Button variant="ghost" size="icon-sm" className="max-md:size-11" aria-label={`Editar ${task.title}`} title="Editar" disabled={carregandoEdicao} onClick={() => handleEdit(task)}>
                     <Pencil aria-hidden />
                   </Button>
                 </div>
@@ -2317,12 +2317,12 @@ export default function Tasks() {
                       return (
                         <>
                           {phone && (
-                            <Button asChild size="sm" variant="outline" onClick={(e) => e.stopPropagation()}>
+                            <Button asChild size="sm" variant="outline" className="max-md:h-11" onClick={(e) => e.stopPropagation()}>
                               <a href={waLink(phone)} target="_blank" rel="noopener noreferrer"><MessageCircle aria-hidden /> WhatsApp</a>
                             </Button>
                           )}
                           {phone && (
-                            <Button asChild size="sm" variant="outline" onClick={(e) => e.stopPropagation()}>
+                            <Button asChild size="sm" variant="outline" className="max-md:h-11" onClick={(e) => e.stopPropagation()}>
                               <a href={telLink(phone)}><Phone aria-hidden /> Ligar</a>
                             </Button>
                           )}
