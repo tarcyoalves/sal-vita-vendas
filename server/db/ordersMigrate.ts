@@ -4,7 +4,7 @@ import { FOLLOWUP_SEQUENCES, LEGACY_SEED_HTML_PREFIX } from '../email/followupSe
 type Step = { name: string; ok: boolean; error?: string };
 
 // Bump whenever the DDL below changes, to force exactly one full re-run.
-const ORDERS_SCHEMA_VERSION = 'orders-2026-11-10a';
+const ORDERS_SCHEMA_VERSION = 'orders-2026-11-23a';
 
 /**
  * Ensures all e-commerce/recovery tables exist in the ORDERS database.
@@ -552,6 +552,16 @@ export async function ensureOrdersTablesExist(force = false): Promise<Step[]> {
     WHERE status IN ('sent', 'cancelled', 'failed')
       AND updated_at < NOW() - INTERVAL '60 days'
   `);
+  // Contador de tentativas do login da loja (premiumAuth.login), compartilhado entre instâncias (23/11/2026).
+  await run('auth_attempts', () => sql`
+    CREATE TABLE IF NOT EXISTS auth_attempts (
+      chave         TEXT PRIMARY KEY,
+      janela_inicio TIMESTAMP NOT NULL,
+      tentativas    INTEGER NOT NULL DEFAULT 1
+    )
+  `);
+  await run('auth_attempts.janela_idx', () => sql`CREATE INDEX IF NOT EXISTS auth_attempts_janela_idx ON auth_attempts(janela_inicio)`);
+
   await run('cleanup_abandoned_carts', () => sql`
     DELETE FROM abandoned_carts
     WHERE (recovered = TRUE OR opted_out = TRUE)

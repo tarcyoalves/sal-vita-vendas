@@ -74,8 +74,9 @@ describe('schemasNecessarios — robô SMBI', () => {
 });
 
 describe('schemasNecessarios — tRPC', () => {
-  it('premiumAuth.login não usa banco nenhum', () => {
-    expect(req('POST', '/api/trpc/premiumAuth.login')).toEqual(NENHUM);
+  it('premiumAuth.login só acorda o banco da loja (contador de tentativas); me/logout não usam banco', () => {
+    expect(req('POST', '/api/trpc/premiumAuth.login')).toEqual(SO_LOJA);
+    expect(req('POST', '/api/trpc/premiumAuth.logout')).toEqual(NENHUM);
     expect(req('GET', '/api/trpc/premiumAuth.me')).toEqual(NENHUM);
   });
   it('procedure do CRM espera só o CRM (inclui o 1º login)', () => {
@@ -89,13 +90,13 @@ describe('schemasNecessarios — tRPC', () => {
   });
   it('loja com cookie de sessão do CRM também espera o CRM (createContext consulta users)', () => {
     expect(req('GET', '/api/trpc/shipping.listOrders', { sessaoCrm: true })).toEqual(AMBOS);
-    expect(req('POST', '/api/trpc/premiumAuth.login', { sessaoCrm: true })).toEqual(NENHUM);
+    expect(req('POST', '/api/trpc/premiumAuth.login', { sessaoCrm: true })).toEqual(SO_LOJA);
   });
   it('lote misto = união', () => {
     expect(req('GET', '/api/trpc/premiumAuth.me,shipping.calculate')).toEqual(SO_LOJA);
     expect(req('GET', '/api/trpc/premiumAuth.me,auth.me')).toEqual(SO_CRM);
     expect(req('GET', '/api/trpc/shipping.calculate,auth.me,premiumAuth.me')).toEqual(AMBOS);
-    expect(req('GET', '/api/trpc/premiumAuth.me,premiumAuth.login')).toEqual(NENHUM);
+    expect(req('GET', '/api/trpc/premiumAuth.me,premiumAuth.login')).toEqual(SO_LOJA);
   });
   it('ignora a query string e o caso das letras', () => {
     expect(req('GET', '/api/trpc/PremiumAuth.Me?batch=1&input=%7B%7D')).toEqual(NENHUM);

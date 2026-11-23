@@ -1079,6 +1079,15 @@ export const zapOptOuts = pgTable('zap_opt_outs', {
   criadoEm: timestamp('criado_em').defaultNow().notNull(),
 }, (t) => ({ chaveUq: uniqueIndex('zap_opt_outs_chave_uq').on(t.chave) }));
 
+// Contador de tentativas de login/recuperação COMPARTILHADO entre instâncias serverless (lote 2 de revisão, 23/11/2026).
+// `chave` é sempre um HASH (HMAC) do escopo + IP/e-mail — nunca e-mail, IP nem senha em claro. Ver server/lib/authAttempts.ts.
+// O mesmo DDL existe no banco do Premium (ordersMigrate.ts) para premiumAuth.login.
+export const authAttempts = pgTable('auth_attempts', {
+  chave: text('chave').primaryKey(),
+  janelaInicio: timestamp('janela_inicio').notNull(),
+  tentativas: integer('tentativas').notNull().default(1),
+});
+
 // Auditoria de quem TIROU um contato de "Não enviar mais" (lote 2 de revisão, 23/11/2026). Só staff (admin/gerente) ou quem marcou
 // pode tirar; cada remoção deixa uma linha aqui. Nunca guarda texto de mensagem.
 export const zapOptOutRemocoes = pgTable('zap_opt_out_remocoes', {
