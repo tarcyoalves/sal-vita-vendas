@@ -33,6 +33,10 @@ import { useFatStore } from '../lib/faturamento/store';
 import { useConfirm } from '../components/useConfirm';
 import { totalPedido, formatBRL } from '../lib/faturamento/calc';
 import { textosParaEnviar, type TextosTarefa } from '../lib/tasks/textoEditado';
+import {
+  aplicarRascunho, armazenamentoLocal, chaveRascunho, formularioAlterado, lerRascunho, limparRascunho, salvarRascunho,
+  type CamposTarefa,
+} from '../lib/tasks/rascunho';
 import type { Pedido } from '../lib/faturamento/types';
 import { MultiSelectFilter } from '../components/tasks/MultiSelectFilter';
 import { QueryError } from '../components/QueryError';
@@ -222,6 +226,11 @@ function parseImportLine(line: string): { title: string; description: string; no
     phone: phoneDigits ? normalizePhoneDigits(phoneDigits) : undefined,
   };
 }
+
+const FORM_VAZIO: CamposTarefa = {
+  clientId: 0, title: "", description: "", notes: "", email: "", tags: [], reminderDate: "", reminderTime: "09:00",
+  reminderEnabled: true, priority: "medium", assignedTo: "",
+};
 
 export default function Tasks() {
   const { user } = useAuth();
@@ -518,37 +527,76 @@ export default function Tasks() {
     return () => clearInterval(id);
   }, [isAdmin, tasks, workSession?.status]);
 
-  const [formData, setFormData] = useState<{
-    clientId: number;
-    title: string;
-    description: string;
-    notes: string;
-    email: string;
-    tags: string[];
-    reminderDate: string;
-    reminderTime: string;
-    reminderEnabled: boolean;
-    priority: "low" | "medium" | "high";
-    assignedTo: string;
-  }>({
-    clientId: 0,
-    title: "",
-    description: "",
-    notes: "",
-    email: "",
-    tags: [],
-    reminderDate: "",
-    reminderTime: "09:00",
-    reminderEnabled: true,
-    priority: "medium",
-    assignedTo: "",
-  });
+  const [formData, setFormData] = useState<CamposTarefa>(FORM_VAZIO);
+  // Formulário como foi aberto (vazio ou carregado do servidor): serve para saber se o usuário escreveu algo.
+  const [formBase, setFormBase] = useState<CamposTarefa>(FORM_VAZIO);
+  const [rascunhoRecuperado, setRascunhoRecuperado] = useState(false);
+  const formAlterado = isModalOpen && formularioAlterado(formBase, formData);
+  const chaveForm = chaveRascunho(user?.id, editingTask?.id ?? null);
 
   const resetForm = useCallback(() => {
-    setFormData({ clientId: 0, title: "", description: "", notes: "", email: "", tags: [], reminderDate: "", reminderTime: "09:00", reminderEnabled: true, priority: "medium", assignedTo: "" });
+    setFormData(FORM_VAZIO);
+    setFormBase(FORM_VAZIO);
+    setRascunhoRecuperado(false);
     setEditingTask(null);
     setTextosCarregados({ notes: '', description: '' });
   }, []);
+
+  // Rascunho automático: enquanto o formulário está aberto e diferente do original, guarda no aparelho (por usuário
+  // e por tarefa). Se voltar a ficar igual ao original, não há o que guardar. Também grava ao esconder a aba.
+  const rascunhoRef = useRef({ chave: chaveForm, formData, formBase, textosCarregados, alterado: formAlterado });
+  rascunhoRef.current = { chave: chaveForm, formData, formBase, textosCarregados, alterado: formAlterado };
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const arm = armazenamentoLocal();
+    if (!formAlterado) { limparRascunho(arm, chaveForm); return; }
+    const id = setTimeout(() => salvarRascunho(arm, chaveForm, formData, textosCarregados, Date.now()), 400);
+    return () => clearTimeout(id);
+  }, [isModalOpen, formAlterado, chaveForm, formData, textosCarregados]);
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const gravarAgora = () => {
+      const r = rascunhoRef.current;
+      if (document.visibilityState === 'hidden' && r.alterado) salvarRascunho(armazenamentoLocal(), r.chave, r.formData, r.textosCarregados, Date.now());
+    };
+    document.addEventListener('visibilitychange', gravarAgora);
+    window.addEventListener('pagehide', gravarAgora);
+    return () => { document.removeEventListener('visibilitychange', gravarAgora); window.removeEventListener('pagehide', gravarAgora); };
+  }, [isModalOpen]);
+
+  // Abre o formulário com o que veio do servidor e, se houver rascunho dessa tarefa (ou da "nova"), restaura por cima.
+  const abrirFormulario = useCallback((tarefa: Task | null, base: CamposTarefa, textos: TextosTarefa) => {
+    const r = lerRascunho(armazenamentoLocal(), chaveRascunho(user?.id, tarefa?.id ?? null), Date.now());
+    const campos = r ? aplicarRascunho(r, textos) : base;
+    const recuperado = !!r && formularioAlterado(base, campos);
+    setTextosCarregados(textos);
+    setEditingTask(tarefa);
+    setFormBase(base);
+    setFormData(campos);
+    setRascunhoRecuperado(recuperado);
+    setIsModalOpen(true);
+  }, [user?.id]);
+
+  const descartarRascunho = () => {
+    limparRascunho(armazenamentoLocal(), chaveForm);
+    setFormData(formBase);
+    setRascunhoRecuperado(false);
+  };
+
+  // Fechar com texto escrito (toque fora, Esc, X, Cancelar) pede confirmação; sem alteração, fecha direto.
+  const fechandoRef = useRef(false);
+  const pedirFechar = async () => {
+    if (fechandoRef.current) return;
+    if (formAlterado) {
+      fechandoRef.current = true;
+      const ok = await confirm('O que você escreveu nesta tarefa será apagado.', { title: 'Descartar o que você escreveu?', confirmLabel: 'Descartar' });
+      fechandoRef.current = false;
+      if (!ok) return;
+    }
+    limparRascunho(armazenamentoLocal(), chaveForm);
+    setIsModalOpen(false);
+    resetForm();
+  };
 
   // ─── 3. PRÓXIMA TAREFA URGENTE ────────────────────────────────────────────
   // Após salvar, encontra a tarefa pendente com lembrete mais próximo e destaca.
@@ -595,6 +643,7 @@ export default function Tasks() {
       // Atualiza o timestamp do último contato para o alerta de ociosidade
       if (!isAdmin) lastContactTimeRef.current = Date.now();
       setShowNotesWarning(false);
+      limparRascunho(armazenamentoLocal(), chaveForm);
       resetForm(); setIsModalOpen(false);
       const { data: fresh } = await refetch();
       if (!isAdmin && fresh) highlightNextUrgent(fresh as any[]);
@@ -675,6 +724,7 @@ export default function Tasks() {
     try {
       await deleteMutation.mutateAsync({ id: deleteConfirm, reason: deleteReason.trim() });
       toast.success("Tarefa deletada");
+      limparRascunho(armazenamentoLocal(), chaveRascunho(user?.id, deleteConfirm));
       resetForm();
       refetch();
     } catch { toast.error("Erro ao deletar"); }
@@ -1001,8 +1051,6 @@ export default function Tasks() {
       }
       const notes = completa.notes ?? "";
       const description = completa.description ?? "";
-      setTextosCarregados({ notes, description });
-      setEditingTask(task);
       const d = task.reminderDate ? new Date(task.reminderDate) : null;
       const reminderDate = d
         ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -1010,15 +1058,21 @@ export default function Tasks() {
       const reminderTime = d
         ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
         : "09:00";
-      setFormData({ clientId: task.clientId, title: task.title, description, notes, email: task.email || "", tags: task.tags ?? [], reminderDate, reminderTime, reminderEnabled: task.reminderEnabled ?? true, priority: (task.priority as "low" | "medium" | "high") || "medium", assignedTo: task.assignedTo || "" });
-      setIsModalOpen(true);
+      abrirFormulario(
+        task,
+        { clientId: task.clientId, title: task.title, description, notes, email: task.email || "", tags: task.tags ?? [], reminderDate, reminderTime, reminderEnabled: task.reminderEnabled ?? true, priority: (task.priority as "low" | "medium" | "high") || "medium", assignedTo: task.assignedTo || "" },
+        { notes, description },
+      );
     } finally {
       editandoRef.current = false;
       setCarregandoEdicao(false);
     }
-  }, [utils]);
+  }, [utils, abrirFormulario]);
 
-  const handleOpenNewTask = useCallback(() => { resetForm(); setIsModalOpen(true); }, [resetForm]);
+  const handleOpenNewTask = useCallback(() => {
+    resetForm();
+    abrirFormulario(null, FORM_VAZIO, { notes: '', description: '' });
+  }, [resetForm, abrirFormulario]);
 
   // Link direto para uma tarefa (ex.: vindo do Buscador de Clientes): /tasks?tarefa=123.
   // Abre a edição dessa tarefa uma única vez e limpa o parâmetro da barra de endereço.
@@ -1614,9 +1668,15 @@ export default function Tasks() {
       )}
 
       {/* Task Modal */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <Dialog open={isModalOpen} onOpenChange={(aberto) => { if (aberto) setIsModalOpen(true); else void pedirFechar(); }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader><DialogTitle>{editingTask ? "Editar tarefa" : "Nova tarefa"}</DialogTitle></DialogHeader>
+          {rascunhoRecuperado && (
+            <p role="status" className="-mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-slate-100 px-3 py-1.5 text-xs text-slate-700">
+              Rascunho recuperado.
+              <button type="button" onClick={descartarRascunho} className="font-medium text-brand-700 underline-offset-2 hover:underline max-md:min-h-10">Descartar rascunho</button>
+            </p>
+          )}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-4">
               <div className="space-y-1.5">
@@ -1761,7 +1821,7 @@ export default function Tasks() {
                   <Trash2 aria-hidden /> Excluir
                 </Button>
               )}
-              <Button type="button" variant="outline" onClick={() => { setIsModalOpen(false); resetForm(); }}>Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => void pedirFechar()}>Cancelar</Button>
               <Button type="submit" disabled={saving}>{editingTask ? "Salvar" : "Criar tarefa"}</Button>
             </DialogFooter>
           </form>
