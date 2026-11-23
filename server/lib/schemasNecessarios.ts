@@ -8,7 +8,7 @@
  *   loja → ORDERS_DATABASE_URL (ensureOrdersTablesExist + ensureB2bTablesExist)
  *
  * Regra de ouro: requisição que não precisa de banco NÃO pode pedir nenhum schema
- * (robô SMBI fora da janela, `premiumAuth.*`, `/api/health`).
+ * (robô SMBI fora da janela, `premiumAuth.me/logout`, `/api/health`). `premiumAuth.login` pede só a loja (contador de tentativas).
  */
 import { pollingBarradoPelaJanela, dentroDaJanelaDoRobo } from '../../shared/smbiJanela';
 
@@ -23,8 +23,9 @@ export const uniao = (a: Schemas, b: Schemas): Schemas => ({ crm: a.crm || b.crm
 
 /** Namespaces tRPC da loja (ordersDb). Mantenha em sincronia com PREMIUM_PREFIXES (premiumSession.ts). */
 const PREFIXOS_LOJA = ['shipping.', 'recovery.', 'b2b.', 'premiumemailmarketing.'];
-/** Login da loja não usa banco. */
+/** premiumAuth.* não usa banco, EXCETO `login`: o contador de tentativas compartilhado vive no banco da loja. */
 const PREFIXO_SEM_BANCO = 'premiumauth.';
+const LOGIN_DA_LOJA = 'premiumauth.login';
 
 export type RequisicaoParaSchemas = {
   metodo: string;
@@ -50,6 +51,7 @@ export function procedimentosTrpc(caminho: string): string[] {
 export function schemasDoTrpc(procs: string[], sessaoCrm = false): Schemas {
   let r = NENHUM;
   for (const p of procs) {
+    if (p === LOGIN_DA_LOJA) { r = uniao(r, SO_LOJA); continue; }
     if (p.startsWith(PREFIXO_SEM_BANCO)) continue;
     if (PREFIXOS_LOJA.some(pre => p.startsWith(pre))) {
       r = uniao(r, SO_LOJA);

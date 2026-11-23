@@ -11,6 +11,8 @@ import { createPixPaymentForOrder } from '../lib/mercadopago';
 import { STORE_URL } from '../lib/storeUrl';
 import { orderTrackLink, maskPhone } from '../lib/orderConfirmation';
 import { CATALOG } from './shipping';
+import { processAutomationRuns } from '../lib/recoveryRuns';
+import { inserirCarrinhoSeAusente, agendarCadenciaSeAusente } from '../lib/recoveryTrack';
 
 type SiteOrder = typeof siteOrders.$inferSelect;
 
@@ -283,15 +285,28 @@ export const recoveryRouter = router({
         .limit(1);
       if (recent.length > 0) return { tracked: false, reason: 'converted' };
 
-      // Upsert by phone
-      const existing = await db.select().from(abandonedCarts)
-        .where(eq(abandonedCarts.customerPhone, phone))
-        .limit(1);
-
+      // Upsert by phone. Inserção atômica (trava por telefone + WHERE NOT EXISTS, ver server/lib/recoveryTrack.ts):
+      // duas requisições simultâneas não criam carrinho nem cadência em dobro.
       const newStep = input.stepReached;
       let cartId: number;
 
-      if (existing.length > 0) {
+      const insertedId = await inserirCarrinhoSeAusente(db, {
+        customerName: input.customerName,
+        customerPhone: phone,
+        customerEmail: input.customerEmail ?? null,
+        postalCode: input.postalCode ?? null,
+        quantity: input.quantity,
+        stepReached: newStep,
+      });
+
+      if (insertedId !== null) {
+        cartId = insertedId;
+      } else {
+        // Já existia (ou outra requisição acabou de criar): atualiza o existente.
+        const existing = await db.select().from(abandonedCarts)
+          .where(eq(abandonedCarts.customerPhone, phone))
+          .limit(1);
+        if (existing.length === 0) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Não foi possível registrar o carrinho.' });
         const cart = existing[0];
         const higherStep = Math.max(cart.stepReached ?? 1, newStep);
         // Only advance status if not already converted/cancelled
@@ -311,17 +326,6 @@ export const recoveryRouter = router({
           updatedAt: new Date(),
         }).where(eq(abandonedCarts.id, cart.id));
         cartId = cart.id;
-      } else {
-        const [inserted] = await db.insert(abandonedCarts).values({
-          customerName: input.customerName,
-          customerPhone: phone,
-          customerEmail: input.customerEmail ?? null,
-          postalCode: input.postalCode ?? null,
-          quantity: input.quantity,
-          stepReached: newStep,
-          status: 'checkout_started',
-        }).returning({ id: abandonedCarts.id });
-        cartId = inserted.id;
       }
 
       // Schedule a recovery cadence as soon as we have name + phone.
@@ -329,37 +333,26 @@ export const recoveryRouter = router({
       // step 2+ (shipping calculated) gets the full 3-touch cadence.
       // Só se o telefone não teve cadência (qualquer status) nos últimos 30 dias: sem isso,
       // este endpoint público serviria de relay de WhatsApp (3 mensagens a cada novo carrinho).
+      // A checagem e a inserção são UMA transação com trava por telefone (agendarCadenciaSeAusente).
       {
         const desde = new Date(Date.now() - CADENCIA_JANELA_DIAS * 24 * 60 * 60 * 1000);
-        const recentes = await db.select({ id: automationRuns.id })
-          .from(automationRuns)
-          .where(and(eq(automationRuns.customerPhone, phone), gt(automationRuns.createdAt, desde)))
-          .limit(1);
-        if (podeAgendarCadencia(recentes.length)) {
-          const base = Date.now();
-          // Touch 1: gentle reminder (no discount — protect margin)
-          // Touch 2: urgency + social proof
-          // Touch 3: coupon as last resort
-          const fullCadence = [
-            { rule: 'abandoned_t1', delayMs: 30 * 60 * 1000 },        // 30 min
-            { rule: 'abandoned_t2', delayMs: 4 * 60 * 60 * 1000 },    // 4 h
-            { rule: 'abandoned_t3', delayMs: 24 * 60 * 60 * 1000 },   // 24 h
-          ];
-          // Lighter cadence for low-intent (step 1) carts: just a gentle nudge
-          // followed by a coupon as last resort, skipping the urgency touch.
-          const lightCadence = [
-            { rule: 'abandoned_t1', delayMs: 30 * 60 * 1000 },        // 30 min
-            { rule: 'abandoned_t3', delayMs: 24 * 60 * 60 * 1000 },   // 24 h
-          ];
-          const touches = newStep >= 2 ? fullCadence : lightCadence;
-          await db.insert(automationRuns).values(touches.map(t => ({
-            cartId,
-            customerPhone: phone,
-            ruleName: t.rule,
-            status: 'scheduled' as const,
-            scheduledFor: new Date(base + t.delayMs),
-          })));
-        }
+        // Touch 1: gentle reminder (no discount — protect margin)
+        // Touch 2: urgency + social proof
+        // Touch 3: coupon as last resort
+        const fullCadence = [
+          { rule: 'abandoned_t1', delayMs: 30 * 60 * 1000 },        // 30 min
+          { rule: 'abandoned_t2', delayMs: 4 * 60 * 60 * 1000 },    // 4 h
+          { rule: 'abandoned_t3', delayMs: 24 * 60 * 60 * 1000 },   // 24 h
+        ];
+        // Lighter cadence for low-intent (step 1) carts: just a gentle nudge
+        // followed by a coupon as last resort, skipping the urgency touch.
+        const lightCadence = [
+          { rule: 'abandoned_t1', delayMs: 30 * 60 * 1000 },        // 30 min
+          { rule: 'abandoned_t3', delayMs: 24 * 60 * 60 * 1000 },   // 24 h
+        ];
+        await agendarCadenciaSeAusente(db, {
+          cartId, phone, desde, toques: newStep >= 2 ? fullCadence : lightCadence,
+        });
       }
 
       return { tracked: true, cartId };
@@ -1122,60 +1115,14 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
       return { ok, phone: aiPhone, preview: parsed.mensagem };
     }),
 
-  // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts
-  // Called by cron (/api/cron/abandoned-cart) or manually from admin UI
+  // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts.
+  // Botão manual: usa a MESMA rotina do cron (server/lib/recoveryRuns.ts): claim atômico FOR UPDATE SKIP LOCKED,
+  // portão de WhatsApp conectado, requeue em falha, um toque por telefone por rodada, checagem de compra do
+  // telefone e orçamento de tempo de 45 s (a função da Vercel é limitada a 60 s).
   runAutomationJob: premiumAdminProcedure
-    .mutation(async ({ ctx }) => {
-      if (!isBusinessHours()) return { processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours (08:00–21:00 BRT)' };
-      const now = new Date();
-      const due = await db.select().from(automationRuns).where(
-        and(eq(automationRuns.status, 'scheduled'), lte(automationRuns.scheduledFor, now))
-      ).limit(50);
-      const activeCoupon = await getActiveRecoveryCoupon();
-
-      let sent = 0, cancelled = 0, failed = 0;
-      for (const run of due) {
-        // Verify cart is not converted, not recovered, and not opted out
-        const [cart] = await db.select().from(abandonedCarts)
-          .where(eq(abandonedCarts.id, run.cartId)).limit(1);
-        if (!cart || cart.status === 'converted' || cart.recovered || cart.optedOut) {
-          await db.update(automationRuns).set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
-            .where(eq(automationRuns.id, run.id));
-          cancelled++;
-          continue;
-        }
-        // Priority: 1) AI-generated body  2) default template  3) hardcoded fallback
-        let msg: string;
-        if (run.aiBody) {
-          msg = run.aiBody;
-        } else {
-          const [tpl] = await db.select().from(msgTemplates)
-            .where(and(eq(msgTemplates.type, 'abandoned'), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true)))
-            .limit(1);
-          msg = tpl
-            ? renderTemplate(tpl.body, {
-                nome: cart.customerName,
-                link: activeCoupon ? `${STORE_URL}?cupom=${activeCoupon.code}` : STORE_URL,
-                cupom: activeCoupon?.code ?? '',
-                produto: 'Sal Marinho Integral 1kg',
-              })
-            : recoveryMsg(cart.customerName, activeCoupon?.code);
-        }
-        const { ok } = await sendViaWhatsApp(run.customerPhone, msg);
-        if (ok) {
-          await db.update(automationRuns).set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
-            .where(eq(automationRuns.id, run.id));
-          await db.update(abandonedCarts).set({ recoverySentAt: new Date(), updatedAt: new Date() })
-            .where(eq(abandonedCarts.id, run.cartId));
-          sent++;
-        } else {
-          await db.update(automationRuns).set({ status: 'failed', updatedAt: new Date() })
-            .where(eq(automationRuns.id, run.id));
-          failed++;
-        }
-        await new Promise(r => setTimeout(r, 1200));
-      }
-      return { processed: due.length, sent, cancelled, failed };
+    .mutation(async () => {
+      const r = await processAutomationRuns({ deadlineAt: Date.now() + 45_000 });
+      return r;
     }),
 
   // Admin: list automation runs

@@ -77,7 +77,8 @@ describe('guardas de código (DB-6/12/13/21/22/23)', () => {
     expect(ship).toMatch(/payment_status|paymentStatus\} <> 'confirmed'/);
   });
   it('cron de abandono faz claim atômico e reconcile ordena por created_at desc', () => {
-    expect(api).toMatch(/SET status = 'sending'[\s\S]{0,400}FOR UPDATE SKIP LOCKED/);
+    // o laço foi movido para a rotina compartilhada cron/botão (lote 2)
+    expect(readFileSync('server/lib/recoveryRuns.ts', 'utf8')).toMatch(/SET status = 'sending'[\s\S]{0,400}FOR UPDATE SKIP LOCKED/);
     expect(api).toContain('.orderBy(desc(siteOrders.createdAt)).limit(20)');
     expect(api).toContain("INTERVAL '730 days'");
   });

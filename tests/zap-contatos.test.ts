@@ -192,7 +192,11 @@ describe('zapContatos.marcarOptOuts', () => {
 });
 
 describe('zapContatos.desmarcarOptOuts', () => {
+  const alvo = (userId: number, id = 1) => ({ id, chave: '558499990000', telefone: '558499990000', nomeHash: H1, userId });
+  const chamadorPapel = (role: string, id = 7) => zapContatosRouter.createCaller({ user: { id, email: 'a@b.c', name: 'Ana', role, mustChangePassword: false }, req: { headers: {} }, res: {} } as never);
+
   it('remove por telefone (ou nome, quando uma das pontas não tem telefone) e conta', async () => {
+    m.leituras = [[alvo(7)]];
     m.retornos = [[{ id: 1 }]];
     const r = await chamador().desmarcarOptOuts({ itens: [{ telefone: '84999990000', nomeHash: H1 }, { nomeHash: H2 }] });
     expect(r).toEqual({ removidos: 1 });
@@ -202,9 +206,43 @@ describe('zapContatos.desmarcarOptOuts', () => {
     expect(q).toMatch(/"telefone" IS NULL/);
   });
   it('só com telefone: não gera IN vazio', async () => {
-    m.retornos = [[]];
+    m.leituras = [[]];
     await chamador().desmarcarOptOuts({ itens: [{ telefone: '84999990000', nomeHash: H1 }] });
     expect(sqlDe(m.wheres[0])).not.toMatch(/in \(\)/i);
+  });
+  it('quem marcou pode tirar o próprio e a remoção é auditada', async () => {
+    m.leituras = [[alvo(7)]];
+    m.retornos = [[{ id: 1 }]];
+    const r = await chamadorPapel('user', 7).desmarcarOptOuts({ itens: [{ telefone: '84999990000', nomeHash: H1 }] });
+    expect(r).toEqual({ removidos: 1 });
+    expect(m.chamadas).toContain('delete');
+    const aud = m.valores.find((v) => Array.isArray(v) && (v as Array<Record<string, unknown>>)[0]?.removidoPorUserId !== undefined) as Array<Record<string, unknown>>;
+    expect(aud).toEqual([{ chave: '558499990000', telefone: '558499990000', nomeHash: H1, marcadoPorUserId: 7, removidoPorUserId: 7, removidoPorPapel: 'user' }]);
+  });
+  it('atendente NÃO tira o opt-out de outro: FORBIDDEN com a mensagem combinada e nada é apagado', async () => {
+    m.leituras = [[alvo(99)]];
+    await expect(chamadorPapel('user', 7).desmarcarOptOuts({ itens: [{ telefone: '84999990000', nomeHash: H1 }] }))
+      .rejects.toMatchObject({ code: 'FORBIDDEN', message: "Só quem marcou ou um gestor pode tirar este contato de 'Não enviar mais'." });
+    expect(m.chamadas).not.toContain('delete');
+  });
+  it('lote misto (um meu, um de outro) também é recusado por inteiro', async () => {
+    m.leituras = [[alvo(7, 1), alvo(99, 2)]];
+    await expect(chamadorPapel('user', 7).desmarcarOptOuts({ itens: [{ telefone: '84999990000', nomeHash: H1 }, { nomeHash: H2 }] }))
+      .rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(m.chamadas).not.toContain('delete');
+  });
+  it.each(['admin', 'manager'])('%s (staff) tira o de qualquer pessoa, com auditoria de quem removeu', async (papel) => {
+    m.leituras = [[alvo(99)]];
+    m.retornos = [[{ id: 1 }]];
+    const r = await chamadorPapel(papel, 3).desmarcarOptOuts({ itens: [{ telefone: '84999990000', nomeHash: H1 }] });
+    expect(r).toEqual({ removidos: 1 });
+    const aud = m.valores.find((v) => Array.isArray(v) && (v as Array<Record<string, unknown>>)[0]?.removidoPorUserId !== undefined) as Array<Record<string, unknown>>;
+    expect(aud[0]).toMatchObject({ marcadoPorUserId: 99, removidoPorUserId: 3, removidoPorPapel: papel });
+  });
+  it('nada casado: 0 removidos, sem DELETE nem auditoria', async () => {
+    m.leituras = [[]];
+    expect(await chamador().desmarcarOptOuts({ itens: [{ nomeHash: H2 }] })).toEqual({ removidos: 0 });
+    expect(m.chamadas).not.toContain('delete');
   });
 });
 

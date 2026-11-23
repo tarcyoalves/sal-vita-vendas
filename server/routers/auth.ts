@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { eq, and, gt, isNull, count, sql } from 'drizzle-orm';
+import { eq, and, or, gt, isNull, count, sql, notLike } from 'drizzle-orm';
 import { randomBytes, randomInt } from 'crypto';
 import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
@@ -16,6 +16,10 @@ import { safeEqual } from '../lib/safeEqual';
 import { emailEquals } from '../lib/userEmail';
 import { getClientIp } from '../lib/clientIp';
 import { createEmergencyThrottle } from '../lib/emergencyThrottle';
+import { hashResetToken, PREFIXO_HASH_RESET } from '../lib/resetToken';
+import {
+  bloqueadoCompartilhado, chaveHash, ContadorIndisponivel, crmAttemptsDb, limparCompartilhado, registrarFalhaCompartilhada,
+} from '../lib/authAttempts';
 
 // Piso de duração da resposta de requestPasswordReset (envio de e-mail costuma levar menos que isso).
 const RESET_TEMPO_MINIMO_MS = 1500;
@@ -30,6 +34,12 @@ function generatePassword(length = 12): string {
 }
 
 const emergencyThrottle = createEmergencyThrottle();
+
+// Limites do contador compartilhado (janela de 15 min, ver server/lib/authAttempts.ts). Iguais aos do Express.
+const LOGIN_MAX_IP_EMAIL = 10;
+const LOGIN_MAX_IP = 30;
+const EMERGENCIA_MAX_IP_EMAIL = 5;
+const EMERGENCIA_MAX_EMAIL = 10;
 
 export const authRouter = router({
   me: publicProcedure.query(async ({ ctx }) => {
@@ -51,13 +61,24 @@ export const authRouter = router({
   login: publicProcedure
     .input(z.object({ email: z.string().email(), password: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
+      // Segunda barreira, compartilhada entre instâncias (a primeira é o limitador em memória do Express).
+      // Falha aberta: se o banco do contador cair, o login continua.
+      const chavesLogin = {
+        ipEmail: chaveHash('login:ipemail', ctx.clientIp, input.email),
+        ip: chaveHash('login:ip', ctx.clientIp),
+      };
+      if (await bloqueadoCompartilhado(crmAttemptsDb, [{ chave: chavesLogin.ipEmail, max: LOGIN_MAX_IP_EMAIL }, { chave: chavesLogin.ip, max: LOGIN_MAX_IP }])) {
+        throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Muitas tentativas. Tente novamente em 15 minutos.' });
+      }
       // Se houver duas contas que só diferem em maiúsculas (legado), a de grafia idêntica vem primeiro
       const [user] = await db.select().from(users).where(emailEquals(users.email, input.email))
         .orderBy(sql`(${users.email} = ${input.email}) desc`, users.id).limit(1);
       const valid = user ? verifyPassword(input.password, user.passwordHash) : (verifyPassword(input.password, getDummyHash()), false);
       if (!valid) {
+        await registrarFalhaCompartilhada(crmAttemptsDb, [chavesLogin.ipEmail, chavesLogin.ip]);
         throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Email ou senha inválidos' });
       }
+      await limparCompartilhado(crmAttemptsDb, [chavesLogin.ipEmail]);
       // Atendente desativado: antes recebia o cookie e voltava ao login sem aviso
       // (createContext o tratava como deslogado). Avisa só depois de a senha conferir.
       const [seller] = await db.select({ status: sellers.status }).from(sellers)
@@ -146,11 +167,25 @@ export const authRouter = router({
         throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Muitas tentativas. Tente novamente em alguns minutos.' });
       }
 
+      // Contador compartilhado entre instâncias. Aqui FALHA FECHADA: sem o contador, a recuperação de emergência
+      // (que redefine a senha de um admin) não roda.
+      const chavesEmergencia = [chaveHash('emerg:ipemail', ip, input.email), chaveHash('emerg:email', input.email)];
+      const indisponivel = new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Recuperação indisponível no momento. Tente novamente em instantes.' });
+      try {
+        if (await bloqueadoCompartilhado(crmAttemptsDb, [
+          { chave: chavesEmergencia[0], max: EMERGENCIA_MAX_IP_EMAIL }, { chave: chavesEmergencia[1], max: EMERGENCIA_MAX_EMAIL },
+        ], { falhaFechada: true })) {
+          throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Muitas tentativas. Tente novamente em alguns minutos.' });
+        }
+      } catch (e) { throw e instanceof ContadorIndisponivel ? indisponivel : e; }
+
       const envSecret = process.env.ADMIN_RESET_SECRET;
       const genericError = 'Credenciais de recuperação inválidas';
 
       if (!envSecret || !safeEqual(input.secret, envSecret)) {
         emergencyThrottle.fail(ip, input.email);
+        try { await registrarFalhaCompartilhada(crmAttemptsDb, chavesEmergencia, { falhaFechada: true }); }
+        catch (e) { throw e instanceof ContadorIndisponivel ? indisponivel : e; }
         throw new TRPCError({ code: 'UNAUTHORIZED', message: genericError });
       }
 
@@ -189,9 +224,10 @@ export const authRouter = router({
       const token = randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
+      // O banco guarda só o SHA-256; o link do e-mail leva o token em claro (ver server/lib/resetToken.ts).
       await db.insert(passwordResetTokens).values({
         userId: user.id,
-        token,
+        token: hashResetToken(token),
         expiresAt,
       });
 
@@ -229,7 +265,7 @@ export const authRouter = router({
 
   resetPasswordWithToken: publicProcedure
     .input(z.object({
-      token: z.string().min(1),
+      token: z.string().min(1).max(200),
       newPassword: z.string().min(SENHA_MINIMA, SENHA_MINIMA_MSG),
     }))
     .mutation(async ({ input }) => {
@@ -239,7 +275,12 @@ export const authRouter = router({
       const [resetToken] = await db.update(passwordResetTokens)
         .set({ usedAt: now })
         .where(and(
-          eq(passwordResetTokens.token, input.token),
+          // Formato novo (hash) OU legado em claro (válido por até 30 min após o deploy). O legado exclui
+          // linhas `sha256:` para que um hash vazado não sirva como se fosse um token em claro.
+          or(
+            eq(passwordResetTokens.token, hashResetToken(input.token)),
+            and(eq(passwordResetTokens.token, input.token), notLike(passwordResetTokens.token, `${PREFIXO_HASH_RESET}%`)),
+          ),
           isNull(passwordResetTokens.usedAt),
           gt(passwordResetTokens.expiresAt, now),
         ))

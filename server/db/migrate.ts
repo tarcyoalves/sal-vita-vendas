@@ -271,6 +271,32 @@ async function ensureZapContatos() {
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS zap_contatos_enviados_chave_tipo_uq ON zap_contatos_enviados(chave, tipo)`;
   await sql`CREATE INDEX IF NOT EXISTS zap_contatos_enviados_telefone_idx ON zap_contatos_enviados(telefone)`;
   await sql`CREATE INDEX IF NOT EXISTS zap_contatos_enviados_nome_hash_idx ON zap_contatos_enviados(nome_hash)`;
+  // Auditoria de quem tirou um contato de "Não enviar mais" (23/11/2026, lote 2 de revisão).
+  await sql`
+    CREATE TABLE IF NOT EXISTS zap_opt_out_remocoes (
+      id                    SERIAL PRIMARY KEY,
+      chave                 TEXT NOT NULL,
+      telefone              TEXT,
+      nome_hash             TEXT NOT NULL,
+      marcado_por_user_id   INTEGER NOT NULL,
+      removido_por_user_id  INTEGER NOT NULL,
+      removido_por_papel    TEXT NOT NULL,
+      removido_em           TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS zap_opt_out_remocoes_chave_idx ON zap_opt_out_remocoes(chave)`;
+}
+
+/** Contador de tentativas de login compartilhado entre instâncias (23/11/2026, lote 2 de revisão). Só tabela nova (aditivo). */
+async function ensureAuthAttempts() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_attempts (
+      chave         TEXT PRIMARY KEY,
+      janela_inicio TIMESTAMP NOT NULL,
+      tentativas    INTEGER NOT NULL DEFAULT 1
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS auth_attempts_janela_idx ON auth_attempts(janela_inicio)`;
 }
 
 async function ensureRecentSchema() {
@@ -295,7 +321,9 @@ async function ensureRecentSchema() {
              AND ((table_name = 'credit_queries' AND column_name = 'produto')
                OR (table_name = 'credit_settings' AND column_name = 'teto_por_consulta_reais'))) = 2 AS credito_cols_ok,
           to_regclass('public.zap_opt_outs') IS NOT NULL
-          AND to_regclass('public.zap_contatos_enviados') IS NOT NULL AS zap_contatos_ok`,
+          AND to_regclass('public.zap_contatos_enviados') IS NOT NULL
+          AND to_regclass('public.zap_opt_out_remocoes') IS NOT NULL AS zap_contatos_ok,
+          to_regclass('public.auth_attempts') IS NOT NULL AS auth_attempts_ok`,
     sql`SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'smbi_robot_state'`,
   ]);
@@ -463,11 +491,15 @@ async function ensureRecentSchema() {
   // Vita Zap lote 2: tabelas NOVAS do "não enviar mais" e do contato registrado (rede de segurança; a migração longa também as cria).
   const zapContatosOk = (reg as unknown as Array<{ zap_contatos_ok: boolean }>)[0]?.zap_contatos_ok === true;
   if (!zapContatosOk) await ensureZapContatos();
+
+  // Contador de tentativas de login (rede de segurança; a migração longa também o cria).
+  const authOk = (reg as unknown as Array<{ auth_attempts_ok: boolean }>)[0]?.auth_attempts_ok === true;
+  if (!authOk) await ensureAuthAttempts();
 }
 
 // Bump this whenever the migrations below change to force exactly one re-run
 // across all serverless instances. Format: date + optional suffix.
-const SCHEMA_VERSION = '2026-11-18a';
+const SCHEMA_VERSION = '2026-11-23b';
 
 export async function ensureTablesExist() {
   // Antes de tudo (e antes do caminho rápido): garante o que foi criado por último.
@@ -1361,6 +1393,7 @@ export async function ensureTablesExist() {
 
   await ensureRadarTables();
   await ensureZapContatos();
+  await ensureAuthAttempts();
 
   // Depois do DDL: em banco novo a tabela `users` só existe a partir daqui, e
   // o fast path acima nunca roda na primeira inicialização. Se o bootstrap

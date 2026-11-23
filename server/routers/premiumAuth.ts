@@ -5,6 +5,7 @@ import { verifyPassword, getDummyHash } from '../auth';
 import { safeEqual } from '../lib/safeEqual';
 import { getPremiumConfig, signPremiumToken, premiumCookieHeader, clearPremiumCookieHeader } from '../lib/premiumSession';
 import { PREMIUM_COOKIE_NAME } from '../../shared/const';
+import { bloqueadoCompartilhado, chaveHash, limparCompartilhado, lojaAttemptsDb, registrarFalhaCompartilhada } from '../lib/authAttempts';
 
 // Login do admin da loja Premium. NÃO consulta banco: e-mail e hash vêm do ambiente
 // (PREMIUM_ADMIN_EMAIL / PREMIUM_ADMIN_PASSWORD_HASH). Não registra e-mail nem senha em log.
@@ -23,6 +24,8 @@ const throttle = {
   ok: (ip: string) => { falhas.delete(ip); },
 };
 const GENERIC = 'Email ou senha inválidos';
+/** Falhas por IP em 15 min antes de bloquear (contador compartilhado). */
+const PREMIUM_MAX_IP = 10;
 
 /** Hash malformado no ambiente (ex.: iterações inválidas) não pode virar erro 500 nem aceitar a senha. */
 function safeVerify(password: string, hash: string): boolean {
@@ -36,7 +39,7 @@ export const premiumAuthRouter = router({
   login: publicProcedure
     // z.string() sem .email(): o formato inválido não pode responder diferente de "não confere".
     .input(z.object({ email: z.string().trim().min(1).max(254), password: z.string().min(1).max(256) }))
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const cfg = getPremiumConfig();
       if (!cfg) {
         throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Login da loja não configurado' });
@@ -46,15 +49,23 @@ export const premiumAuthRouter = router({
       if (throttle.blocked(ctx.clientIp)) {
         throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Muitas tentativas. Tente novamente em alguns minutos.' });
       }
+      // Segunda barreira, compartilhada entre instâncias (banco da LOJA, tabela auth_attempts). Só por IP, como o
+      // atraso em memória. Falha aberta: se o contador cair, o login continua.
+      const chaveIp = chaveHash('premium:ip', ctx.clientIp);
+      if (await bloqueadoCompartilhado(lojaAttemptsDb, [{ chave: chaveIp, max: PREMIUM_MAX_IP }])) {
+        throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'Muitas tentativas. Tente novamente em alguns minutos.' });
+      }
       // Tempo constante: o PBKDF2 roda sempre (contra um hash fictício quando o e-mail não confere).
       const passOk = emailOk
         ? safeVerify(input.password, cfg.passwordHash)
         : (safeVerify(input.password, getDummyHash()), false);
       if (!passOk) {
         throttle.fail(ctx.clientIp);
+        await registrarFalhaCompartilhada(lojaAttemptsDb, [chaveIp]);
         throw new TRPCError({ code: 'UNAUTHORIZED', message: GENERIC });
       }
       throttle.ok(ctx.clientIp);
+      await limparCompartilhado(lojaAttemptsDb, [chaveIp]);
       ctx.res.setHeader('Set-Cookie', premiumCookieHeader(PREMIUM_COOKIE_NAME, signPremiumToken(cfg)));
       return { email: cfg.email, role: 'admin' as const };
     }),

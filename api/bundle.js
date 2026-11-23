@@ -18429,8 +18429,8 @@ var require_escape_html = __commonJS({
   "../sal-vita-vendas/node_modules/escape-html/index.js"(exports2, module2) {
     "use strict";
     var matchHtmlRegExp = /["'&<>]/;
-    module2.exports = escapeHtml6;
-    function escapeHtml6(string) {
+    module2.exports = escapeHtml7;
+    function escapeHtml7(string) {
       var str = "" + string;
       var match = matchHtmlRegExp.exec(str);
       if (!match) {
@@ -18561,7 +18561,7 @@ var require_finalhandler = __commonJS({
     "use strict";
     var debug = require_src2()("finalhandler");
     var encodeUrl = require_encodeurl();
-    var escapeHtml6 = require_escape_html();
+    var escapeHtml7 = require_escape_html();
     var onFinished = require_on_finished();
     var parseUrl = require_parseurl();
     var statuses = require_statuses();
@@ -18573,7 +18573,7 @@ var require_finalhandler = __commonJS({
     };
     var isFinished = onFinished.isFinished;
     function createHtmlDocument(message) {
-      var body = escapeHtml6(message).replace(NEWLINE_REGEXP, "<br>").replace(DOUBLE_SPACE_REGEXP, " &nbsp;");
+      var body = escapeHtml7(message).replace(NEWLINE_REGEXP, "<br>").replace(DOUBLE_SPACE_REGEXP, " &nbsp;");
       return '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>Error</title>\n</head>\n<body>\n<pre>' + body + "</pre>\n</body>\n</html>\n";
     }
     module2.exports = finalhandler;
@@ -21077,7 +21077,7 @@ var require_send = __commonJS({
     var deprecate = require_depd()("send");
     var destroy = require_destroy();
     var encodeUrl = require_encodeurl();
-    var escapeHtml6 = require_escape_html();
+    var escapeHtml7 = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
     var fs5 = require("fs");
@@ -21177,7 +21177,7 @@ var require_send = __commonJS({
       }
       var res = this.res;
       var msg = statuses.message[status] || String(status);
-      var doc = createHtmlDocument("Error", escapeHtml6(msg));
+      var doc = createHtmlDocument("Error", escapeHtml7(msg));
       clearHeaders(res);
       if (err && err.headers) {
         setHeaders(res, err.headers);
@@ -21277,7 +21277,7 @@ var require_send = __commonJS({
         return;
       }
       var loc = encodeUrl(collapseLeadingSlashes(this.path + "/"));
-      var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml6(loc));
+      var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml7(loc));
       res.statusCode = 301;
       res.setHeader("Content-Type", "text/html; charset=UTF-8");
       res.setHeader("Content-Length", Buffer.byteLength(doc));
@@ -23881,7 +23881,7 @@ var require_response = __commonJS({
     var createError = require_http_errors();
     var deprecate = require_depd()("express");
     var encodeUrl = require_encodeurl();
-    var escapeHtml6 = require_escape_html();
+    var escapeHtml7 = require_escape_html();
     var http = require("http");
     var isAbsolute = require_utils2().isAbsolute;
     var onFinished = require_on_finished();
@@ -24287,7 +24287,7 @@ var require_response = __commonJS({
           body = statuses.message[status] + ". Redirecting to " + address;
         },
         html: function() {
-          var u4 = escapeHtml6(address);
+          var u4 = escapeHtml7(address);
           body = "<p>" + statuses.message[status] + ". Redirecting to " + u4 + "</p>";
         },
         default: function() {
@@ -24419,7 +24419,7 @@ var require_serve_static = __commonJS({
   "../sal-vita-vendas/node_modules/serve-static/index.js"(exports2, module2) {
     "use strict";
     var encodeUrl = require_encodeurl();
-    var escapeHtml6 = require_escape_html();
+    var escapeHtml7 = require_escape_html();
     var parseUrl = require_parseurl();
     var resolve3 = require("path").resolve;
     var send = require_send();
@@ -24506,7 +24506,7 @@ var require_serve_static = __commonJS({
         originalUrl.path = null;
         originalUrl.pathname = collapseLeadingSlashes(originalUrl.pathname + "/");
         var loc = encodeUrl(url3.format(originalUrl));
-        var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml6(loc));
+        var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml7(loc));
         res.statusCode = 301;
         res.setHeader("Content-Type", "text/html; charset=UTF-8");
         res.setHeader("Content-Length", Buffer.byteLength(doc));
@@ -25699,23 +25699,23 @@ var require_helpers = __commonJS({
   "../sal-vita-vendas/node_modules/ip-address/dist/v6/helpers.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.escapeHtml = escapeHtml6;
+    exports2.escapeHtml = escapeHtml7;
     exports2.spanAllZeroes = spanAllZeroes;
     exports2.spanAll = spanAll;
     exports2.spanLeadingZeroes = spanLeadingZeroes;
     exports2.simpleGroup = simpleGroup;
-    function escapeHtml6(s4) {
+    function escapeHtml7(s4) {
       return s4.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     }
     function spanAllZeroes(s4) {
-      return escapeHtml6(s4).replace(/(0+)/g, '<span class="zero">$1</span>');
+      return escapeHtml7(s4).replace(/(0+)/g, '<span class="zero">$1</span>');
     }
     function spanAll(s4, offset2 = 0) {
       const letters = s4.split("");
-      return letters.map((n5, i4) => `<span class="digit value-${escapeHtml6(n5)} position-${i4 + offset2}">${spanAllZeroes(n5)}</span>`).join("");
+      return letters.map((n5, i4) => `<span class="digit value-${escapeHtml7(n5)} position-${i4 + offset2}">${spanAllZeroes(n5)}</span>`).join("");
     }
     function spanLeadingZeroesSimple(group) {
-      return escapeHtml6(group).replace(/^(0+)/, '<span class="zero">$1</span>');
+      return escapeHtml7(group).replace(/^(0+)/, '<span class="zero">$1</span>');
     }
     function spanLeadingZeroes(address) {
       const groups = address.split(":");
@@ -35265,8 +35265,8 @@ var require_gt = __commonJS({
   "../sal-vita-vendas/node_modules/jsonwebtoken/node_modules/semver/functions/gt.js"(exports2, module2) {
     "use strict";
     var compare = require_compare();
-    var gt2 = (a5, b3, loose) => compare(a5, b3, loose) > 0;
-    module2.exports = gt2;
+    var gt3 = (a5, b3, loose) => compare(a5, b3, loose) > 0;
+    module2.exports = gt3;
   }
 });
 
@@ -35315,8 +35315,8 @@ var require_lte = __commonJS({
   "../sal-vita-vendas/node_modules/jsonwebtoken/node_modules/semver/functions/lte.js"(exports2, module2) {
     "use strict";
     var compare = require_compare();
-    var lte2 = (a5, b3, loose) => compare(a5, b3, loose) <= 0;
-    module2.exports = lte2;
+    var lte3 = (a5, b3, loose) => compare(a5, b3, loose) <= 0;
+    module2.exports = lte3;
   }
 });
 
@@ -35326,10 +35326,10 @@ var require_cmp = __commonJS({
     "use strict";
     var eq2 = require_eq();
     var neq = require_neq();
-    var gt2 = require_gt();
+    var gt3 = require_gt();
     var gte2 = require_gte();
     var lt3 = require_lt();
-    var lte2 = require_lte();
+    var lte3 = require_lte();
     var cmp = (a5, op, b3, loose) => {
       switch (op) {
         case "===":
@@ -35355,13 +35355,13 @@ var require_cmp = __commonJS({
         case "!=":
           return neq(a5, b3, loose);
         case ">":
-          return gt2(a5, b3, loose);
+          return gt3(a5, b3, loose);
         case ">=":
           return gte2(a5, b3, loose);
         case "<":
           return lt3(a5, b3, loose);
         case "<=":
-          return lte2(a5, b3, loose);
+          return lte3(a5, b3, loose);
         default:
           throw new TypeError(`Invalid operator: ${op}`);
       }
@@ -36035,7 +36035,7 @@ var require_min_version = __commonJS({
     "use strict";
     var SemVer = require_semver();
     var Range = require_range2();
-    var gt2 = require_gt();
+    var gt3 = require_gt();
     var minVersion = (range2, loose) => {
       range2 = new Range(range2, loose);
       let minver = new SemVer("0.0.0");
@@ -36063,7 +36063,7 @@ var require_min_version = __commonJS({
             /* fallthrough */
             case "":
             case ">=":
-              if (!setMin || gt2(compver, setMin)) {
+              if (!setMin || gt3(compver, setMin)) {
                 setMin = compver;
               }
               break;
@@ -36075,7 +36075,7 @@ var require_min_version = __commonJS({
               throw new Error(`Unexpected operation: ${comparator.operator}`);
           }
         });
-        if (setMin && (!minver || gt2(minver, setMin))) {
+        if (setMin && (!minver || gt3(minver, setMin))) {
           minver = setMin;
         }
       }
@@ -36113,9 +36113,9 @@ var require_outside = __commonJS({
     var { ANY } = Comparator;
     var Range = require_range2();
     var satisfies = require_satisfies();
-    var gt2 = require_gt();
+    var gt3 = require_gt();
     var lt3 = require_lt();
-    var lte2 = require_lte();
+    var lte3 = require_lte();
     var gte2 = require_gte();
     var outside = (version3, range2, hilo, options) => {
       version3 = new SemVer(version3, options);
@@ -36123,8 +36123,8 @@ var require_outside = __commonJS({
       let gtfn, ltefn, ltfn, comp, ecomp;
       switch (hilo) {
         case ">":
-          gtfn = gt2;
-          ltefn = lte2;
+          gtfn = gt3;
+          ltefn = lte3;
           ltfn = lt3;
           comp = ">";
           ecomp = ">=";
@@ -36132,7 +36132,7 @@ var require_outside = __commonJS({
         case "<":
           gtfn = lt3;
           ltefn = gte2;
-          ltfn = gt2;
+          ltfn = gt3;
           comp = "<";
           ecomp = "<=";
           break;
@@ -36310,10 +36310,10 @@ var require_subset = __commonJS({
         }
       }
       const eqSet = /* @__PURE__ */ new Set();
-      let gt2, lt3;
+      let gt3, lt3;
       for (const c4 of sub) {
         if (c4.operator === ">" || c4.operator === ">=") {
-          gt2 = higherGT(gt2, c4, options);
+          gt3 = higherGT(gt3, c4, options);
         } else if (c4.operator === "<" || c4.operator === "<=") {
           lt3 = lowerLT(lt3, c4, options);
         } else {
@@ -36324,16 +36324,16 @@ var require_subset = __commonJS({
         return null;
       }
       let gtltComp;
-      if (gt2 && lt3) {
-        gtltComp = compare(gt2.semver, lt3.semver, options);
+      if (gt3 && lt3) {
+        gtltComp = compare(gt3.semver, lt3.semver, options);
         if (gtltComp > 0) {
           return null;
-        } else if (gtltComp === 0 && (gt2.operator !== ">=" || lt3.operator !== "<=")) {
+        } else if (gtltComp === 0 && (gt3.operator !== ">=" || lt3.operator !== "<=")) {
           return null;
         }
       }
       for (const eq2 of eqSet) {
-        if (gt2 && !satisfies(eq2, String(gt2), options)) {
+        if (gt3 && !satisfies(eq2, String(gt3), options)) {
           return null;
         }
         if (lt3 && !satisfies(eq2, String(lt3), options)) {
@@ -36349,25 +36349,25 @@ var require_subset = __commonJS({
       let higher, lower;
       let hasDomLT, hasDomGT;
       let needDomLTPre = lt3 && !options.includePrerelease && lt3.semver.prerelease.length ? lt3.semver : false;
-      let needDomGTPre = gt2 && !options.includePrerelease && gt2.semver.prerelease.length ? gt2.semver : false;
+      let needDomGTPre = gt3 && !options.includePrerelease && gt3.semver.prerelease.length ? gt3.semver : false;
       if (needDomLTPre && needDomLTPre.prerelease.length === 1 && lt3.operator === "<" && needDomLTPre.prerelease[0] === 0) {
         needDomLTPre = false;
       }
       for (const c4 of dom) {
         hasDomGT = hasDomGT || c4.operator === ">" || c4.operator === ">=";
         hasDomLT = hasDomLT || c4.operator === "<" || c4.operator === "<=";
-        if (gt2) {
+        if (gt3) {
           if (needDomGTPre) {
             if (c4.semver.prerelease && c4.semver.prerelease.length && c4.semver.major === needDomGTPre.major && c4.semver.minor === needDomGTPre.minor && c4.semver.patch === needDomGTPre.patch) {
               needDomGTPre = false;
             }
           }
           if (c4.operator === ">" || c4.operator === ">=") {
-            higher = higherGT(gt2, c4, options);
-            if (higher === c4 && higher !== gt2) {
+            higher = higherGT(gt3, c4, options);
+            if (higher === c4 && higher !== gt3) {
               return false;
             }
-          } else if (gt2.operator === ">=" && !satisfies(gt2.semver, String(c4), options)) {
+          } else if (gt3.operator === ">=" && !satisfies(gt3.semver, String(c4), options)) {
             return false;
           }
         }
@@ -36386,14 +36386,14 @@ var require_subset = __commonJS({
             return false;
           }
         }
-        if (!c4.operator && (lt3 || gt2) && gtltComp !== 0) {
+        if (!c4.operator && (lt3 || gt3) && gtltComp !== 0) {
           return false;
         }
       }
-      if (gt2 && hasDomLT && !lt3 && gtltComp !== 0) {
+      if (gt3 && hasDomLT && !lt3 && gtltComp !== 0) {
         return false;
       }
-      if (lt3 && hasDomGT && !gt2 && gtltComp !== 0) {
+      if (lt3 && hasDomGT && !gt3 && gtltComp !== 0) {
         return false;
       }
       if (needDomGTPre || needDomLTPre) {
@@ -36442,12 +36442,12 @@ var require_semver2 = __commonJS({
     var compareBuild = require_compare_build();
     var sort2 = require_sort();
     var rsort = require_rsort();
-    var gt2 = require_gt();
+    var gt3 = require_gt();
     var lt3 = require_lt();
     var eq2 = require_eq();
     var neq = require_neq();
     var gte2 = require_gte();
-    var lte2 = require_lte();
+    var lte3 = require_lte();
     var cmp = require_cmp();
     var coerce2 = require_coerce();
     var Comparator = require_comparator();
@@ -36480,12 +36480,12 @@ var require_semver2 = __commonJS({
       compareBuild,
       sort: sort2,
       rsort,
-      gt: gt2,
+      gt: gt3,
       lt: lt3,
       eq: eq2,
       neq,
       gte: gte2,
-      lte: lte2,
+      lte: lte3,
       cmp,
       coerce: coerce2,
       Comparator,
@@ -40716,11 +40716,11 @@ var init_serverless = __esm({
       "use strict";
       p();
       var Pu = Xe();
-      function gt2(r5) {
+      function gt3(r5) {
         this._types = r5 || Pu, this.text = {}, this.binary = {};
       }
-      a(gt2, "TypeOverrides");
-      gt2.prototype.getOverrides = function(r5) {
+      a(gt3, "TypeOverrides");
+      gt3.prototype.getOverrides = function(r5) {
         switch (r5) {
           case "text":
             return this.text;
@@ -40730,13 +40730,13 @@ var init_serverless = __esm({
             return {};
         }
       };
-      gt2.prototype.setTypeParser = function(r5, e4, t5) {
+      gt3.prototype.setTypeParser = function(r5, e4, t5) {
         typeof e4 == "function" && (t5 = e4, e4 = "text"), this.getOverrides(e4)[r5] = t5;
       };
-      gt2.prototype.getTypeParser = function(r5, e4) {
+      gt3.prototype.getTypeParser = function(r5, e4) {
         return e4 = e4 || "text", this.getOverrides(e4)[r5] || this._types.getTypeParser(r5, e4);
       };
-      es.exports = gt2;
+      es.exports = gt3;
     });
     ts = {};
     se(ts, { default: () => Bu });
@@ -51440,6 +51440,7 @@ __export(schema_exports, {
   adminOrderActions: () => adminOrderActions,
   appSettings: () => appSettings,
   auditLogs: () => auditLogs,
+  authAttempts: () => authAttempts,
   automationRules: () => automationRules,
   automationRuns: () => automationRuns,
   blockedContacts: () => blockedContacts,
@@ -51494,9 +51495,10 @@ __export(schema_exports, {
   users: () => users,
   workSessions: () => workSessions,
   zapContatosEnviados: () => zapContatosEnviados,
+  zapOptOutRemocoes: () => zapOptOutRemocoes,
   zapOptOuts: () => zapOptOuts
 });
-var appSettings, tags, users, sellers, clients, tasks, reminders, chatMessages, knowledgeDocuments, workSessions, siteOrders, abandonedCarts, automationRuns, coupons, msgTemplates, emailTemplateCategories, emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions, blockedContacts, emailSendCounters, taskDeletionLogs, passwordResetTokens, emailSequences, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends, emailEvents, automationRules, marketingLists, marketingContacts, companies, contacts, publicSources, consentRecords, suppressionList, auditLogs, fatProducts, fatOrders, smbiOrderEvents, smbiRobotState, smbiClientRegistrations, fatCommissions, fatOrderDeletionLogs, catalogDocuments, catalogImages, catalogSpecs, radarEstablishments, radarEnrichment, radarLeadActions, radarLeadEvents, creditReports, creditQueries, creditSettings, creditReportLinks, adminOrderActions, zapOptOuts, zapContatosEnviados;
+var appSettings, tags, users, sellers, clients, tasks, reminders, chatMessages, knowledgeDocuments, workSessions, siteOrders, abandonedCarts, automationRuns, coupons, msgTemplates, emailTemplateCategories, emailTemplates, emailCampaigns, emailCampaignRecipients, emailSuppressions, blockedContacts, emailSendCounters, taskDeletionLogs, passwordResetTokens, emailSequences, emailSequenceSteps, emailSequenceEnrollments, emailSequenceSends, emailEvents, automationRules, marketingLists, marketingContacts, companies, contacts, publicSources, consentRecords, suppressionList, auditLogs, fatProducts, fatOrders, smbiOrderEvents, smbiRobotState, smbiClientRegistrations, fatCommissions, fatOrderDeletionLogs, catalogDocuments, catalogImages, catalogSpecs, radarEstablishments, radarEnrichment, radarLeadActions, radarLeadEvents, creditReports, creditQueries, creditSettings, creditReportLinks, adminOrderActions, zapOptOuts, authAttempts, zapOptOutRemocoes, zapContatosEnviados;
 var init_schema2 = __esm({
   "server/db/schema.ts"() {
     "use strict";
@@ -52449,6 +52451,23 @@ var init_schema2 = __esm({
       // manual | ia | campanha | cobranca | reativacao
       criadoEm: timestamp("criado_em").defaultNow().notNull()
     }, (t5) => ({ chaveUq: uniqueIndex("zap_opt_outs_chave_uq").on(t5.chave) }));
+    authAttempts = pgTable("auth_attempts", {
+      chave: text("chave").primaryKey(),
+      janelaInicio: timestamp("janela_inicio").notNull(),
+      tentativas: integer("tentativas").notNull().default(1)
+    });
+    zapOptOutRemocoes = pgTable("zap_opt_out_remocoes", {
+      id: serial("id").primaryKey(),
+      chave: text("chave").notNull(),
+      telefone: text("telefone"),
+      nomeHash: text("nome_hash").notNull(),
+      marcadoPorUserId: integer("marcado_por_user_id").notNull(),
+      // user_id do registro removido
+      removidoPorUserId: integer("removido_por_user_id").notNull(),
+      removidoPorPapel: text("removido_por_papel").notNull(),
+      // admin | manager | user
+      removidoEm: timestamp("removido_em").defaultNow().notNull()
+    });
     zapContatosEnviados = pgTable("zap_contatos_enviados", {
       id: serial("id").primaryKey(),
       chave: text("chave").notNull(),
@@ -52466,6 +52485,11 @@ var init_schema2 = __esm({
 });
 
 // server/db/index.ts
+var db_exports = {};
+__export(db_exports, {
+  db: () => db,
+  sql: () => sql2
+});
 var sql2, db;
 var init_db2 = __esm({
   "server/db/index.ts"() {
@@ -52601,6 +52625,12 @@ function normalizeIp(raw) {
   if (s4.startsWith("::ffff:")) return s4.slice(7);
   return s4;
 }
+function cidrMask(bits) {
+  if (bits === void 0 || !/^\d{1,2}$/.test(bits)) return null;
+  const n5 = Number(bits);
+  if (n5 < 0 || n5 > 32) return null;
+  return n5 === 0 ? 0 : 4294967295 << 32 - n5 >>> 0;
+}
 function ipMatchesEntry(ip, entry) {
   const nIp = normalizeIp(ip);
   const nEntry = normalizeIp(entry);
@@ -52610,8 +52640,9 @@ function ipMatchesEntry(ip, entry) {
       const [subnet, bits] = nEntry.split("/");
       const subnetNum = ipToNum(subnet);
       if (subnetNum === -1) return false;
-      const mask = ~((1 << 32 - parseInt(bits)) - 1) >>> 0;
-      return (clientNum & mask) === (subnetNum & mask);
+      const mask = cidrMask(bits);
+      if (mask === null) return false;
+      return (clientNum & mask) >>> 0 === (subnetNum & mask) >>> 0;
     }
     return nIp === nEntry;
   }
@@ -52747,6 +52778,10 @@ var init_trpc = __esm({
 });
 
 // server/db/ordersDb.ts
+var ordersDb_exports = {};
+__export(ordersDb_exports, {
+  ordersDb: () => ordersDb
+});
 var isProduction, url, sql3, ordersDb;
 var init_ordersDb = __esm({
   "server/db/ordersDb.ts"() {
@@ -64276,7 +64311,7 @@ var require_sanitize_html = __commonJS({
           if (skip) {
             if (options.disallowedTagsMode === "discard" || options.disallowedTagsMode === "completelyDiscard") {
               if (frame.innerText && !hasText) {
-                const escaped = escapeHtml6(frame.innerText);
+                const escaped = escapeHtml7(frame.innerText);
                 if (options.textFilter) {
                   result += options.textFilter(escaped, name);
                 } else {
@@ -64299,7 +64334,7 @@ var require_sanitize_html = __commonJS({
           const shouldPreserveEscapedAttributes = isBeingEscaped && options.preserveEscapedAttributes;
           if (shouldPreserveEscapedAttributes) {
             each(attribs, function(value2, a5) {
-              result += " " + a5 + '="' + escapeHtml6(value2 || "", true) + '"';
+              result += " " + a5 + '="' + escapeHtml7(value2 || "", true) + '"';
             });
           } else if (!allowedAttributesMap || has(allowedAttributesMap, name) || allowedAttributesMap["*"]) {
             each(attribs, function(value2, a5) {
@@ -64476,7 +64511,7 @@ var require_sanitize_html = __commonJS({
                 }
                 result += " " + a5;
                 if (value2 && value2.length) {
-                  result += '="' + escapeHtml6(value2, true) + '"';
+                  result += '="' + escapeHtml7(value2, true) + '"';
                 } else if (options.allowedEmptyAttributes.includes(a5)) {
                   result += '=""';
                 }
@@ -64490,7 +64525,7 @@ var require_sanitize_html = __commonJS({
           } else {
             result += ">";
             if (frame.innerText && !hasText) {
-              const escaped = escapeHtml6(frame.innerText);
+              const escaped = escapeHtml7(frame.innerText);
               if (options.textFilter) {
                 result += options.textFilter(escaped, name);
               } else {
@@ -64500,7 +64535,7 @@ var require_sanitize_html = __commonJS({
             }
           }
           if (skip) {
-            result = tempResult + escapeHtml6(result);
+            result = tempResult + escapeHtml7(result);
             tempResult = "";
           }
           frame.openingTagLength = result.length - frame.tagPosition;
@@ -64524,7 +64559,7 @@ var require_sanitize_html = __commonJS({
             if (tag === "xmp") {
               result += text2.replace(/</g, "&lt;").replace(/>/g, "&gt;");
             } else {
-              result += escapeHtml6(text2, false);
+              result += escapeHtml7(text2, false);
             }
           } else if (
             // htmlparser2 treats <iframe> as a raw-text element, so markup inside
@@ -64540,7 +64575,7 @@ var require_sanitize_html = __commonJS({
               iframeFallbackDepth: iframeFallbackDepth + 1
             });
           } else if (!addedText) {
-            const escaped = escapeHtml6(text2, false);
+            const escaped = escapeHtml7(text2, false);
             if (options.textFilter) {
               result += options.textFilter(escaped, tag);
             } else {
@@ -64626,7 +64661,7 @@ var require_sanitize_html = __commonJS({
           }
           result += "</" + name + ">";
           if (skip) {
-            result = tempResult + escapeHtml6(result);
+            result = tempResult + escapeHtml7(result);
             tempResult = "";
           }
           addedText = false;
@@ -64638,9 +64673,9 @@ var require_sanitize_html = __commonJS({
         const lastParsedIndex = parser.endIndex;
         if (lastParsedIndex != null && lastParsedIndex >= 0 && lastParsedIndex < html.length) {
           const unparsed = html.substring(lastParsedIndex);
-          result += escapeHtml6(unparsed);
+          result += escapeHtml7(unparsed);
         } else if ((lastParsedIndex == null || lastParsedIndex < 0) && html.length > 0 && result === "") {
-          result = escapeHtml6(html);
+          result = escapeHtml7(html);
         }
       }
       return result;
@@ -64667,7 +64702,7 @@ var require_sanitize_html = __commonJS({
         const match = re.exec(html);
         return match ? match.index : Infinity;
       }
-      function escapeHtml6(s4, quote) {
+      function escapeHtml7(s4, quote) {
         if (typeof s4 !== "string") {
           s4 = s4 + "";
         }
@@ -238392,6 +238427,93 @@ function createEmergencyThrottle(now = Date.now) {
   };
 }
 
+// server/lib/resetToken.ts
+var import_node_crypto2 = require("node:crypto");
+var PREFIXO_HASH_RESET = "sha256:";
+function hashResetToken(token) {
+  return PREFIXO_HASH_RESET + (0, import_node_crypto2.createHash)("sha256").update(token, "utf8").digest("hex");
+}
+
+// server/lib/authAttempts.ts
+var import_node_crypto3 = require("node:crypto");
+init_drizzle_orm();
+var JANELA_PADRAO_MS = 15 * 60 * 1e3;
+function chaveHash(escopo, ...partes) {
+  const h3 = (0, import_node_crypto3.createHmac)("sha256", process.env.JWT_SECRET ?? "auth-attempts").update(partes.map((p4) => String(p4 ?? "").trim().toLowerCase()).join("|")).digest("hex").slice(0, 40);
+  return `${escopo}:${h3}`;
+}
+function linhas(r5) {
+  if (Array.isArray(r5)) return r5;
+  const rows = r5?.rows;
+  return Array.isArray(rows) ? rows : [];
+}
+async function estaBloqueado(db2, limites, janelaMs = JANELA_PADRAO_MS) {
+  if (limites.length === 0) return false;
+  const chaves = sql.join(limites.map((l4) => sql`${l4.chave}`), sql`, `);
+  const r5 = await db2.execute(sql`
+    SELECT chave, tentativas FROM auth_attempts
+    WHERE chave IN (${chaves}) AND janela_inicio > now() - make_interval(secs => ${janelaMs / 1e3}::double precision)
+  `);
+  const porChave = new Map(linhas(r5).map((l4) => [String(l4.chave), Number(l4.tentativas)]));
+  return limites.some((l4) => (porChave.get(l4.chave) ?? 0) >= l4.max);
+}
+async function registrarFalhas(db2, chaves, janelaMs = JANELA_PADRAO_MS) {
+  if (chaves.length === 0) return;
+  const valores = sql.join(chaves.map((c4) => sql`(${c4}, now(), 1)`), sql`, `);
+  const venceu = sql`auth_attempts.janela_inicio < now() - make_interval(secs => ${janelaMs / 1e3}::double precision)`;
+  await db2.execute(sql`
+    INSERT INTO auth_attempts (chave, janela_inicio, tentativas) VALUES ${valores}
+    ON CONFLICT (chave) DO UPDATE SET
+      tentativas = CASE WHEN ${venceu} THEN 1 ELSE auth_attempts.tentativas + 1 END,
+      janela_inicio = CASE WHEN ${venceu} THEN now() ELSE auth_attempts.janela_inicio END
+  `);
+}
+async function limparChaves(db2, chaves) {
+  if (chaves.length === 0) return;
+  await db2.execute(sql`DELETE FROM auth_attempts WHERE chave IN (${sql.join(chaves.map((c4) => sql`${c4}`), sql`, `)})`);
+}
+async function expurgarAntigas(db2) {
+  await db2.execute(sql`DELETE FROM auth_attempts WHERE janela_inicio < now() - interval '1 day'`);
+}
+var ContadorIndisponivel = class extends Error {
+  constructor() {
+    super("contador de tentativas indispon\xEDvel");
+    this.name = "ContadorIndisponivel";
+  }
+};
+function logFalha(onde, err) {
+  console.warn(`[auth-attempts] ${onde} falhou: ${err instanceof Error ? err.name : "erro"}`);
+}
+async function bloqueadoCompartilhado(getDb, limites, opts2 = {}) {
+  try {
+    return await estaBloqueado(await getDb(), limites, opts2.janelaMs);
+  } catch (err) {
+    logFalha("consulta", err);
+    if (opts2.falhaFechada) throw new ContadorIndisponivel();
+    return false;
+  }
+}
+async function registrarFalhaCompartilhada(getDb, chaves, opts2 = {}) {
+  try {
+    const db2 = await getDb();
+    await registrarFalhas(db2, chaves, opts2.janelaMs);
+    if ((opts2.sorteio ?? Math.random)() < 0.02) await expurgarAntigas(db2).catch(() => {
+    });
+  } catch (err) {
+    logFalha("registro", err);
+    if (opts2.falhaFechada) throw new ContadorIndisponivel();
+  }
+}
+async function limparCompartilhado(getDb, chaves) {
+  try {
+    await limparChaves(await getDb(), chaves);
+  } catch (err) {
+    logFalha("limpeza", err);
+  }
+}
+var crmAttemptsDb = async () => (await Promise.resolve().then(() => (init_db2(), db_exports))).db;
+var lojaAttemptsDb = async () => (await Promise.resolve().then(() => (init_ordersDb(), ordersDb_exports))).ordersDb;
+
 // server/routers/auth.ts
 var RESET_TEMPO_MINIMO_MS = 1500;
 function escapeHtml2(s4) {
@@ -238402,6 +238524,10 @@ function generatePassword(length2 = 12) {
   return Array.from({ length: length2 }, () => chars[(0, import_crypto4.randomInt)(chars.length)]).join("");
 }
 var emergencyThrottle = createEmergencyThrottle();
+var LOGIN_MAX_IP_EMAIL = 10;
+var LOGIN_MAX_IP = 30;
+var EMERGENCIA_MAX_IP_EMAIL = 5;
+var EMERGENCIA_MAX_EMAIL = 10;
 var authRouter = router({
   me: publicProcedure.query(async ({ ctx }) => {
     if (!ctx.user) return null;
@@ -238419,11 +238545,20 @@ var authRouter = router({
     });
   }),
   login: publicProcedure.input(external_exports.object({ email: external_exports.string().email(), password: external_exports.string().min(1) })).mutation(async ({ input, ctx }) => {
+    const chavesLogin = {
+      ipEmail: chaveHash("login:ipemail", ctx.clientIp, input.email),
+      ip: chaveHash("login:ip", ctx.clientIp)
+    };
+    if (await bloqueadoCompartilhado(crmAttemptsDb, [{ chave: chavesLogin.ipEmail, max: LOGIN_MAX_IP_EMAIL }, { chave: chavesLogin.ip, max: LOGIN_MAX_IP }])) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Muitas tentativas. Tente novamente em 15 minutos." });
+    }
     const [user] = await db.select().from(users).where(emailEquals(users.email, input.email)).orderBy(sql`(${users.email} = ${input.email}) desc`, users.id).limit(1);
     const valid = user ? verifyPassword(input.password, user.passwordHash) : (verifyPassword(input.password, getDummyHash()), false);
     if (!valid) {
+      await registrarFalhaCompartilhada(crmAttemptsDb, [chavesLogin.ipEmail, chavesLogin.ip]);
       throw new TRPCError({ code: "UNAUTHORIZED", message: "Email ou senha inv\xE1lidos" });
     }
+    await limparCompartilhado(crmAttemptsDb, [chavesLogin.ipEmail]);
     const [seller] = await db.select({ status: sellers.status }).from(sellers).where(eq(sellers.userId, user.id)).limit(1);
     if (isSellerBlocked(user.role, seller?.status)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Conta desativada. Fale com o administrador." });
@@ -238482,10 +238617,27 @@ var authRouter = router({
     if (emergencyThrottle.isBlocked(ip, input.email)) {
       throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Muitas tentativas. Tente novamente em alguns minutos." });
     }
+    const chavesEmergencia = [chaveHash("emerg:ipemail", ip, input.email), chaveHash("emerg:email", input.email)];
+    const indisponivel = new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Recupera\xE7\xE3o indispon\xEDvel no momento. Tente novamente em instantes." });
+    try {
+      if (await bloqueadoCompartilhado(crmAttemptsDb, [
+        { chave: chavesEmergencia[0], max: EMERGENCIA_MAX_IP_EMAIL },
+        { chave: chavesEmergencia[1], max: EMERGENCIA_MAX_EMAIL }
+      ], { falhaFechada: true })) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Muitas tentativas. Tente novamente em alguns minutos." });
+      }
+    } catch (e4) {
+      throw e4 instanceof ContadorIndisponivel ? indisponivel : e4;
+    }
     const envSecret = process.env.ADMIN_RESET_SECRET;
     const genericError = "Credenciais de recupera\xE7\xE3o inv\xE1lidas";
     if (!envSecret || !safeEqual(input.secret, envSecret)) {
       emergencyThrottle.fail(ip, input.email);
+      try {
+        await registrarFalhaCompartilhada(crmAttemptsDb, chavesEmergencia, { falhaFechada: true });
+      } catch (e4) {
+        throw e4 instanceof ContadorIndisponivel ? indisponivel : e4;
+      }
       throw new TRPCError({ code: "UNAUTHORIZED", message: genericError });
     }
     const [user] = await db.select().from(users).where(emailEquals(users.email, input.email));
@@ -238512,7 +238664,7 @@ var authRouter = router({
     const expiresAt = new Date(Date.now() + 30 * 60 * 1e3);
     await db.insert(passwordResetTokens).values({
       userId: user.id,
-      token,
+      token: hashResetToken(token),
       expiresAt
     });
     const baseUrl = process.env.PUBLIC_APP_URL ?? "https://lembretes.salvitarn.com.br";
@@ -238545,12 +238697,17 @@ var authRouter = router({
     return { ok: true };
   })),
   resetPasswordWithToken: publicProcedure.input(external_exports.object({
-    token: external_exports.string().min(1),
+    token: external_exports.string().min(1).max(200),
     newPassword: external_exports.string().min(SENHA_MINIMA, SENHA_MINIMA_MSG)
   })).mutation(async ({ input }) => {
     const now = /* @__PURE__ */ new Date();
     const [resetToken] = await db.update(passwordResetTokens).set({ usedAt: now }).where(and(
-      eq(passwordResetTokens.token, input.token),
+      // Formato novo (hash) OU legado em claro (válido por até 30 min após o deploy). O legado exclui
+      // linhas `sha256:` para que um hash vazado não sirva como se fosse um token em claro.
+      or2(
+        eq(passwordResetTokens.token, hashResetToken(input.token)),
+        and(eq(passwordResetTokens.token, input.token), notLike(passwordResetTokens.token, `${PREFIXO_HASH_RESET}%`))
+      ),
       isNull2(passwordResetTokens.usedAt),
       gt(passwordResetTokens.expiresAt, now)
     )).returning({ userId: passwordResetTokens.userId });
@@ -239225,12 +239382,28 @@ async function sendBatchBrevo(account, messages) {
   }
 }
 function renderTemplate(text2, vars) {
-  return text2.replace(/\{nome\}/g, vars.nome || "").replace(/\{empresa\}/g, vars.empresa || "").replace(/\{unsubscribe\}/g, vars.unsubscribe || "#");
+  return text2.replace(/\{nome\}/g, () => vars.nome || "").replace(/\{empresa\}/g, () => vars.empresa || "").replace(/\{unsubscribe\}/g, () => vars.unsubscribe || "#");
 }
-function bodyToHtml(text2) {
+function escapeHtml4(s4) {
+  return s4.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function corpoJaEhHtml(text2) {
+  return /<(br|p|div|table|ul|ol|h[1-6])[\s>\/]/i.test((text2 || "").trim());
+}
+function renderTemplateHtml(text2, vars) {
+  if (corpoJaEhHtml(text2)) {
+    return renderTemplate(text2, {
+      nome: escapeHtml4(vars.nome ?? ""),
+      empresa: escapeHtml4(vars.empresa ?? ""),
+      unsubscribe: vars.unsubscribe
+    });
+  }
+  return bodyToHtml(renderTemplate(text2, vars), { forcarTexto: true });
+}
+function bodyToHtml(text2, opts2 = {}) {
   const trimmed = (text2 || "").trim();
   if (!trimmed) return "";
-  if (/<(br|p|div|table|ul|ol|h[1-6])[\s>\/]/i.test(trimmed)) return trimmed;
+  if (!opts2.forcarTexto && /<(br|p|div|table|ul|ol|h[1-6])[\s>\/]/i.test(trimmed)) return trimmed;
   const escape3 = (s4) => s4.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const linkify = (s4) => s4.replace(/(https?:\/\/[^\s<]+)/g, (url3) => `<a href="${url3}" style="color:${BRAND3};text-decoration:underline;">${url3}</a>`).replace(/(^|[\s(])(www\.[^\s<]+)/g, (_m, pre, host) => `${pre}<a href="http://${host}" style="color:${BRAND3};text-decoration:underline;">${host}</a>`);
   return trimmed.split(/\n{2,}/).map((block) => {
@@ -239877,7 +240050,7 @@ async function processSequenceEnrollments(opts2) {
       messages.push({
         to: enrollment.email,
         subject,
-        html: layout2(renderTemplate(step.htmlBody, { nome: enrollment.name ?? "", unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
+        html: layout2(renderTemplateHtml(step.htmlBody, { nome: enrollment.name ?? "", unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
         replyTo: enrollment.replyTo ?? void 0,
         unsubToken: enrollment.unsubToken
       });
@@ -240602,9 +240775,9 @@ function notaEmailInformado(d3) {
 }
 function anexarLinhaNota(notas, linha, max2 = LIMITE_NOTAS) {
   const base = (notas ?? "").replace(/\s+$/, "");
-  const linhas = base ? [...base.split("\n"), linha] : [linha];
-  while (linhas.length > 1 && linhas.join("\n").length > max2) linhas.shift();
-  return linhas.join("\n").slice(0, max2);
+  const linhas2 = base ? [...base.split("\n"), linha] : [linha];
+  while (linhas2.length > 1 && linhas2.join("\n").length > max2) linhas2.shift();
+  return linhas2.join("\n").slice(0, max2);
 }
 function comTagConfirmado(tags3) {
   const t5 = [...tags3 ?? []];
@@ -240667,10 +240840,10 @@ async function executarComOrcamento(itens, fn, opts2) {
   }
   return { executados, falhas: falhas2, naoExecutados: [] };
 }
-function deduplicarNoArquivo(linhas, jaExistem) {
+function deduplicarNoArquivo(linhas2, jaExistem) {
   const vistos = { cnpjs: /* @__PURE__ */ new Set(), phones: /* @__PURE__ */ new Set() };
   const mantidas = [];
-  for (const l4 of linhas) {
+  for (const l4 of linhas2) {
     if (ehDuplicada(l4, jaExistem) || ehDuplicada(l4, vistos)) continue;
     if (l4.cnpj) vistos.cnpjs.add(l4.cnpj);
     if (l4.phone) vistos.phones.add(l4.phone);
@@ -241318,23 +241491,12 @@ var tasksRouter = router({
     return { ok: true };
   }),
   deleteMany: protectedProcedure.input(external_exports.object({
-    ids: external_exports.array(external_exports.number()).min(1),
+    ids: external_exports.array(external_exports.number()).min(1).max(2e3),
     reason: external_exports.string().max(500).optional().default("N\xE3o informado")
   })).mutation(async ({ input, ctx }) => {
     const ownerFilter = ctx.user.role === "admin" ? inArray(tasks.id, input.ids) : and(inArray(tasks.id, input.ids), await userTaskFilter(ctx.user.id, ctx.user.name ?? ""));
     const found = await db.select({ id: tasks.id, title: tasks.title, notes: tasks.notes, cnpj: tasks.cnpj, phone: tasks.phone, email: tasks.email }).from(tasks).where(ownerFilter);
     if (found.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Nenhuma tarefa encontrada ou sem permiss\xE3o" });
-    await db.insert(taskDeletionLogs).values(found.map((t5) => ({
-      taskId: t5.id,
-      taskTitle: t5.title,
-      taskNotes: t5.notes ?? null,
-      deletedByUserId: ctx.user.id,
-      deletedByName: ctx.user.name ?? ctx.user.email,
-      reason: input.reason,
-      reviewedByAdmin: ctx.user.role === "admin",
-      cnpj: t5.cnpj,
-      phone: t5.phone
-    })));
     const emails = [...new Set(found.map((t5) => t5.email?.toLowerCase().trim()).filter((e4) => !!e4))];
     for (const email of emails) {
       try {
@@ -241343,8 +241505,25 @@ var tasksRouter = router({
         console.error("[tasks.deleteMany] cancelAllEnrollments failed:", safeErr(err));
       }
     }
-    await db.delete(tasks).where(inArray(tasks.id, found.map((t5) => t5.id)));
-    return { ok: true, count: found.length };
+    const apagadas = await db.delete(tasks).where(inArray(tasks.id, found.map((t5) => t5.id))).returning({ id: tasks.id, title: tasks.title, notes: tasks.notes, cnpj: tasks.cnpj, phone: tasks.phone });
+    if (apagadas.length > 0) {
+      try {
+        await db.insert(taskDeletionLogs).values(apagadas.map((t5) => ({
+          taskId: t5.id,
+          taskTitle: t5.title,
+          taskNotes: t5.notes ?? null,
+          deletedByUserId: ctx.user.id,
+          deletedByName: ctx.user.name ?? ctx.user.email,
+          reason: input.reason,
+          reviewedByAdmin: ctx.user.role === "admin",
+          cnpj: t5.cnpj,
+          phone: t5.phone
+        })));
+      } catch (err) {
+        console.error("[tasks.deleteMany] log de exclus\xE3o falhou (tarefas j\xE1 apagadas, ids):", apagadas.map((a5) => a5.id).join(","), safeErr(err));
+      }
+    }
+    return { ok: true, count: apagadas.length };
   }),
   // Verifica, antes de importar, quais CNPJs/telefones já correspondem a uma tarefa
   // excluída anteriormente (task_deletion_logs) — usado para não reimportar leads
@@ -241734,15 +241913,15 @@ var OPCOES_FUSO_BR = { timeZone: FUSO_BR };
 var diaBrCompacto = (d3) => new Intl.DateTimeFormat("en-CA", { timeZone: FUSO_BR, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(d3)).replace(/-/g, "");
 
 // server/lib/rescheduleToken.ts
-var import_node_crypto2 = require("node:crypto");
+var import_node_crypto4 = require("node:crypto");
 var REAGENDAMENTO_TOKEN_TTL_MS = 5 * 60 * 1e3;
 function assinatura(lote, expiraEm, requisicao, segredo) {
   const ids = [...lote.taskIds].sort((a5, b3) => a5 - b3).join(",");
   const dados = ["reschedule_tasks", lote.userId, lote.sellerId, lote.perDay, lote.startHour, ids, expiraEm, requisicao].join("|");
-  return (0, import_node_crypto2.createHmac)("sha256", segredo).update(dados).digest("hex");
+  return (0, import_node_crypto4.createHmac)("sha256", segredo).update(dados).digest("hex");
 }
 function novaRequisicaoId() {
-  return (0, import_node_crypto2.randomBytes)(6).toString("hex");
+  return (0, import_node_crypto4.randomBytes)(6).toString("hex");
 }
 function emitirTokenReagendamento(lote, requisicao, segredo, agora = Date.now()) {
   const expiraEm = agora + REAGENDAMENTO_TOKEN_TTL_MS;
@@ -241757,7 +241936,7 @@ function verificarTokenReagendamento(token, lote, requisicaoAtual, segredo, agor
   if (!Number.isFinite(expiraEm) || !/^[0-9a-f]{64}$/.test(mac) || !/^[0-9a-f]{1,32}$/.test(requisicao)) return { ok: false, motivo: "FORMATO" };
   const esperado = Buffer.from(assinatura(lote, expiraEm, requisicao, segredo), "hex");
   const recebido = Buffer.from(mac, "hex");
-  if (esperado.length !== recebido.length || !(0, import_node_crypto2.timingSafeEqual)(esperado, recebido)) return { ok: false, motivo: "INVALIDO" };
+  if (esperado.length !== recebido.length || !(0, import_node_crypto4.timingSafeEqual)(esperado, recebido)) return { ok: false, motivo: "INVALIDO" };
   if (agora > expiraEm) return { ok: false, motivo: "EXPIRADO" };
   if (requisicao === requisicaoAtual) return { ok: false, motivo: "MESMA_REQUISICAO" };
   return { ok: true };
@@ -243647,9 +243826,6 @@ function nomeComoDadoNoPrompt(name) {
   return JSON.stringify(limpo);
 }
 var CADENCIA_JANELA_DIAS = 30;
-function podeAgendarCadencia(runsRecentesDoTelefone) {
-  return runsRecentesDoTelefone === 0;
-}
 
 // server/routers/recovery.ts
 init_schema2();
@@ -243712,6 +243888,309 @@ async function createPixPaymentForOrder(order) {
 init_storeUrl();
 init_orderConfirmation();
 init_shipping();
+
+// server/lib/recoveryRuns.ts
+init_logSafe();
+init_ordersDb();
+init_schema2();
+init_drizzle_orm();
+init_resend();
+init_orderConfirmation();
+init_storeUrl();
+
+// server/lib/recoveryCadence.ts
+init_paymentTransition();
+var HORA_MS = 60 * 60 * 1e3;
+function inicioJanelaCompra(cartCreatedAt, agoraMs = Date.now()) {
+  const t5 = cartCreatedAt ? new Date(cartCreatedAt).getTime() : NaN;
+  return new Date(Number.isFinite(t5) ? t5 - HORA_MS : agoraMs - 30 * 24 * HORA_MS);
+}
+function telefoneParaBusca(p4) {
+  const n5 = telefoneNormalizado(p4);
+  return n5.length >= 10 ? n5 : "";
+}
+function selecionarUmPorTelefone(runs) {
+  const vistos = /* @__PURE__ */ new Set();
+  const enviar = [];
+  const adiar = [];
+  for (const r5 of runs) {
+    const chave = telefoneNormalizado(r5.customerPhone) || r5.customerPhone;
+    if (vistos.has(chave)) adiar.push(r5);
+    else {
+      vistos.add(chave);
+      enviar.push(r5);
+    }
+  }
+  return { enviar, adiar };
+}
+function regraDeAbandono(cfg) {
+  const c4 = cfg ?? { slug: "abandoned_simples", coupon: "" };
+  return c4.slug === "abandoned_cupom" && !c4.coupon ? { slug: "abandoned_simples", coupon: "" } : c4;
+}
+function deveSuprimirCobranca(notes, temPedidoMaisNovoConfirmado) {
+  return temPedidoMaisNovoConfirmado || (notes ?? "").includes("[REVISAR]");
+}
+function podeUsarTemplatePix(code) {
+  return typeof code === "string" && code.trim().length > 0;
+}
+
+// server/lib/recoveryRuns.ts
+function isBusinessHours() {
+  const brHour = ((/* @__PURE__ */ new Date()).getUTCHours() - 3 + 24) % 24;
+  return brHour >= 8 && brHour < 21;
+}
+async function withDbRetry(label, fn, attempts = 3) {
+  let lastErr;
+  for (let i4 = 0; i4 < attempts; i4++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err?.message ?? err);
+      const transient = msg.includes("Failed to acquire permit") || msg.includes("ECONNRESET") || msg.includes("fetch failed");
+      if (!transient || i4 === attempts - 1) break;
+      const backoff = 400 * Math.pow(2, i4);
+      console.warn(`[db-retry] ${label}: transient failure, retrying in ${backoff}ms (${i4 + 1}/${attempts - 1})`);
+      await new Promise((r5) => setTimeout(r5, backoff));
+    }
+  }
+  throw lastErr;
+}
+async function isWhatsAppConnected() {
+  if (process.env.WA_FORCE_SEND === "1") {
+    console.warn("[wa-gate] WA_FORCE_SEND=1 \u2014 bypassing the connectivity check");
+    return true;
+  }
+  const url3 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
+  const key = process.env.WA_API_KEY;
+  if (!key) {
+    console.warn("[wa-gate] WA_API_KEY not configured \u2014 treating WhatsApp as disconnected");
+    return false;
+  }
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 6e3);
+    const res = await fetch(`${url3}/status`, { headers: { apikey: key }, signal: ac.signal });
+    clearTimeout(timer);
+    if (!res.ok) {
+      console.warn(`[wa-gate] status endpoint returned HTTP ${res.status} \u2014 treating as disconnected`);
+      return false;
+    }
+    const body = await res.json();
+    const connected = body?.connected === true || body?.status === "open" || body?.status === "connected";
+    if (!connected) console.warn(`[wa-gate] WhatsApp reports "${body?.status ?? "unknown"}" \u2014 holding all WA sends`);
+    return connected;
+  } catch (err) {
+    console.warn("[wa-gate] status check failed \u2014 treating as disconnected:", err.message);
+    return false;
+  }
+}
+var MAX_SEND_ATTEMPTS = 3;
+async function requeueOrFail(runsTable, run2) {
+  const attempts = (run2.attempts ?? 0) + 1;
+  if (attempts >= MAX_SEND_ATTEMPTS) {
+    await ordersDb.update(runsTable).set({ status: "failed", attempts, updatedAt: /* @__PURE__ */ new Date() }).where(eq(runsTable.id, run2.id));
+    console.warn(`[cron] automation run ${run2.id} failed ${attempts}x \u2014 giving up`);
+    return;
+  }
+  const retryAt = new Date(Date.now() + 2 * 60 * 60 * 1e3);
+  await ordersDb.update(runsTable).set({ status: "scheduled", attempts, scheduledFor: retryAt, updatedAt: /* @__PURE__ */ new Date() }).where(eq(runsTable.id, run2.id));
+  console.log(`[cron] automation run ${run2.id} re-queued (attempt ${attempts}/${MAX_SEND_ATTEMPTS})`);
+}
+async function getActiveRecoveryCouponCode() {
+  try {
+    const rows = await ordersDb.select().from(coupons).where(eq(coupons.active, true)).orderBy(desc(coupons.createdAt));
+    const now = /* @__PURE__ */ new Date();
+    const usable = (c4) => (!c4.expiresAt || now < new Date(c4.expiresAt)) && (!c4.maxUses || c4.usedCount < c4.maxUses);
+    return (rows.find((c4) => c4.useForRecovery && usable(c4)) ?? rows.find(usable))?.code ?? "";
+  } catch {
+    return "";
+  }
+}
+async function telefoneTemPedidoDesde(phone, desde, opts2 = {}) {
+  const n5 = telefoneParaBusca(phone);
+  if (!n5) return false;
+  const conds = [
+    ne(siteOrders.status, "cancelled"),
+    gte(siteOrders.createdAt, desde),
+    sql`right(regexp_replace(${siteOrders.customerPhone}, '\\D', '', 'g'), ${sql.raw(String(n5.length))}) = ${n5}`
+  ];
+  if (opts2.soConfirmado) conds.push(eq(siteOrders.paymentStatus, "confirmed"));
+  if (opts2.excetoId !== void 0) conds.push(ne(siteOrders.id, opts2.excetoId));
+  const [row] = await ordersDb.select({ id: siteOrders.id }).from(siteOrders).where(and(...conds)).limit(1);
+  return !!row;
+}
+async function processAutomationRuns(opts2) {
+  const vazio2 = { processed: 0, sent: 0, cancelled: 0, failed: 0 };
+  if (!opts2.jaVerificouWhatsApp) {
+    if (!isBusinessHours()) return { ...vazio2, skipped: "outside business hours (08:00\u201321:00 BRT)" };
+    if (!await isWhatsAppConnected()) return { ...vazio2, skipped: "whatsapp disconnected" };
+  }
+  const runs = automationRuns;
+  const carts = abandonedCarts;
+  const cronDeadline = opts2.deadlineAt;
+  const limit = Math.max(1, Math.min(opts2.limit ?? 20, 50));
+  const abandonedTpls = await ordersDb.select().from(msgTemplates).where(eq(msgTemplates.type, "abandoned"));
+  const tplBySlug = {};
+  for (const t5 of abandonedTpls) tplBySlug[t5.slug] = t5;
+  const activeCoupon = await getActiveRecoveryCouponCode();
+  const RULE_MAP = {
+    abandoned_t1: { slug: "abandoned_simples", coupon: "" },
+    abandoned_t2: { slug: "abandoned_urgencia", coupon: "" },
+    abandoned_t3: { slug: "abandoned_cupom", coupon: activeCoupon }
+  };
+  const fallbackTpl = tplBySlug["abandoned_simples"] ?? abandonedTpls.find((t5) => t5.isDefault);
+  let sent = 0, cancelled = 0, failed = 0;
+  await withDbRetry("recycle-sending-runs", () => ordersDb.execute(sql`
+    UPDATE automation_runs
+    SET status = 'scheduled', updated_at = now()
+    WHERE status = 'sending' AND updated_at < now() - interval '15 minutes'
+  `));
+  const claimed = await withDbRetry("claim-due-runs", () => ordersDb.execute(sql`
+    UPDATE automation_runs
+    SET status = 'sending', updated_at = now()
+    WHERE id IN (
+      SELECT id FROM automation_runs
+      WHERE status = 'scheduled' AND scheduled_for <= now()
+      ORDER BY scheduled_for
+      LIMIT ${limit}
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id, cart_id AS "cartId", customer_phone AS "customerPhone",
+              rule_name AS "ruleName", attempts, ai_body AS "aiBody"
+  `));
+  const due = claimed.rows;
+  const releaseClaimed = async (ids) => {
+    if (ids.length === 0) return;
+    try {
+      await ordersDb.update(runs).set({ status: "scheduled", updatedAt: /* @__PURE__ */ new Date() }).where(and(inArray(runs.id, ids), eq(runs.status, "sending")));
+    } catch (e4) {
+      console.error("[cron] release claimed runs failed:", safeErr(e4));
+    }
+  };
+  const pendingIds = new Set(due.map((r5) => r5.id));
+  const { enviar: dueAgora, adiar } = selecionarUmPorTelefone(due);
+  if (adiar.length > 0) {
+    for (const r5 of adiar) pendingIds.delete(r5.id);
+    await releaseClaimed(adiar.map((r5) => r5.id));
+    console.log(`[cron] abandoned-cart: ${adiar.length} toque(s) adiados (um por telefone por rodada)`);
+  }
+  for (const run2 of dueAgora) {
+    if (Date.now() > cronDeadline) {
+      console.warn(`[cron] abandoned-cart: or\xE7amento de tempo esgotado \u2014 ${pendingIds.size} run(s) voltam para a fila`);
+      await releaseClaimed([...pendingIds]);
+      break;
+    }
+    pendingIds.delete(run2.id);
+    const [cart] = await ordersDb.select().from(carts).where(eq(carts.id, run2.cartId)).limit(1);
+    if (!cart || cart.status === "converted" || cart.recovered || cart.optedOut) {
+      await ordersDb.update(runs).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id));
+      cancelled++;
+      continue;
+    }
+    let jaComprou = false;
+    try {
+      jaComprou = await telefoneTemPedidoDesde(run2.customerPhone, inicioJanelaCompra(cart.createdAt));
+    } catch (e4) {
+      console.error(`[cron] abandoned-cart: checagem de compra do carrinho ${cart.id} falhou:`, safeErr(e4));
+      await releaseClaimed([run2.id]);
+      continue;
+    }
+    if (jaComprou) {
+      await ordersDb.update(runs).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id));
+      cancelled++;
+      continue;
+    }
+    const name = cart.customerName;
+    const ruleCfg = regraDeAbandono(RULE_MAP[run2.ruleName]);
+    const link = ruleCfg.coupon ? `${STORE_URL}?cupom=${encodeURIComponent(ruleCfg.coupon)}` : STORE_URL;
+    const tpl = tplBySlug[ruleCfg.slug] ?? fallbackTpl;
+    let msg;
+    if (run2.aiBody) {
+      msg = run2.aiBody;
+    } else if (tpl) {
+      msg = renderTemplate2(tpl.body, { nome: name, link, cupom: ruleCfg.coupon, produto: "Sal Marinho Integral 1kg" });
+    } else {
+      msg = `Ol\xE1 *${name}*! \u{1F30A}
+
+Notamos que voc\xEA se interessou pelo *Sal Marinho Integral Sal Vita* mas n\xE3o finalizou o pedido.
+
+\u{1F449} Finalize agora: ${link}
+
+Qualquer d\xFAvida \xE9 s\xF3 chamar! \u{1F60A}
+_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
+    }
+    try {
+      const ok2 = await sendWhatsApp(run2.customerPhone, msg);
+      if (ok2) {
+        await withDbRetry("mark-run-sent", () => ordersDb.update(runs).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id)));
+        await ordersDb.update(carts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(carts.id, run2.cartId));
+        sent++;
+        if (cart.customerEmail && ruleCfg.coupon) {
+          const emailHtml = abandonedCartHtml(cart.customerName, link, ruleCfg.coupon);
+          try {
+            await sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} \u2014 finalize seu pedido Sal Vita`, emailHtml);
+          } catch (e4) {
+            console.error(`[cron] abandoned-cart: e-mail do carrinho ${cart.id} falhou:`, safeErr(e4));
+          }
+        }
+      } else {
+        await requeueOrFail(runs, run2);
+        failed++;
+      }
+    } catch {
+      await requeueOrFail(runs, run2);
+      failed++;
+    }
+  }
+  return { processed: due.length, sent, cancelled, failed };
+}
+
+// server/lib/recoveryTrack.ts
+init_drizzle_orm();
+function linhasDoResultado(r5) {
+  if (Array.isArray(r5)) return r5;
+  const rows = r5?.rows;
+  return Array.isArray(rows) ? rows : [];
+}
+var travaPorTelefone = (prefixo, phone) => sql`SELECT pg_advisory_xact_lock(hashtext(${prefixo + ":" + phone}))`;
+async function inserirCarrinhoSeAusente(db2, c4) {
+  const [, ins] = await db2.batch([
+    db2.execute(travaPorTelefone("cart", c4.customerPhone)),
+    db2.execute(sql`
+      INSERT INTO abandoned_carts (customer_name, customer_phone, customer_email, postal_code, quantity, step_reached, status)
+      SELECT ${c4.customerName}, ${c4.customerPhone}, ${c4.customerEmail}, ${c4.postalCode}, ${c4.quantity}, ${c4.stepReached}, 'checkout_started'
+      WHERE NOT EXISTS (SELECT 1 FROM abandoned_carts WHERE customer_phone = ${c4.customerPhone})
+      ON CONFLICT DO NOTHING
+      RETURNING id
+    `)
+  ]);
+  const id2 = linhasDoResultado(ins)[0]?.id;
+  return typeof id2 === "number" ? id2 : id2 != null ? Number(id2) : null;
+}
+async function agendarCadenciaSeAusente(db2, a5) {
+  const base = a5.base ?? Date.now();
+  const valores = sql.join(
+    a5.toques.map((t5) => sql`(${t5.rule}::text, ${new Date(base + t5.delayMs).toISOString()}::timestamp)`),
+    sql`, `
+  );
+  const [, ins] = await db2.batch([
+    db2.execute(travaPorTelefone("cadence", a5.phone)),
+    db2.execute(sql`
+      INSERT INTO automation_runs (cart_id, customer_phone, rule_name, status, scheduled_for)
+      SELECT ${a5.cartId}, ${a5.phone}, v.rule_name, 'scheduled', v.scheduled_for
+      FROM (VALUES ${valores}) AS v(rule_name, scheduled_for)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM automation_runs
+        WHERE customer_phone = ${a5.phone} AND created_at > ${a5.desde.toISOString()}::timestamp
+      )
+      RETURNING id
+    `)
+  ]);
+  return linhasDoResultado(ins).length;
+}
+
+// server/routers/recovery.ts
 async function waSendRaw(phone, message) {
   const url3 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
   const key = process.env.WA_API_KEY;
@@ -243843,7 +244322,7 @@ async function sendViaWhatsApp(phone, message) {
   }
   return { ok: ok1, usedPhone: primary };
 }
-function isBusinessHours() {
+function isBusinessHours2() {
   const now = /* @__PURE__ */ new Date();
   const brHour = (now.getUTCHours() - 3 + 24) % 24;
   return brHour >= 8 && brHour < 21;
@@ -243958,10 +244437,21 @@ var recoveryRouter = router({
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
     const recent = await ordersDb.select().from(siteOrders).where(and(sql`regexp_replace(${siteOrders.customerPhone}, '[^0-9]', '', 'g') = ${phone}`, sql`${siteOrders.createdAt} > ${oneDayAgo}`)).limit(1);
     if (recent.length > 0) return { tracked: false, reason: "converted" };
-    const existing = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phone)).limit(1);
     const newStep = input.stepReached;
     let cartId;
-    if (existing.length > 0) {
+    const insertedId = await inserirCarrinhoSeAusente(ordersDb, {
+      customerName: input.customerName,
+      customerPhone: phone,
+      customerEmail: input.customerEmail ?? null,
+      postalCode: input.postalCode ?? null,
+      quantity: input.quantity,
+      stepReached: newStep
+    });
+    if (insertedId !== null) {
+      cartId = insertedId;
+    } else {
+      const existing = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phone)).limit(1);
+      if (existing.length === 0) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "N\xE3o foi poss\xEDvel registrar o carrinho." });
       const cart = existing[0];
       const higherStep = Math.max(cart.stepReached ?? 1, newStep);
       const currentStatus = cart.status ?? "checkout_started";
@@ -243976,46 +244466,29 @@ var recoveryRouter = router({
         updatedAt: /* @__PURE__ */ new Date()
       }).where(eq(abandonedCarts.id, cart.id));
       cartId = cart.id;
-    } else {
-      const [inserted] = await ordersDb.insert(abandonedCarts).values({
-        customerName: input.customerName,
-        customerPhone: phone,
-        customerEmail: input.customerEmail ?? null,
-        postalCode: input.postalCode ?? null,
-        quantity: input.quantity,
-        stepReached: newStep,
-        status: "checkout_started"
-      }).returning({ id: abandonedCarts.id });
-      cartId = inserted.id;
     }
     {
       const desde = new Date(Date.now() - CADENCIA_JANELA_DIAS * 24 * 60 * 60 * 1e3);
-      const recentes = await ordersDb.select({ id: automationRuns.id }).from(automationRuns).where(and(eq(automationRuns.customerPhone, phone), gt(automationRuns.createdAt, desde))).limit(1);
-      if (podeAgendarCadencia(recentes.length)) {
-        const base = Date.now();
-        const fullCadence = [
-          { rule: "abandoned_t1", delayMs: 30 * 60 * 1e3 },
-          // 30 min
-          { rule: "abandoned_t2", delayMs: 4 * 60 * 60 * 1e3 },
-          // 4 h
-          { rule: "abandoned_t3", delayMs: 24 * 60 * 60 * 1e3 }
-          // 24 h
-        ];
-        const lightCadence = [
-          { rule: "abandoned_t1", delayMs: 30 * 60 * 1e3 },
-          // 30 min
-          { rule: "abandoned_t3", delayMs: 24 * 60 * 60 * 1e3 }
-          // 24 h
-        ];
-        const touches = newStep >= 2 ? fullCadence : lightCadence;
-        await ordersDb.insert(automationRuns).values(touches.map((t5) => ({
-          cartId,
-          customerPhone: phone,
-          ruleName: t5.rule,
-          status: "scheduled",
-          scheduledFor: new Date(base + t5.delayMs)
-        })));
-      }
+      const fullCadence = [
+        { rule: "abandoned_t1", delayMs: 30 * 60 * 1e3 },
+        // 30 min
+        { rule: "abandoned_t2", delayMs: 4 * 60 * 60 * 1e3 },
+        // 4 h
+        { rule: "abandoned_t3", delayMs: 24 * 60 * 60 * 1e3 }
+        // 24 h
+      ];
+      const lightCadence = [
+        { rule: "abandoned_t1", delayMs: 30 * 60 * 1e3 },
+        // 30 min
+        { rule: "abandoned_t3", delayMs: 24 * 60 * 60 * 1e3 }
+        // 24 h
+      ];
+      await agendarCadenciaSeAusente(ordersDb, {
+        cartId,
+        phone,
+        desde,
+        toques: newStep >= 2 ? fullCadence : lightCadence
+      });
     }
     return { tracked: true, cartId };
   }),
@@ -244273,7 +244746,7 @@ var recoveryRouter = router({
   }),
   // Admin: auto-send to all carts not contacted in last 24h
   autoSendAbandoned: premiumAdminProcedure.mutation(async ({ ctx }) => {
-    if (!isBusinessHours()) return { sent: 0, total: 0, skipped: "outside business hours (08:00\u201321:00 BRT)" };
+    if (!isBusinessHours2()) return { sent: 0, total: 0, skipped: "outside business hours (08:00\u201321:00 BRT)" };
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
     const claimed = await ordersDb.execute(sql`
         WITH c AS (
@@ -244634,47 +245107,13 @@ Responda SOMENTE JSON: {"mensagem": "texto"}`;
     }
     return { ok: ok2, phone: aiPhone, preview: parsed.mensagem };
   }),
-  // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts
-  // Called by cron (/api/cron/abandoned-cart) or manually from admin UI
-  runAutomationJob: premiumAdminProcedure.mutation(async ({ ctx }) => {
-    if (!isBusinessHours()) return { processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: "outside business hours (08:00\u201321:00 BRT)" };
-    const now = /* @__PURE__ */ new Date();
-    const due = await ordersDb.select().from(automationRuns).where(
-      and(eq(automationRuns.status, "scheduled"), lte(automationRuns.scheduledFor, now))
-    ).limit(50);
-    const activeCoupon = await getActiveRecoveryCoupon();
-    let sent = 0, cancelled = 0, failed = 0;
-    for (const run2 of due) {
-      const [cart] = await ordersDb.select().from(abandonedCarts).where(eq(abandonedCarts.id, run2.cartId)).limit(1);
-      if (!cart || cart.status === "converted" || cart.recovered || cart.optedOut) {
-        await ordersDb.update(automationRuns).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(automationRuns.id, run2.id));
-        cancelled++;
-        continue;
-      }
-      let msg;
-      if (run2.aiBody) {
-        msg = run2.aiBody;
-      } else {
-        const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "abandoned"), eq(msgTemplates.isDefault, true), eq(msgTemplates.active, true))).limit(1);
-        msg = tpl ? renderTemplate3(tpl.body, {
-          nome: cart.customerName,
-          link: activeCoupon ? `${STORE_URL}?cupom=${activeCoupon.code}` : STORE_URL,
-          cupom: activeCoupon?.code ?? "",
-          produto: "Sal Marinho Integral 1kg"
-        }) : recoveryMsg(cart.customerName, activeCoupon?.code);
-      }
-      const { ok: ok2 } = await sendViaWhatsApp(run2.customerPhone, msg);
-      if (ok2) {
-        await ordersDb.update(automationRuns).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(automationRuns.id, run2.id));
-        await ordersDb.update(abandonedCarts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(abandonedCarts.id, run2.cartId));
-        sent++;
-      } else {
-        await ordersDb.update(automationRuns).set({ status: "failed", updatedAt: /* @__PURE__ */ new Date() }).where(eq(automationRuns.id, run2.id));
-        failed++;
-      }
-      await new Promise((r5) => setTimeout(r5, 1200));
-    }
-    return { processed: due.length, sent, cancelled, failed };
+  // Internal/Admin: run automation job — sends scheduled WA messages for abandoned carts.
+  // Botão manual: usa a MESMA rotina do cron (server/lib/recoveryRuns.ts): claim atômico FOR UPDATE SKIP LOCKED,
+  // portão de WhatsApp conectado, requeue em falha, um toque por telefone por rodada, checagem de compra do
+  // telefone e orçamento de tempo de 45 s (a função da Vercel é limitada a 60 s).
+  runAutomationJob: premiumAdminProcedure.mutation(async () => {
+    const r5 = await processAutomationRuns({ deadlineAt: Date.now() + 45e3 });
+    return r5;
   }),
   // Admin: list automation runs
   listAutomationRuns: premiumAdminProcedure.query(async ({ ctx }) => {
@@ -244891,7 +245330,7 @@ async function processCampaignBatch(campaignId) {
       return {
         to: r5.email,
         subject: renderTemplate(subjectTemplate, { nome: r5.name ?? "" }),
-        html: layout2(renderTemplate(campaign.htmlBody, { nome: r5.name ?? "", unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
+        html: layout2(renderTemplateHtml(campaign.htmlBody, { nome: r5.name ?? "", unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
         replyTo: r5.replyTo ?? void 0,
         unsubToken: r5.unsubToken,
         attachments: campaignAttachments
@@ -245446,7 +245885,7 @@ var emailMarketingRouter = router({
     htmlBody: external_exports.string().min(1),
     recipients: external_exports.array(external_exports.object({
       email: external_exports.string().email(),
-      name: external_exports.string().optional()
+      name: external_exports.string().max(100).optional()
     })).min(1).max(50),
     attachments: external_exports.array(external_exports.object({
       filename: external_exports.string().min(1).max(255),
@@ -245468,14 +245907,20 @@ var emailMarketingRouter = router({
       if (totalBase64 > 35e5) throw new TRPCError({ code: "BAD_REQUEST", message: "Anexos muito grandes (m\xE1x. ~3,5 MB)." });
     }
     let allowedOwn = null;
+    const selfConfirmedToday = /* @__PURE__ */ new Set();
     if (!isStaff) {
       const [{ total }] = await db.select({ total: sql`coalesce(sum(${emailCampaigns.totalRecipients}), 0)::int` }).from(emailCampaigns).where(and(eq(emailCampaigns.createdByUserId, ctx.user.id), eq(emailCampaigns.isBroadcast, true), gte(emailCampaigns.createdAt, spMidnight())));
       if (total + input.recipients.length > ATTENDANT_BROADCAST_DAILY_LIMIT) {
         throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `Limite di\xE1rio de ${ATTENDANT_BROADCAST_DAILY_LIMIT} destinat\xE1rios no Disparo R\xE1pido atingido.` });
       }
       const mine = await userTaskFilter(ctx.user.id, ctx.user.name ?? "");
-      const own = await db.select({ email: tasks.email }).from(tasks).where(and(mine, eq(tasks.emailConfirmed, true), isNotNull(tasks.email)));
+      const own = await db.select({ email: tasks.email, at: tasks.emailConfirmedAt, by: tasks.emailConfirmedBy }).from(tasks).where(and(mine, eq(tasks.emailConfirmed, true), isNotNull(tasks.email)));
       allowedOwn = new Set(own.map((t5) => (t5.email ?? "").toLowerCase().trim()));
+      const euMesmo = new Set([ctx.user.name, ctx.user.email].filter((v4) => !!v4));
+      const hoje = spMidnight();
+      for (const t5 of own) {
+        if (t5.at && t5.at >= hoje && t5.by && euMesmo.has(t5.by)) selfConfirmedToday.add((t5.email ?? "").toLowerCase().trim());
+      }
     }
     const suppressed = await db.select({ email: emailSuppressions.email }).from(emailSuppressions);
     const suppressedSet = new Set(suppressed.map((s4) => s4.email.toLowerCase()));
@@ -245489,6 +245934,10 @@ var emailMarketingRouter = router({
       clean4.push({ email, name: r5.name?.trim() || void 0 });
     }
     if (clean4.length === 0) throw new TRPCError({ code: "BAD_REQUEST", message: allowedOwn ? "Nenhum destinat\xE1rio v\xE1lido. S\xF3 \xE9 poss\xEDvel enviar para e-mails confirmados das suas pr\xF3prias tarefas." : "Nenhum destinat\xE1rio v\xE1lido." });
+    if (selfConfirmedToday.size > 0) {
+      const n5 = clean4.filter((r5) => selfConfirmedToday.has(r5.email)).length;
+      if (n5 > 0) console.warn(JSON.stringify({ evt: "broadcast_self_confirmed_same_day", userId: ctx.user.id, count: n5, of: clean4.length }));
+    }
     const [campaign] = await db.insert(emailCampaigns).values({
       name: `Disparo ${seller.name} \u2014 ${(/* @__PURE__ */ new Date()).toLocaleDateString("pt-BR")}`,
       subject: input.subject,
@@ -245647,7 +246096,7 @@ var emailMarketingRouter = router({
       if (seller?.sigOn && seller.sig) signatureHtml = renderSignature(seller.sig, seller);
     } catch {
     }
-    const html = layout2(renderTemplate(cleanBody, { nome: ctx.user.name, unsubscribe: unsubUrl }), unsubUrl, signatureHtml);
+    const html = layout2(renderTemplateHtml(cleanBody, { nome: ctx.user.name, unsubscribe: unsubUrl }), unsubUrl, signatureHtml);
     const renderedSubject = `[TESTE] ${renderTemplate(subject, { nome: ctx.user.name })}`;
     const reserved = await reserveSendQuota2(1);
     if (!reserved) {
@@ -247023,7 +247472,7 @@ var LINK_STYLE = "color:#0C3680;font-weight:600;";
 function looksLikeHtml(body) {
   return /<\/?(p|div|table|ul|ol|li|br|a|strong|b|em|span|h[1-6])\b[^>]*>/i.test(body);
 }
-function escapeHtml4(s4) {
+function escapeHtml5(s4) {
   return s4.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 function safeHref(raw) {
@@ -247032,7 +247481,7 @@ function safeHref(raw) {
   return null;
 }
 function inline(text2) {
-  let out = escapeHtml4(text2);
+  let out = escapeHtml5(text2);
   out = out.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (m4, label, href) => {
     const safe = safeHref(href.replace(/&amp;/g, "&"));
     return safe ? `<a href="${safe.replace(/&/g, "&amp;")}" style="${LINK_STYLE}">${label}</a>` : m4;
@@ -247815,6 +248264,12 @@ init_logSafe();
 init_ordersDb();
 init_db2();
 init_drizzle_orm();
+
+// server/lib/unsubscribeToken.ts
+var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+var tokenDescadastroValido = (t5) => typeof t5 === "string" && UUID.test(t5);
+
+// server/routers/unsubscribe.ts
 async function suppressEmailGlobal(email, reason = "unsubscribe") {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail || !cleanEmail.includes("@")) return { failures: [], primaryFailed: false };
@@ -247875,7 +248330,7 @@ async function suppressEmailGlobal(email, reason = "unsubscribe") {
   }
   return { failures, primaryFailed };
 }
-function escapeHtml5(s4) {
+function escapeHtml6(s4) {
   return s4.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 async function resolveEmailByToken(token) {
@@ -247899,7 +248354,7 @@ async function resolveEmailByToken(token) {
 }
 async function handleUnsubscribe(req, res) {
   const token = String(req.query.t || req.body?.t || req.query.token || "").trim();
-  const targetEmail = token ? await resolveEmailByToken(token) : null;
+  const targetEmail = tokenDescadastroValido(token) ? await resolveEmailByToken(token) : null;
   if (req.method !== "POST") {
     if (!targetEmail) return res.status(404).send(failurePage());
     return res.status(200).send(confirmPage(targetEmail, token));
@@ -247950,10 +248405,10 @@ ${body}
 function confirmPage(email, token) {
   return pageShell("Confirmar descadastro", `    <div class="icon">\u2709</div>
     <h1>Confirmar descadastro</h1>
-    <div class="badge">${escapeHtml5(email)}</div>
+    <div class="badge">${escapeHtml6(email)}</div>
     <p>Clique no bot\xE3o abaixo para deixar de receber e-mails de transmiss\xE3o e sequ\xEAncias automatizadas da Sal Vita Premium.</p>
     <form method="POST" action="/api/unsubscribe">
-      <input type="hidden" name="t" value="${escapeHtml5(token)}"/>
+      <input type="hidden" name="t" value="${escapeHtml6(token)}"/>
       <input type="hidden" name="confirm" value="1"/>
       <button type="submit" class="btn">Confirmar descadastro</button>
     </form>`);
@@ -247961,7 +248416,7 @@ function confirmPage(email, token) {
 function successPage(email) {
   return pageShell("Descadastro Confirmado", `    <div class="icon">\u2713</div>
     <h1>Descadastro Confirmado</h1>
-    <div class="badge">${escapeHtml5(email)}</div>
+    <div class="badge">${escapeHtml6(email)}</div>
     <p>Seu e-mail foi removido de todas as nossas listas de transmiss\xE3o e sequ\xEAncias automatizadas da Sal Vita Premium com sucesso.</p>
     <a href="https://www.premium.salvitarn.com.br" class="btn">Voltar para a Sal Vita Premium</a>`);
 }
@@ -305634,12 +306089,12 @@ var FontFamily = class _FontFamily {
       font = fit[0] || leftOffset[leftOffset.length - 1] || rightOffset[0];
     }
     const lt3 = styleSources.filter((s4) => s4.fontWeight < numericFontWeight).sort(sortByFontWeight);
-    const gt2 = styleSources.filter((s4) => s4.fontWeight > numericFontWeight).sort(sortByFontWeight);
+    const gt3 = styleSources.filter((s4) => s4.fontWeight > numericFontWeight).sort(sortByFontWeight);
     if (numericFontWeight < 400) {
-      font = lt3[lt3.length - 1] || gt2[0];
+      font = lt3[lt3.length - 1] || gt3[0];
     }
     if (numericFontWeight > 500) {
-      font = gt2[0] || lt3[lt3.length - 1];
+      font = gt3[0] || lt3[lt3.length - 1];
     }
     if (!font) {
       throw new Error(`Could not resolve font for ${this.family}, fontWeight ${fontWeight}, fontStyle ${fontStyle}`);
@@ -316494,7 +316949,7 @@ var c = { exports: {} };
   function Ne(e4) {
     if (null !== e4 && "object" == typeof e4) {
       if ("function" == typeof e4.then) return Te2(e4);
-      if (e4.$$typeof === yl) return gt2(e4);
+      if (e4.$$typeof === yl) return gt3(e4);
     }
     throw Error(r5(438, String(e4)));
   }
@@ -316793,7 +317248,7 @@ var c = { exports: {} };
     }
   }
   function Sn() {
-    return gt2(ra);
+    return gt3(ra);
   }
   function kn() {
     return Re().memoizedState;
@@ -316980,19 +317435,19 @@ var c = { exports: {} };
   function Gn(e4, n6, t6, r6, l5) {
     if (ht(n6), null === n6.stateNode) {
       var a6 = La, o5 = t6.contextType;
-      "object" == typeof o5 && null !== o5 && (a6 = gt2(o5)), a6 = new t6(r6, a6), n6.memoizedState = null !== a6.state && void 0 !== a6.state ? a6.state : null, a6.updater = tu, n6.stateNode = a6, a6._reactInternals = n6, (a6 = n6.stateNode).props = r6, a6.state = n6.memoizedState, a6.refs = {}, V(n6), o5 = t6.contextType, a6.context = "object" == typeof o5 && null !== o5 ? gt2(o5) : La, a6.state = n6.memoizedState, "function" == typeof (o5 = t6.getDerivedStateFromProps) && (Nn(n6, t6, o5, r6), a6.state = n6.memoizedState), "function" == typeof t6.getDerivedStateFromProps || "function" == typeof a6.getSnapshotBeforeUpdate || "function" != typeof a6.UNSAFE_componentWillMount && "function" != typeof a6.componentWillMount || (o5 = a6.state, "function" == typeof a6.componentWillMount && a6.componentWillMount(), "function" == typeof a6.UNSAFE_componentWillMount && a6.UNSAFE_componentWillMount(), o5 !== a6.state && tu.enqueueReplaceState(a6, a6.state, null), X(n6, r6, a6, l5), K(), a6.state = n6.memoizedState), "function" == typeof a6.componentDidMount && (n6.flags |= 4194308), r6 = true;
+      "object" == typeof o5 && null !== o5 && (a6 = gt3(o5)), a6 = new t6(r6, a6), n6.memoizedState = null !== a6.state && void 0 !== a6.state ? a6.state : null, a6.updater = tu, n6.stateNode = a6, a6._reactInternals = n6, (a6 = n6.stateNode).props = r6, a6.state = n6.memoizedState, a6.refs = {}, V(n6), o5 = t6.contextType, a6.context = "object" == typeof o5 && null !== o5 ? gt3(o5) : La, a6.state = n6.memoizedState, "function" == typeof (o5 = t6.getDerivedStateFromProps) && (Nn(n6, t6, o5, r6), a6.state = n6.memoizedState), "function" == typeof t6.getDerivedStateFromProps || "function" == typeof a6.getSnapshotBeforeUpdate || "function" != typeof a6.UNSAFE_componentWillMount && "function" != typeof a6.componentWillMount || (o5 = a6.state, "function" == typeof a6.componentWillMount && a6.componentWillMount(), "function" == typeof a6.UNSAFE_componentWillMount && a6.UNSAFE_componentWillMount(), o5 !== a6.state && tu.enqueueReplaceState(a6, a6.state, null), X(n6, r6, a6, l5), K(), a6.state = n6.memoizedState), "function" == typeof a6.componentDidMount && (n6.flags |= 4194308), r6 = true;
     } else if (null === e4) {
       a6 = n6.stateNode;
       var u4 = n6.memoizedProps, i5 = Dn(t6, u4);
       a6.props = i5;
       var s5 = a6.context, c5 = t6.contextType;
-      o5 = La, "object" == typeof c5 && null !== c5 && (o5 = gt2(c5));
+      o5 = La, "object" == typeof c5 && null !== c5 && (o5 = gt3(c5));
       var f5 = t6.getDerivedStateFromProps;
       c5 = "function" == typeof f5 || "function" == typeof a6.getSnapshotBeforeUpdate, u4 = n6.pendingProps !== u4, c5 || "function" != typeof a6.UNSAFE_componentWillReceiveProps && "function" != typeof a6.componentWillReceiveProps || (u4 || s5 !== o5) && Un(n6, a6, r6, o5), zo2 = false;
       var d4 = n6.memoizedState;
       a6.state = d4, X(n6, r6, a6, l5), K(), s5 = n6.memoizedState, u4 || d4 !== s5 || zo2 ? ("function" == typeof f5 && (Nn(n6, t6, f5, r6), s5 = n6.memoizedState), (i5 = zo2 || Ln2(n6, t6, i5, r6, d4, s5, o5)) ? (c5 || "function" != typeof a6.UNSAFE_componentWillMount && "function" != typeof a6.componentWillMount || ("function" == typeof a6.componentWillMount && a6.componentWillMount(), "function" == typeof a6.UNSAFE_componentWillMount && a6.UNSAFE_componentWillMount()), "function" == typeof a6.componentDidMount && (n6.flags |= 4194308)) : ("function" == typeof a6.componentDidMount && (n6.flags |= 4194308), n6.memoizedProps = r6, n6.memoizedState = s5), a6.props = r6, a6.state = s5, a6.context = o5, r6 = i5) : ("function" == typeof a6.componentDidMount && (n6.flags |= 4194308), r6 = false);
     } else {
-      a6 = n6.stateNode, $(e4, n6), c5 = Dn(t6, o5 = n6.memoizedProps), a6.props = c5, f5 = n6.pendingProps, d4 = a6.context, s5 = t6.contextType, i5 = La, "object" == typeof s5 && null !== s5 && (i5 = gt2(s5)), (s5 = "function" == typeof (u4 = t6.getDerivedStateFromProps) || "function" == typeof a6.getSnapshotBeforeUpdate) || "function" != typeof a6.UNSAFE_componentWillReceiveProps && "function" != typeof a6.componentWillReceiveProps || (o5 !== f5 || d4 !== i5) && Un(n6, a6, r6, i5), zo2 = false, d4 = n6.memoizedState, a6.state = d4, X(n6, r6, a6, l5), K();
+      a6 = n6.stateNode, $(e4, n6), c5 = Dn(t6, o5 = n6.memoizedProps), a6.props = c5, f5 = n6.pendingProps, d4 = a6.context, s5 = t6.contextType, i5 = La, "object" == typeof s5 && null !== s5 && (i5 = gt3(s5)), (s5 = "function" == typeof (u4 = t6.getDerivedStateFromProps) || "function" == typeof a6.getSnapshotBeforeUpdate) || "function" != typeof a6.UNSAFE_componentWillReceiveProps && "function" != typeof a6.componentWillReceiveProps || (o5 !== f5 || d4 !== i5) && Un(n6, a6, r6, i5), zo2 = false, d4 = n6.memoizedState, a6.state = d4, X(n6, r6, a6, l5), K();
       var p5 = n6.memoizedState;
       o5 !== f5 || d4 !== p5 || zo2 || null !== e4 && null !== e4.dependencies && mt(e4.dependencies) ? ("function" == typeof u4 && (Nn(n6, t6, u4, r6), p5 = n6.memoizedState), (c5 = zo2 || Ln2(n6, t6, c5, r6, d4, p5, i5) || null !== e4 && null !== e4.dependencies && mt(e4.dependencies)) ? (s5 || "function" != typeof a6.UNSAFE_componentWillUpdate && "function" != typeof a6.componentWillUpdate || ("function" == typeof a6.componentWillUpdate && a6.componentWillUpdate(r6, p5, i5), "function" == typeof a6.UNSAFE_componentWillUpdate && a6.UNSAFE_componentWillUpdate(r6, p5, i5)), "function" == typeof a6.componentDidUpdate && (n6.flags |= 4), "function" == typeof a6.getSnapshotBeforeUpdate && (n6.flags |= 1024)) : ("function" != typeof a6.componentDidUpdate || o5 === e4.memoizedProps && d4 === e4.memoizedState || (n6.flags |= 4), "function" != typeof a6.getSnapshotBeforeUpdate || o5 === e4.memoizedProps && d4 === e4.memoizedState || (n6.flags |= 1024), n6.memoizedProps = r6, n6.memoizedState = p5), a6.props = r6, a6.state = p5, a6.context = i5, r6 = c5) : ("function" != typeof a6.componentDidUpdate || o5 === e4.memoizedProps && d4 === e4.memoizedState || (n6.flags |= 4), "function" != typeof a6.getSnapshotBeforeUpdate || o5 === e4.memoizedProps && d4 === e4.memoizedState || (n6.flags |= 1024), r6 = false);
     }
@@ -317227,7 +317682,7 @@ var c = { exports: {} };
       case 10:
         return l5 = n6.pendingProps, st(0, n6.type, l5.value), jn(e4, n6, l5.children, t6), n6.child;
       case 9:
-        return o5 = n6.type._context, l5 = n6.pendingProps.children, ht(n6), l5 = l5(o5 = gt2(o5)), n6.flags |= 1, jn(e4, n6, l5, t6), n6.child;
+        return o5 = n6.type._context, l5 = n6.pendingProps.children, ht(n6), l5 = l5(o5 = gt3(o5)), n6.flags |= 1, jn(e4, n6, l5, t6), n6.child;
       case 14:
         return Qn(e4, n6, n6.type, n6.pendingProps, t6);
       case 15:
@@ -317237,7 +317692,7 @@ var c = { exports: {} };
       case 22:
         return Bn2(e4, n6, t6);
       case 24:
-        return ht(n6), l5 = gt2(pu), null === e4 ? (null === (o5 = kt()) && (o5 = Tu, u4 = vt(), o5.pooledCache = u4, u4.refCount++, null !== u4 && (o5.pooledCacheLanes |= t6), o5 = u4), n6.memoizedState = { parent: l5, cache: o5 }, V(n6), st(0, pu, o5)) : (0 != (e4.lanes & t6) && ($(e4, n6), X(n6, null, null, t6), K()), o5 = e4.memoizedState, u4 = n6.memoizedState, o5.parent !== l5 ? (o5 = { parent: l5, cache: l5 }, n6.memoizedState = o5, 0 === n6.lanes && (n6.memoizedState = n6.updateQueue.baseState = o5), st(0, pu, l5)) : (l5 = u4.cache, st(0, pu, l5), l5 !== o5.cache && dt(n6, [pu], t6, true))), jn(e4, n6, n6.pendingProps.children, t6), n6.child;
+        return ht(n6), l5 = gt3(pu), null === e4 ? (null === (o5 = kt()) && (o5 = Tu, u4 = vt(), o5.pooledCache = u4, u4.refCount++, null !== u4 && (o5.pooledCacheLanes |= t6), o5 = u4), n6.memoizedState = { parent: l5, cache: o5 }, V(n6), st(0, pu, o5)) : (0 != (e4.lanes & t6) && ($(e4, n6), X(n6, null, null, t6), K()), o5 = e4.memoizedState, u4 = n6.memoizedState, o5.parent !== l5 ? (o5 = { parent: l5, cache: l5 }, n6.memoizedState = o5, 0 === n6.lanes && (n6.memoizedState = n6.updateQueue.baseState = o5), st(0, pu, l5)) : (l5 = u4.cache, st(0, pu, l5), l5 !== o5.cache && dt(n6, [pu], t6, true))), jn(e4, n6, n6.pendingProps.children, t6), n6.child;
       case 29:
         throw n6.pendingProps;
     }
@@ -317328,7 +317783,7 @@ var c = { exports: {} };
   function ht(e4) {
     uu = e4, su = iu = null, null !== (e4 = e4.dependencies) && (e4.firstContext = null);
   }
-  function gt2(e4) {
+  function gt3(e4) {
     return bt2(uu, e4);
   }
   function yt(e4, n6) {
@@ -318866,11 +319321,11 @@ var c = { exports: {} };
   var co2 = [], fo = 0, po = 0, mo = null, ho = null, go = false, yo = false, bo = false, vo = 0, So = null, ko = 0, wo = 0, xo = null, zo2 = false, Co = false, Eo = Object.prototype.hasOwnProperty, Po = Error(r5(460)), _o = Error(r5(474)), Ro = { then: function() {
   } }, To = null, No = null, Lo = 0, Uo = ce(true), Do = ce(false), Io = f4(null), Fo = f4(0), Mo = f4(null), Wo = null, Ho = f4(0), jo = 0, Ao = null, Qo = null, Oo = null, Bo = false, Vo = false, $o = false, qo = 0, Yo2 = 0, Go = null, Jo2 = 0, Ko = function() {
     return { lastEffect: null, events: null, stores: null, memoCache: null };
-  }, Xo = { readContext: gt2, use: Ne, useCallback: ve, useContext: ve, useEffect: ve, useImperativeHandle: ve, useLayoutEffect: ve, useInsertionEffect: ve, useMemo: ve, useReducer: ve, useRef: ve, useState: ve, useDebugValue: ve, useDeferredValue: ve, useTransition: ve, useSyncExternalStore: ve, useId: ve };
+  }, Xo = { readContext: gt3, use: Ne, useCallback: ve, useContext: ve, useEffect: ve, useImperativeHandle: ve, useLayoutEffect: ve, useInsertionEffect: ve, useMemo: ve, useReducer: ve, useRef: ve, useState: ve, useDebugValue: ve, useDeferredValue: ve, useTransition: ve, useSyncExternalStore: ve, useId: ve };
   Xo.useCacheRefresh = ve, Xo.useMemoCache = ve, Xo.useHostTransitionStatus = ve, Xo.useFormState = ve, Xo.useActionState = ve, Xo.useOptimistic = ve;
-  var Zo2 = { readContext: gt2, use: Ne, useCallback: function(e4, n6) {
+  var Zo2 = { readContext: gt3, use: Ne, useCallback: function(e4, n6) {
     return _e2().memoizedState = [e4, void 0 === n6 ? null : n6], e4;
-  }, useContext: gt2, useEffect: un, useImperativeHandle: function(e4, n6, t6) {
+  }, useContext: gt3, useEffect: un, useImperativeHandle: function(e4, n6, t6) {
     t6 = null != t6 ? t6.concat([e4]) : null, an(4194308, 4, dn.bind(null, n6, e4), t6);
   }, useLayoutEffect: function(e4, n6) {
     return an(4194308, 4, e4, n6);
@@ -318931,7 +319386,7 @@ var c = { exports: {} };
     var t6 = { pending: null, lanes: 0, dispatch: null, lastRenderedReducer: null, lastRenderedState: null };
     return n6.queue = t6, n6 = Pn.bind(null, Ao, true, t6), t6.dispatch = n6, [e4, n6];
   };
-  var eu = { readContext: gt2, use: Ne, useCallback: hn2, useContext: gt2, useEffect: sn, useImperativeHandle: pn2, useInsertionEffect: cn, useLayoutEffect: fn, useMemo: gn, useReducer: De, useRef: ln, useState: function() {
+  var eu = { readContext: gt3, use: Ne, useCallback: hn2, useContext: gt3, useEffect: sn, useImperativeHandle: pn2, useInsertionEffect: cn, useLayoutEffect: fn, useMemo: gn, useReducer: De, useRef: ln, useState: function() {
     return De(Ue);
   }, useDebugValue: mn, useDeferredValue: function(e4, n6) {
     return bn(Re(), Qo.memoizedState, e4, n6);
@@ -318942,7 +319397,7 @@ var c = { exports: {} };
   eu.useCacheRefresh = wn, eu.useMemoCache = Le, eu.useHostTransitionStatus = Sn, eu.useFormState = Ze, eu.useActionState = Ze, eu.useOptimistic = function(e4, n6) {
     return Be(Re(), 0, e4, n6);
   };
-  var nu = { readContext: gt2, use: Ne, useCallback: hn2, useContext: gt2, useEffect: sn, useImperativeHandle: pn2, useInsertionEffect: cn, useLayoutEffect: fn, useMemo: gn, useReducer: Fe, useRef: ln, useState: function() {
+  var nu = { readContext: gt3, use: Ne, useCallback: hn2, useContext: gt3, useEffect: sn, useImperativeHandle: pn2, useInsertionEffect: cn, useLayoutEffect: fn, useMemo: gn, useReducer: Fe, useRef: ln, useState: function() {
     return Fe(Ue);
   }, useDebugValue: mn, useDeferredValue: function(e4, n6) {
     var t6 = Re();
@@ -319003,7 +319458,7 @@ var c = { exports: {} };
     })(0, n6), null !== mu && mu(e4, n6);
   };
   var hu2 = f4(null), gu = false, yu = false, bu = false, vu = "function" == typeof WeakSet ? WeakSet : Set, Su = null, ku2 = false, wu = null, xu = false, zu = null, Cu = 8192, Eu = { getCacheForType: function(e4) {
-    var n6 = gt2(pu), t6 = n6.data.get(e4);
+    var n6 = gt3(pu), t6 = n6.data.get(e4);
     return void 0 === t6 && (t6 = e4(), n6.data.set(e4, t6)), t6;
   } };
   if ("function" == typeof Symbol && Symbol.for) {
@@ -320608,16 +321063,16 @@ var c = { exports: {} };
       Ja.T = c5, yt(e4, false, n7, t6), c5._updatedFibers = /* @__PURE__ */ new Set();
       try {
         var f5 = l5(), d4 = Ja.S;
-        null !== d4 && d4(c5, f5), null !== f5 && "object" == typeof f5 && "function" == typeof f5.then ? gt2(e4, n7, (o5 = r6, u4 = [], i5 = { status: "pending", value: null, reason: null, then: function(e5) {
+        null !== d4 && d4(c5, f5), null !== f5 && "object" == typeof f5 && "function" == typeof f5.then ? gt3(e4, n7, (o5 = r6, u4 = [], i5 = { status: "pending", value: null, reason: null, then: function(e5) {
           u4.push(e5);
         } }, f5.then((function() {
           i5.status = "fulfilled", i5.value = o5;
           for (var e5 = 0; e5 < u4.length; e5++) (0, u4[e5])(o5);
         }), (function(e5) {
           for (i5.status = "rejected", i5.reason = e5, e5 = 0; e5 < u4.length; e5++) (0, u4[e5])(void 0);
-        })), i5), xl(e4)) : gt2(e4, n7, r6, xl(e4));
+        })), i5), xl(e4)) : gt3(e4, n7, r6, xl(e4));
       } catch (t7) {
-        gt2(e4, n7, { then: function() {
+        gt3(e4, n7, { then: function() {
         }, status: "rejected", reason: t7 }, xl(e4));
       } finally {
         wo(a6), Ja.T = s5, null === s5 && c5._updatedFibers && (e4 = c5._updatedFibers.size, c5._updatedFibers.clear(), 10 < e4 && console.warn("Detected a large number of updates inside startTransition. If this is due to a subscription please re-write it to use React provided hooks. Otherwise concurrent mode guarantees are off the table."));
@@ -320660,9 +321115,9 @@ var c = { exports: {} };
       "function" == typeof r6 && console.error("State updates from the useState() and useReducer() Hooks don't support the second callback argument. To execute a side effect after rendering, declare it in the component body with useEffect()."), t6 = { lane: r6 = xl(e4), revertLane: 0, action: t6, hasEagerState: false, eagerState: null, next: null }, bt2(e4) ? vt(n7, t6) : null !== (t6 = V(e4, n7, t6, r6)) && (Cl(t6, e4, r6), St2(t6, n7, r6));
     }
     function ht(e4, n7, t6, r6) {
-      "function" == typeof r6 && console.error("State updates from the useState() and useReducer() Hooks don't support the second callback argument. To execute a side effect after rendering, declare it in the component body with useEffect()."), gt2(e4, n7, t6, r6 = xl(e4));
+      "function" == typeof r6 && console.error("State updates from the useState() and useReducer() Hooks don't support the second callback argument. To execute a side effect after rendering, declare it in the component body with useEffect()."), gt3(e4, n7, t6, r6 = xl(e4));
     }
-    function gt2(e4, n7, t6, r6) {
+    function gt3(e4, n7, t6, r6) {
       var l5 = { lane: r6, revertLane: 0, action: t6, hasEagerState: false, eagerState: null, next: null };
       if (bt2(e4)) vt(n7, l5);
       else {
@@ -325282,7 +325737,7 @@ var c2 = { exports: {} };
         0 != (131072 & e4.flags) && (Pu = true);
       }
     }
-    return gt2(e4, n6, t6, r6, l5);
+    return gt3(e4, n6, t6, r6, l5);
   }
   function ct(e4, n6, t6, r6) {
     var l5 = r6.children, a6 = null !== e4 ? e4.memoizedState : null;
@@ -325320,7 +325775,7 @@ var c2 = { exports: {} };
       null !== e4 && e4.ref === t6 || (n6.flags |= 4194816);
     }
   }
-  function gt2(e4, n6, t6, r6, l5) {
+  function gt3(e4, n6, t6, r6, l5) {
     return H2(n6), t6 = Oe(e4, n6, t6, r6, void 0, l5), r6 = Be(), null === e4 || Pu ? (n6.flags |= 1, ot(e4, n6, t6, l5), n6.child) : ($e2(e4, n6, l5), _t(e4, n6, l5));
   }
   function yt(e4, n6, t6, r6, l5, a6) {
@@ -325508,11 +325963,11 @@ var c2 = { exports: {} };
             }
             throw n6 = a5(e4) || e4, Error(r5(306, n6, ""));
           }
-          rl(e4) ? (l5 = et2(e4, l5), n6.tag = 1, n6 = bt2(null, n6, e4, l5, t6)) : (n6.tag = 0, n6 = gt2(null, n6, e4, l5, t6));
+          rl(e4) ? (l5 = et2(e4, l5), n6.tag = 1, n6 = bt2(null, n6, e4, l5, t6)) : (n6.tag = 0, n6 = gt3(null, n6, e4, l5, t6));
         }
         return n6;
       case 0:
-        return gt2(e4, n6, n6.type, n6.pendingProps, t6);
+        return gt3(e4, n6, n6.type, n6.pendingProps, t6);
       case 1:
         return bt2(e4, n6, l5 = n6.type, o5 = et2(l5, n6.pendingProps), t6);
       case 3:
@@ -329140,7 +329595,7 @@ var c2 = { exports: {} };
       if (r6 = n7(), ed || (t6 = n7(), yi(r6, t6) || (console.error("The result of getSnapshot should be cached to avoid an infinite loop"), ed = true)), null === Zf) throw Error("Expected a work-in-progress root. This is a bug in React. Please file an issue.");
       return 0 != (127 & np) || yt(l5, n7, r6), a6.memoizedState = r6, t6 = { value: r6, getSnapshot: n7 }, a6.queue = t6, Bt2(vt.bind(null, l5, t6, e4), [e4]), l5.flags |= 2048, Ot(xd | Pd, { destroy: void 0 }, bt2.bind(null, l5, t6, r6, n7), null), r6;
     }
-    function gt2(e4, n7, t6) {
+    function gt3(e4, n7, t6) {
       var r6 = Ud, l5 = ot();
       if (t6 = n7(), !ed) {
         var a6 = n7();
@@ -332226,7 +332681,7 @@ var c2 = { exports: {} };
     }, useTransition: function() {
       return Bd = "useTransition", qn(), sr2();
     }, useSyncExternalStore: function(e4, n7, t6) {
-      return Bd = "useSyncExternalStore", qn(), gt2(e4, n7, t6);
+      return Bd = "useSyncExternalStore", qn(), gt3(e4, n7, t6);
     }, useId: function() {
       return Bd = "useId", qn(), ot().memoizedState;
     }, useFormState: function(e4) {
@@ -332289,7 +332744,7 @@ var c2 = { exports: {} };
     }, useTransition: function() {
       return Bd = "useTransition", qn(), cr2();
     }, useSyncExternalStore: function(e4, n7, t6) {
-      return Bd = "useSyncExternalStore", qn(), gt2(e4, n7, t6);
+      return Bd = "useSyncExternalStore", qn(), gt3(e4, n7, t6);
     }, useId: function() {
       return Bd = "useId", qn(), ot().memoizedState;
     }, useFormState: function(e4) {
@@ -332421,7 +332876,7 @@ var c2 = { exports: {} };
     }, useTransition: function() {
       return Bd = "useTransition", r5(), qn(), sr2();
     }, useSyncExternalStore: function(e4, n7, t6) {
-      return Bd = "useSyncExternalStore", r5(), qn(), gt2(e4, n7, t6);
+      return Bd = "useSyncExternalStore", r5(), qn(), gt3(e4, n7, t6);
     }, useId: function() {
       return Bd = "useId", r5(), qn(), ot().memoizedState;
     }, useFormState: function(e4) {
@@ -332488,7 +332943,7 @@ var c2 = { exports: {} };
     }, useTransition: function() {
       return Bd = "useTransition", r5(), qn(), cr2();
     }, useSyncExternalStore: function(e4, n7, t6) {
-      return Bd = "useSyncExternalStore", r5(), qn(), gt2(e4, n7, t6);
+      return Bd = "useSyncExternalStore", r5(), qn(), gt3(e4, n7, t6);
     }, useId: function() {
       return Bd = "useId", r5(), qn(), ot().memoizedState;
     }, useFormState: function(e4) {
@@ -332953,7 +333408,7 @@ var u3 = l3(n3);
     } else ot = ot.next = t5;
     return e4._currentValue2;
   }
-  var gt2 = false;
+  var gt3 = false;
   function bt2(e4) {
     return { baseState: e4, firstUpdate: null, lastUpdate: null, firstCapturedUpdate: null, lastCapturedUpdate: null, firstEffect: null, lastEffect: null, firstCapturedEffect: null, lastCapturedEffect: null };
   }
@@ -332992,12 +333447,12 @@ var u3 = l3(n3);
         if (null == (i4 = "function" == typeof (e4 = n5.payload) ? e4.call(a6, r6, i4) : e4)) break;
         return l4({}, r6, i4);
       case 2:
-        gt2 = true;
+        gt3 = true;
     }
     return r6;
   }
   function Ct(e4, t5, n5, r6, l5) {
-    gt2 = false;
+    gt3 = false;
     for (var i4 = (t5 = kt(e4, t5)).baseState, a6 = null, u4 = 0, o5 = t5.firstUpdate, f5 = i4; null !== o5; ) {
       var c5 = o5.expirationTime;
       c5 < l5 ? (null === a6 && (a6 = o5, i4 = f5), u4 < c5 && (u4 = c5)) : (El(c5, o5.suspenseConfig), f5 = St2(e4, 0, o5, f5, n5, r6), null !== o5.callback && (e4.effectTag |= 32, o5.nextEffect = null, null === t5.lastEffect ? t5.firstEffect = t5.lastEffect = o5 : (t5.lastEffect.nextEffect = o5, t5.lastEffect = o5))), o5 = o5.next;
@@ -333550,12 +334005,12 @@ var u3 = l3(n3);
       var o5 = a6.context, f5 = n5.contextType;
       f5 = "object" == typeof f5 && null !== f5 ? ht(f5) : Te2(t5, f5 = xe(n5) ? ve : be.current);
       var c5 = n5.getDerivedStateFromProps, s5 = "function" == typeof c5 || "function" == typeof a6.getSnapshotBeforeUpdate;
-      s5 || "function" != typeof a6.UNSAFE_componentWillReceiveProps && "function" != typeof a6.componentWillReceiveProps || (u4 !== r6 || o5 !== f5) && Mt(t5, a6, r6, f5), gt2 = false;
+      s5 || "function" != typeof a6.UNSAFE_componentWillReceiveProps && "function" != typeof a6.componentWillReceiveProps || (u4 !== r6 || o5 !== f5) && Mt(t5, a6, r6, f5), gt3 = false;
       var d4 = t5.memoizedState;
       o5 = a6.state = d4;
       var p5 = t5.updateQueue;
-      null !== p5 && (Ct(t5, p5, r6, a6, l5), o5 = t5.memoizedState), u4 !== r6 || d4 !== o5 || ye.current || gt2 ? ("function" == typeof c5 && (Nt(t5, n5, c5, r6), o5 = t5.memoizedState), (u4 = gt2 || Rt(t5, n5, u4, r6, d4, o5, f5)) ? (s5 || "function" != typeof a6.UNSAFE_componentWillMount && "function" != typeof a6.componentWillMount || ("function" == typeof a6.componentWillMount && a6.componentWillMount(), "function" == typeof a6.UNSAFE_componentWillMount && a6.UNSAFE_componentWillMount()), "function" == typeof a6.componentDidMount && (t5.effectTag |= 4)) : ("function" == typeof a6.componentDidMount && (t5.effectTag |= 4), t5.memoizedProps = r6, t5.memoizedState = o5), a6.props = r6, a6.state = o5, a6.context = f5, r6 = u4) : ("function" == typeof a6.componentDidMount && (t5.effectTag |= 4), r6 = false);
-    } else a6 = t5.stateNode, u4 = t5.memoizedProps, a6.props = t5.type === t5.elementType ? u4 : it(t5.type, u4), o5 = a6.context, f5 = "object" == typeof (f5 = n5.contextType) && null !== f5 ? ht(f5) : Te2(t5, f5 = xe(n5) ? ve : be.current), (s5 = "function" == typeof (c5 = n5.getDerivedStateFromProps) || "function" == typeof a6.getSnapshotBeforeUpdate) || "function" != typeof a6.UNSAFE_componentWillReceiveProps && "function" != typeof a6.componentWillReceiveProps || (u4 !== r6 || o5 !== f5) && Mt(t5, a6, r6, f5), gt2 = false, o5 = t5.memoizedState, d4 = a6.state = o5, null !== (p5 = t5.updateQueue) && (Ct(t5, p5, r6, a6, l5), d4 = t5.memoizedState), u4 !== r6 || o5 !== d4 || ye.current || gt2 ? ("function" == typeof c5 && (Nt(t5, n5, c5, r6), d4 = t5.memoizedState), (c5 = gt2 || Rt(t5, n5, u4, r6, o5, d4, f5)) ? (s5 || "function" != typeof a6.UNSAFE_componentWillUpdate && "function" != typeof a6.componentWillUpdate || ("function" == typeof a6.componentWillUpdate && a6.componentWillUpdate(r6, d4, f5), "function" == typeof a6.UNSAFE_componentWillUpdate && a6.UNSAFE_componentWillUpdate(r6, d4, f5)), "function" == typeof a6.componentDidUpdate && (t5.effectTag |= 4), "function" == typeof a6.getSnapshotBeforeUpdate && (t5.effectTag |= 256)) : ("function" != typeof a6.componentDidUpdate || u4 === e4.memoizedProps && o5 === e4.memoizedState || (t5.effectTag |= 4), "function" != typeof a6.getSnapshotBeforeUpdate || u4 === e4.memoizedProps && o5 === e4.memoizedState || (t5.effectTag |= 256), t5.memoizedProps = r6, t5.memoizedState = d4), a6.props = r6, a6.state = d4, a6.context = f5, r6 = c5) : ("function" != typeof a6.componentDidUpdate || u4 === e4.memoizedProps && o5 === e4.memoizedState || (t5.effectTag |= 4), "function" != typeof a6.getSnapshotBeforeUpdate || u4 === e4.memoizedProps && o5 === e4.memoizedState || (t5.effectTag |= 256), r6 = false);
+      null !== p5 && (Ct(t5, p5, r6, a6, l5), o5 = t5.memoizedState), u4 !== r6 || d4 !== o5 || ye.current || gt3 ? ("function" == typeof c5 && (Nt(t5, n5, c5, r6), o5 = t5.memoizedState), (u4 = gt3 || Rt(t5, n5, u4, r6, d4, o5, f5)) ? (s5 || "function" != typeof a6.UNSAFE_componentWillMount && "function" != typeof a6.componentWillMount || ("function" == typeof a6.componentWillMount && a6.componentWillMount(), "function" == typeof a6.UNSAFE_componentWillMount && a6.UNSAFE_componentWillMount()), "function" == typeof a6.componentDidMount && (t5.effectTag |= 4)) : ("function" == typeof a6.componentDidMount && (t5.effectTag |= 4), t5.memoizedProps = r6, t5.memoizedState = o5), a6.props = r6, a6.state = o5, a6.context = f5, r6 = u4) : ("function" == typeof a6.componentDidMount && (t5.effectTag |= 4), r6 = false);
+    } else a6 = t5.stateNode, u4 = t5.memoizedProps, a6.props = t5.type === t5.elementType ? u4 : it(t5.type, u4), o5 = a6.context, f5 = "object" == typeof (f5 = n5.contextType) && null !== f5 ? ht(f5) : Te2(t5, f5 = xe(n5) ? ve : be.current), (s5 = "function" == typeof (c5 = n5.getDerivedStateFromProps) || "function" == typeof a6.getSnapshotBeforeUpdate) || "function" != typeof a6.UNSAFE_componentWillReceiveProps && "function" != typeof a6.componentWillReceiveProps || (u4 !== r6 || o5 !== f5) && Mt(t5, a6, r6, f5), gt3 = false, o5 = t5.memoizedState, d4 = a6.state = o5, null !== (p5 = t5.updateQueue) && (Ct(t5, p5, r6, a6, l5), d4 = t5.memoizedState), u4 !== r6 || o5 !== d4 || ye.current || gt3 ? ("function" == typeof c5 && (Nt(t5, n5, c5, r6), d4 = t5.memoizedState), (c5 = gt3 || Rt(t5, n5, u4, r6, o5, d4, f5)) ? (s5 || "function" != typeof a6.UNSAFE_componentWillUpdate && "function" != typeof a6.componentWillUpdate || ("function" == typeof a6.componentWillUpdate && a6.componentWillUpdate(r6, d4, f5), "function" == typeof a6.UNSAFE_componentWillUpdate && a6.UNSAFE_componentWillUpdate(r6, d4, f5)), "function" == typeof a6.componentDidUpdate && (t5.effectTag |= 4), "function" == typeof a6.getSnapshotBeforeUpdate && (t5.effectTag |= 256)) : ("function" != typeof a6.componentDidUpdate || u4 === e4.memoizedProps && o5 === e4.memoizedState || (t5.effectTag |= 4), "function" != typeof a6.getSnapshotBeforeUpdate || u4 === e4.memoizedProps && o5 === e4.memoizedState || (t5.effectTag |= 256), t5.memoizedProps = r6, t5.memoizedState = d4), a6.props = r6, a6.state = d4, a6.context = f5, r6 = c5) : ("function" != typeof a6.componentDidUpdate || u4 === e4.memoizedProps && o5 === e4.memoizedState || (t5.effectTag |= 4), "function" != typeof a6.getSnapshotBeforeUpdate || u4 === e4.memoizedProps && o5 === e4.memoizedState || (t5.effectTag |= 256), r6 = false);
     return Kn2(e4, t5, n5, r6, i4, l5);
   }
   function Kn2(e4, t5, n5, r6, l5, i4) {
@@ -337334,25 +337789,25 @@ function decidirBloqueioCredito(e4, agora = /* @__PURE__ */ new Date()) {
 
 // server/lib/credito/produtos.ts
 var comoVeredito = (s4) => s4 === "APROVADO" || s4 === "COM_RESTRICAO" ? s4 : "REPROVADO_A_PRAZO";
-function escolherEfetivo(linhas, agora = /* @__PURE__ */ new Date()) {
-  if (linhas.length === 0) return null;
-  const validas = linhas.filter((l4) => relatorioValido(l4.consultadoEm, agora));
-  if (validas.length === 0) return { principal: linhas[0], veredito: comoVeredito(linhas[0].veredito), valido: false };
+function escolherEfetivo(linhas2, agora = /* @__PURE__ */ new Date()) {
+  if (linhas2.length === 0) return null;
+  const validas = linhas2.filter((l4) => relatorioValido(l4.consultadoEm, agora));
+  if (validas.length === 0) return { principal: linhas2[0], veredito: comoVeredito(linhas2[0].veredito), valido: false };
   const vigentes = [...maisRecentePorProduto(validas).values()];
   const pior = piorVeredito(vigentes.map((l4) => comoVeredito(l4.veredito)));
   const principal = vigentes.find((l4) => comoVeredito(l4.veredito) === pior) ?? vigentes[0];
   return { principal, veredito: pior, valido: true };
 }
-function maisRecentePorProduto(linhas) {
+function maisRecentePorProduto(linhas2) {
   const out = /* @__PURE__ */ new Map();
-  for (const l4 of linhas) {
+  for (const l4 of linhas2) {
     const chave = chaveDoProdutoGravado(l4.produto, l4.provedor);
     if (!out.has(chave)) out.set(chave, l4);
   }
   return out;
 }
-function selecionarParaConsolidado(linhas, opts2) {
-  const base = opts2.provedorReal ? linhas.filter((l4) => l4.provedor !== "simulado") : linhas;
+function selecionarParaConsolidado(linhas2, opts2) {
+  const base = opts2.provedorReal ? linhas2.filter((l4) => l4.provedor !== "simulado") : linhas2;
   const porProduto = [...maisRecentePorProduto(base).entries()];
   const validas = porProduto.filter(([, l4]) => relatorioValido(l4.consultadoEm, opts2.agora));
   const escolhidas = validas.length ? validas : porProduto;
@@ -337360,8 +337815,8 @@ function selecionarParaConsolidado(linhas, opts2) {
   escolhidas.sort(([a5], [b3]) => (ordem.indexOf(a5) === -1 ? 999 : ordem.indexOf(a5)) - (ordem.indexOf(b3) === -1 ? 999 : ordem.indexOf(b3)));
   return { linhas: escolhidas.map(([, l4]) => l4), valido: validas.length > 0 };
 }
-function chipsDosProdutos(linhas, agora = /* @__PURE__ */ new Date()) {
-  const mapa = maisRecentePorProduto(linhas);
+function chipsDosProdutos(linhas2, agora = /* @__PURE__ */ new Date()) {
+  const mapa = maisRecentePorProduto(linhas2);
   const ordem = CATALOGO_CREDITO.map((i4) => i4.chave);
   const chaves = [...mapa.keys()].sort((a5, b3) => {
     const ia = ordem.indexOf(a5);
@@ -337380,15 +337835,15 @@ function chipsDosProdutos(linhas, agora = /* @__PURE__ */ new Date()) {
     };
   });
 }
-function resumoParaBloqueio(linhas, agora = /* @__PURE__ */ new Date()) {
-  const e4 = escolherEfetivo(linhas, agora);
+function resumoParaBloqueio(linhas2, agora = /* @__PURE__ */ new Date()) {
+  const e4 = escolherEfetivo(linhas2, agora);
   if (!e4) return null;
   if (!e4.valido) return { veredito: e4.veredito, consultadoEm: e4.principal.consultadoEm };
-  const maisNovaValida = linhas.find((l4) => relatorioValido(l4.consultadoEm, agora));
+  const maisNovaValida = linhas2.find((l4) => relatorioValido(l4.consultadoEm, agora));
   return { veredito: e4.veredito, consultadoEm: maisNovaValida.consultadoEm };
 }
-function planoDeCache(itens, linhas, opts2) {
-  const ultimo = maisRecentePorProduto(linhas);
+function planoDeCache(itens, linhas2, opts2) {
+  const ultimo = maisRecentePorProduto(linhas2);
   const reaproveita = {};
   for (const i4 of itens) {
     const l4 = ultimo.get(i4.chave) ?? null;
@@ -337457,8 +337912,8 @@ async function desvincularRelatorioDoPedido(reportId, pedidoId) {
   return r5.rows.length;
 }
 async function relatorioParaBloqueio(documento) {
-  const linhas = await relatoriosDoDocumento(documento, { semSimulado: process.env.NODE_ENV === "production" });
-  return resumoParaBloqueio(linhas);
+  const linhas2 = await relatoriosDoDocumento(documento, { semSimulado: process.env.NODE_ENV === "production" });
+  return resumoParaBloqueio(linhas2);
 }
 async function decidirBloqueioDoPedido(pedido) {
   try {
@@ -337482,9 +337937,9 @@ async function vincularUltimoRelatorioNoEnvio(pedidoId, cnpj, userId) {
   try {
     const documento = cnpj.replace(/\D/g, "");
     if (!documento) return;
-    const linhas = await relatoriosDoDocumento(documento);
-    const vigentes = [...maisRecentePorProduto(linhas).values()].filter((l4) => relatorioValido(l4.consultadoEm));
-    for (const l4 of vigentes.length ? vigentes : linhas.slice(0, 1)) await vincularRelatorioAoPedido(l4.id, pedidoId, userId, "ENVIO_SMBI");
+    const linhas2 = await relatoriosDoDocumento(documento);
+    const vigentes = [...maisRecentePorProduto(linhas2).values()].filter((l4) => relatorioValido(l4.consultadoEm));
+    for (const l4 of vigentes.length ? vigentes : linhas2.slice(0, 1)) await vincularRelatorioAoPedido(l4.id, pedidoId, userId, "ENVIO_SMBI");
   } catch (e4) {
     console.error("[credito] v\xEDnculo no envio falhou (envio mantido):", e4 instanceof Error ? e4.message : "erro");
   }
@@ -340189,9 +340644,9 @@ function normalizarDocumentosSemaforo(brutos) {
 function documentosVisiveis(documentos, quem) {
   return quem.staff ? [...documentos] : documentos.filter((d3) => quem.daCarteira.has(d3));
 }
-function montarSemaforos(linhas, agora = /* @__PURE__ */ new Date()) {
+function montarSemaforos(linhas2, agora = /* @__PURE__ */ new Date()) {
   const porDocumento = /* @__PURE__ */ new Map();
-  for (const l4 of linhas) {
+  for (const l4 of linhas2) {
     const lista2 = porDocumento.get(l4.documento);
     if (lista2) lista2.push(l4);
     else porDocumento.set(l4.documento, [l4]);
@@ -341021,7 +341476,7 @@ function indiceMes(nome) {
 var temMeses = (o4) => ehObj(o4) && Object.keys(o4).filter((k3) => indiceMes(k3) >= 0).length >= 3;
 var COLUNAS_MESES = ["Ano", ...MESES3.map((_2, i4) => abrev(i4))];
 function linhasPorMes(q) {
-  const linhas = [];
+  const linhas2 = [];
   for (const o4 of q) {
     const porMes = new Array(12).fill("");
     let ano = "";
@@ -341034,15 +341489,15 @@ function linhasPorMes(q) {
       const i4 = indiceMes(k3);
       if (i4 >= 0) porMes[i4] = String(v4).trim();
     }
-    if (ano || porMes.some(Boolean)) linhas.push([ano || "\u2014", ...porMes.map((m4) => m4 || "-")]);
+    if (ano || porMes.some(Boolean)) linhas2.push([ano || "\u2014", ...porMes.map((m4) => m4 || "-")]);
   }
   const num = (l4) => /^\d{4}$/.test(l4[0]) ? Number(l4[0]) : -1;
-  return linhas.sort((a5, b3) => num(b3) - num(a5));
+  return linhas2.sort((a5, b3) => num(b3) - num(a5));
 }
 function tabelaMeses(q) {
-  const linhas = linhasPorMes(q);
-  if (!linhas.length) return [];
-  return [{ t: "tabela", colunas: COLUNAS_MESES, pesos: COLUNAS_MESES.map((_2, i4) => i4 === 0 ? 40 : 38), linhas, continuacao: false }];
+  const linhas2 = linhasPorMes(q);
+  if (!linhas2.length) return [];
+  return [{ t: "tabela", colunas: COLUNAS_MESES, pesos: COLUNAS_MESES.map((_2, i4) => i4 === 0 ? 40 : 38), linhas: linhas2, continuacao: false }];
 }
 function periodo(s4) {
   const t5 = s4.trim();
@@ -341084,9 +341539,9 @@ function serieDe(arr) {
 }
 var vazio = (v4) => v4 == null || v4 === "" || Array.isArray(v4) && !v4.length || ehObj(v4) && !Object.keys(v4).length;
 var ehChavePontuacao = (k3) => semPrefixo(k3).toUpperCase() === "PONTUACAO";
-function matrizDe(titulosFixos, pesosFixos, linhas) {
+function matrizDe(titulosFixos, pesosFixos, linhas2) {
   const rot = /* @__PURE__ */ new Map();
-  for (const l4 of linhas) for (const [o4, r5] of l4.serie.rotulos) rot.set(o4, r5);
+  for (const l4 of linhas2) for (const [o4, r5] of l4.serie.rotulos) rot.set(o4, r5);
   const ords = [...rot.keys()].sort((a5, b3) => a5 - b3);
   const partes = [];
   for (let ini = 0, n5 = 0; ini < ords.length; ini += MAX_MESES_POR_MATRIZ, n5++) {
@@ -341097,13 +341552,13 @@ function matrizDe(titulosFixos, pesosFixos, linhas) {
       compacta: true,
       colunas: [...titulosFixos, ...fatia.map((o4) => rot.get(o4) ?? "")],
       pesos: [...pesosFixos, ...fatia.map(() => 33)],
-      linhas: linhas.map((l4) => [...l4.fixos, ...fatia.map((o4) => l4.serie.pontos.get(o4) ?? "-")])
+      linhas: linhas2.map((l4) => [...l4.fixos, ...fatia.map((o4) => l4.serie.pontos.get(o4) ?? "-")])
     });
   }
   return partes;
 }
 function matrizDeObjetos(objs, ctx) {
-  const linhas = [];
+  const linhas2 = [];
   let tituloLinha = "";
   let temPont = false;
   for (const o4 of objs) {
@@ -341130,12 +341585,12 @@ function matrizDeObjetos(objs, ctx) {
     }
     if (!series.length) return null;
     for (const [k3, serie] of series) {
-      linhas.push({ rotulo: [...rotulos, ...series.length > 1 ? [humanizarChave(k3)] : []].join(" \u2014 ") || "-", pont, serie });
+      linhas2.push({ rotulo: [...rotulos, ...series.length > 1 ? [humanizarChave(k3)] : []].join(" \u2014 ") || "-", pont, serie });
     }
   }
-  if (!linhas.length) return null;
+  if (!linhas2.length) return null;
   const titulos = [tituloLinha || "Item", ...temPont ? ["Pontua\xE7\xE3o"] : []];
-  return matrizDe(titulos, temPont ? [90, 48] : [110], linhas.map((l4) => ({ fixos: temPont ? [l4.rotulo, l4.pont || "-"] : [l4.rotulo], serie: l4.serie })));
+  return matrizDe(titulos, temPont ? [90, 48] : [110], linhas2.map((l4) => ({ fixos: temPont ? [l4.rotulo, l4.pont || "-"] : [l4.rotulo], serie: l4.serie })));
 }
 var GENERICOS = /* @__PURE__ */ new Set(["TEXTO", "DESCRICAO", "DETALHE", "OBSERVACAO", "OBS"]);
 function pesoColuna(titulo, valores) {
@@ -341173,9 +341628,9 @@ function tabelaDe(linhasBrutas, ctx) {
     const registros = celulas.map((l4) => usadas.map((j, i4) => [titulos[i4], l4[j]]).filter(([, v4]) => v4 !== "")).filter((r5) => r5.length);
     return registros.length ? [{ t: "ficha", registros }] : [];
   }
-  const linhas = celulas.map((l4) => usadas.map((j) => l4[j]));
-  const pesos = usadas.map((_2, i4) => pesoColuna(titulos[i4], linhas.map((l4) => l4[i4])));
-  return [{ t: "tabela", colunas: titulos, pesos, linhas, continuacao: false }];
+  const linhas2 = celulas.map((l4) => usadas.map((j) => l4[j]));
+  const pesos = usadas.map((_2, i4) => pesoColuna(titulos[i4], linhas2.map((l4) => l4[i4])));
+  return [{ t: "tabela", colunas: titulos, pesos, linhas: linhas2, continuacao: false }];
 }
 function emPartes(valor2, caminho, ctx, saida, prof = 0, chave = "") {
   if (prof > MAX_PROFUNDIDADE) return;
@@ -341563,12 +342018,12 @@ function linhasDe(resto, base, ctx) {
   return out;
 }
 var linhaVazia = (l4) => [...l4.serie.pontos.values()].every((v4) => v4 === "-" || v4 === "");
-function ultimos12(linhas) {
+function ultimos12(linhas2) {
   const ords = /* @__PURE__ */ new Set();
-  for (const l4 of linhas) for (const o4 of l4.serie.rotulos.keys()) ords.add(o4);
+  for (const l4 of linhas2) for (const o4 of l4.serie.rotulos.keys()) ords.add(o4);
   const manter = new Set([...ords].sort((a5, b3) => a5 - b3).slice(-MAX_MESES_POR_MATRIZ));
   const filtra = (m4) => new Map([...m4].filter(([o4]) => manter.has(o4)));
-  return linhas.map((l4) => ({ rotulo: l4.rotulo, serie: { pontos: filtra(l4.serie.pontos), rotulos: filtra(l4.serie.rotulos) } }));
+  return linhas2.map((l4) => ({ rotulo: l4.rotulo, serie: { pontos: filtra(l4.serie.pontos), rotulos: filtra(l4.serie.rotulos) } }));
 }
 function comportamentoDe(bruto, pessoaFisica = false) {
   const cred = credDe2(bruto);
@@ -341649,9 +342104,9 @@ function consultasPorMes(bruto) {
   const hist = cred && ehObj(cred.HIST_CONSULTAS) ? cred.HIST_CONSULTAS : null;
   const q = hist?.QUANTIDADES;
   if (!Array.isArray(q)) return null;
-  const linhas = linhasPorMes(q.filter(ehObj));
-  if (!linhas.length) return null;
-  return { colunas: COLUNAS_MESES, linhas };
+  const linhas2 = linhasPorMes(q.filter(ehObj));
+  if (!linhas2.length) return null;
+  return { colunas: COLUNAS_MESES, linhas: linhas2 };
 }
 
 // server/lib/credito/pdfBase.ts
@@ -341815,22 +342270,22 @@ var Pagina = class {
       const v4 = quebrarLongas(doc, limparTexto(c4.v), larg - ROT);
       return { k: k3, v: v4, h: Math.max(hk, doc.heightOfString(v4, { width: larg - ROT })) + 3 };
     };
-    const linhas = [];
+    const linhas2 = [];
     let aberta = null;
     for (const c4 of campos) {
       if (c4.largo) {
         aberta = null;
-        linhas.push({ cs: [c4], largo: true });
+        linhas2.push({ cs: [c4], largo: true });
         continue;
       }
       if (!aberta) {
         aberta = { cs: [], largo: false };
-        linhas.push(aberta);
+        linhas2.push(aberta);
       }
       aberta.cs.push(c4);
       if (aberta.cs.length === 2) aberta = null;
     }
-    const medidas = linhas.map((l4) => {
+    const medidas = linhas2.map((l4) => {
       const ms4 = l4.cs.map((c4) => medir(c4, l4.largo ? LARG : col));
       return { ms: ms4, h: Math.max(...ms4.map((m4) => m4.h)), larg: l4.largo ? LARG : col };
     });
@@ -341851,7 +342306,7 @@ var Pagina = class {
    * Desenha a tabela. `detalhes[i]` é uma linha de texto menor sob a linha i (campos extras da fonte).
    * Com `limitar`, para ao atingir o teto de páginas e devolve quantas linhas deixou de desenhar.
    */
-  tabela(colunas, linhas, opts2 = {}) {
+  tabela(colunas, linhas2, opts2 = {}) {
     const { doc } = this;
     const PAD = opts2.compacta ? 2 : 3;
     const tam = opts2.compacta ? 8 : 8;
@@ -341875,8 +342330,8 @@ var Pagina = class {
       this.y += h3;
     };
     if (!opts2.semCabecalho) cabecalho();
-    for (let i4 = 0; i4 < linhas.length; i4++) {
-      const linha = linhas[i4];
+    for (let i4 = 0; i4 < linhas2.length; i4++) {
+      const linha = linhas2[i4];
       const prep = linha.map((cel, j) => {
         const c4 = cols[j];
         doc.font(cel.negrito ? "Helvetica-Bold" : "Helvetica").fontSize(tam);
@@ -341895,7 +342350,7 @@ var Pagina = class {
       const alturaLinha = Math.max(...prep.map((p4) => p4.h)) + PAD * 2 + alturaDet;
       const reserva = opts2.limitar && this.estourou() ? 34 : 0;
       if (this.y + alturaLinha > LIMITE_Y - reserva) {
-        if (opts2.limitar && this.estourou()) return linhas.length - i4;
+        if (opts2.limitar && this.estourou()) return linhas2.length - i4;
         this.nova();
         if (!opts2.semCabecalho) cabecalho();
       }
@@ -342158,7 +342613,7 @@ function detalhesDoGrupo(p4, g3, nome, remover, agora, opts2 = {}) {
     p4.paragrafo(`A fonte listou ${g3.itens.length} de ${g3.quantidade} ocorr\xEAncias${g3.itens.length === 0 ? " (sem detalhamento)" : ""}.`, { cor: "#B45309", tam: 8.5, negrito: true });
   }
   if (!g3.itens.length) return;
-  const linhas = g3.itens.map((it) => ({
+  const linhas2 = g3.itens.map((it) => ({
     data: it.data ? dataBR(it.data) : "",
     desc: descricaoLimpa(it.descricao, remover),
     credor: limparTexto(it.credor).trim(),
@@ -342169,7 +342624,7 @@ function detalhesDoGrupo(p4, g3, nome, remover, agora, opts2 = {}) {
     valor: it.valor !== null ? brl3(it.valor) : "",
     extras: Object.entries(it.extras ?? {}).filter(([ch]) => !/^moeda$/i.test(ch))
   }));
-  linhas.forEach((l4, i4) => {
+  linhas2.forEach((l4, i4) => {
     const visto = new Set([l4.data, l4.desc, l4.credor, l4.local, l4.processo, l4.valor, descricaoLimpa(g3.itens[i4].descricao, null), ...opts2.ocultar ?? []].filter(Boolean).map((x2) => norm2(x2)));
     const valorNum = g3.itens[i4].valor;
     l4.extras = l4.extras.filter(([, v4]) => {
@@ -342182,14 +342637,14 @@ function detalhesDoGrupo(p4, g3, nome, remover, agora, opts2 = {}) {
     });
   });
   const comuns = [];
-  if (linhas.length > 1) {
-    for (const [ch, v4] of linhas[0].extras) {
-      if (linhas.every((l4) => l4.extras.some(([c22, v22]) => c22 === ch && v22 === v4))) comuns.push([ch, v4]);
+  if (linhas2.length > 1) {
+    for (const [ch, v4] of linhas2[0].extras) {
+      if (linhas2.every((l4) => l4.extras.some(([c22, v22]) => c22 === ch && v22 === v4))) comuns.push([ch, v4]);
     }
-    for (const l4 of linhas) l4.extras = l4.extras.filter(([ch, v4]) => !comuns.some(([c22, v22]) => c22 === ch && v22 === v4));
+    for (const l4 of linhas2) l4.extras = l4.extras.filter(([ch, v4]) => !comuns.some(([c22, v22]) => c22 === ch && v22 === v4));
   }
   if (comuns.length) p4.paragrafo("Em todas as ocorr\xEAncias \u2014 " + comuns.map(([ch, v4]) => `${ch}: ${v4}`).join("   |   "), { cor: CINZA, tam: 7.5 });
-  const tem = (f4) => linhas.some((l4) => f4(l4) !== "");
+  const tem = (f4) => linhas2.some((l4) => f4(l4) !== "");
   const temProcesso = tem((l4) => l4.processo);
   const colunas = [];
   if (tem((l4) => l4.data)) colunas.push({ titulo: "Data", largura: 54, cel: (l4) => ({ texto: l4.data }) });
@@ -342208,8 +342663,8 @@ function detalhesDoGrupo(p4, g3, nome, remover, agora, opts2 = {}) {
   if (!colunas.length) return;
   p4.tabela(
     colunas.map(({ titulo, largura, alinhar }) => ({ titulo, largura, alinhar })),
-    linhas.map((l4) => colunas.map((c4) => c4.cel(l4))),
-    { detalhes: linhas.map((l4) => l4.extras.length ? l4.extras.map(([ch, v4]) => `${ch}: ${v4}`).join("   |   ") : void 0) }
+    linhas2.map((l4) => colunas.map((c4) => c4.cel(l4))),
+    { detalhes: linhas2.map((l4) => l4.extras.length ? l4.extras.map(([ch, v4]) => `${ch}: ${v4}`).join("   |   ") : void 0) }
   );
 }
 function painelVeredito(p4, veredito, motivosEntrada) {
@@ -342407,7 +342862,7 @@ function matrizDeComparacao(p4, c4) {
   const wLeit = nf > 2 ? 100 : 118;
   const wF = (LARG - wItem - wLeit) / nf;
   const PAD = 4;
-  const linhas = linhasDaMatriz(c4).map((l4) => ({ rotulo: l4.rotulo, cels: l4.celulas.map(comoCelula), leitura: comoCelula(l4.leitura) }));
+  const linhas2 = linhasDaMatriz(c4).map((l4) => ({ rotulo: l4.rotulo, cels: l4.celulas.map(comoCelula), leitura: comoCelula(l4.leitura) }));
   const alturaTexto = (cel, larg) => {
     doc.font("Helvetica-Bold").fontSize(8.5);
     let h3 = doc.heightOfString(limparTexto(cel.principal), { width: larg - PAD * 2 });
@@ -342417,7 +342872,7 @@ function matrizDeComparacao(p4, c4) {
     }
     return h3;
   };
-  const alturas = linhas.map((l4) => {
+  const alturas = linhas2.map((l4) => {
     doc.font("Helvetica-Bold").fontSize(8.5);
     const hItem = doc.heightOfString(limparTexto(l4.rotulo), { width: wItem - PAD * 2 });
     return Math.max(hItem, ...l4.cels.map((x2) => alturaTexto(x2, wF)), alturaTexto(l4.leitura, wLeit)) + PAD * 2;
@@ -342431,7 +342886,7 @@ function matrizDeComparacao(p4, c4) {
   c4.fontes.forEach((f4, j) => doc.text(limparTexto(f4.produtoNome), MX + wItem + j * wF + PAD, p4.y + 4.5, { width: wF - PAD * 2, lineBreak: false, ellipsis: true }));
   doc.text("Leitura", MX + wItem + nf * wF + PAD, p4.y + 4.5, { width: wLeit - PAD * 2, lineBreak: false });
   p4.y += hCab;
-  linhas.forEach((l4, i4) => {
+  linhas2.forEach((l4, i4) => {
     const h3 = alturas[i4];
     const y0 = p4.y;
     doc.font("Helvetica-Bold").fontSize(8.5).fillColor(TEXTO).text(limparTexto(l4.rotulo), MX + PAD, y0 + PAD, { width: wItem - PAD * 2 });
@@ -342846,12 +343301,12 @@ function erroDocumento(documento, tipo) {
   if (!v4.ok) throw new TRPCError({ code: "BAD_REQUEST", message: v4.erro });
   return v4;
 }
-function semSimuladosSeReal(linhas) {
-  return getProvedorCredito().nome === "simulado" ? linhas : linhas.filter((l4) => l4.provedor !== "simulado");
+function semSimuladosSeReal(linhas2) {
+  return getProvedorCredito().nome === "simulado" ? linhas2 : linhas2.filter((l4) => l4.provedor !== "simulado");
 }
 async function consolidadoDoDocumento(documento) {
-  const linhas = await relatoriosDoDocumento(documento, { limite: 60 });
-  const sel = selecionarParaConsolidado(linhas, { provedorReal: getProvedorCredito().nome !== "simulado" });
+  const linhas2 = await relatoriosDoDocumento(documento, { limite: 60 });
+  const sel = selecionarParaConsolidado(linhas2, { provedorReal: getProvedorCredito().nome !== "simulado" });
   if (sel.linhas.length === 0) return null;
   const ids = sel.linhas.map((l4) => l4.id);
   const rows = await db.select({ id: creditReports.id, bruto: creditReports.payloadBruto }).from(creditReports).where(inArray(creditReports.id, ids));
@@ -342889,10 +343344,10 @@ var creditoRouter = router({
     if (!ehStaff(ctx.user.role) && !await atendentePodeVerDocumento(ctx.user, documento)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Documento fora da sua carteira" });
     }
-    const linhas = semSimuladosSeReal(await relatoriosDoDocumento(documento));
-    const efetivo = escolherEfetivo(linhas);
+    const linhas2 = semSimuladosSeReal(await relatoriosDoDocumento(documento));
+    const efetivo = escolherEfetivo(linhas2);
     if (!efetivo) return null;
-    return { ...cartaoDoRelatorio(efetivo.principal, efetivo), produtos: chipsDosProdutos(linhas) };
+    return { ...cartaoDoRelatorio(efetivo.principal, efetivo), produtos: chipsDosProdutos(linhas2) };
   }),
   /** Catálogo de consultas com preço. Com `documento`, traz a última consulta de cada produto (mesmas regras de acesso de `ultimo`). */
   catalogo: protectedProcedure.input(external_exports.object({ documento: documentoInput.optional() })).query(async ({ ctx, input }) => {
@@ -342980,11 +343435,11 @@ var creditoRouter = router({
     const [row] = await db.select({ bruto: creditReports.payloadBruto }).from(creditReports).where(eq(creditReports.id, input.id));
     if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Relat\xF3rio n\xE3o encontrado" });
     if (row.bruto == null) return { guardado: false, linhas: [], total: 0 };
-    const linhas = [];
+    const linhas2 = [];
     const andar = (v4, caminho) => {
-      if (linhas.length >= 400) return;
+      if (linhas2.length >= 400) return;
       if (Array.isArray(v4)) {
-        linhas.push(`${caminho} [lista \xD7 ${v4.length}]`);
+        linhas2.push(`${caminho} [lista \xD7 ${v4.length}]`);
         if (v4.length) andar(v4[0], `${caminho}[0]`);
         return;
       }
@@ -342992,11 +343447,11 @@ var creditoRouter = router({
         for (const [k3, x2] of Object.entries(v4)) andar(x2, caminho ? `${caminho}.${k3}` : k3);
         return;
       }
-      if (typeof v4 === "string") linhas.push(`${caminho} = texto(${v4.length}${v4.length === 0 ? ", vazio" : ""})`);
-      else linhas.push(`${caminho} = ${v4 === null ? "null" : typeof v4 === "number" ? String(v4) : typeof v4}`);
+      if (typeof v4 === "string") linhas2.push(`${caminho} = texto(${v4.length}${v4.length === 0 ? ", vazio" : ""})`);
+      else linhas2.push(`${caminho} = ${v4 === null ? "null" : typeof v4 === "number" ? String(v4) : typeof v4}`);
     };
     andar(row.bruto, "");
-    return { guardado: true, linhas, total: linhas.length };
+    return { guardado: true, linhas: linhas2, total: linhas2.length };
   }),
   /** Link do PDF original do provedor (aux.data da resposta guardada) ou null. Só admin; o servidor não busca a URL. */
   linkOriginal: adminProcedure.input(external_exports.object({ id: external_exports.number().int() })).query(async ({ input }) => {
@@ -343063,8 +343518,8 @@ var creditoRouter = router({
       if (!p4) throw new TRPCError({ code: "NOT_FOUND", message: "Pedido n\xE3o encontrado" });
       pedido = p4;
     }
-    const linhas = await relatoriosDoDocumento(documento, { limite: 60 });
-    const { reaproveita, ultimo } = planoDeCache(itens, linhas, { forcarNova: input.forcarNova, provedorAtual: provedor.nome });
+    const linhas2 = await relatoriosDoDocumento(documento, { limite: 60 });
+    const { reaproveita, ultimo } = planoDeCache(itens, linhas2, { forcarNova: input.forcarNova, provedorAtual: provedor.nome });
     const aConsultar = itens.filter((i4) => !reaproveita[i4.chave]);
     if (aConsultar.length > 0) {
       const incertas = await db.select({ produto: creditQueries.produto, finalizadoEm: creditQueries.finalizadoEm }).from(creditQueries).where(and(
@@ -343441,6 +343896,7 @@ var throttle = {
   }
 };
 var GENERIC = "Email ou senha inv\xE1lidos";
+var PREMIUM_MAX_IP = 10;
 function safeVerify(password, hash) {
   try {
     return verifyPassword(password, hash);
@@ -343450,7 +343906,7 @@ function safeVerify(password, hash) {
 }
 var premiumAuthRouter = router({
   me: publicProcedure.query(({ ctx }) => ctx.premiumAdmin ? { email: ctx.premiumAdmin.email, role: "admin" } : null),
-  login: publicProcedure.input(external_exports.object({ email: external_exports.string().trim().min(1).max(254), password: external_exports.string().min(1).max(256) })).mutation(({ input, ctx }) => {
+  login: publicProcedure.input(external_exports.object({ email: external_exports.string().trim().min(1).max(254), password: external_exports.string().min(1).max(256) })).mutation(async ({ input, ctx }) => {
     const cfg = getPremiumConfig();
     if (!cfg) {
       throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Login da loja n\xE3o configurado" });
@@ -343460,12 +343916,18 @@ var premiumAuthRouter = router({
     if (throttle.blocked(ctx.clientIp)) {
       throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Muitas tentativas. Tente novamente em alguns minutos." });
     }
+    const chaveIp = chaveHash("premium:ip", ctx.clientIp);
+    if (await bloqueadoCompartilhado(lojaAttemptsDb, [{ chave: chaveIp, max: PREMIUM_MAX_IP }])) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Muitas tentativas. Tente novamente em alguns minutos." });
+    }
     const passOk = emailOk ? safeVerify(input.password, cfg.passwordHash) : (safeVerify(input.password, getDummyHash()), false);
     if (!passOk) {
       throttle.fail(ctx.clientIp);
+      await registrarFalhaCompartilhada(lojaAttemptsDb, [chaveIp]);
       throw new TRPCError({ code: "UNAUTHORIZED", message: GENERIC });
     }
     throttle.ok(ctx.clientIp);
+    await limparCompartilhado(lojaAttemptsDb, [chaveIp]);
     ctx.res.setHeader("Set-Cookie", premiumCookieHeader(PREMIUM_COOKIE_NAME, signPremiumToken(cfg)));
     return { email: cfg.email, role: "admin" };
   }),
@@ -344381,9 +344843,9 @@ function anexarLinha(notas, linha, max2 = MAX_NOTAS) {
   const base = (notas ?? "").replace(/\s+$/, "");
   if (base.includes(linha)) return base;
   const nova = linha.length > max2 ? `${linha.slice(0, Math.max(0, max2 - 1)).trimEnd()}\u2026` : linha;
-  const linhas = base ? [...base.split("\n"), nova] : [nova];
-  while (linhas.length > 1 && linhas.join("\n").length > max2) linhas.shift();
-  return linhas.join("\n");
+  const linhas2 = base ? [...base.split("\n"), nova] : [nova];
+  while (linhas2.length > 1 && linhas2.join("\n").length > max2) linhas2.shift();
+  return linhas2.join("\n");
 }
 function agendamentoFuturoDa(t5, agora) {
   if (t5.status !== "pending" || t5.reminderEnabled === false || t5.reminderDate == null) return null;
@@ -344427,9 +344889,9 @@ var zapCrmRouter = router({
       sql`${tasks.reminderEnabled} IS DISTINCT FROM false`
     );
     const where = ctx.user.role === "admin" ? base : and(await userTaskFilter(ctx.user.id, ctx.user.name ?? ""), base);
-    const linhas = await db.select({ id: tasks.id, title: tasks.title, phone: tasks.phone, reminderDate: tasks.reminderDate }).from(tasks).where(where).orderBy(asc(tasks.reminderDate)).limit(LIMITE_AGENDAMENTOS + 1);
-    const truncado = linhas.length > LIMITE_AGENDAMENTOS;
-    const itens = linhas.slice(0, LIMITE_AGENDAMENTOS).map((l4) => paraAgendamento(l4, agora)).filter((a5) => a5 !== null);
+    const linhas2 = await db.select({ id: tasks.id, title: tasks.title, phone: tasks.phone, reminderDate: tasks.reminderDate }).from(tasks).where(where).orderBy(asc(tasks.reminderDate)).limit(LIMITE_AGENDAMENTOS + 1);
+    const truncado = linhas2.length > LIMITE_AGENDAMENTOS;
+    const itens = linhas2.slice(0, LIMITE_AGENDAMENTOS).map((l4) => paraAgendamento(l4, agora)).filter((a5) => a5 !== null);
     return { itens, truncado, consultadoEm: agora };
   }),
   /**
@@ -344510,6 +344972,7 @@ var zapCrmRouter = router({
 
 // server/routers/zapContatos.ts
 init_drizzle_orm();
+init_dist();
 init_trpc();
 init_db2();
 init_schema2();
@@ -344582,11 +345045,11 @@ function prepararEnvios(itens, agora) {
   }
   return [...mapa.values()];
 }
-function casarContatados(contatos, linhas, userId) {
+function casarContatados(contatos, linhas2, userId) {
   const saida = [];
   contatos.forEach((c4, i4) => {
     const porTipo = /* @__PURE__ */ new Map();
-    for (const l4 of linhas) {
+    for (const l4 of linhas2) {
       if (!mesmoContato(c4, l4)) continue;
       const atual = porTipo.get(l4.tipo);
       if (!atual || l4.enviadoEm.getTime() > atual.enviadoEm.getTime()) porTipo.set(l4.tipo, l4);
@@ -344595,10 +345058,10 @@ function casarContatados(contatos, linhas, userId) {
   });
   return saida;
 }
-function casarOptOuts(contatos, linhas, userId) {
+function casarOptOuts(contatos, linhas2, userId) {
   const saida = [];
   contatos.forEach((c4, i4) => {
-    const l4 = linhas.find((x2) => mesmoContato(c4, x2));
+    const l4 = linhas2.find((x2) => mesmoContato(c4, x2));
     if (l4) saida.push({ i: i4, origem: l4.origem, meu: l4.userId === userId });
   });
   return saida;
@@ -344606,10 +345069,15 @@ function casarOptOuts(contatos, linhas, userId) {
 
 // server/routers/zapContatos.ts
 var dedup = (xs2) => [...new Set(xs2)];
+var MSG_OPT_OUT_PROTEGIDO = "S\xF3 quem marcou ou um gestor pode tirar este contato de 'N\xE3o enviar mais'.";
+function podeRemoverOptOut(papel, userId, alvo) {
+  if (papel === "admin" || papel === "manager") return true;
+  return alvo.every((r5) => r5.userId === userId);
+}
 var zapContatosRouter = router({
   /** Todos os "não enviar mais" do time. `truncado` = passou do limite e a lista pode estar incompleta. */
   listarOptOuts: protectedProcedure.query(async () => {
-    const linhas = await db.select({
+    const linhas2 = await db.select({
       chave: zapOptOuts.chave,
       telefone: zapOptOuts.telefone,
       nomeHash: zapOptOuts.nomeHash,
@@ -344618,7 +345086,7 @@ var zapContatosRouter = router({
       origem: zapOptOuts.origem,
       criadoEm: zapOptOuts.criadoEm
     }).from(zapOptOuts).orderBy(asc(zapOptOuts.id)).limit(LIMITE_LISTA_OPT_OUT + 1);
-    return { itens: linhas.slice(0, LIMITE_LISTA_OPT_OUT), truncado: linhas.length > LIMITE_LISTA_OPT_OUT, consultadoEm: /* @__PURE__ */ new Date() };
+    return { itens: linhas2.slice(0, LIMITE_LISTA_OPT_OUT), truncado: linhas2.length > LIMITE_LISTA_OPT_OUT, consultadoEm: /* @__PURE__ */ new Date() };
   }),
   /** Marca "não enviar mais". Idempotente: quem já está na lista continua com quem marcou primeiro. */
   marcarOptOuts: protectedProcedure.input(marcarOptOutsInput).mutation(async ({ ctx, input }) => {
@@ -344630,12 +345098,17 @@ var zapContatosRouter = router({
       if (porChave.has(chave)) continue;
       porChave.set(chave, { chave, telefone: ref.telefone, nomeHash: ref.nomeHash, nome: it.nome || null, userId: ctx.user.id, origem: it.origem, criadoEm: dataDoEnvio(it.marcadoEm, agora) ?? agora });
     }
-    const linhas = [...porChave.values()];
-    const criadas = await db.insert(zapOptOuts).values(linhas).onConflictDoNothing({ target: zapOptOuts.chave }).returning({ id: zapOptOuts.id });
-    return { recebidos: linhas.length, criados: criadas.length };
+    const linhas2 = [...porChave.values()];
+    const criadas = await db.insert(zapOptOuts).values(linhas2).onConflictDoNothing({ target: zapOptOuts.chave }).returning({ id: zapOptOuts.id });
+    return { recebidos: linhas2.length, criados: criadas.length };
   }),
-  /** Tira do "não enviar mais" (desfazer). Casa por telefone OU hash do nome; devolve quantos saíram. */
-  desmarcarOptOuts: protectedProcedure.input(desmarcarOptOutsInput).mutation(async ({ input }) => {
+  /**
+   * Tira do "não enviar mais" (desfazer). Casa por telefone OU hash do nome; devolve quantos saíram.
+   * Só staff (admin/gerente) ou QUEM MARCOU pode tirar um contato: um atendente não desfaz o opt-out de outro
+   * (pedido de "não me mande mais" é compromisso do time). Se algum contato casado foi marcado por outra pessoa,
+   * nada é removido. Cada remoção grava auditoria em zap_opt_out_remocoes.
+   */
+  desmarcarOptOuts: protectedProcedure.input(desmarcarOptOutsInput).mutation(async ({ ctx, input }) => {
     const refs = input.itens.map(normalizarRef);
     const telefones = dedup(refs.flatMap((r5) => r5.telefone ? [r5.telefone] : []));
     const semTelefone = dedup(refs.filter((r5) => !r5.telefone).map((r5) => r5.nomeHash));
@@ -344645,14 +345118,36 @@ var zapContatosRouter = router({
       ...comTelefone.length > 0 ? [and(inArray(zapOptOuts.nomeHash, comTelefone), sql`${zapOptOuts.telefone} IS NULL`)] : [],
       ...semTelefone.length > 0 ? [inArray(zapOptOuts.nomeHash, semTelefone)] : []
     ];
-    const removidos = await db.delete(zapOptOuts).where(or2(...condicoes)).returning({ id: zapOptOuts.id });
+    if (condicoes.length === 0) return { removidos: 0 };
+    const alvo = await db.select({ id: zapOptOuts.id, chave: zapOptOuts.chave, telefone: zapOptOuts.telefone, nomeHash: zapOptOuts.nomeHash, userId: zapOptOuts.userId }).from(zapOptOuts).where(or2(...condicoes)).limit(LIMITE_LINHAS_CONSULTA);
+    if (alvo.length === 0) return { removidos: 0 };
+    if (!podeRemoverOptOut(ctx.user.role, ctx.user.id, alvo)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: MSG_OPT_OUT_PROTEGIDO });
+    }
+    const removidos = await db.delete(zapOptOuts).where(inArray(zapOptOuts.id, alvo.map((r5) => r5.id))).returning({ id: zapOptOuts.id });
+    const removidosIds = new Set(removidos.map((r5) => r5.id));
+    const auditoria = alvo.filter((r5) => removidosIds.has(r5.id)).map((r5) => ({
+      chave: r5.chave,
+      telefone: r5.telefone,
+      nomeHash: r5.nomeHash,
+      marcadoPorUserId: r5.userId,
+      removidoPorUserId: ctx.user.id,
+      removidoPorPapel: ctx.user.role
+    }));
+    if (auditoria.length > 0) {
+      try {
+        await db.insert(zapOptOutRemocoes).values(auditoria);
+      } catch (e4) {
+        console.error("[zap-contatos] auditoria de remo\xE7\xE3o de opt-out falhou:", e4?.message);
+      }
+    }
     return { removidos: removidos.length };
   }),
   /** Registra que ALGUÉM do time enviou uma mensagem a estes contatos (tipo e data; nunca o texto). Guarda só o mais recente de cada tipo. */
   registrarEnvios: protectedProcedure.input(registrarEnviosInput).mutation(async ({ ctx, input }) => {
-    const linhas = prepararEnvios(input.itens, /* @__PURE__ */ new Date());
-    if (linhas.length === 0) return { recebidos: input.itens.length, gravados: 0 };
-    await db.insert(zapContatosEnviados).values(linhas.map((l4) => ({ chave: l4.chave, telefone: l4.telefone, nomeHash: l4.nomeHash, userId: ctx.user.id, tipo: l4.tipo, enviadoEm: l4.enviadoEm }))).onConflictDoUpdate({
+    const linhas2 = prepararEnvios(input.itens, /* @__PURE__ */ new Date());
+    if (linhas2.length === 0) return { recebidos: input.itens.length, gravados: 0 };
+    await db.insert(zapContatosEnviados).values(linhas2.map((l4) => ({ chave: l4.chave, telefone: l4.telefone, nomeHash: l4.nomeHash, userId: ctx.user.id, tipo: l4.tipo, enviadoEm: l4.enviadoEm }))).onConflictDoUpdate({
       target: [zapContatosEnviados.chave, zapContatosEnviados.tipo],
       set: {
         // Só avança no tempo: um envio antigo reenviado (migração) nunca apaga um mais novo.
@@ -344661,7 +345156,7 @@ var zapContatosRouter = router({
         telefone: sql`COALESCE(${zapContatosEnviados.telefone}, excluded.telefone)`
       }
     });
-    return { recebidos: input.itens.length, gravados: linhas.length };
+    return { recebidos: input.itens.length, gravados: linhas2.length };
   }),
   /** "Contatado nos últimos N dias?" em lote, por QUALQUER atendente. Devolve só quem foi contatado (`i` = posição na lista enviada). */
   consultarContatados: protectedProcedure.input(consultarContatadosInput).query(async ({ ctx, input }) => {
@@ -344670,15 +345165,15 @@ var zapContatosRouter = router({
     const refs = input.contatos.map(normalizarRef);
     const telefones = dedup(refs.flatMap((r5) => r5.telefone ? [r5.telefone] : []));
     const hashes = dedup(refs.map((r5) => r5.nomeHash));
-    const linhas = await db.select({ telefone: zapContatosEnviados.telefone, nomeHash: zapContatosEnviados.nomeHash, tipo: zapContatosEnviados.tipo, enviadoEm: zapContatosEnviados.enviadoEm, userId: zapContatosEnviados.userId }).from(zapContatosEnviados).where(and(gte(zapContatosEnviados.enviadoEm, desde), or2(...telefones.length > 0 ? [inArray(zapContatosEnviados.telefone, telefones)] : [], inArray(zapContatosEnviados.nomeHash, hashes)))).limit(LIMITE_LINHAS_CONSULTA + 1);
+    const linhas2 = await db.select({ telefone: zapContatosEnviados.telefone, nomeHash: zapContatosEnviados.nomeHash, tipo: zapContatosEnviados.tipo, enviadoEm: zapContatosEnviados.enviadoEm, userId: zapContatosEnviados.userId }).from(zapContatosEnviados).where(and(gte(zapContatosEnviados.enviadoEm, desde), or2(...telefones.length > 0 ? [inArray(zapContatosEnviados.telefone, telefones)] : [], inArray(zapContatosEnviados.nomeHash, hashes)))).limit(LIMITE_LINHAS_CONSULTA + 1);
     let optOuts;
     if (input.incluirOptOut) {
       const bloqueados = await db.select({ telefone: zapOptOuts.telefone, nomeHash: zapOptOuts.nomeHash, origem: zapOptOuts.origem, userId: zapOptOuts.userId }).from(zapOptOuts).where(or2(...telefones.length > 0 ? [inArray(zapOptOuts.telefone, telefones)] : [], inArray(zapOptOuts.nomeHash, hashes))).limit(LIMITE_LINHAS_CONSULTA);
       optOuts = casarOptOuts(refs, bloqueados, ctx.user.id);
     }
     return {
-      itens: casarContatados(refs, linhas.slice(0, LIMITE_LINHAS_CONSULTA), ctx.user.id),
-      truncado: linhas.length > LIMITE_LINHAS_CONSULTA,
+      itens: casarContatados(refs, linhas2.slice(0, LIMITE_LINHAS_CONSULTA), ctx.user.id),
+      truncado: linhas2.length > LIMITE_LINHAS_CONSULTA,
       consultadoEm: agora,
       dias: input.dias,
       ...optOuts ? { optOuts } : {}
@@ -344992,6 +345487,29 @@ async function ensureZapContatos() {
   await sql4`CREATE UNIQUE INDEX IF NOT EXISTS zap_contatos_enviados_chave_tipo_uq ON zap_contatos_enviados(chave, tipo)`;
   await sql4`CREATE INDEX IF NOT EXISTS zap_contatos_enviados_telefone_idx ON zap_contatos_enviados(telefone)`;
   await sql4`CREATE INDEX IF NOT EXISTS zap_contatos_enviados_nome_hash_idx ON zap_contatos_enviados(nome_hash)`;
+  await sql4`
+    CREATE TABLE IF NOT EXISTS zap_opt_out_remocoes (
+      id                    SERIAL PRIMARY KEY,
+      chave                 TEXT NOT NULL,
+      telefone              TEXT,
+      nome_hash             TEXT NOT NULL,
+      marcado_por_user_id   INTEGER NOT NULL,
+      removido_por_user_id  INTEGER NOT NULL,
+      removido_por_papel    TEXT NOT NULL,
+      removido_em           TIMESTAMP NOT NULL DEFAULT now()
+    )
+  `;
+  await sql4`CREATE INDEX IF NOT EXISTS zap_opt_out_remocoes_chave_idx ON zap_opt_out_remocoes(chave)`;
+}
+async function ensureAuthAttempts() {
+  await sql4`
+    CREATE TABLE IF NOT EXISTS auth_attempts (
+      chave         TEXT PRIMARY KEY,
+      janela_inicio TIMESTAMP NOT NULL,
+      tentativas    INTEGER NOT NULL DEFAULT 1
+    )
+  `;
+  await sql4`CREATE INDEX IF NOT EXISTS auth_attempts_janela_idx ON auth_attempts(janela_inicio)`;
 }
 async function ensureRecentSchema() {
   const [cols, reg, robotCols] = await Promise.all([
@@ -345015,7 +345533,9 @@ async function ensureRecentSchema() {
              AND ((table_name = 'credit_queries' AND column_name = 'produto')
                OR (table_name = 'credit_settings' AND column_name = 'teto_por_consulta_reais'))) = 2 AS credito_cols_ok,
           to_regclass('public.zap_opt_outs') IS NOT NULL
-          AND to_regclass('public.zap_contatos_enviados') IS NOT NULL AS zap_contatos_ok`,
+          AND to_regclass('public.zap_contatos_enviados') IS NOT NULL
+          AND to_regclass('public.zap_opt_out_remocoes') IS NOT NULL AS zap_contatos_ok,
+          to_regclass('public.auth_attempts') IS NOT NULL AS auth_attempts_ok`,
     sql4`SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'smbi_robot_state'`
   ]);
@@ -345168,8 +345688,10 @@ async function ensureRecentSchema() {
   if (!radarOk) await ensureRadarTables();
   const zapContatosOk = reg[0]?.zap_contatos_ok === true;
   if (!zapContatosOk) await ensureZapContatos();
+  const authOk = reg[0]?.auth_attempts_ok === true;
+  if (!authOk) await ensureAuthAttempts();
 }
-var SCHEMA_VERSION = "2026-11-18a";
+var SCHEMA_VERSION = "2026-11-23b";
 async function ensureTablesExist() {
   try {
     await ensureRecentSchema();
@@ -345927,6 +346449,7 @@ async function ensureTablesExist() {
   `;
   await ensureRadarTables();
   await ensureZapContatos();
+  await ensureAuthAttempts();
   await bootstrapInitialAdminSafe();
   try {
     await sql4`CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT)`;
@@ -345946,7 +346469,7 @@ async function ensureTablesExist() {
 
 // server/db/ordersMigrate.ts
 init_serverless();
-var ORDERS_SCHEMA_VERSION = "orders-2026-11-10a";
+var ORDERS_SCHEMA_VERSION = "orders-2026-11-23a";
 async function ensureOrdersTablesExist(force = false) {
   const url3 = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
   const steps = [];
@@ -346434,6 +346957,14 @@ async function ensureOrdersTablesExist(force = false) {
     WHERE status IN ('sent', 'cancelled', 'failed')
       AND updated_at < NOW() - INTERVAL '60 days'
   `);
+  await run2("auth_attempts", () => sql5`
+    CREATE TABLE IF NOT EXISTS auth_attempts (
+      chave         TEXT PRIMARY KEY,
+      janela_inicio TIMESTAMP NOT NULL,
+      tentativas    INTEGER NOT NULL DEFAULT 1
+    )
+  `);
+  await run2("auth_attempts.janela_idx", () => sql5`CREATE INDEX IF NOT EXISTS auth_attempts_janela_idx ON auth_attempts(janela_inicio)`);
   await run2("cleanup_abandoned_carts", () => sql5`
     DELETE FROM abandoned_carts
     WHERE (recovered = TRUE OR opted_out = TRUE)
@@ -347338,6 +347869,7 @@ var AMBOS = { crm: true, loja: true };
 var uniao = (a5, b3) => ({ crm: a5.crm || b3.crm, loja: a5.loja || b3.loja });
 var PREFIXOS_LOJA = ["shipping.", "recovery.", "b2b.", "premiumemailmarketing."];
 var PREFIXO_SEM_BANCO = "premiumauth.";
+var LOGIN_DA_LOJA = "premiumauth.login";
 function procedimentosTrpc(caminho) {
   const m4 = /\/api\/trpc\/(.*)$/i.exec(caminho);
   if (!m4) return [];
@@ -347346,6 +347878,10 @@ function procedimentosTrpc(caminho) {
 function schemasDoTrpc(procs, sessaoCrm = false) {
   let r5 = NENHUM;
   for (const p4 of procs) {
+    if (p4 === LOGIN_DA_LOJA) {
+      r5 = uniao(r5, SO_LOJA);
+      continue;
+    }
     if (p4.startsWith(PREFIXO_SEM_BANCO)) continue;
     if (PREFIXOS_LOJA.some((pre) => p4.startsWith(pre))) {
       r5 = uniao(r5, SO_LOJA);
@@ -347429,6 +347965,17 @@ function schemasNecessarios(req) {
 // api/index.ts
 init_auth();
 init_const();
+
+// server/lib/dbStatsAuth.ts
+init_safeEqual();
+function autorizarDbStats(provided, secrets) {
+  if (typeof provided !== "string" || provided === "") return null;
+  if (secrets.cron && safeEqual(provided, secrets.cron)) return "cron";
+  if (secrets.legado && safeEqual(provided, secrets.legado)) return "legado";
+  return null;
+}
+
+// api/index.ts
 init_shipping();
 init_meTracking();
 init_safeEqual();
@@ -347632,122 +348179,12 @@ function origensDeExtensao(env) {
 init_storeUrl();
 init_paymentTransition();
 init_confirmApprovedPayment();
-
-// server/lib/recoveryCadence.ts
-init_paymentTransition();
-var HORA_MS = 60 * 60 * 1e3;
-function inicioJanelaCompra(cartCreatedAt, agoraMs = Date.now()) {
-  const t5 = cartCreatedAt ? new Date(cartCreatedAt).getTime() : NaN;
-  return new Date(Number.isFinite(t5) ? t5 - HORA_MS : agoraMs - 30 * 24 * HORA_MS);
-}
-function telefoneParaBusca(p4) {
-  const n5 = telefoneNormalizado(p4);
-  return n5.length >= 10 ? n5 : "";
-}
-function selecionarUmPorTelefone(runs) {
-  const vistos = /* @__PURE__ */ new Set();
-  const enviar = [];
-  const adiar = [];
-  for (const r5 of runs) {
-    const chave = telefoneNormalizado(r5.customerPhone) || r5.customerPhone;
-    if (vistos.has(chave)) adiar.push(r5);
-    else {
-      vistos.add(chave);
-      enviar.push(r5);
-    }
-  }
-  return { enviar, adiar };
-}
-function regraDeAbandono(cfg) {
-  const c4 = cfg ?? { slug: "abandoned_simples", coupon: "" };
-  return c4.slug === "abandoned_cupom" && !c4.coupon ? { slug: "abandoned_simples", coupon: "" } : c4;
-}
-function deveSuprimirCobranca(notes, temPedidoMaisNovoConfirmado) {
-  return temPedidoMaisNovoConfirmado || (notes ?? "").includes("[REVISAR]");
-}
-function podeUsarTemplatePix(code) {
-  return typeof code === "string" && code.trim().length > 0;
-}
-
-// api/index.ts
-function isBusinessHours2() {
-  const brHour = ((/* @__PURE__ */ new Date()).getUTCHours() - 3 + 24) % 24;
-  return brHour >= 8 && brHour < 21;
-}
-async function withDbRetry(label, fn, attempts = 3) {
-  let lastErr;
-  for (let i4 = 0; i4 < attempts; i4++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastErr = err;
-      const msg = String(err?.message ?? err);
-      const transient = msg.includes("Failed to acquire permit") || msg.includes("ECONNRESET") || msg.includes("fetch failed");
-      if (!transient || i4 === attempts - 1) break;
-      const backoff = 400 * Math.pow(2, i4);
-      console.warn(`[db-retry] ${label}: transient failure, retrying in ${backoff}ms (${i4 + 1}/${attempts - 1})`);
-      await new Promise((r5) => setTimeout(r5, backoff));
-    }
-  }
-  throw lastErr;
-}
-async function isWhatsAppConnected() {
-  if (process.env.WA_FORCE_SEND === "1") {
-    console.warn("[wa-gate] WA_FORCE_SEND=1 \u2014 bypassing the connectivity check");
-    return true;
-  }
-  const url3 = process.env.WA_SERVER_URL || "https://evolution.salvitarn.com.br";
-  const key = process.env.WA_API_KEY;
-  if (!key) {
-    console.warn("[wa-gate] WA_API_KEY not configured \u2014 treating WhatsApp as disconnected");
-    return false;
-  }
-  try {
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 6e3);
-    const res = await fetch(`${url3}/status`, { headers: { apikey: key }, signal: ac.signal });
-    clearTimeout(timer);
-    if (!res.ok) {
-      console.warn(`[wa-gate] status endpoint returned HTTP ${res.status} \u2014 treating as disconnected`);
-      return false;
-    }
-    const body = await res.json();
-    const connected = body?.connected === true || body?.status === "open" || body?.status === "connected";
-    if (!connected) console.warn(`[wa-gate] WhatsApp reports "${body?.status ?? "unknown"}" \u2014 holding all WA sends`);
-    return connected;
-  } catch (err) {
-    console.warn("[wa-gate] status check failed \u2014 treating as disconnected:", err.message);
-    return false;
-  }
-}
-var MAX_SEND_ATTEMPTS = 3;
-async function requeueOrFail(runsTable, run2) {
-  const attempts = (run2.attempts ?? 0) + 1;
-  if (attempts >= MAX_SEND_ATTEMPTS) {
-    await ordersDb.update(runsTable).set({ status: "failed", attempts, updatedAt: /* @__PURE__ */ new Date() }).where(eq(runsTable.id, run2.id));
-    console.warn(`[cron] automation run ${run2.id} failed ${attempts}x \u2014 giving up`);
-    return;
-  }
-  const retryAt = new Date(Date.now() + 2 * 60 * 60 * 1e3);
-  await ordersDb.update(runsTable).set({ status: "scheduled", attempts, scheduledFor: retryAt, updatedAt: /* @__PURE__ */ new Date() }).where(eq(runsTable.id, run2.id));
-  console.log(`[cron] automation run ${run2.id} re-queued (attempt ${attempts}/${MAX_SEND_ATTEMPTS})`);
-}
 async function runIsolated(label, fn, fallback) {
   try {
     return await fn();
   } catch (err) {
     console.error(`[cron] ${label} failed (other routines continue):`, safeErr(err));
     return fallback;
-  }
-}
-async function getActiveRecoveryCouponCode() {
-  try {
-    const rows = await ordersDb.select().from(coupons).where(eq(coupons.active, true)).orderBy(desc(coupons.createdAt));
-    const now = /* @__PURE__ */ new Date();
-    const usable = (c4) => (!c4.expiresAt || now < new Date(c4.expiresAt)) && (!c4.maxUses || c4.usedCount < c4.maxUses);
-    return (rows.find((c4) => c4.useForRecovery && usable(c4)) ?? rows.find(usable))?.code ?? "";
-  } catch {
-    return "";
   }
 }
 var app = (0, import_express3.default)();
@@ -347842,8 +348279,25 @@ app.get("/api/db-health", async (req, res) => {
     res.status(500).json({ ok: false, banco: "erro", db: "error" });
   }
 });
-app.get("/api/unsubscribe", aguardarSchemasMw, handleUnsubscribe);
-app.post("/api/unsubscribe", import_express3.default.urlencoded({ extended: false }), aguardarSchemasMw, handleUnsubscribe);
+var unsubscribeLimiter = rate_limit_default({
+  windowMs: 15 * 60 * 1e3,
+  max: 300,
+  message: "Muitas tentativas. Tente novamente mais tarde.",
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
+  validate: { xForwardedForHeader: false }
+});
+var unsubscribeFormatoMw = (req, res, next) => {
+  const token = String(req.query.t || req.body?.t || req.query.token || "").trim();
+  if (!tokenDescadastroValido(token)) {
+    handleUnsubscribe(req, res).catch(next);
+    return;
+  }
+  next();
+};
+app.get("/api/unsubscribe", unsubscribeLimiter, unsubscribeFormatoMw, aguardarSchemasMw, handleUnsubscribe);
+app.post("/api/unsubscribe", unsubscribeLimiter, import_express3.default.urlencoded({ extended: false }), unsubscribeFormatoMw, aguardarSchemasMw, handleUnsubscribe);
 app.post("/api/resend-webhook", import_express3.default.raw({ type: "application/json" }), async (req, res, next) => {
   const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
   if (process.env.RESEND_WEBHOOK_SECRET && verifySvixSignature(req, raw)) {
@@ -347867,11 +348321,12 @@ var adminApiLimiter = rate_limit_default({
   message: { error: "Too many requests" }
 });
 app.get("/api/db-stats", adminApiLimiter, async (req, res) => {
-  const secret2 = process.env.ADMIN_RESET_SECRET;
-  const adminHeader = req.headers["x-admin-secret"];
-  if (!secret2 || typeof adminHeader !== "string" || !safeEqual(adminHeader, secret2)) {
+  const providedSecret = req.headers["x-admin-secret"] ?? req.headers["authorization"]?.replace("Bearer ", "");
+  const via = autorizarDbStats(providedSecret, { cron: process.env.CRON_SECRET, legado: process.env.ADMIN_RESET_SECRET });
+  if (!via) {
     return res.status(401).json({ error: "Unauthorized" });
   }
+  if (via === "legado") console.warn("[db-stats] autenticado com ADMIN_RESET_SECRET (obsoleto): passe a usar CRON_SECRET");
   try {
     const [sizes, counts, dbSizeBytes] = await Promise.all([
       sql2`
@@ -348607,22 +349062,9 @@ async function fetchPixCode2(order) {
   }
   return null;
 }
-async function telefoneTemPedidoDesde(phone, desde, opts2 = {}) {
-  const n5 = telefoneParaBusca(phone);
-  if (!n5) return false;
-  const conds = [
-    ne(siteOrders.status, "cancelled"),
-    gte(siteOrders.createdAt, desde),
-    sql`right(regexp_replace(${siteOrders.customerPhone}, '\\D', '', 'g'), ${sql.raw(String(n5.length))}) = ${n5}`
-  ];
-  if (opts2.soConfirmado) conds.push(eq(siteOrders.paymentStatus, "confirmed"));
-  if (opts2.excetoId !== void 0) conds.push(ne(siteOrders.id, opts2.excetoId));
-  const [row] = await ordersDb.select({ id: siteOrders.id }).from(siteOrders).where(and(...conds)).limit(1);
-  return !!row;
-}
-async function processUnpaidFollowups() {
+async function processUnpaidFollowups(deadlineAt = Date.now() + 45e3) {
   let sent = 0;
-  if (!isBusinessHours2()) return { sent };
+  if (!isBusinessHours()) return { sent };
   try {
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1e3);
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1e3);
@@ -348640,7 +349082,12 @@ async function processUnpaidFollowups() {
     const pixTpl = tpls.find((t5) => t5.slug === "unpaid_pix");
     const lembreteTpl = tpls.find((t5) => t5.slug === "unpaid_lembrete") ?? tpls.find((t5) => t5.type === "unpaid" && t5.slug !== "unpaid_pix");
     for (const o4 of orders) {
-      await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, o4.id));
+      if (Date.now() > deadlineAt) {
+        console.warn("[cron] unpaid-followup: or\xE7amento de tempo esgotado \u2014 o resto fica para a pr\xF3xima rodada");
+        break;
+      }
+      const claimedRows = await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(siteOrders.id, o4.id), isNull2(siteOrders.unpaidFollowupSentAt))).returning({ id: siteOrders.id });
+      if (claimedRows.length === 0) continue;
       const maisNovoPago = await telefoneTemPedidoDesde(o4.customerPhone, new Date(o4.createdAt), { soConfirmado: true, excetoId: o4.id });
       if (deveSuprimirCobranca(o4.notes, maisNovoPago)) {
         console.log(`[cron] unpaid-followup: pedido ${o4.id} pulado (${maisNovoPago ? "cliente tem pedido mais novo pago" : "em revis\xE3o"})`);
@@ -348662,6 +349109,7 @@ async function processUnpaidFollowups() {
       const vars = { nome: o4.customerName, pedido: String(o4.id), valor: brl(o4.totalPrice), link, pix };
       const msg = tpl ? renderTemplate2(tpl.body, vars) : o4.paymentStatus === "failed" ? `Ol\xE1 *${o4.customerName}*! \u{1F615} Houve um problema no pagamento do pedido *#${o4.id}*. Tente novamente: ${link}` : `Ol\xE1 *${o4.customerName}*! \u{1F4B8} Seu pedido *#${o4.id}* (R$ ${brl(o4.totalPrice)}) ainda est\xE1 aguardando pagamento. Finalize: ${link}`;
       const ok2 = await sendWhatsApp(o4.customerPhone, msg);
+      let entregue = ok2;
       if (ok2) sent++;
       if (ok2 && pix) {
         await new Promise((r5) => setTimeout(r5, 1e3));
@@ -348679,8 +349127,16 @@ async function processUnpaidFollowups() {
         const emailSubject = o4.paymentStatus === "failed" ? `Problema no pagamento do pedido #${o4.id} \u2014 tente novamente` : `Pedido #${o4.id} aguardando pagamento \u2014 R$ ${brl(o4.totalPrice)}`;
         try {
           await sendEmail(o4.customerEmail, emailSubject, emailHtml);
+          entregue = true;
         } catch (e4) {
           console.error(`[cron] unpaid-followup: e-mail do pedido ${o4.id} falhou:`, safeErr(e4));
+        }
+      }
+      if (!entregue) {
+        try {
+          await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: null, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, o4.id));
+        } catch (e4) {
+          console.error(`[cron] unpaid-followup: desfazer claim do pedido ${o4.id} falhou:`, safeErr(e4));
         }
       }
       await new Promise((r5) => setTimeout(r5, 1e3));
@@ -348738,9 +349194,9 @@ async function reconcileAwaitingOrders() {
   }
   return { confirmed };
 }
-async function processReorderReminders() {
+async function processReorderReminders(deadlineAt = Date.now() + 45e3) {
   let sent = 0;
-  if (!isBusinessHours2()) return { sent };
+  if (!isBusinessHours()) return { sent };
   try {
     const fortyFiveDaysAgo = new Date(Date.now() - 45 * 24 * 60 * 60 * 1e3);
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1e3);
@@ -348754,7 +349210,12 @@ async function processReorderReminders() {
     const [tpl] = await ordersDb.select().from(msgTemplates).where(and(eq(msgTemplates.type, "reorder"), eq(msgTemplates.active, true)));
     const activeCoupon = await getActiveRecoveryCouponCode();
     for (const o4 of orders) {
-      await ordersDb.update(siteOrders).set({ reorderRemindedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, o4.id));
+      if (Date.now() > deadlineAt) {
+        console.warn("[cron] reorder-reminder: or\xE7amento de tempo esgotado \u2014 o resto fica para a pr\xF3xima rodada");
+        break;
+      }
+      const claimedRows = await ordersDb.update(siteOrders).set({ reorderRemindedAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(siteOrders.id, o4.id), isNull2(siteOrders.reorderRemindedAt))).returning({ id: siteOrders.id });
+      if (claimedRows.length === 0) continue;
       const phoneDigits = o4.customerPhone.replace(/\D/g, "");
       const [cartRecord] = await ordersDb.select({ optedOut: abandonedCarts.optedOut }).from(abandonedCarts).where(eq(abandonedCarts.customerPhone, phoneDigits)).limit(1);
       if (cartRecord?.optedOut) continue;
@@ -348772,6 +349233,13 @@ ${cupomTexto}\u{1F449} Fa\xE7a seu novo pedido: ${link}
 _Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
       const ok2 = await sendWhatsApp(o4.customerPhone, msg);
       if (ok2) sent++;
+      else {
+        try {
+          await ordersDb.update(siteOrders).set({ reorderRemindedAt: null, updatedAt: /* @__PURE__ */ new Date() }).where(eq(siteOrders.id, o4.id));
+        } catch (e4) {
+          console.error(`[cron] reorder-reminder: desfazer claim do pedido ${o4.id} falhou:`, safeErr(e4));
+        }
+      }
       await new Promise((r5) => setTimeout(r5, 1e3));
     }
   } catch (e4) {
@@ -348824,116 +349292,19 @@ app.all("/api/cron/abandoned-cart", import_express3.default.json(), async (req, 
       });
       return;
     }
-    const unpaid = await runIsolated("unpaid-followup", processUnpaidFollowups, { sent: 0 });
-    const reorder = reorderWhatsappEnabled() ? await runIsolated("reorder-reminder", processReorderReminders, { sent: 0 }) : { sent: 0 };
+    const unpaid = await runIsolated("unpaid-followup", () => processUnpaidFollowups(cronDeadline), { sent: 0 });
+    const reorder = reorderWhatsappEnabled() ? await runIsolated("reorder-reminder", () => processReorderReminders(cronDeadline), { sent: 0 }) : { sent: 0 };
     let sent = 0, cancelled = 0, failed = 0;
-    if (!isBusinessHours2()) {
+    if (!isBusinessHours()) {
       res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: "outside business hours", unpaid, reconciled, reorder, tracking, labels, followup });
       return;
     }
-    await withDbRetry("recycle-sending-runs", () => ordersDb.execute(sql`
-      UPDATE automation_runs
-      SET status = 'scheduled', updated_at = now()
-      WHERE status = 'sending' AND updated_at < now() - interval '15 minutes'
-    `));
-    const claimed = await withDbRetry("claim-due-runs", () => ordersDb.execute(sql`
-      UPDATE automation_runs
-      SET status = 'sending', updated_at = now()
-      WHERE id IN (
-        SELECT id FROM automation_runs
-        WHERE status = 'scheduled' AND scheduled_for <= now()
-        ORDER BY scheduled_for
-        LIMIT 20
-        FOR UPDATE SKIP LOCKED
-      )
-      RETURNING id, cart_id AS "cartId", customer_phone AS "customerPhone",
-                rule_name AS "ruleName", attempts, ai_body AS "aiBody"
-    `));
-    const due = claimed.rows;
-    const releaseClaimed = async (ids) => {
-      if (ids.length === 0) return;
-      try {
-        await ordersDb.update(runs).set({ status: "scheduled", updatedAt: /* @__PURE__ */ new Date() }).where(and(inArray(runs.id, ids), eq(runs.status, "sending")));
-      } catch (e4) {
-        console.error("[cron] release claimed runs failed:", safeErr(e4));
-      }
-    };
-    const pendingIds = new Set(due.map((r5) => r5.id));
-    const { enviar: dueAgora, adiar } = selecionarUmPorTelefone(due);
-    if (adiar.length > 0) {
-      for (const r5 of adiar) pendingIds.delete(r5.id);
-      await releaseClaimed(adiar.map((r5) => r5.id));
-      console.log(`[cron] abandoned-cart: ${adiar.length} toque(s) adiados (um por telefone por rodada)`);
-    }
-    for (const run2 of dueAgora) {
-      if (Date.now() > cronDeadline) {
-        console.warn(`[cron] abandoned-cart: or\xE7amento de tempo esgotado \u2014 ${pendingIds.size} run(s) voltam para a fila`);
-        await releaseClaimed([...pendingIds]);
-        break;
-      }
-      pendingIds.delete(run2.id);
-      const [cart] = await ordersDb.select().from(carts).where(eq(carts.id, run2.cartId)).limit(1);
-      if (!cart || cart.status === "converted" || cart.recovered || cart.optedOut) {
-        await ordersDb.update(runs).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id));
-        cancelled++;
-        continue;
-      }
-      let jaComprou = false;
-      try {
-        jaComprou = await telefoneTemPedidoDesde(run2.customerPhone, inicioJanelaCompra(cart.createdAt));
-      } catch (e4) {
-        console.error(`[cron] abandoned-cart: checagem de compra do carrinho ${cart.id} falhou:`, safeErr(e4));
-        await releaseClaimed([run2.id]);
-        continue;
-      }
-      if (jaComprou) {
-        await ordersDb.update(runs).set({ status: "cancelled", cancelledAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id));
-        cancelled++;
-        continue;
-      }
-      const name = cart.customerName;
-      const ruleCfg = regraDeAbandono(RULE_MAP[run2.ruleName]);
-      const link = ruleCfg.coupon ? `${STORE_URL}?cupom=${encodeURIComponent(ruleCfg.coupon)}` : STORE_URL;
-      const tpl = tplBySlug[ruleCfg.slug] ?? fallbackTpl;
-      let msg;
-      if (run2.aiBody) {
-        msg = run2.aiBody;
-      } else if (tpl) {
-        msg = renderTemplate2(tpl.body, { nome: name, link, cupom: ruleCfg.coupon, produto: "Sal Marinho Integral 1kg" });
-      } else {
-        msg = `Ol\xE1 *${name}*! \u{1F30A}
-
-Notamos que voc\xEA se interessou pelo *Sal Marinho Integral Sal Vita* mas n\xE3o finalizou o pedido.
-
-\u{1F449} Finalize agora: ${link}
-
-Qualquer d\xFAvida \xE9 s\xF3 chamar! \u{1F60A}
-_Sal Vita \u2014 Sal Marinho Premium de Mossor\xF3/RN_`;
-      }
-      try {
-        const ok2 = await sendWhatsApp(run2.customerPhone, msg);
-        if (ok2) {
-          await withDbRetry("mark-run-sent", () => ordersDb.update(runs).set({ status: "sent", sentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(runs.id, run2.id)));
-          await ordersDb.update(carts).set({ recoverySentAt: /* @__PURE__ */ new Date(), updatedAt: /* @__PURE__ */ new Date() }).where(eq(carts.id, run2.cartId));
-          sent++;
-          if (cart.customerEmail && ruleCfg.coupon) {
-            const emailHtml = abandonedCartHtml(cart.customerName, link, ruleCfg.coupon);
-            try {
-              await sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} \u2014 finalize seu pedido Sal Vita`, emailHtml);
-            } catch (e4) {
-              console.error(`[cron] abandoned-cart: e-mail do carrinho ${cart.id} falhou:`, safeErr(e4));
-            }
-          }
-        } else {
-          await requeueOrFail(runs, run2);
-          failed++;
-        }
-      } catch {
-        await requeueOrFail(runs, run2);
-        failed++;
-      }
-    }
-    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder, tracking, labels, followup });
+    const runResult = await processAutomationRuns({ deadlineAt: cronDeadline, jaVerificouWhatsApp: true });
+    sent = runResult.sent;
+    cancelled = runResult.cancelled;
+    failed = runResult.failed;
+    const processed = runResult.processed;
+    res.json({ ok: true, processed, sent, cancelled, failed, unpaid, reconciled, reorder, tracking, labels, followup });
   } catch (err) {
     console.error("[cron] abandoned-cart error:", safeErr(err));
     res.status(500).json({ error: safeErrorMessage(err) });

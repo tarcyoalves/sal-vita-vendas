@@ -44,113 +44,10 @@ import { criarSchemaPreguicoso } from '../server/lib/schemaPreguicoso';
 import { schemasNecessarios, SO_CRM, SO_LOJA, type Schemas } from '../server/lib/schemasNecessarios';
 import { getCookieFromRequest } from '../server/auth';
 import { COOKIE_NAME } from '../shared/const';
-
-function isBusinessHours(): boolean {
-  const brHour = (new Date().getUTCHours() - 3 + 24) % 24;
-  return brHour >= 8 && brHour < 21;
-}
-
-/**
- * Retry a Neon query through transient connection-pool contention.
- *
- * neon-http opens a fresh HTTP hop per query, and under a burst the branch
- * answers "Failed to acquire permit to connect to the database". On 2026-08-07
- * that error hit the very first SELECT of the abandoned-cart cron and, because
- * the cron runs once a day with no retry, the whole day's recovery and payment
- * reconciliation silently didn't happen.
- */
-async function withDbRetry<T>(label: string, fn: () => Promise<T>, attempts = 3): Promise<T> {
-  let lastErr: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try { return await fn(); } catch (err) {
-      lastErr = err;
-      const msg = String((err as any)?.message ?? err);
-      const transient = msg.includes('Failed to acquire permit') || msg.includes('ECONNRESET') || msg.includes('fetch failed');
-      if (!transient || i === attempts - 1) break;
-      const backoff = 400 * Math.pow(2, i);
-      console.warn(`[db-retry] ${label}: transient failure, retrying in ${backoff}ms (${i + 1}/${attempts - 1})`);
-      await new Promise(r => setTimeout(r, backoff));
-    }
-  }
-  throw lastErr;
-}
-
-/**
- * Is the WhatsApp session actually able to send right now?
- *
- * This gate exists because every WA-dependent routine consumes its opportunity
- * up front: the unpaid follow-up stamps `unpaid_followup_sent_at` before
- * sending, the reorder nudge stamps `reorder_reminded_at`, and a failed
- * automation run used to be marked 'failed' and never looked at again. So while
- * the Baileys session was disconnected, the cron kept "spending" carts, unpaid
- * orders and reorder reminders against a socket that could not deliver anything
- * — silently, once per day, with no way to get them back.
- *
- * Unknown counts as disconnected on purpose: postponing a message costs a day,
- * whereas burning it costs the sale.
- */
-async function isWhatsAppConnected(): Promise<boolean> {
-  // Escape hatch: this gate reads a health endpoint whose payload shape varies
-  // between wa-server builds. If it ever reports "down" for a session that is
-  // actually fine, recovery would stay paused indefinitely with no way out.
-  // Setting WA_FORCE_SEND=1 in Vercel restores the old always-send behaviour.
-  if (process.env.WA_FORCE_SEND === '1') {
-    console.warn('[wa-gate] WA_FORCE_SEND=1 — bypassing the connectivity check');
-    return true;
-  }
-  const url = process.env.WA_SERVER_URL || 'https://evolution.salvitarn.com.br';
-  const key = process.env.WA_API_KEY;
-  if (!key) {
-    console.warn('[wa-gate] WA_API_KEY not configured — treating WhatsApp as disconnected');
-    return false;
-  }
-  try {
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 6000);
-    const res = await fetch(`${url}/status`, { headers: { apikey: key }, signal: ac.signal });
-    clearTimeout(timer);
-    if (!res.ok) {
-      console.warn(`[wa-gate] status endpoint returned HTTP ${res.status} — treating as disconnected`);
-      return false;
-    }
-    const body = await res.json() as { connected?: boolean; status?: string };
-    const connected = body?.connected === true || body?.status === 'open' || body?.status === 'connected';
-    if (!connected) console.warn(`[wa-gate] WhatsApp reports "${body?.status ?? 'unknown'}" — holding all WA sends`);
-    return connected;
-  } catch (err) {
-    console.warn('[wa-gate] status check failed — treating as disconnected:', (err as Error).message);
-    return false;
-  }
-}
-
-// A send failure re-schedules the run instead of discarding it; only after this
-// many attempts is it given up on.
-const MAX_SEND_ATTEMPTS = 3;
-
-/**
- * A failed WhatsApp send used to set the run to 'failed' permanently, and the
- * due-runs query only ever looks at 'scheduled' — so a single bad moment threw
- * the cart away. Now the run goes back in the queue with a delay, and is only
- * given up on after MAX_SEND_ATTEMPTS.
- */
-async function requeueOrFail(
-  runsTable: typeof automationRuns,
-  run: { id: number; attempts?: number | null },
-): Promise<void> {
-  const attempts = (run.attempts ?? 0) + 1;
-  if (attempts >= MAX_SEND_ATTEMPTS) {
-    await ordersDb.update(runsTable)
-      .set({ status: 'failed', attempts, updatedAt: new Date() })
-      .where(eq(runsTable.id, run.id));
-    console.warn(`[cron] automation run ${run.id} failed ${attempts}x — giving up`);
-    return;
-  }
-  const retryAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // +2h
-  await ordersDb.update(runsTable)
-    .set({ status: 'scheduled', attempts, scheduledFor: retryAt, updatedAt: new Date() })
-    .where(eq(runsTable.id, run.id));
-  console.log(`[cron] automation run ${run.id} re-queued (attempt ${attempts}/${MAX_SEND_ATTEMPTS})`);
-}
+import {
+  isBusinessHours, withDbRetry, isWhatsAppConnected, requeueOrFail, getActiveRecoveryCouponCode, telefoneTemPedidoDesde,
+  processAutomationRuns,
+} from '../server/lib/recoveryRuns';
 
 /**
  * Run one cron sub-routine without letting its failure take down the others.
@@ -164,18 +61,6 @@ async function runIsolated<T>(label: string, fn: () => Promise<T>, fallback: T):
     console.error(`[cron] ${label} failed (other routines continue):`, safeErr(err));
     return fallback;
   }
-}
-
-// Best active coupon for automated recovery messages: prefers the admin-flagged
-// recovery coupon, else the newest active/valid one. Returns '' when none.
-async function getActiveRecoveryCouponCode(): Promise<string> {
-  try {
-    const rows = await ordersDb.select().from(coupons).where(eq(coupons.active, true)).orderBy(desc(coupons.createdAt));
-    const now = new Date();
-    const usable = (c: typeof rows[number]) =>
-      (!c.expiresAt || now < new Date(c.expiresAt)) && (!c.maxUses || c.usedCount < c.maxUses);
-    return (rows.find(c => c.useForRecovery && usable(c)) ?? rows.find(usable))?.code ?? '';
-  } catch { return ''; }
 }
 
 const app = express();
@@ -346,6 +231,8 @@ function unsubscribePage(message: string): string {
 }
 
 import { handleUnsubscribe } from '../server/routers/unsubscribe';
+import { tokenDescadastroValido } from '../server/lib/unsubscribeToken';
+import { autorizarDbStats } from '../server/lib/dbStatsAuth';
 import { syncMeTracking, handleMeWebhookEvent, autoGenerateLabels } from '../server/routers/shipping';
 import { verifyMeSignature, type MeTrackingInfo } from '../server/lib/meTracking';
 import { safeEqual } from '../server/lib/safeEqual';
@@ -362,9 +249,25 @@ import { idPagamentoMpValido, estornoPertenceAoPedido, telefoneNormalizado } fro
 import { confirmApprovedPayment, deveReenviarWebhook } from '../server/lib/confirmApprovedPayment';
 import { inicioJanelaCompra, telefoneParaBusca, selecionarUmPorTelefone, regraDeAbandono, deveSuprimirCobranca, podeUsarTemplatePix } from '../server/lib/recoveryCadence';
 
-app.get('/api/unsubscribe', aguardarSchemasMw, handleUnsubscribe);
+// Endpoint público: limite por IP (generoso, porque provedores de e-mail fazem o POST one-click de poucos IPs)
+// e token fora do formato UUID nunca acorda nem consulta o banco (o handler responde "inválido" sem tocar nele).
+const unsubscribeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  message: 'Muitas tentativas. Tente novamente mais tarde.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
+  validate: { xForwardedForHeader: false },
+});
+const unsubscribeFormatoMw: express.RequestHandler = (req, res, next) => {
+  const token = String(req.query.t || req.body?.t || req.query.token || '').trim();
+  if (!tokenDescadastroValido(token)) { handleUnsubscribe(req, res).catch(next); return; }
+  next();
+};
+app.get('/api/unsubscribe', unsubscribeLimiter, unsubscribeFormatoMw, aguardarSchemasMw, handleUnsubscribe);
 // RFC 8058 one-click unsubscribe sends a POST request
-app.post('/api/unsubscribe', express.urlencoded({ extended: false }), aguardarSchemasMw, handleUnsubscribe);
+app.post('/api/unsubscribe', unsubscribeLimiter, express.urlencoded({ extended: false }), unsubscribeFormatoMw, aguardarSchemasMw, handleUnsubscribe);
 
 // Webhook Resend/Svix HMAC time-safe signature verification.
 // Dois produtos recebem em /api/resend-webhook: o Premium assina com RESEND_WEBHOOK_SECRET
@@ -399,11 +302,14 @@ const adminApiLimiter = rateLimit({
 
 // DB storage and row-count monitor — admin only
 app.get('/api/db-stats', adminApiLimiter, async (req, res) => {
-  const secret = process.env.ADMIN_RESET_SECRET;
-  const adminHeader = req.headers['x-admin-secret'];
-  if (!secret || typeof adminHeader !== 'string' || !safeEqual(adminHeader, secret)) {
+  // Aceita CRON_SECRET (preferido). ADMIN_RESET_SECRET segue valendo só por compatibilidade temporária, com aviso:
+  // ele é o segredo da recuperação de emergência de senha de admin e não deve circular em monitoramento.
+  const providedSecret = req.headers['x-admin-secret'] ?? req.headers['authorization']?.replace('Bearer ', '');
+  const via = autorizarDbStats(providedSecret, { cron: process.env.CRON_SECRET, legado: process.env.ADMIN_RESET_SECRET });
+  if (!via) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+  if (via === 'legado') console.warn('[db-stats] autenticado com ADMIN_RESET_SECRET (obsoleto): passe a usar CRON_SECRET');
   try {
     const [sizes, counts, dbSizeBytes] = await Promise.all([
       sqlClient`
@@ -1252,29 +1158,11 @@ async function fetchPixCode(order: typeof siteOrders.$inferSelect): Promise<stri
   return null;
 }
 
-/**
- * Existe pedido do MESMO telefone (comparado pelos dígitos nacionais, sem DDI) criado depois de `desde`
- * e não cancelado — ou só confirmado, com `soConfirmado`? Usado para não cobrar/recuperar quem já comprou.
- */
-async function telefoneTemPedidoDesde(
-  phone: string, desde: Date, opts: { soConfirmado?: boolean; excetoId?: number } = {},
-): Promise<boolean> {
-  const n = telefoneParaBusca(phone);
-  if (!n) return false;
-  const conds = [
-    ne(siteOrders.status, 'cancelled'),
-    gte(siteOrders.createdAt, desde),
-    sql`right(regexp_replace(${siteOrders.customerPhone}, '\\D', '', 'g'), ${sql.raw(String(n.length))}) = ${n}`,
-  ];
-  if (opts.soConfirmado) conds.push(eq(siteOrders.paymentStatus, 'confirmed'));
-  if (opts.excetoId !== undefined) conds.push(ne(siteOrders.id, opts.excetoId));
-  const [row] = await ordersDb.select({ id: siteOrders.id }).from(siteOrders).where(and(...conds)).limit(1);
-  return !!row;
-}
-
 // One-shot WhatsApp follow-up for unpaid (awaiting PIX/boleto) and failed (rejected) orders.
-// Free-tier safe: small LIMIT, marks unpaid_followup_sent_at on attempt so it never reprocesses.
-async function processUnpaidFollowups(): Promise<{ sent: number }> {
+// Free-tier safe: small LIMIT; reivindica cada pedido com UPDATE atômico (unpaid_followup_sent_at IS NULL)
+// ANTES de enviar, então duas execuções simultâneas (cron + retry) nunca cobram o mesmo pedido duas vezes.
+// Se nada foi entregue (WhatsApp e e-mail falharam), a reivindicação é desfeita para nova tentativa.
+async function processUnpaidFollowups(deadlineAt: number = Date.now() + 45_000): Promise<{ sent: number }> {
   let sent = 0;
   if (!isBusinessHours()) return { sent };
   try {
@@ -1296,9 +1184,12 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
     const lembreteTpl = tpls.find(t => t.slug === 'unpaid_lembrete') ?? tpls.find(t => t.type === 'unpaid' && t.slug !== 'unpaid_pix');
 
     for (const o of orders) {
-      // Mark first so a transient WA outage never causes reprocessing / repeated MP calls.
-      await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: new Date(), updatedAt: new Date() })
-        .where(eq(siteOrders.id, o.id));
+      if (Date.now() > deadlineAt) { console.warn('[cron] unpaid-followup: orçamento de tempo esgotado — o resto fica para a próxima rodada'); break; }
+      // Claim atômico: só quem muda unpaid_followup_sent_at de NULL para agora envia (quem perde a corrida pula).
+      const claimedRows = await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(siteOrders.id, o.id), isNull(siteOrders.unpaidFollowupSentAt)))
+        .returning({ id: siteOrders.id });
+      if (claimedRows.length === 0) continue;
 
       // Não cobra pedido em revisão humana, nem quem já tem um pedido mais novo pago (marcado acima: não volta).
       const maisNovoPago = await telefoneTemPedidoDesde(o.customerPhone, new Date(o.createdAt), { soConfirmado: true, excetoId: o.id });
@@ -1331,6 +1222,7 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
             ? `Olá *${o.customerName}*! 😕 Houve um problema no pagamento do pedido *#${o.id}*. Tente novamente: ${link}`
             : `Olá *${o.customerName}*! 💸 Seu pedido *#${o.id}* (R$ ${brl(o.totalPrice)}) ainda está aguardando pagamento. Finalize: ${link}`);
       const ok = await sendWhatsApp(o.customerPhone, msg);
+      let entregue = ok;
       if (ok) sent++;
       // Follow up with the PIX code as its own message — lets the customer
       // long-press → copy and get exactly the code, nothing else.
@@ -1351,8 +1243,14 @@ async function processUnpaidFollowups(): Promise<{ sent: number }> {
         const emailSubject = o.paymentStatus === 'failed'
           ? `Problema no pagamento do pedido #${o.id} — tente novamente`
           : `Pedido #${o.id} aguardando pagamento — R$ ${brl(o.totalPrice)}`;
-        try { await sendEmail(o.customerEmail, emailSubject, emailHtml); }
+        try { await sendEmail(o.customerEmail, emailSubject, emailHtml); entregue = true; }
         catch (e) { console.error(`[cron] unpaid-followup: e-mail do pedido ${o.id} falhou:`, safeErr(e)); }
+      }
+      // Nada foi entregue: desfaz a reivindicação para a próxima rodada tentar de novo (a janela de 3 dias limita as tentativas).
+      if (!entregue) {
+        try {
+          await ordersDb.update(siteOrders).set({ unpaidFollowupSentAt: null, updatedAt: new Date() }).where(eq(siteOrders.id, o.id));
+        } catch (e) { console.error(`[cron] unpaid-followup: desfazer claim do pedido ${o.id} falhou:`, safeErr(e)); }
       }
       await new Promise(r => setTimeout(r, 1000));
     }
@@ -1414,7 +1312,7 @@ async function reconcileAwaitingOrders(): Promise<{ confirmed: number }> {
 // Retention: nudge past customers to buy again once a 1kg order is likely
 // running low (~45 days). One-shot per order via reorder_reminded_at — never
 // reprocesses. Free-tier safe: small LIMIT, runs only during business hours.
-async function processReorderReminders(): Promise<{ sent: number }> {
+async function processReorderReminders(deadlineAt: number = Date.now() + 45_000): Promise<{ sent: number }> {
   let sent = 0;
   if (!isBusinessHours()) return { sent };
   try {
@@ -1433,9 +1331,12 @@ async function processReorderReminders(): Promise<{ sent: number }> {
     const activeCoupon = await getActiveRecoveryCouponCode();
 
     for (const o of orders) {
-      // Mark first so a transient WA outage never causes reprocessing.
-      await ordersDb.update(siteOrders).set({ reorderRemindedAt: new Date(), updatedAt: new Date() })
-        .where(eq(siteOrders.id, o.id));
+      if (Date.now() > deadlineAt) { console.warn('[cron] reorder-reminder: orçamento de tempo esgotado — o resto fica para a próxima rodada'); break; }
+      // Claim atômico antes de enviar: simultâneos não lembram o mesmo pedido duas vezes.
+      const claimedRows = await ordersDb.update(siteOrders).set({ reorderRemindedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(siteOrders.id, o.id), isNull(siteOrders.reorderRemindedAt)))
+        .returning({ id: siteOrders.id });
+      if (claimedRows.length === 0) continue;
 
       // Honor "responda PARAR" opt-outs.
       const phoneDigits = o.customerPhone.replace(/\D/g, '');
@@ -1451,6 +1352,12 @@ async function processReorderReminders(): Promise<{ sent: number }> {
         : `Olá *${o.customerName}*! 🌊\n\nJá faz um tempinho desde o seu pedido *#${o.id}* do *Sal Marinho Integral Sal Vita* — será que está na hora de repor? 🧂\n\n${cupomTexto}👉 Faça seu novo pedido: ${link}\n\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
       const ok = await sendWhatsApp(o.customerPhone, msg);
       if (ok) sent++;
+      else {
+        // Envio falhou: desfaz o claim (volta a NULL) para a próxima rodada tentar; a janela de 45–90 dias limita as tentativas.
+        try {
+          await ordersDb.update(siteOrders).set({ reorderRemindedAt: null, updatedAt: new Date() }).where(eq(siteOrders.id, o.id));
+        } catch (e) { console.error(`[cron] reorder-reminder: desfazer claim do pedido ${o.id} falhou:`, safeErr(e)); }
+      }
       await new Promise(r => setTimeout(r, 1000));
     }
   } catch (e) { console.error('[cron] reorder-reminder error:', safeErr(e)); }
@@ -1519,11 +1426,11 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
 
     // Each is isolated: a failure in one must not cost the others their run,
     // because on the current schedule the next attempt is a day away.
-    const unpaid = await runIsolated('unpaid-followup', processUnpaidFollowups, { sent: 0 });
+    const unpaid = await runIsolated('unpaid-followup', () => processUnpaidFollowups(cronDeadline), { sent: 0 });
     // Lembrete de recompra por WhatsApp DESLIGADO por padrão (decisão do dono, 15/10/2026): a
     // recompra agora é por e-mail. Só volta com REORDER_WHATSAPP=on.
     const reorder = reorderWhatsappEnabled()
-      ? await runIsolated('reorder-reminder', processReorderReminders, { sent: 0 })
+      ? await runIsolated('reorder-reminder', () => processReorderReminders(cronDeadline), { sent: 0 })
       : { sent: 0 };
 
     // ── Abandoned cart automation: only during business hours ─────────────────
@@ -1532,122 +1439,11 @@ app.all('/api/cron/abandoned-cart', express.json(), async (req, res) => {
       res.json({ ok: true, processed: 0, sent: 0, cancelled: 0, failed: 0, skipped: 'outside business hours', unpaid, reconciled, reorder, tracking, labels, followup });
       return;
     }
-    // Claim atômico (mesmo padrão de campaigns.ts): GET+POST/retry simultâneos nunca
-    // pegam as mesmas linhas, então ninguém recebe o mesmo WhatsApp duas vezes.
-    // 'sending' órfã (função morreu no meio do envio) há >15 min volta para 'scheduled';
-    // automation_runs não tem claimed_at, então updated_at (gravado no claim) serve de relógio.
-    await withDbRetry('recycle-sending-runs', () => ordersDb.execute(sql`
-      UPDATE automation_runs
-      SET status = 'scheduled', updated_at = now()
-      WHERE status = 'sending' AND updated_at < now() - interval '15 minutes'
-    `));
-    // Batch sizes are bounded by `maxDuration` (60s in vercel.json), not by the
-    // 10s figure the previous comments assumed — that mismatch capped the whole
-    // system at 3 recovery messages per day once the cron went to daily.
-    const claimed = await withDbRetry('claim-due-runs', () => ordersDb.execute<{
-      id: number; cartId: number; customerPhone: string; ruleName: string;
-      attempts: number | null; aiBody: string | null;
-    }>(sql`
-      UPDATE automation_runs
-      SET status = 'sending', updated_at = now()
-      WHERE id IN (
-        SELECT id FROM automation_runs
-        WHERE status = 'scheduled' AND scheduled_for <= now()
-        ORDER BY scheduled_for
-        LIMIT 20
-        FOR UPDATE SKIP LOCKED
-      )
-      RETURNING id, cart_id AS "cartId", customer_phone AS "customerPhone",
-                rule_name AS "ruleName", attempts, ai_body AS "aiBody"
-    `));
-    const due = claimed.rows;
-    // Libera de volta para a fila o que foi reivindicado mas não será enviado agora.
-    const releaseClaimed = async (ids: number[]) => {
-      if (ids.length === 0) return;
-      try {
-        await ordersDb.update(runs).set({ status: 'scheduled', updatedAt: new Date() })
-          .where(and(inArray(runs.id, ids), eq(runs.status, 'sending')));
-      } catch (e) { console.error('[cron] release claimed runs failed:', safeErr(e)); }
-    };
-    const pendingIds = new Set(due.map(r => r.id));
-    // No máximo um toque por telefone por rodada (T1+T2+T3 vencidos juntos não viram 3 mensagens
-    // seguidas): os demais NÃO são cancelados, voltam para 'scheduled' e saem na próxima rodada.
-    const { enviar: dueAgora, adiar } = selecionarUmPorTelefone(due);
-    if (adiar.length > 0) {
-      for (const r of adiar) pendingIds.delete(r.id);
-      await releaseClaimed(adiar.map(r => r.id));
-      console.log(`[cron] abandoned-cart: ${adiar.length} toque(s) adiados (um por telefone por rodada)`);
-    }
+    const runResult = await processAutomationRuns({ deadlineAt: cronDeadline, jaVerificouWhatsApp: true });
+    sent = runResult.sent; cancelled = runResult.cancelled; failed = runResult.failed;
+    const processed = runResult.processed;
 
-    for (const run of dueAgora) {
-      if (Date.now() > cronDeadline) {
-        console.warn(`[cron] abandoned-cart: orçamento de tempo esgotado — ${pendingIds.size} run(s) voltam para a fila`);
-        await releaseClaimed([...pendingIds]);
-        break;
-      }
-      pendingIds.delete(run.id);
-      const [cart] = await ordersDb.select().from(carts).where(eq(carts.id, run.cartId)).limit(1);
-      if (!cart || cart.status === 'converted' || cart.recovered || cart.optedOut) {
-        await ordersDb.update(runs).set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
-          .where(eq(runs.id, run.id));
-        cancelled++;
-        continue;
-      }
-      // Quem já fez um pedido (não cancelado) depois do carrinho — pago ou não — não recebe a cadência.
-      let jaComprou = false;
-      try { jaComprou = await telefoneTemPedidoDesde(run.customerPhone, inicioJanelaCompra(cart.createdAt)); }
-      catch (e) {
-        // Na dúvida não manda: devolve o toque à fila para a próxima rodada.
-        console.error(`[cron] abandoned-cart: checagem de compra do carrinho ${cart.id} falhou:`, safeErr(e));
-        await releaseClaimed([run.id]);
-        continue;
-      }
-      if (jaComprou) {
-        await ordersDb.update(runs).set({ status: 'cancelled', cancelledAt: new Date(), updatedAt: new Date() })
-          .where(eq(runs.id, run.id));
-        cancelled++;
-        continue;
-      }
-      const name = cart.customerName;
-      // 3º toque sem cupom ativo cai no template simples (nunca "Use o cupom **").
-      const ruleCfg = regraDeAbandono(RULE_MAP[run.ruleName]);
-      // Append ?cupom= so the storefront pre-fills and auto-applies the code.
-      const link = ruleCfg.coupon ? `${STORE_URL}?cupom=${encodeURIComponent(ruleCfg.coupon)}` : STORE_URL;
-      const tpl = tplBySlug[ruleCfg.slug] ?? fallbackTpl;
-      let msg: string;
-      if (run.aiBody) {
-        msg = run.aiBody; // AI-generated personalized message takes priority
-      } else if (tpl) {
-        msg = renderTemplate(tpl.body, { nome: name, link, cupom: ruleCfg.coupon, produto: 'Sal Marinho Integral 1kg' });
-      } else {
-        msg = `Olá *${name}*! 🌊\n\nNotamos que você se interessou pelo *Sal Marinho Integral Sal Vita* mas não finalizou o pedido.\n\n👉 Finalize agora: ${link}\n\nQualquer dúvida é só chamar! 😊\n_Sal Vita — Sal Marinho Premium de Mossoró/RN_`;
-      }
-      try {
-        const ok = await sendWhatsApp(run.customerPhone, msg);
-        if (ok) {
-          // Já entregue: gravar 'sent' com retry, para não cair em requeue e duplicar.
-          await withDbRetry('mark-run-sent', () => ordersDb.update(runs).set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
-            .where(eq(runs.id, run.id)));
-          await ordersDb.update(carts).set({ recoverySentAt: new Date(), updatedAt: new Date() })
-            .where(eq(carts.id, run.cartId));
-          sent++;
-          // Email only on 3rd touch (cupom) to save Resend daily quota for confirmations
-          if (cart.customerEmail && ruleCfg.coupon) {
-            const emailHtml = abandonedCartHtml(cart.customerName, link, ruleCfg.coupon);
-            try { await sendEmail(cart.customerEmail, `Seu cupom ${ruleCfg.coupon} — finalize seu pedido Sal Vita`, emailHtml); }
-            catch (e) { console.error(`[cron] abandoned-cart: e-mail do carrinho ${cart.id} falhou:`, safeErr(e)); }
-          }
-        } else {
-          await requeueOrFail(runs, run);
-          failed++;
-        }
-      } catch {
-        await requeueOrFail(runs, run);
-        failed++;
-      }
-    }
-
-    res.json({ ok: true, processed: due.length, sent, cancelled, failed, unpaid, reconciled, reorder, tracking, labels, followup });
+    res.json({ ok: true, processed, sent, cancelled, failed, unpaid, reconciled, reorder, tracking, labels, followup });
   } catch (err) {
     console.error('[cron] abandoned-cart error:', safeErr(err));
     res.status(500).json({ error: safeErrorMessage(err) });

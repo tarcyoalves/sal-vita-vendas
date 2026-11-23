@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { ordersDb as db } from '../db/ordersDb';
 import { db as mainDb } from '../db';
 import { sql } from 'drizzle-orm';
+import { tokenDescadastroValido } from '../lib/unsubscribeToken';
 
 export interface SuppressionResult {
   /** Passos que falharam (nome do passo), principais ou não. */
@@ -127,7 +128,8 @@ export async function handleUnsubscribe(req: Request, res: Response) {
 
   // Só o token opaco identifica o destinatário. Aceitar `?email=` deixava
   // qualquer pessoa descadastrar o endereço de qualquer outra.
-  const targetEmail = token ? await resolveEmailByToken(token) : null;
+  // Formato inválido (não é UUID) nem consulta o banco.
+  const targetEmail = tokenDescadastroValido(token) ? await resolveEmailByToken(token) : null;
 
   // GET nunca suprime: scanners de e-mail/antivírus abrem links com GET e
   // descadastrariam a pessoa sem clique. Mostra a confirmação (botão que faz POST).

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Bancos simulados: cada execute() registra o SQL; `failOn` faz o passo falhar.
 const calls: { db: string; text: string }[] = [];
+const TOKEN = '3f2b8c1e-5d4a-4e7b-9c6d-1a2b3c4d5e6f'; // os tokens reais são UUIDs (formato validado antes do banco)
 let failOn: string | null = null;
 
 function makeDb(name: string) {
@@ -36,11 +37,21 @@ beforeEach(() => { calls.length = 0; failOn = null; });
 describe('handleUnsubscribe', () => {
   it('GET mostra confirmação com formulário POST e NÃO suprime', async () => {
     const res = fakeRes();
-    await handleUnsubscribe(req('GET', { t: 'abc' }), res as never);
+    await handleUnsubscribe(req('GET', { t: TOKEN }), res as never);
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('method="POST"');
     expect(res.body).toContain('Confirmar descadastro');
     expect(suppressionWrites()).toHaveLength(0);
+  });
+
+  it('token fora do formato UUID nunca consulta o banco', async () => {
+    for (const method of ['GET', 'POST']) {
+      calls.length = 0;
+      const res = fakeRes();
+      await handleUnsubscribe(req(method, { t: "' OR 1=1 --" }, method === 'POST' ? { confirm: '1' } : {}), res as never);
+      expect(res.statusCode).toBe(404);
+      expect(calls).toHaveLength(0);
+    }
   });
 
   it('GET escapa o token e o e-mail na página', async () => {
@@ -51,7 +62,7 @@ describe('handleUnsubscribe', () => {
 
   it('POST one-click suprime nos dois bancos e responde 200 OK', async () => {
     const res = fakeRes();
-    await handleUnsubscribe(req('POST', { t: 'abc' }, { 'List-Unsubscribe': 'One-Click' }), res as never);
+    await handleUnsubscribe(req('POST', { t: TOKEN }, { 'List-Unsubscribe': 'One-Click' }), res as never);
     expect(res.statusCode).toBe(200);
     expect(res.body).toBe('OK');
     expect(suppressionWrites().map(c => c.db).sort()).toEqual(['main', 'orders']);
@@ -62,7 +73,7 @@ describe('handleUnsubscribe', () => {
 
   it('POST do formulário devolve a página de sucesso', async () => {
     const res = fakeRes();
-    await handleUnsubscribe(req('POST', { t: 'abc' }, { confirm: '1' }), res as never);
+    await handleUnsubscribe(req('POST', { t: TOKEN }, { confirm: '1' }), res as never);
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('Descadastro Confirmado');
     expect(res.body).toContain('pessoa@exemplo.com');
@@ -71,12 +82,12 @@ describe('handleUnsubscribe', () => {
   it('falha na supressão principal responde 500 e não diz Confirmado', async () => {
     failOn = 'orders';
     const res = fakeRes();
-    await handleUnsubscribe(req('POST', { t: 'abc' }, { confirm: '1' }), res as never);
+    await handleUnsubscribe(req('POST', { t: TOKEN }, { confirm: '1' }), res as never);
     expect(res.statusCode).toBe(500);
     expect(res.body).not.toContain('Descadastro Confirmado');
 
     const res2 = fakeRes();
-    await handleUnsubscribe(req('POST', { t: 'abc' }), res2 as never);
+    await handleUnsubscribe(req('POST', { t: TOKEN }), res2 as never);
     expect(res2.statusCode).toBe(500);
   });
 });

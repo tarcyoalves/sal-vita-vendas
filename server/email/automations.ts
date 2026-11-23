@@ -18,7 +18,7 @@ import {
 } from '../db/schema';
 import {
   computeNextSendAt, reserveSendQuota, refundDailyQuota, sendBatch, layout, enrollmentEngagementBatch,
-  conditionMet, renderSignature, renderTemplate as renderMktTemplate, type BatchMessage,
+  conditionMet, renderSignature, renderTemplate as renderMktTemplate, renderTemplateHtml as renderMktTemplateHtml, type BatchMessage,
 } from './marketing';
 import { isEmailOverCapped } from './frequency';
 
@@ -692,7 +692,7 @@ export async function processSequenceEnrollments(opts?: { enrollmentIds?: number
       messages.push({
         to: enrollment.email,
         subject,
-        html: layout(renderMktTemplate(step.htmlBody, { nome: enrollment.name ?? '', unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
+        html: layout(renderMktTemplateHtml(step.htmlBody, { nome: enrollment.name ?? '', unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
         replyTo: enrollment.replyTo ?? undefined,
         unsubToken: enrollment.unsubToken,
       });

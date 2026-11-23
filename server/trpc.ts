@@ -23,7 +23,18 @@ function normalizeIp(raw: string): string {
   return s;
 }
 
-function ipMatchesEntry(ip: string, entry: string): boolean {
+/**
+ * Máscara IPv4 de um prefixo CIDR. Só aceita inteiros 0-32 (sem sinal, sem lixo como "24abc"); inválido → null
+ * (a entrada não casa com ninguém). /0 = 0 (casa tudo): `1 << 32` em JS vale 1, então o /0 antigo virava /32.
+ */
+export function cidrMask(bits: string | undefined): number | null {
+  if (bits === undefined || !/^\d{1,2}$/.test(bits)) return null;
+  const n = Number(bits);
+  if (n < 0 || n > 32) return null;
+  return n === 0 ? 0 : (0xffffffff << (32 - n)) >>> 0;
+}
+
+export function ipMatchesEntry(ip: string, entry: string): boolean {
   const nIp = normalizeIp(ip);
   const nEntry = normalizeIp(entry);
 
@@ -33,8 +44,9 @@ function ipMatchesEntry(ip: string, entry: string): boolean {
       const [subnet, bits] = nEntry.split('/');
       const subnetNum = ipToNum(subnet);
       if (subnetNum === -1) return false;
-      const mask = ~((1 << (32 - parseInt(bits))) - 1) >>> 0;
-      return (clientNum & mask) === (subnetNum & mask);
+      const mask = cidrMask(bits);
+      if (mask === null) return false;
+      return ((clientNum & mask) >>> 0) === ((subnetNum & mask) >>> 0);
     }
     return nIp === nEntry;
   }
