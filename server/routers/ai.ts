@@ -8,50 +8,27 @@ import { spMidnight, spEndOfDay, spDateStr, spNextBusinessDay, spHHmm, spDDMM } 
 import { isToolAllowed } from '../lib/aiToolGuard';
 import { OPCOES_FUSO_BR } from '../lib/fusoBr';
 import { emitirTokenReagendamento, novaRequisicaoId, verificarTokenReagendamento } from '../lib/rescheduleToken';
+import { PROVIDER_BASE_URLS, modelFor, type LlmProviderConfig } from '../lib/llm';
+import { AI_INDISPONIVEL, cadeiaConfigurada, chamarComFerramentas, chamarLLM, executarNaCadeia } from '../lib/aiChain';
 import { effectiveEndMs, isForgottenSession, sessionWorkedMs, todayWorkedMs, totalPausedMsOf } from '../lib/workHours';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// Cadeia de provedores = a de server/lib/llm.ts (buildProviderChain). Aqui só ficam as URLs usadas por
+// listModels/testConnection, que aceitam também openai/anthropic digitados pelo admin.
 const BASE_URLS: Record<string, string> = {
-  groq:    'https://api.groq.com/openai/v1',
-  openai:  'https://api.openai.com/v1',
+  ...PROVIDER_BASE_URLS,
+  openai: 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com/v1',
-  cerebras: 'https://api.cerebras.ai/v1',
-  openrouter: 'https://openrouter.ai/api/v1',
-  nvidia: 'https://integrate.api.nvidia.com/v1',
 };
-
-// antigravity é opcional e resolvido em runtime: a URL é do endpoint do dono na VPS
-// (env, nunca fixa no repo — o repositório é público). `baseURLFor` é o único jeito
-// de resolver a URL de um provedor a partir daqui em diante; `BASE_URLS[provider]`
-// sozinho não cobre antigravity.
-function baseURLFor(provider: string): string | undefined {
-  if (provider === 'antigravity') return process.env.ANTIGRAVITY_BASE_URL?.replace(/\/+$/, '');
-  return BASE_URLS[provider];
-}
-
-const DEFAULT_MODELS: Record<string, string> = {
-  groq:    'llama-3.3-70b-versatile',
-  openai:  'gpt-3.5-turbo',
-  anthropic: 'claude-3-haiku-20240307',
-  cerebras: 'gpt-oss-120b',
-  openrouter: 'meta-llama/llama-3.3-70b-instruct:free',
-  nvidia: 'meta/llama-3.3-70b-instruct',
-};
-
-// Modelo por provedor, sobrescrevível por env (ex.: OPENROUTER_MODEL) — os IDs de
-// free tier mudam de tempos em tempos, então dá pra trocar sem alterar o código.
-function modelFor(provider: string): string {
-  // antigravity não tem "modelo padrão" embutido — ANTIGRAVITY_MODEL é uma das 3
-  // variáveis obrigatórias para ele existir na cadeia (ver antigravityConfigured).
-  if (provider === 'antigravity') return process.env.ANTIGRAVITY_MODEL || DEFAULT_MODELS.groq;
-  return process.env[`${provider.toUpperCase()}_MODEL`] || DEFAULT_MODELS[provider] || DEFAULT_MODELS.groq;
-}
 
 // ── Proteção de cota gratuita (Groq/Cerebras) ───────────────────────────────
 // Cooldown por usuário: evita spam de mensagens consumindo a cota diária gratuita.
 const CHAT_COOLDOWN_MS = 2500;
 const lastChatAt = new Map<number, number>();
+// Mesmo tipo de limite simples por usuário para a sugestão de abordagem (cada chamada gasta cota de IA).
+const SUGGEST_COOLDOWN_MS = 3000;
+const lastSuggestAt = new Map<number, number>();
 
 // Cache do relatório de análise de atendentes (admin) — evita reprocessar
 // e rechamar a LLM a cada clique. TTL curto o bastante para refletir o dia,
@@ -96,50 +73,6 @@ async function fetchWithTimeout(url: string, opts: RequestInit, ms = 30000): Pro
   }
 }
 
-async function callLLMWithTools(
-  apiKey: string, baseURL: string, model: string,
-  messages: any[], tools: any[], maxTokens = 1000,
-  callerUserId?: number
-): Promise<string> {
-  // Identifica esta requisição de chat: o token de confirmação de escrita não vale na requisição que o emitiu.
-  const requisicaoId = novaRequisicaoId();
-  const loop = async (msgs: any[]): Promise<string> => {
-    const body: any = { model, messages: msgs, max_tokens: maxTokens, temperature: 0.4, parallel_tool_calls: false };
-    if (tools.length) body.tools = tools;
-
-    const res = await fetchWithTimeout(`${baseURL}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const t = await res.text().catch(() => '');
-      const err = new Error(`LLM API ${res.status}: ${t.slice(0, 300)}`);
-      (err as any).status = res.status;
-      throw err;
-    }
-    const data = await res.json() as any;
-    const msg = data?.choices?.[0]?.message;
-    if (!msg) return 'Sem resposta da IA.';
-
-    // If tool calls requested, execute them and loop
-    if (msg.tool_calls?.length) {
-      const newMsgs = [...msgs, msg];
-      for (const tc of msg.tool_calls) {
-        let args: any = {};
-        try { args = JSON.parse(tc.function.arguments ?? '{}'); } catch { /* truncated args, use empty */ }
-        const result = isToolAllowed(tc.function.name, tools)
-          ? await executeTool(tc.function.name, args, callerUserId, requisicaoId)
-          : { error: 'Ferramenta não permitida.' };
-        newMsgs.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
-      }
-      return loop(newMsgs);
-    }
-    return msg.content ?? 'Sem resposta.';
-  };
-  return loop(messages);
-}
-
 async function callLLM(apiKey: string, baseURL: string, model: string, messages: any[], maxTokens = 800, temperature = 0.7): Promise<string> {
   const res = await fetchWithTimeout(`${baseURL}/chat/completions`, {
     method: 'POST',
@@ -154,87 +87,6 @@ async function callLLM(apiKey: string, baseURL: string, model: string, messages:
   }
   const data = await res.json() as any;
   return data?.choices?.[0]?.message?.content ?? 'Sem resposta da IA.';
-}
-
-function isRateLimit(err: any): boolean {
-  return err?.status === 429 || /429|rate.?limit|quota/i.test(err?.message ?? '');
-}
-
-// Erros que valem tentar no próximo provedor: rate limit (429), auth (401/403),
-// modelo/rota (404), timeout (408), 5xx e erros de rede/abort (sem status). Só o 400
-// NÃO cai no fallback: request malformado ou "provedor não suporta tools" (esse caso já
-// tem tratamento próprio no chat, retry sem tools).
-function isRetryable(err: any): boolean {
-  return err?.status !== 400;
-}
-
-// antigravity só conta como configurado com as 3 variáveis presentes (endpoint
-// OpenAI-compatível opcional do dono, na VPS — PLANO-RADAR-CARGAS.md seção 4).
-function antigravityConfigured(): boolean {
-  return !!(process.env.ANTIGRAVITY_BASE_URL && process.env.ANTIGRAVITY_API_KEY && process.env.ANTIGRAVITY_MODEL);
-}
-
-function envKeyFor(provider: string): string | undefined {
-  if (provider === 'antigravity') return antigravityConfigured() ? process.env.ANTIGRAVITY_API_KEY : undefined;
-  if (provider === 'groq') return process.env.GROQ_API_KEY;
-  if (provider === 'cerebras') return process.env.CEREBRAS_API_KEY;
-  if (provider === 'openrouter') return process.env.OPENROUTER_API_KEY;
-  if (provider === 'nvidia') return process.env.NVIDIA_API_KEY;
-  return undefined;
-}
-
-function defaultProvider(): string {
-  if (antigravityConfigured()) return 'antigravity';
-  if (process.env.GROQ_API_KEY) return 'groq';
-  if (process.env.CEREBRAS_API_KEY) return 'cerebras';
-  if (process.env.OPENROUTER_API_KEY) return 'openrouter';
-  if (process.env.NVIDIA_API_KEY) return 'nvidia';
-  return 'groq';
-}
-
-// Free-tier provider fallback order: antigravity (se configurado) → Groq → Cerebras →
-// OpenRouter → NVIDIA. Each quota resets independently, so chaining them multiplies
-// the daily free budget before the user sees an error.
-function getFallbackChain(primaryProvider: string): { provider: string; apiKey: string; baseURL: string; model: string }[] {
-  const candidates: { provider: string; apiKey?: string }[] = [
-    { provider: 'antigravity', apiKey: antigravityConfigured() ? process.env.ANTIGRAVITY_API_KEY : undefined },
-    { provider: 'groq', apiKey: process.env.GROQ_API_KEY },
-    { provider: 'cerebras', apiKey: process.env.CEREBRAS_API_KEY },
-    { provider: 'openrouter', apiKey: process.env.OPENROUTER_API_KEY },
-    { provider: 'nvidia', apiKey: process.env.NVIDIA_API_KEY },
-  ];
-  return candidates
-    .filter(c => c.provider !== primaryProvider && c.apiKey)
-    .map(c => ({ provider: c.provider, apiKey: c.apiKey!, baseURL: baseURLFor(c.provider)!, model: modelFor(c.provider) }));
-}
-
-// Runs `fn` against the primary provider; on any recoverable error (5xx/timeout/
-// network/429/401/403/404), retries against each fallback provider in order until
-// one succeeds.
-async function callWithFallback(
-  primaryProvider: string,
-  primaryApiKey: string,
-  primaryBaseURL: string,
-  primaryModel: string,
-  fn: (apiKey: string, baseURL: string, model: string) => Promise<string>,
-  logLabel: string,
-): Promise<string> {
-  try {
-    return await fn(primaryApiKey, primaryBaseURL, primaryModel);
-  } catch (primaryErr: any) {
-    if (!isRetryable(primaryErr)) throw primaryErr;
-    let lastErr = primaryErr;
-    for (const fb of getFallbackChain(primaryProvider)) {
-      try {
-        console.warn(`[${logLabel}] ${primaryProvider} failed (${primaryErr?.status ?? 'network'}) — trying ${fb.provider}`);
-        return await fn(fb.apiKey, fb.baseURL, fb.model);
-      } catch (fbErr: any) {
-        lastErr = fbErr;
-        if (!isRetryable(fbErr)) throw fbErr;
-      }
-    }
-    throw lastErr;
-  }
 }
 
 // ── Tool definitions (OpenAI-compatible) ─────────────────────────────────────
@@ -1000,15 +852,11 @@ export const aiRouter = router({
       lastChatAt.set(ctx.user.id, Date.now());
 
       try {
-        const provider = defaultProvider();
-        const apiKey = envKeyFor(provider) || '';
-        const baseURL = baseURLFor(provider) ?? BASE_URLS.groq;
         const isAdmin = ctx.user.role === 'admin';
-        const model = modelFor(provider);
 
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: 'user' });
 
-        if (!apiKey) {
+        if (!cadeiaConfigurada()) {
           const reply = 'IA não configurada. Vá em Configurações → IA e adicione uma chave do Groq ou Cerebras (ambos gratuitos).';
           await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
           return { reply };
@@ -1060,32 +908,25 @@ ${userContext}`;
           ...history.reverse().map(m => ({ role: m.role, content: m.content })),
         ];
 
-        let reply: string;
-        try {
-          reply = await callWithFallback(provider, apiKey, baseURL, model, (k, b, m) =>
-            isAdmin
-              ? callLLMWithTools(k, b, m, messages, TOOLS, 1000, ctx.user.id)
-              : callLLMWithTools(k, b, m, messages, ATTENDANT_TOOLS, 900, ctx.user.id),
-          'AI_CHAT');
-        } catch (primaryErr: any) {
-          if (primaryErr.status === 400) {
-            // Algum provider de fallback pode não suportar tool_use — reenvia sem ferramentas
-            console.warn('[AI_CHAT] tool_use 400, retrying without tools');
-            reply = await callLLM(apiKey, baseURL, model, messages, 1000, 0.4);
-          } else {
-            throw primaryErr;
-          }
-        }
+        // Identifica esta requisição de chat: o token de confirmação de escrita não vale na requisição que o emitiu.
+        const requisicaoId = novaRequisicaoId();
+        const tools = isAdmin ? TOOLS : ATTENDANT_TOOLS;
+        const { text: reply } = await executarNaCadeia((cfg, prazo) =>
+          chamarComFerramentas(cfg, prazo, messages, tools, {
+            maxTokens: isAdmin ? 1000 : 900,
+            permitida: (nome) => isToolAllowed(nome, tools),
+            executar: (nome, args) => executeTool(nome, args, ctx.user.id, requisicaoId),
+          }),
+        { label: 'AI_CHAT' });
 
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: 'assistant' });
         return { reply };
 
       } catch (err: any) {
+        if (err instanceof TRPCError) throw err; // cadeia inteira falhou: já logado, mensagem tipada
         console.error('[AI_CHAT_ERROR]', err?.message, '| status:', err?.status, '| stack:', err?.stack?.slice(0, 500));
         // Detalhe do provedor (chave, modelo, URL) só no log — o usuário recebe mensagem genérica.
-        throw new Error(isRateLimit(err)
-          ? 'A IA está com muitas solicitações no momento. Tente novamente em instantes.'
-          : 'Não foi possível obter resposta da IA agora. Tente novamente em instantes.');
+        throw new Error('Não foi possível obter resposta da IA agora. Tente novamente em instantes.');
       }
     }),
 
@@ -1103,10 +944,13 @@ ${userContext}`;
       return { ...analyzeCache.data, cached: true, cachedAt: analyzeCache.at };
     }
 
-    const analyzeProvider = input?.provider ?? defaultProvider();
-    const apiKey = input?.apiKey || envKeyFor(analyzeProvider) || '';
-    const analyzeModel = modelFor(analyzeProvider);
-    if (!apiKey) return { report: [], summary: 'IA não configurada. Vá em Configurações → IA e configure Groq (recomendado), Cerebras, OpenRouter ou NVIDIA.' };
+    // Chave informada pelo admin (opcional) vai na frente da cadeia do ambiente.
+    const primeiro = input?.apiKey && input.provider && PROVIDER_BASE_URLS[input.provider]
+      ? { provider: input.provider, baseURL: PROVIDER_BASE_URLS[input.provider], apiKey: input.apiKey, model: modelFor(input.provider, process.env) }
+      : undefined;
+    if (!primeiro && !cadeiaConfigurada()) {
+      throw new TRPCError({ code: 'SERVICE_UNAVAILABLE', message: AI_INDISPONIVEL });
+    }
 
     const now = new Date();
     const todayStart = spMidnight(now);
@@ -1257,9 +1101,9 @@ ${userContext}`;
       `${r.name}: ${r.total} clientes, ${r.withReminder} com lembrete ativo, ${r.overdue} vencidos, sem_anotação=${r.noNotes}, desativados=${r.disabledReminders}, sem_data=${r.noReminderDate}, nunca_atualizado=${r.neverUpdated}, status=${r.status} | VENDAS: convertidos=${r.convertedCount} (${r.conversionRate}% taxa), media_contatos_p/_converter=${r.avgContactsToConvert} | CHURN: ghost_clientes=${r.ghostCount} (sem contato 30d+), reagendado_sem_contato=${r.reschedNoContact} | FRAUDE: burst=${r.hasBurst ? `SIM(${r.burstMax} em 10min)` : 'não'} | QUALIDADE: media_nota=${r.avgNoteLen}chars | ACESSO: hoje=[${r.sessaoHoje}], dias_ativos_7d=${r.diasAtivos7}, total_trabalhado_7d=${r.totalTrabalhado7dias}, ultimo_acesso=${r.ultimoAcesso} | flags=${r.flags.join('; ') || 'nenhuma'}`
     ).join('\n');
 
-    try {
-      const summary = await callWithFallback(analyzeProvider, apiKey, baseURLFor(analyzeProvider)!, analyzeModel, (k, b, m) =>
-        callLLM(k, b, m, [
+    {
+      const { text: summary } = await executarNaCadeia((cfg, prazo) =>
+        chamarLLM(cfg, prazo, [
         {
           role: 'system',
           content: `Você é um analista sênior de desempenho de equipes de vendas B2B da empresa Sal Vita — Sal do Brasil.
@@ -1320,43 +1164,39 @@ REGRAS ABSOLUTAS:
           content: `DADOS COMPLETOS (${allSellers.length} atendentes):\n\n${reportText}\n\nGere análise COMPLETA com todas as 6 seções. Inclua TODOS os atendentes. Não encurte.`,
         },
         ], 8000, 0.3),
-      'ANALYZE');
+      { label: 'ANALYZE', primeiro });
       analyzeCache = { at: Date.now(), data: { report, summary } };
       return { report, summary, cached: false };
-    } catch (err: any) {
-      console.error('[ANALYZE_ERROR]', err?.message);
-      return { report, summary: 'Análise indisponível no momento. Tente novamente em instantes.' };
     }
   }),
 
   suggestSalesApproach: protectedProcedure
-    .input(z.object({ title: z.string().min(1), notes: z.string() }))
-    .mutation(async ({ input }) => {
+    .input(z.object({ title: z.string().min(1).max(300), notes: z.string().max(5000) }))
+    .mutation(async ({ input, ctx }) => {
       const cacheKey = 'suggest:' + JSON.stringify({ title: input.title, notes: input.notes });
       const cached = shortCacheGet(cacheKey);
       if (cached) return cached;
 
-      const suggestProvider = defaultProvider();
-      const apiKey = envKeyFor(suggestProvider) || '';
-      if (!apiKey) return { suggestion: 'IA não configurada.' };
-      try {
-        // Saída curta (~150 tokens) — usa um modelo pequeno/rápido no Groq em vez do 70B.
-        const suggestModel = suggestProvider === 'groq'
-          ? (process.env.SUGGEST_MODEL || 'llama-3.1-8b-instant')
-          : modelFor(suggestProvider);
-        const suggestion = await callWithFallback(suggestProvider, apiKey, baseURLFor(suggestProvider)!, suggestModel, (k, b, m) =>
-          callLLM(k, b, m, [
+      const lastAt = lastSuggestAt.get(ctx.user.id) ?? 0;
+      const elapsed = Date.now() - lastAt;
+      if (elapsed < SUGGEST_COOLDOWN_MS) {
+        throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: `Aguarde ${Math.ceil((SUGGEST_COOLDOWN_MS - elapsed) / 1000)}s antes de pedir outra sugestão.` });
+      }
+      lastSuggestAt.set(ctx.user.id, Date.now());
+
+      // Saída curta (~150 tokens) — usa um modelo pequeno/rápido no Groq em vez do 70B.
+      const { text: suggestion } = await executarNaCadeia((cfg, prazo) =>
+        chamarLLM(cfg, prazo, [
           { role: 'system', content: 'Vendas B2B de sal. Sugira 1 abordagem prática em 2-3 frases. Direto, sem introdução. Português BR.' },
           { role: 'user', content: `Cliente: ${input.title}\nObservações: ${input.notes || 'sem observações'}` },
-          ], 150, 0.7),
-        'AI_SUGGEST');
-        const result = { suggestion };
-        shortCacheSet(cacheKey, result);
-        return result;
-      } catch (err: any) {
-        console.error('[AI_SUGGEST_ERROR]', err?.message);
-        return { suggestion: 'Erro ao gerar sugestão. Tente novamente em instantes.' };
-      }
+        ], 150, 0.7),
+      {
+        label: 'AI_SUGGEST',
+        ajustar: (cfg): LlmProviderConfig => cfg.provider === 'groq' ? { ...cfg, model: process.env.SUGGEST_MODEL || 'llama-3.1-8b-instant' } : cfg,
+      });
+      const result = { suggestion };
+      shortCacheSet(cacheKey, result);
+      return result;
     }),
 
   // ── E-mail Marketing: geração de copy sob demanda ───────────────────────────
@@ -1379,9 +1219,7 @@ REGRAS ABSOLUTAS:
       const cached = shortCacheGet(cacheKey);
       if (cached) return cached;
 
-      const provider = defaultProvider();
-      const apiKey = envKeyFor(provider) || '';
-      if (!apiKey) return { subjects: [], html: '', error: 'IA não configurada. Configure Groq ou Cerebras em Configurações → IA.' };
+      if (!cadeiaConfigurada()) return { subjects: [], html: '', error: 'IA não configurada. Configure Groq ou Cerebras em Configurações → IA.' };
 
       const toneMap: Record<string, string> = {
         cordial: 'cordial e profissional',
@@ -1418,12 +1256,12 @@ CORPO:
       }
 
       try {
-        const raw = await callWithFallback(provider, apiKey, baseURLFor(provider)!, modelFor(provider), (k, b, m) =>
-          callLLM(k, b, m, [
+        const { text: raw } = await executarNaCadeia((cfg, prazo) =>
+          chamarLLM(cfg, prazo, [
             { role: 'system', content: sys },
             { role: 'user', content: userMsg },
           ], 1200, 0.6),
-        'AI_EMAIL_COPY');
+        { label: 'AI_EMAIL_COPY' });
 
         // Parse defensivo do formato "ASSUNTOS:\n...\nCORPO:\n..."
         const subjects: string[] = [];

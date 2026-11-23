@@ -1240,8 +1240,9 @@ export default function Tasks() {
       const notesForAi = (fullTask?.id === task.id ? fullTask.notes : task.notes) || '';
       const result = await suggestMutation.mutateAsync({ title: task.title, notes: notesForAi });
       setAiSuggestion({ taskId: task.id, text: result.suggestion });
-    } catch {
-      toast.error("Erro ao gerar sugestão");
+    } catch (err) {
+      // A IA fora do ar / limite de uso vêm com mensagem própria do servidor; senão, texto genérico.
+      toast.error(err instanceof Error && err.message ? err.message : "Erro ao gerar sugestão");
     } finally {
       setLoadingSuggestion(false);
     }

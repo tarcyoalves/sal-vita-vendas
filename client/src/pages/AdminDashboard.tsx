@@ -480,6 +480,8 @@ export default function AdminDashboard() {
   });
   const [monitorReport, setMonitorReport] = useState<any[] | null>(null);
   const [monitorSummary, setMonitorSummary] = useState<string | null>(null);
+  // Falha da IA (cadeia indisponível etc.): mostrada como erro, nunca como se fosse o texto da análise.
+  const [monitorError, setMonitorError] = useState<string | null>(null);
   const [monitorLoading, setMonitorLoading] = useState(false);
   const [monitorCached, setMonitorCached] = useState<{ cached: boolean; at: number } | null>(null);
   const [reminderFilter, setReminderFilter] = useState<string>("all");
@@ -500,6 +502,7 @@ export default function AdminDashboard() {
 
   const handleRunMonitor = async (forceRefresh = false) => {
     setMonitorLoading(true);
+    setMonitorError(null);
     try {
       const result: any = await analyzeAttendantsMutation.mutateAsync({ forceRefresh });
       setMonitorReport(result.report);
@@ -508,7 +511,7 @@ export default function AdminDashboard() {
         ? { cached: result.cached, at: result.cachedAt ?? Date.now() }
         : null);
     } catch (e: any) {
-      setMonitorSummary('Erro ao analisar: ' + (e?.message ?? 'Erro desconhecido'));
+      setMonitorError(e?.message ?? 'Erro desconhecido ao analisar.');
     } finally {
       setMonitorLoading(false);
     }
@@ -1132,7 +1135,7 @@ export default function AdminDashboard() {
                 </Button>
               </div>
             )}
-            {!monitorReport && !monitorSummary && !monitorLoading && (
+            {!monitorReport && !monitorSummary && !monitorError && !monitorLoading && (
               <EmptyState
                 className="py-6"
                 icon={<Scan />}
@@ -1173,6 +1176,10 @@ export default function AdminDashboard() {
                   );
                 })}
               </ul>
+            )}
+
+            {monitorError && (
+              <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{monitorError}</p>
             )}
 
             {monitorSummary && (
