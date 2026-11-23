@@ -12,7 +12,7 @@ import { isRetryableProviderError, retryMarker, jaTentouDeNovo } from '../lib/em
 import { db } from '../db';
 import { emailCampaigns, emailCampaignRecipients, emailSuppressions, sellers } from '../db/schema';
 import {
-  reserveSendQuota, refundDailyQuota, sendBatch, layout, renderTemplate, renderSignature,
+  reserveSendQuota, refundDailyQuota, sendBatch, layout, renderTemplate, renderTemplateHtml, renderSignature,
   type BatchMessage,
 } from './marketing';
 
@@ -162,7 +162,7 @@ export async function processCampaignBatch(campaignId: number): Promise<Campaign
       return {
         to: r.email,
         subject: renderTemplate(subjectTemplate, { nome: r.name ?? '' }),
-        html: layout(renderTemplate(campaign.htmlBody, { nome: r.name ?? '', unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
+        html: layout(renderTemplateHtml(campaign.htmlBody, { nome: r.name ?? '', unsubscribe: unsubUrl }), unsubUrl, signatureHtml),
         replyTo: r.replyTo ?? undefined,
         unsubToken: r.unsubToken,
         attachments: campaignAttachments,

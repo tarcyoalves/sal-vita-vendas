@@ -10,7 +10,7 @@ import {
   emailEvents, automationRules, emailSendCounters,
   tasks, clients, sellers, marketingContacts, marketingLists, fatOrders,
 } from '../db/schema';
-import { reserveSendQuota, refundDailyQuota, sendBatch, layout, renderTemplate, renderSignature, sanitizeCampaignHtml, sanitizeUntrustedHtml, isAllowedAttachmentName, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
+import { reserveSendQuota, refundDailyQuota, sendBatch, layout, renderTemplate, renderTemplateHtml, renderSignature, sanitizeCampaignHtml, sanitizeUntrustedHtml, isAllowedAttachmentName, getUsage, getAllDomainTracking, setDomainTracking, getAccounts, type BatchMessage } from '../email/marketing';
 import { processCampaignBatch } from '../email/campaigns';
 import { enrollInSequence } from '../email/automations';
 import { getFrequencyCap, setFrequencyCap, overCappedEmails } from '../email/frequency';
@@ -587,7 +587,7 @@ export const emailMarketingRouter = router({
       htmlBody: z.string().min(1),
       recipients: z.array(z.object({
         email: z.string().email(),
-        name: z.string().optional(),
+        name: z.string().max(100).optional(),
       })).min(1).max(50),
       attachments: z.array(z.object({
         filename: z.string().min(1).max(255),
@@ -615,6 +615,7 @@ export const emailMarketingRouter = router({
       // Atendente comum só dispara para e-mail CONFIRMADO de tarefa PRÓPRIA (mesma
       // definição de tasks.emailConfirmed usada em addRecipientsFromTasks), com teto diário.
       let allowedOwn: Set<string> | null = null;
+      const selfConfirmedToday = new Set<string>();
       if (!isStaff) {
         const [{ total }] = await db.select({ total: sql<number>`coalesce(sum(${emailCampaigns.totalRecipients}), 0)::int` })
           .from(emailCampaigns)
@@ -623,9 +624,16 @@ export const emailMarketingRouter = router({
           throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: `Limite diário de ${ATTENDANT_BROADCAST_DAILY_LIMIT} destinatários no Disparo Rápido atingido.` });
         }
         const mine = await userTaskFilter(ctx.user.id, ctx.user.name ?? '');
-        const own = await db.select({ email: tasks.email }).from(tasks)
+        const own = await db.select({ email: tasks.email, at: tasks.emailConfirmedAt, by: tasks.emailConfirmedBy }).from(tasks)
           .where(and(mine, eq(tasks.emailConfirmed, true), isNotNull(tasks.email)));
         allowedOwn = new Set(own.map(t => (t.email ?? '').toLowerCase().trim()));
+        // DECISÃO DE PRODUTO PENDENTE (dono): hoje o atendente pode disparar para um e-mail que ELE MESMO
+        // confirmou (digitou) no mesmo dia. Não mudamos a regra; só registramos para o dono decidir com dados.
+        const euMesmo = new Set([ctx.user.name, ctx.user.email].filter((v): v is string => !!v));
+        const hoje = spMidnight();
+        for (const t of own) {
+          if (t.at && t.at >= hoje && t.by && euMesmo.has(t.by)) selfConfirmedToday.add((t.email ?? '').toLowerCase().trim());
+        }
       }
 
       const suppressed = await db.select({ email: emailSuppressions.email }).from(emailSuppressions);
@@ -640,6 +648,12 @@ export const emailMarketingRouter = router({
         clean.push({ email, name: r.name?.trim() || undefined });
       }
       if (clean.length === 0) throw new TRPCError({ code: 'BAD_REQUEST', message: allowedOwn ? 'Nenhum destinatário válido. Só é possível enviar para e-mails confirmados das suas próprias tarefas.' : 'Nenhum destinatário válido.' });
+
+      if (selfConfirmedToday.size > 0) {
+        const n = clean.filter(r => selfConfirmedToday.has(r.email)).length;
+        // Log estruturado: só o id do usuário e a contagem (nenhum e-mail/nome).
+        if (n > 0) console.warn(JSON.stringify({ evt: 'broadcast_self_confirmed_same_day', userId: ctx.user.id, count: n, of: clean.length }));
+      }
 
       const [campaign] = await db.insert(emailCampaigns).values({
         name: `Disparo ${seller.name} — ${new Date().toLocaleDateString('pt-BR')}`,
@@ -842,7 +856,7 @@ export const emailMarketingRouter = router({
         if (seller?.sigOn && seller.sig) signatureHtml = renderSignature(seller.sig, seller);
       } catch { /* assinatura é opcional */ }
 
-      const html = layout(renderTemplate(cleanBody, { nome: ctx.user.name, unsubscribe: unsubUrl }), unsubUrl, signatureHtml);
+      const html = layout(renderTemplateHtml(cleanBody, { nome: ctx.user.name, unsubscribe: unsubUrl }), unsubUrl, signatureHtml);
       const renderedSubject = `[TESTE] ${renderTemplate(subject, { nome: ctx.user.name })}`;
 
       // Reserva 1 slot na cascata de contas (conta na cota diária — honesto).

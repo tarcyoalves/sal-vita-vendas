@@ -781,12 +781,42 @@ async function sendBatchBrevo(account: MarketingAccount, messages: BatchMessage[
 
 export { sanitizeCampaignHtml, sanitizeUntrustedHtml, isAllowedAttachmentName } from '../lib/emailSanitize';
 
-/** Replaces {nome}, {empresa}, {unsubscribe} placeholders in a template string. */
+/** Replaces {nome}, {empresa}, {unsubscribe} placeholders in a template string. Texto puro: assunto, etc.
+ *  NÃO escapa HTML — para corpo de e-mail HTML use `renderTemplateHtml`. */
 export function renderTemplate(text: string, vars: { nome?: string; empresa?: string; unsubscribe?: string }): string {
   return text
-    .replace(/\{nome\}/g, vars.nome || '')
-    .replace(/\{empresa\}/g, vars.empresa || '')
-    .replace(/\{unsubscribe\}/g, vars.unsubscribe || '#');
+    .replace(/\{nome\}/g, () => vars.nome || '')
+    .replace(/\{empresa\}/g, () => vars.empresa || '')
+    .replace(/\{unsubscribe\}/g, () => vars.unsubscribe || '#');
+}
+
+/** Escapa HTML (inclusive aspas, para valores em atributos). */
+export function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/** O corpo já é HTML estruturado (template com <p>, <table>...)? Mesmo critério de bodyToHtml. */
+function corpoJaEhHtml(text: string): boolean {
+  return /<(br|p|div|table|ul|ol|h[1-6])[\s>\/]/i.test((text || '').trim());
+}
+
+/**
+ * Como renderTemplate, mas para o CORPO HTML do e-mail: os valores vindos de dados (nome, empresa) nunca
+ * viram HTML. O `{unsubscribe}` é URL montada pelo servidor e não é escapado.
+ * - Template HTML estruturado: os valores entram já escapados (bodyToHtml deixa o HTML como está).
+ * - Template em texto puro: o texto é montado com os valores crus e convertido por bodyToHtml em modo
+ *   texto (que escapa uma única vez). Converter ANTES evita que um nome com "<p>" faça o corpo
+ *   ser reclassificado como HTML depois da substituição, e evita escapar duas vezes.
+ */
+export function renderTemplateHtml(text: string, vars: { nome?: string; empresa?: string; unsubscribe?: string }): string {
+  if (corpoJaEhHtml(text)) {
+    return renderTemplate(text, {
+      nome: escapeHtml(vars.nome ?? ''),
+      empresa: escapeHtml(vars.empresa ?? ''),
+      unsubscribe: vars.unsubscribe,
+    });
+  }
+  return bodyToHtml(renderTemplate(text, vars), { forcarTexto: true });
 }
 
 /**
@@ -799,12 +829,12 @@ export function renderTemplate(text: string, vars: { nome?: string; empresa?: st
  * HTML and auto-linking URLs. If the body already contains block-level HTML
  * (a real HTML template), it is left untouched.
  */
-export function bodyToHtml(text: string): string {
+export function bodyToHtml(text: string, opts: { forcarTexto?: boolean } = {}): string {
   const trimmed = (text || '').trim();
   if (!trimmed) return '';
 
-  // Already HTML (template with block-level structure)? Leave as-is.
-  if (/<(br|p|div|table|ul|ol|h[1-6])[\s>\/]/i.test(trimmed)) return trimmed;
+  // Already HTML (template with block-level structure)? Leave as-is (salvo forcarTexto: texto montado com dados).
+  if (!opts.forcarTexto && /<(br|p|div|table|ul|ol|h[1-6])[\s>\/]/i.test(trimmed)) return trimmed;
 
   const escape = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
