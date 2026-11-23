@@ -1,4 +1,5 @@
 import { useAuth } from '../_core/hooks/useAuth';
+import { EVENTO_VER_ATRASADAS } from '../_core/hooks/useReminderNotifications';
 import { Link } from 'wouter';
 import { trpc } from '../lib/trpc';
 import { Button } from '../components/ui/button';
@@ -465,49 +466,25 @@ export default function Tasks() {
     prevContactsRef.current = cur;
   }, [dailyProgress?.contacts, isAdmin, sellerProfile?.dailyGoal]);
 
-  // ─── 1. NOTIFICAÇÕES DE LEMBRETE NO HORÁRIO EXATO ──────────────────────────
-  // Agenda setTimeout para cada tarefa com lembrete nas próximas 4h.
-  // Dispara Notification API nativa — zero custo de servidor.
-  const scheduledRemindersRef = useRef<Set<number>>(new Set());
+  // ─── 1. NOTIFICAÇÕES DE LEMBRETE ───────────────────────────────────────────
+  // Os alertas (na hora, 5 min antes, atrasadas) moram em _core/hooks/useReminderNotifications.ts, uma vez só.
+  // Aqui fica apenas o estado da permissão, para o botão "Ativar" abaixo (sem gesto o iOS ignora o pedido).
   const [notifPerm, setNotifPerm] = useState<NotificationPermission | 'unsupported'>(
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
+
+  // "Ver atrasadas" no aviso agrupado: abre a aba de atrasadas (?aba=atrasadas na chegada, evento se já estiver aqui).
   useEffect(() => {
-    if (isAdmin || !('Notification' in window)) return;
-    // Permissão só pelo botão "Ativar" abaixo (sem gesto o iOS ignora o pedido).
-    if (notifPerm !== 'granted') return;
-
-    const now = Date.now();
-    const fourHours = 4 * 3600_000;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-
-    (tasks as any[]).forEach((t: any) => {
-      if (!t.reminderDate || t.reminderEnabled === false || t.status !== 'pending') return;
-      if (scheduledRemindersRef.current.has(t.id)) return; // já agendado
-      const fireAt = new Date(t.reminderDate).getTime();
-      const delay  = fireAt - now;
-      if (delay <= 0 || delay > fourHours) return; // só agenda os próximos 4h
-
-      scheduledRemindersRef.current.add(t.id);
-      timers.push(setTimeout(() => {
-        const opts = { body: t.title, icon: '/favicon.ico', tag: `reminder-${t.id}` };
-        // Android/PWA só mostra notificação pelo service worker; `new Notification` lança lá.
-        const nativa = () => { try { new Notification('Lembrete Sal Vita', opts); } catch { /* sem suporte */ } };
-        if (navigator.serviceWorker?.controller) {
-          navigator.serviceWorker.ready.then((r) => r.showNotification('Lembrete Sal Vita', opts)).catch(nativa);
-        } else {
-          nativa();
-        }
-        scheduledRemindersRef.current.delete(t.id);
-      }, delay));
-    });
-
-    return () => {
-      timers.forEach(clearTimeout);
-      // Timers cancelados: o próximo efeito precisa poder reagendar os mesmos ids.
-      scheduledRemindersRef.current.clear();
+    const abrir = () => {
+      setReminderTab("overdue");
+      setSearchQuery("");
+      const q = new URLSearchParams(window.location.search);
+      if (q.get('aba')) { q.delete('aba'); const resto = q.toString(); window.history.replaceState(null, '', window.location.pathname + (resto ? `?${resto}` : '')); }
     };
-  }, [tasks, isAdmin, notifPerm]);
+    if (new URLSearchParams(window.location.search).get('aba') === 'atrasadas') abrir();
+    window.addEventListener(EVENTO_VER_ATRASADAS, abrir);
+    return () => window.removeEventListener(EVENTO_VER_ATRASADAS, abrir);
+  }, []);
 
   // ─── 2. ALERTA DE OCIOSIDADE ───────────────────────────────────────────────
   // A cada 15 min verifica se o atendente ainda não registrou nenhum contato.

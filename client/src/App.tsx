@@ -124,7 +124,7 @@ function Router() {
 
 function NotificationManager() {
   const { isAuthenticated, user } = useAuth();
-  useReminderNotifications(isAuthenticated, user?.name ?? '', user?.role === 'admin');
+  useReminderNotifications(isAuthenticated, user?.name ?? '', user?.role === 'admin', user?.id);
   return null;
 }
 
