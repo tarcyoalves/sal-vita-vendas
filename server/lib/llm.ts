@@ -1,7 +1,7 @@
-// Chamada de LLM com a mesma cadeia de fallback do chat (server/routers/ai.ts),
-// reutilizável por outros routers (hoje: o Radar de Cargas).
+// Cadeia de provedores de LLM: usada pelo chat/análises do CRM (server/routers/ai.ts, via server/lib/aiChain.ts)
+// e por outros routers (hoje: o Radar de Cargas).
 //
-// Cadeia: antigravity (opcional, endpoint do dono na VPS) → Groq → Cerebras →
+// Cadeia: antigravity02 → antigravity (opcionais, endpoints do dono) → Groq → Cerebras →
 // OpenRouter → NVIDIA. `antigravity` só entra quando as 3 variáveis estiverem
 // configuradas; sem elas, o comportamento é idêntico ao de hoje.
 export interface LlmMessage {
@@ -21,24 +21,23 @@ export interface LlmProviderConfig {
   model: string;
 }
 
-// Mesmas URLs e modelos padrão de server/routers/ai.ts — não duplicar sem motivo,
-// mas os dois arquivos não podem se importar um ao outro (ai.ts é o router; este
-// módulo é usado por outros routers), então o valor fica replicado aqui de propósito.
-const BASE_URLS: Record<string, string> = {
+// URLs e modelos padrão dos provedores. Fonte única: server/routers/ai.ts (via server/lib/aiChain.ts)
+// importa daqui, então o chat do CRM e os demais usos têm a MESMA cadeia.
+export const PROVIDER_BASE_URLS: Record<string, string> = {
   groq: 'https://api.groq.com/openai/v1',
   cerebras: 'https://api.cerebras.ai/v1',
   openrouter: 'https://openrouter.ai/api/v1',
   nvidia: 'https://integrate.api.nvidia.com/v1',
 };
 
-const DEFAULT_MODELS: Record<string, string> = {
+export const DEFAULT_MODELS: Record<string, string> = {
   groq: 'llama-3.3-70b-versatile',
   cerebras: 'gpt-oss-120b',
   openrouter: 'meta-llama/llama-3.3-70b-instruct:free',
   nvidia: 'meta/llama-3.3-70b-instruct',
 };
 
-function modelFor(provider: string, env: Record<string, string | undefined>): string {
+export function modelFor(provider: string, env: Record<string, string | undefined>): string {
   return env[`${provider.toUpperCase()}_MODEL`] || DEFAULT_MODELS[provider];
 }
 
@@ -98,7 +97,7 @@ export function buildProviderChain(env: Record<string, string | undefined>): Llm
     if (!r.apiKey) continue;
     chain.push({
       provider: r.provider,
-      baseURL: BASE_URLS[r.provider],
+      baseURL: PROVIDER_BASE_URLS[r.provider],
       apiKey: r.apiKey,
       model: modelFor(r.provider, env),
     });

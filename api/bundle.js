@@ -240750,6 +240750,14 @@ function isNewContact(prevNotes, newNotes) {
   return novo.length > 15 && novo !== normalizar(prevNotes);
 }
 
+// server/lib/taskTextoVazio.ts
+function camposVaziosParaIgnorar(entrada, atual) {
+  const ignorar = [];
+  if (entrada.notes === "" && !entrada.limparNotas && (atual?.notes ?? "") !== "") ignorar.push("notes");
+  if (entrada.description === "" && !entrada.limparDescricao && (atual?.description ?? "") !== "") ignorar.push("description");
+  return ignorar;
+}
+
 // server/lib/emailDoWhatsapp.ts
 init_zod();
 init_blockedEmailDomains();
@@ -241211,6 +241219,10 @@ var tasksRouter = router({
     title: external_exports.string().trim().min(1, "T\xEDtulo n\xE3o pode ficar vazio").max(500).optional(),
     description: external_exports.string().max(2e3).optional(),
     notes: external_exports.string().max(5e3).optional(),
+    // Sinal explícito de que o usuário apagou de propósito um texto que estava carregado. Sem ele,
+    // `notes`/`description` vazios não sobrescrevem texto existente (ver server/lib/taskTextoVazio.ts).
+    limparNotas: external_exports.boolean().optional(),
+    limparDescricao: external_exports.boolean().optional(),
     email: external_exports.string().email().max(200).optional().or(external_exports.literal("")),
     tags: external_exports.array(external_exports.string()).optional(),
     reminderDate: external_exports.date().optional().nullable(),
@@ -241223,8 +241235,14 @@ var tasksRouter = router({
     // mexem no e-mail, o campo vem `undefined` e a confirmação não é tocada.
     emailConfirmed: external_exports.boolean().optional()
   })).mutation(async ({ input, ctx }) => {
-    const { id: id2, emailConfirmed, ...data2 } = input;
+    const { id: id2, emailConfirmed, limparNotas, limparDescricao, ...data2 } = input;
     const ownerFilter = ctx.user.role === "admin" ? eq(tasks.id, id2) : and(eq(tasks.id, id2), await userTaskFilter(ctx.user.id, ctx.user.name ?? ""));
+    if (data2.notes === "" || data2.description === "") {
+      const [atual] = await db.select({ notes: tasks.notes, description: tasks.description }).from(tasks).where(ownerFilter).limit(1);
+      for (const campo2 of camposVaziosParaIgnorar({ notes: data2.notes, description: data2.description, limparNotas, limparDescricao }, atual)) {
+        delete data2[campo2];
+      }
+    }
     const now = /* @__PURE__ */ new Date();
     const setData = { ...data2, updatedAt: now };
     if (data2.assignedTo !== void 0) {
@@ -241924,6 +241942,246 @@ function verificarTokenReagendamento(token, lote, requisicaoAtual, segredo, agor
   return { ok: true };
 }
 
+// server/lib/llm.ts
+var PROVIDER_BASE_URLS = {
+  groq: "https://api.groq.com/openai/v1",
+  cerebras: "https://api.cerebras.ai/v1",
+  openrouter: "https://openrouter.ai/api/v1",
+  nvidia: "https://integrate.api.nvidia.com/v1"
+};
+var DEFAULT_MODELS = {
+  groq: "llama-3.3-70b-versatile",
+  cerebras: "gpt-oss-120b",
+  openrouter: "meta-llama/llama-3.3-70b-instruct:free",
+  nvidia: "meta/llama-3.3-70b-instruct"
+};
+function modelFor(provider, env) {
+  return env[`${provider.toUpperCase()}_MODEL`] || DEFAULT_MODELS[provider];
+}
+function codigoDoErro(corpo2) {
+  try {
+    const j = JSON.parse(corpo2);
+    const e4 = typeof j.error === "object" && j.error ? j.error : void 0;
+    const bruto = e4?.code ?? e4?.type ?? j.code;
+    const v4 = typeof bruto === "string" || typeof bruto === "number" ? String(bruto) : "";
+    return /^[A-Za-z0-9_.-]{1,60}$/.test(v4) ? v4 : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function buildProviderChain(env) {
+  const chain = [];
+  const { ANTIGRAVITY02_BASE_URL, ANTIGRAVITY02_API_KEY, ANTIGRAVITY02_MODEL } = env;
+  if (ANTIGRAVITY02_BASE_URL && ANTIGRAVITY02_API_KEY && ANTIGRAVITY02_MODEL) {
+    chain.push({
+      provider: "antigravity02",
+      baseURL: ANTIGRAVITY02_BASE_URL.replace(/\/+$/, ""),
+      apiKey: ANTIGRAVITY02_API_KEY,
+      model: ANTIGRAVITY02_MODEL
+    });
+  }
+  const { ANTIGRAVITY_BASE_URL, ANTIGRAVITY_API_KEY, ANTIGRAVITY_MODEL } = env;
+  if (ANTIGRAVITY_BASE_URL && ANTIGRAVITY_API_KEY && ANTIGRAVITY_MODEL) {
+    chain.push({
+      provider: "antigravity",
+      baseURL: ANTIGRAVITY_BASE_URL.replace(/\/+$/, ""),
+      apiKey: ANTIGRAVITY_API_KEY,
+      model: ANTIGRAVITY_MODEL
+    });
+  }
+  const rest = [
+    { provider: "groq", apiKey: env.GROQ_API_KEY },
+    { provider: "cerebras", apiKey: env.CEREBRAS_API_KEY },
+    { provider: "openrouter", apiKey: env.OPENROUTER_API_KEY },
+    { provider: "nvidia", apiKey: env.NVIDIA_API_KEY }
+  ];
+  for (const r5 of rest) {
+    if (!r5.apiKey) continue;
+    chain.push({
+      provider: r5.provider,
+      baseURL: PROVIDER_BASE_URLS[r5.provider],
+      apiKey: r5.apiKey,
+      model: modelFor(r5.provider, env)
+    });
+  }
+  return chain;
+}
+async function fetchWithTimeout(url3, opts2, ms4) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms4);
+  try {
+    return await fetch(url3, { ...opts2, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function isRetryable(err) {
+  return err?.status !== 400;
+}
+async function callOnce(cfg, messages, opts2) {
+  const res = await fetchWithTimeout(`${cfg.baseURL}/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: cfg.model,
+      messages,
+      max_tokens: opts2.maxTokens,
+      temperature: opts2.temperature
+    })
+  }, opts2.timeoutMs);
+  if (!res.ok) {
+    const text2 = await res.text().catch(() => "");
+    const err = new Error(`LLM API ${res.status}: ${text2.slice(0, 300)}`);
+    err.status = res.status;
+    err.codigo = codigoDoErro(text2);
+    throw err;
+  }
+  const data2 = await res.json();
+  return data2?.choices?.[0]?.message?.content ?? "";
+}
+async function completeWithFallback(messages, opts2 = {}) {
+  const chain = buildProviderChain(process.env);
+  if (chain.length === 0) {
+    throw new Error(
+      "completeWithFallback: nenhum provedor de IA configurado (defina GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY ou os 3 ANTIGRAVITY_* / ANTIGRAVITY02_*)"
+    );
+  }
+  const callOpts = {
+    maxTokens: opts2.maxTokens ?? 800,
+    temperature: opts2.temperature ?? 0.7,
+    timeoutMs: opts2.timeoutMs ?? 3e4
+  };
+  const label = opts2.label ?? "LLM_CHAIN";
+  let lastErr;
+  const falhas2 = [];
+  for (const cfg of chain) {
+    try {
+      const text2 = await callOnce(cfg, messages, callOpts);
+      return { text: text2, provider: cfg.provider };
+    } catch (err) {
+      lastErr = err;
+      const codigo = err?.codigo;
+      const status = err?.status ?? "rede";
+      console.warn(`[${label}] provedor ${cfg.provider} falhou (status ${status}${codigo ? `, c\xF3digo ${codigo}` : ""})`);
+      falhas2.push(`${cfg.provider}=${status}`);
+      if (!isRetryable(err)) throw err;
+    }
+  }
+  console.warn(`[${label}] cadeia inteira falhou: ${falhas2.join(",")}`);
+  throw lastErr instanceof Error ? lastErr : new Error("completeWithFallback: todos os provedores falharam");
+}
+
+// server/lib/aiChain.ts
+init_dist();
+var AI_INDISPONIVEL = "A IA est\xE1 indispon\xEDvel agora. Avise o administrador.";
+var PRAZO_TOTAL_MS = 5e4;
+var TIMEOUT_POR_CHAMADA_MS = 3e4;
+var MAX_RODADAS_FERRAMENTAS = 5;
+var MIN_RESTANTE_MS = 1e3;
+function novoPrazo(totalMs) {
+  const fim = Date.now() + totalMs;
+  return { restanteMs: () => fim - Date.now() };
+}
+function erroComStatus(mensagem, status, codigo) {
+  const err = new Error(mensagem);
+  err.status = status;
+  err.codigo = codigo;
+  return err;
+}
+function timeoutDaChamada(prazo) {
+  const r5 = prazo.restanteMs();
+  if (r5 < MIN_RESTANTE_MS) throw erroComStatus("prazo total da IA esgotado");
+  return Math.min(TIMEOUT_POR_CHAMADA_MS, r5);
+}
+async function postar(cfg, body, ms4) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms4);
+  try {
+    const res = await fetch(`${cfg.baseURL}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: cfg.model, ...body }),
+      signal: ctrl.signal
+    });
+    if (!res.ok) {
+      const t5 = await res.text().catch(() => "");
+      throw erroComStatus(`LLM API ${res.status}: ${t5.slice(0, 300)}`, res.status, codigoDoErro(t5));
+    }
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function chamarLLM(cfg, prazo, messages, maxTokens = 800, temperature = 0.7) {
+  const data2 = await postar(cfg, { messages, max_tokens: maxTokens, temperature }, timeoutDaChamada(prazo));
+  return data2?.choices?.[0]?.message?.content ?? "Sem resposta da IA.";
+}
+async function chamarComFerramentas(cfg, prazo, messages, tools, op) {
+  const maxTokens = op.maxTokens ?? 1e3;
+  const maxRodadas = op.maxRodadas ?? MAX_RODADAS_FERRAMENTAS;
+  try {
+    let msgs = messages;
+    for (let rodada = 0; ; rodada++) {
+      const comTools = tools.length > 0 && rodada < maxRodadas;
+      const body = { messages: msgs, max_tokens: maxTokens, temperature: 0.4 };
+      if (comTools) {
+        body.tools = tools;
+        body.parallel_tool_calls = false;
+      }
+      const data2 = await postar(cfg, body, timeoutDaChamada(prazo));
+      const msg = data2?.choices?.[0]?.message;
+      if (!msg) return "Sem resposta da IA.";
+      if (comTools && msg.tool_calls?.length) {
+        const novas = [...msgs, msg];
+        for (const tc of msg.tool_calls) {
+          let args = {};
+          try {
+            args = JSON.parse(tc.function?.arguments ?? "{}");
+          } catch {
+          }
+          const resultado = op.permitida(tc.function?.name) ? await op.executar(tc.function.name, args) : { error: "Ferramenta n\xE3o permitida." };
+          novas.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(resultado) });
+        }
+        msgs = novas;
+        continue;
+      }
+      return msg.content ?? "Sem resposta.";
+    }
+  } catch (err) {
+    if (err?.status === 400 && tools.length > 0) {
+      console.warn(`[AI] provedor ${cfg.provider} devolveu 400 com ferramentas \u2014 repetindo sem ferramentas`);
+      return chamarLLM(cfg, prazo, messages, maxTokens, 0.4);
+    }
+    throw err;
+  }
+}
+function cadeiaConfigurada(env = process.env) {
+  return buildProviderChain(env).length > 0;
+}
+async function executarNaCadeia(fn, op) {
+  let chain = buildProviderChain(op.env ?? process.env);
+  if (op.primeiro) chain = [op.primeiro, ...chain.filter((c4) => c4.provider !== op.primeiro.provider)];
+  const prazo = novoPrazo(op.prazoMs ?? PRAZO_TOTAL_MS);
+  const falhas2 = [];
+  for (const base of chain) {
+    if (prazo.restanteMs() < MIN_RESTANTE_MS) {
+      falhas2.push(`${base.provider}=prazo`);
+      continue;
+    }
+    const cfg = op.ajustar ? op.ajustar(base) : base;
+    try {
+      return { text: await fn(cfg, prazo), provider: cfg.provider };
+    } catch (err) {
+      const codigo = err?.codigo;
+      const status = err?.status ?? "rede";
+      console.warn(`[${op.label}] provedor ${cfg.provider} falhou (status ${status}${codigo ? `, c\xF3digo ${codigo}` : ""})`);
+      falhas2.push(`${cfg.provider}=${status}`);
+    }
+  }
+  console.warn(`[${op.label}] cadeia inteira falhou: ${falhas2.join(",") || "nenhum provedor configurado"}`);
+  throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: AI_INDISPONIVEL });
+}
+
 // server/lib/workHours.ts
 var SIGNAL_EPSILON_MS = 6e4;
 var STALE_SIGNAL_MS = 25 * 6e4;
@@ -241986,31 +242244,14 @@ function closeSessionValues(s4, now) {
 
 // server/routers/ai.ts
 var BASE_URLS = {
-  groq: "https://api.groq.com/openai/v1",
+  ...PROVIDER_BASE_URLS,
   openai: "https://api.openai.com/v1",
-  anthropic: "https://api.anthropic.com/v1",
-  cerebras: "https://api.cerebras.ai/v1",
-  openrouter: "https://openrouter.ai/api/v1",
-  nvidia: "https://integrate.api.nvidia.com/v1"
+  anthropic: "https://api.anthropic.com/v1"
 };
-function baseURLFor(provider) {
-  if (provider === "antigravity") return process.env.ANTIGRAVITY_BASE_URL?.replace(/\/+$/, "");
-  return BASE_URLS[provider];
-}
-var DEFAULT_MODELS = {
-  groq: "llama-3.3-70b-versatile",
-  openai: "gpt-3.5-turbo",
-  anthropic: "claude-3-haiku-20240307",
-  cerebras: "gpt-oss-120b",
-  openrouter: "meta-llama/llama-3.3-70b-instruct:free",
-  nvidia: "meta/llama-3.3-70b-instruct"
-};
-function modelFor(provider) {
-  if (provider === "antigravity") return process.env.ANTIGRAVITY_MODEL || DEFAULT_MODELS.groq;
-  return process.env[`${provider.toUpperCase()}_MODEL`] || DEFAULT_MODELS[provider] || DEFAULT_MODELS.groq;
-}
 var CHAT_COOLDOWN_MS = 2500;
 var lastChatAt = /* @__PURE__ */ new Map();
+var SUGGEST_COOLDOWN_MS = 3e3;
+var lastSuggestAt = /* @__PURE__ */ new Map();
 var ANALYZE_CACHE_TTL_MS = 15 * 60 * 1e3;
 var analyzeCache = null;
 var SHORT_CACHE_TTL_MS = 10 * 60 * 1e3;
@@ -242031,7 +242272,7 @@ function shortCacheSet(key, data2) {
 function addMinutes(d3, mins) {
   return new Date(d3.getTime() + mins * 6e4);
 }
-async function fetchWithTimeout(url3, opts2, ms4 = 3e4) {
+async function fetchWithTimeout2(url3, opts2, ms4 = 3e4) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms4);
   try {
@@ -242040,44 +242281,8 @@ async function fetchWithTimeout(url3, opts2, ms4 = 3e4) {
     clearTimeout(timer);
   }
 }
-async function callLLMWithTools(apiKey, baseURL, model, messages, tools, maxTokens = 1e3, callerUserId) {
-  const requisicaoId = novaRequisicaoId();
-  const loop = async (msgs) => {
-    const body = { model, messages: msgs, max_tokens: maxTokens, temperature: 0.4, parallel_tool_calls: false };
-    if (tools.length) body.tools = tools;
-    const res = await fetchWithTimeout(`${baseURL}/chat/completions`, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) {
-      const t5 = await res.text().catch(() => "");
-      const err = new Error(`LLM API ${res.status}: ${t5.slice(0, 300)}`);
-      err.status = res.status;
-      throw err;
-    }
-    const data2 = await res.json();
-    const msg = data2?.choices?.[0]?.message;
-    if (!msg) return "Sem resposta da IA.";
-    if (msg.tool_calls?.length) {
-      const newMsgs = [...msgs, msg];
-      for (const tc of msg.tool_calls) {
-        let args = {};
-        try {
-          args = JSON.parse(tc.function.arguments ?? "{}");
-        } catch {
-        }
-        const result = isToolAllowed(tc.function.name, tools) ? await executeTool(tc.function.name, args, callerUserId, requisicaoId) : { error: "Ferramenta n\xE3o permitida." };
-        newMsgs.push({ role: "tool", tool_call_id: tc.id, content: JSON.stringify(result) });
-      }
-      return loop(newMsgs);
-    }
-    return msg.content ?? "Sem resposta.";
-  };
-  return loop(messages);
-}
 async function callLLM(apiKey, baseURL, model, messages, maxTokens = 800, temperature = 0.7) {
-  const res = await fetchWithTimeout(`${baseURL}/chat/completions`, {
+  const res = await fetchWithTimeout2(`${baseURL}/chat/completions`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature })
@@ -242090,59 +242295,6 @@ async function callLLM(apiKey, baseURL, model, messages, maxTokens = 800, temper
   }
   const data2 = await res.json();
   return data2?.choices?.[0]?.message?.content ?? "Sem resposta da IA.";
-}
-function isRateLimit(err) {
-  return err?.status === 429 || /429|rate.?limit|quota/i.test(err?.message ?? "");
-}
-function isRetryable(err) {
-  return err?.status !== 400;
-}
-function antigravityConfigured() {
-  return !!(process.env.ANTIGRAVITY_BASE_URL && process.env.ANTIGRAVITY_API_KEY && process.env.ANTIGRAVITY_MODEL);
-}
-function envKeyFor(provider) {
-  if (provider === "antigravity") return antigravityConfigured() ? process.env.ANTIGRAVITY_API_KEY : void 0;
-  if (provider === "groq") return process.env.GROQ_API_KEY;
-  if (provider === "cerebras") return process.env.CEREBRAS_API_KEY;
-  if (provider === "openrouter") return process.env.OPENROUTER_API_KEY;
-  if (provider === "nvidia") return process.env.NVIDIA_API_KEY;
-  return void 0;
-}
-function defaultProvider() {
-  if (antigravityConfigured()) return "antigravity";
-  if (process.env.GROQ_API_KEY) return "groq";
-  if (process.env.CEREBRAS_API_KEY) return "cerebras";
-  if (process.env.OPENROUTER_API_KEY) return "openrouter";
-  if (process.env.NVIDIA_API_KEY) return "nvidia";
-  return "groq";
-}
-function getFallbackChain(primaryProvider) {
-  const candidates = [
-    { provider: "antigravity", apiKey: antigravityConfigured() ? process.env.ANTIGRAVITY_API_KEY : void 0 },
-    { provider: "groq", apiKey: process.env.GROQ_API_KEY },
-    { provider: "cerebras", apiKey: process.env.CEREBRAS_API_KEY },
-    { provider: "openrouter", apiKey: process.env.OPENROUTER_API_KEY },
-    { provider: "nvidia", apiKey: process.env.NVIDIA_API_KEY }
-  ];
-  return candidates.filter((c4) => c4.provider !== primaryProvider && c4.apiKey).map((c4) => ({ provider: c4.provider, apiKey: c4.apiKey, baseURL: baseURLFor(c4.provider), model: modelFor(c4.provider) }));
-}
-async function callWithFallback(primaryProvider, primaryApiKey, primaryBaseURL, primaryModel, fn, logLabel) {
-  try {
-    return await fn(primaryApiKey, primaryBaseURL, primaryModel);
-  } catch (primaryErr) {
-    if (!isRetryable(primaryErr)) throw primaryErr;
-    let lastErr = primaryErr;
-    for (const fb of getFallbackChain(primaryProvider)) {
-      try {
-        console.warn(`[${logLabel}] ${primaryProvider} failed (${primaryErr?.status ?? "network"}) \u2014 trying ${fb.provider}`);
-        return await fn(fb.apiKey, fb.baseURL, fb.model);
-      } catch (fbErr) {
-        lastErr = fbErr;
-        if (!isRetryable(fbErr)) throw fbErr;
-      }
-    }
-    throw lastErr;
-  }
 }
 var TOOLS = [
   {
@@ -242774,13 +242926,9 @@ var aiRouter = router({
     }
     lastChatAt.set(ctx.user.id, Date.now());
     try {
-      const provider = defaultProvider();
-      const apiKey = envKeyFor(provider) || "";
-      const baseURL = baseURLFor(provider) ?? BASE_URLS.groq;
       const isAdmin = ctx.user.role === "admin";
-      const model = modelFor(provider);
       await db.insert(chatMessages).values({ userId: ctx.user.id, content: input.message, role: "user" });
-      if (!apiKey) {
+      if (!cadeiaConfigurada()) {
         const reply2 = "IA n\xE3o configurada. V\xE1 em Configura\xE7\xF5es \u2192 IA e adicione uma chave do Groq ou Cerebras (ambos gratuitos).";
         await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply2, role: "assistant" });
         return { reply: reply2 };
@@ -242822,29 +242970,22 @@ ${userContext}`;
         { role: "system", content: systemPrompt },
         ...history.reverse().map((m4) => ({ role: m4.role, content: m4.content }))
       ];
-      let reply;
-      try {
-        reply = await callWithFallback(
-          provider,
-          apiKey,
-          baseURL,
-          model,
-          (k3, b3, m4) => isAdmin ? callLLMWithTools(k3, b3, m4, messages, TOOLS, 1e3, ctx.user.id) : callLLMWithTools(k3, b3, m4, messages, ATTENDANT_TOOLS, 900, ctx.user.id),
-          "AI_CHAT"
-        );
-      } catch (primaryErr) {
-        if (primaryErr.status === 400) {
-          console.warn("[AI_CHAT] tool_use 400, retrying without tools");
-          reply = await callLLM(apiKey, baseURL, model, messages, 1e3, 0.4);
-        } else {
-          throw primaryErr;
-        }
-      }
+      const requisicaoId = novaRequisicaoId();
+      const tools = isAdmin ? TOOLS : ATTENDANT_TOOLS;
+      const { text: reply } = await executarNaCadeia(
+        (cfg, prazo) => chamarComFerramentas(cfg, prazo, messages, tools, {
+          maxTokens: isAdmin ? 1e3 : 900,
+          permitida: (nome) => isToolAllowed(nome, tools),
+          executar: (nome, args) => executeTool(nome, args, ctx.user.id, requisicaoId)
+        }),
+        { label: "AI_CHAT" }
+      );
       await db.insert(chatMessages).values({ userId: ctx.user.id, content: reply, role: "assistant" });
       return { reply };
     } catch (err) {
+      if (err instanceof TRPCError) throw err;
       console.error("[AI_CHAT_ERROR]", err?.message, "| status:", err?.status, "| stack:", err?.stack?.slice(0, 500));
-      throw new Error(isRateLimit(err) ? "A IA est\xE1 com muitas solicita\xE7\xF5es no momento. Tente novamente em instantes." : "N\xE3o foi poss\xEDvel obter resposta da IA agora. Tente novamente em instantes.");
+      throw new Error("N\xE3o foi poss\xEDvel obter resposta da IA agora. Tente novamente em instantes.");
     }
   }),
   analyzeAttendants: adminProcedure.input(external_exports.object({
@@ -242856,10 +242997,10 @@ ${userContext}`;
     if (!input?.forceRefresh && analyzeCache && Date.now() - analyzeCache.at < ANALYZE_CACHE_TTL_MS) {
       return { ...analyzeCache.data, cached: true, cachedAt: analyzeCache.at };
     }
-    const analyzeProvider = input?.provider ?? defaultProvider();
-    const apiKey = input?.apiKey || envKeyFor(analyzeProvider) || "";
-    const analyzeModel = modelFor(analyzeProvider);
-    if (!apiKey) return { report: [], summary: "IA n\xE3o configurada. V\xE1 em Configura\xE7\xF5es \u2192 IA e configure Groq (recomendado), Cerebras, OpenRouter ou NVIDIA." };
+    const primeiro3 = input?.apiKey && input.provider && PROVIDER_BASE_URLS[input.provider] ? { provider: input.provider, baseURL: PROVIDER_BASE_URLS[input.provider], apiKey: input.apiKey, model: modelFor(input.provider, process.env) } : void 0;
+    if (!primeiro3 && !cadeiaConfigurada()) {
+      throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: AI_INDISPONIVEL });
+    }
     const now = /* @__PURE__ */ new Date();
     const todayStart = spMidnight(now);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 864e5);
@@ -242982,13 +243123,9 @@ ${userContext}`;
     const reportText = report.map(
       (r5) => `${r5.name}: ${r5.total} clientes, ${r5.withReminder} com lembrete ativo, ${r5.overdue} vencidos, sem_anota\xE7\xE3o=${r5.noNotes}, desativados=${r5.disabledReminders}, sem_data=${r5.noReminderDate}, nunca_atualizado=${r5.neverUpdated}, status=${r5.status} | VENDAS: convertidos=${r5.convertedCount} (${r5.conversionRate}% taxa), media_contatos_p/_converter=${r5.avgContactsToConvert} | CHURN: ghost_clientes=${r5.ghostCount} (sem contato 30d+), reagendado_sem_contato=${r5.reschedNoContact} | FRAUDE: burst=${r5.hasBurst ? `SIM(${r5.burstMax} em 10min)` : "n\xE3o"} | QUALIDADE: media_nota=${r5.avgNoteLen}chars | ACESSO: hoje=[${r5.sessaoHoje}], dias_ativos_7d=${r5.diasAtivos7}, total_trabalhado_7d=${r5.totalTrabalhado7dias}, ultimo_acesso=${r5.ultimoAcesso} | flags=${r5.flags.join("; ") || "nenhuma"}`
     ).join("\n");
-    try {
-      const summary = await callWithFallback(
-        analyzeProvider,
-        apiKey,
-        baseURLFor(analyzeProvider),
-        analyzeModel,
-        (k3, b3, m4) => callLLM(k3, b3, m4, [
+    {
+      const { text: summary } = await executarNaCadeia(
+        (cfg, prazo) => chamarLLM(cfg, prazo, [
           {
             role: "system",
             content: `Voc\xEA \xE9 um analista s\xEAnior de desempenho de equipes de vendas B2B da empresa Sal Vita \u2014 Sal do Brasil.
@@ -243053,43 +243190,36 @@ ${reportText}
 Gere an\xE1lise COMPLETA com todas as 6 se\xE7\xF5es. Inclua TODOS os atendentes. N\xE3o encurte.`
           }
         ], 8e3, 0.3),
-        "ANALYZE"
+        { label: "ANALYZE", primeiro: primeiro3 }
       );
       analyzeCache = { at: Date.now(), data: { report, summary } };
       return { report, summary, cached: false };
-    } catch (err) {
-      console.error("[ANALYZE_ERROR]", err?.message);
-      return { report, summary: "An\xE1lise indispon\xEDvel no momento. Tente novamente em instantes." };
     }
   }),
-  suggestSalesApproach: protectedProcedure.input(external_exports.object({ title: external_exports.string().min(1), notes: external_exports.string() })).mutation(async ({ input }) => {
+  suggestSalesApproach: protectedProcedure.input(external_exports.object({ title: external_exports.string().min(1).max(300), notes: external_exports.string().max(5e3) })).mutation(async ({ input, ctx }) => {
     const cacheKey = "suggest:" + JSON.stringify({ title: input.title, notes: input.notes });
     const cached2 = shortCacheGet(cacheKey);
     if (cached2) return cached2;
-    const suggestProvider = defaultProvider();
-    const apiKey = envKeyFor(suggestProvider) || "";
-    if (!apiKey) return { suggestion: "IA n\xE3o configurada." };
-    try {
-      const suggestModel = suggestProvider === "groq" ? process.env.SUGGEST_MODEL || "llama-3.1-8b-instant" : modelFor(suggestProvider);
-      const suggestion = await callWithFallback(
-        suggestProvider,
-        apiKey,
-        baseURLFor(suggestProvider),
-        suggestModel,
-        (k3, b3, m4) => callLLM(k3, b3, m4, [
-          { role: "system", content: "Vendas B2B de sal. Sugira 1 abordagem pr\xE1tica em 2-3 frases. Direto, sem introdu\xE7\xE3o. Portugu\xEAs BR." },
-          { role: "user", content: `Cliente: ${input.title}
-Observa\xE7\xF5es: ${input.notes || "sem observa\xE7\xF5es"}` }
-        ], 150, 0.7),
-        "AI_SUGGEST"
-      );
-      const result = { suggestion };
-      shortCacheSet(cacheKey, result);
-      return result;
-    } catch (err) {
-      console.error("[AI_SUGGEST_ERROR]", err?.message);
-      return { suggestion: "Erro ao gerar sugest\xE3o. Tente novamente em instantes." };
+    const lastAt = lastSuggestAt.get(ctx.user.id) ?? 0;
+    const elapsed = Date.now() - lastAt;
+    if (elapsed < SUGGEST_COOLDOWN_MS) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `Aguarde ${Math.ceil((SUGGEST_COOLDOWN_MS - elapsed) / 1e3)}s antes de pedir outra sugest\xE3o.` });
     }
+    lastSuggestAt.set(ctx.user.id, Date.now());
+    const { text: suggestion } = await executarNaCadeia(
+      (cfg, prazo) => chamarLLM(cfg, prazo, [
+        { role: "system", content: "Vendas B2B de sal. Sugira 1 abordagem pr\xE1tica em 2-3 frases. Direto, sem introdu\xE7\xE3o. Portugu\xEAs BR." },
+        { role: "user", content: `Cliente: ${input.title}
+Observa\xE7\xF5es: ${input.notes || "sem observa\xE7\xF5es"}` }
+      ], 150, 0.7),
+      {
+        label: "AI_SUGGEST",
+        ajustar: (cfg) => cfg.provider === "groq" ? { ...cfg, model: process.env.SUGGEST_MODEL || "llama-3.1-8b-instant" } : cfg
+      }
+    );
+    const result = { suggestion };
+    shortCacheSet(cacheKey, result);
+    return result;
   }),
   // ── E-mail Marketing: geração de copy sob demanda ───────────────────────────
   // Gera assunto(s) + corpo HTML a partir de um briefing curto. Sob demanda
@@ -243108,9 +243238,7 @@ Observa\xE7\xF5es: ${input.notes || "sem observa\xE7\xF5es"}` }
     });
     const cached2 = shortCacheGet(cacheKey);
     if (cached2) return cached2;
-    const provider = defaultProvider();
-    const apiKey = envKeyFor(provider) || "";
-    if (!apiKey) return { subjects: [], html: "", error: "IA n\xE3o configurada. Configure Groq ou Cerebras em Configura\xE7\xF5es \u2192 IA." };
+    if (!cadeiaConfigurada()) return { subjects: [], html: "", error: "IA n\xE3o configurada. Configure Groq ou Cerebras em Configura\xE7\xF5es \u2192 IA." };
     const toneMap = {
       cordial: "cordial e profissional",
       formal: "formal e respeitoso",
@@ -243148,16 +243276,12 @@ ${input.currentHtml}`;
 ${input.brief}`;
     }
     try {
-      const raw = await callWithFallback(
-        provider,
-        apiKey,
-        baseURLFor(provider),
-        modelFor(provider),
-        (k3, b3, m4) => callLLM(k3, b3, m4, [
+      const { text: raw } = await executarNaCadeia(
+        (cfg, prazo) => chamarLLM(cfg, prazo, [
           { role: "system", content: sys },
           { role: "user", content: userMsg }
         ], 1200, 0.6),
-        "AI_EMAIL_COPY"
+        { label: "AI_EMAIL_COPY" }
       );
       const subjects = [];
       let html = "";
@@ -248325,9 +248449,13 @@ function failurePage() {
 var import_crypto14 = require("crypto");
 init_blockedEmailDomains();
 init_dist();
+init_cache2();
+var METRICS_CACHE_KEY = "premiumEmail:metrics";
+var METRICS_TTL_MS = 6e4;
 var premiumEmailMarketingRouter = router({
   // ── Dashboard Metrics & Quotas ────────────────────────────────────────────
-  getMetrics: premiumStaffProcedure.query(async () => {
+  // Resultado guardado por 60 s (a tela atualiza a cada 5 min); refreshMetrics limpa o cache para o botão "Atualizar".
+  getMetrics: premiumStaffProcedure.query(() => cached(METRICS_CACHE_KEY, METRICS_TTL_MS, async () => {
     const today2 = todayBrt();
     const currentMonth2 = today2.slice(0, 7);
     const accounts = getAccounts();
@@ -248393,6 +248521,10 @@ var premiumEmailMarketingRouter = router({
       totalSuppressions,
       totalContacts
     };
+  })),
+  refreshMetrics: premiumStaffProcedure.mutation(() => {
+    cacheInvalidate(METRICS_CACHE_KEY);
+    return { ok: true };
   }),
   // ── Audience Building Preview ──────────────────────────────────────────────
   previewAudience: premiumStaffProcedure.query(async () => {
@@ -339397,135 +339529,6 @@ function ufsSemBase(ufsDoRaio, porUf) {
   return [...new Set(ufsDoRaio.map((u4) => u4.toUpperCase()))].filter((u4) => !comBase.has(u4)).sort();
 }
 
-// server/lib/llm.ts
-var BASE_URLS2 = {
-  groq: "https://api.groq.com/openai/v1",
-  cerebras: "https://api.cerebras.ai/v1",
-  openrouter: "https://openrouter.ai/api/v1",
-  nvidia: "https://integrate.api.nvidia.com/v1"
-};
-var DEFAULT_MODELS2 = {
-  groq: "llama-3.3-70b-versatile",
-  cerebras: "gpt-oss-120b",
-  openrouter: "meta-llama/llama-3.3-70b-instruct:free",
-  nvidia: "meta/llama-3.3-70b-instruct"
-};
-function modelFor2(provider, env) {
-  return env[`${provider.toUpperCase()}_MODEL`] || DEFAULT_MODELS2[provider];
-}
-function codigoDoErro(corpo2) {
-  try {
-    const j = JSON.parse(corpo2);
-    const e4 = typeof j.error === "object" && j.error ? j.error : void 0;
-    const bruto = e4?.code ?? e4?.type ?? j.code;
-    const v4 = typeof bruto === "string" || typeof bruto === "number" ? String(bruto) : "";
-    return /^[A-Za-z0-9_.-]{1,60}$/.test(v4) ? v4 : void 0;
-  } catch {
-    return void 0;
-  }
-}
-function buildProviderChain(env) {
-  const chain = [];
-  const { ANTIGRAVITY02_BASE_URL, ANTIGRAVITY02_API_KEY, ANTIGRAVITY02_MODEL } = env;
-  if (ANTIGRAVITY02_BASE_URL && ANTIGRAVITY02_API_KEY && ANTIGRAVITY02_MODEL) {
-    chain.push({
-      provider: "antigravity02",
-      baseURL: ANTIGRAVITY02_BASE_URL.replace(/\/+$/, ""),
-      apiKey: ANTIGRAVITY02_API_KEY,
-      model: ANTIGRAVITY02_MODEL
-    });
-  }
-  const { ANTIGRAVITY_BASE_URL, ANTIGRAVITY_API_KEY, ANTIGRAVITY_MODEL } = env;
-  if (ANTIGRAVITY_BASE_URL && ANTIGRAVITY_API_KEY && ANTIGRAVITY_MODEL) {
-    chain.push({
-      provider: "antigravity",
-      baseURL: ANTIGRAVITY_BASE_URL.replace(/\/+$/, ""),
-      apiKey: ANTIGRAVITY_API_KEY,
-      model: ANTIGRAVITY_MODEL
-    });
-  }
-  const rest = [
-    { provider: "groq", apiKey: env.GROQ_API_KEY },
-    { provider: "cerebras", apiKey: env.CEREBRAS_API_KEY },
-    { provider: "openrouter", apiKey: env.OPENROUTER_API_KEY },
-    { provider: "nvidia", apiKey: env.NVIDIA_API_KEY }
-  ];
-  for (const r5 of rest) {
-    if (!r5.apiKey) continue;
-    chain.push({
-      provider: r5.provider,
-      baseURL: BASE_URLS2[r5.provider],
-      apiKey: r5.apiKey,
-      model: modelFor2(r5.provider, env)
-    });
-  }
-  return chain;
-}
-async function fetchWithTimeout2(url3, opts2, ms4) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms4);
-  try {
-    return await fetch(url3, { ...opts2, signal: ctrl.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-function isRetryable2(err) {
-  return err?.status !== 400;
-}
-async function callOnce(cfg, messages, opts2) {
-  const res = await fetchWithTimeout2(`${cfg.baseURL}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: cfg.model,
-      messages,
-      max_tokens: opts2.maxTokens,
-      temperature: opts2.temperature
-    })
-  }, opts2.timeoutMs);
-  if (!res.ok) {
-    const text2 = await res.text().catch(() => "");
-    const err = new Error(`LLM API ${res.status}: ${text2.slice(0, 300)}`);
-    err.status = res.status;
-    err.codigo = codigoDoErro(text2);
-    throw err;
-  }
-  const data2 = await res.json();
-  return data2?.choices?.[0]?.message?.content ?? "";
-}
-async function completeWithFallback(messages, opts2 = {}) {
-  const chain = buildProviderChain(process.env);
-  if (chain.length === 0) {
-    throw new Error(
-      "completeWithFallback: nenhum provedor de IA configurado (defina GROQ_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, NVIDIA_API_KEY ou os 3 ANTIGRAVITY_* / ANTIGRAVITY02_*)"
-    );
-  }
-  const callOpts = {
-    maxTokens: opts2.maxTokens ?? 800,
-    temperature: opts2.temperature ?? 0.7,
-    timeoutMs: opts2.timeoutMs ?? 3e4
-  };
-  const label = opts2.label ?? "LLM_CHAIN";
-  let lastErr;
-  const falhas2 = [];
-  for (const cfg of chain) {
-    try {
-      const text2 = await callOnce(cfg, messages, callOpts);
-      return { text: text2, provider: cfg.provider };
-    } catch (err) {
-      lastErr = err;
-      const codigo = err?.codigo;
-      const status = err?.status ?? "rede";
-      console.warn(`[${label}] provedor ${cfg.provider} falhou (status ${status}${codigo ? `, c\xF3digo ${codigo}` : ""})`);
-      falhas2.push(`${cfg.provider}=${status}`);
-      if (!isRetryable2(err)) throw err;
-    }
-  }
-  console.warn(`[${label}] cadeia inteira falhou: ${falhas2.join(",")}`);
-  throw lastErr instanceof Error ? lastErr : new Error("completeWithFallback: todos os provedores falharam");
-}
-
 // server/lib/radar/messageDraft.ts
 var MAX_MESSAGE_LENGTH = 700;
 var FORBIDDEN_TERMS = [
@@ -348067,6 +348070,7 @@ async function handleResendWebhook(req, res) {
   }
   const messageId = data2.email_id || data2.id;
   const recipientEmail = Array.isArray(data2.to) ? data2.to[0] : data2.to || data2.recipient;
+  let falhou = false;
   if (messageId && recipientEmail) {
     try {
       await ordersDb.execute(sql`
@@ -348075,16 +348079,38 @@ async function handleResendWebhook(req, res) {
       `);
     } catch (err) {
       console.error("[resend-webhook] Error inserting event:", safeErr(err));
+      falhou = true;
     }
   }
   if (type === "email.bounced" || type === "email.complained") {
     if (recipientEmail) {
       const reason = type === "email.bounced" ? "bounce" : "complaint";
-      await suppressEmailGlobal(recipientEmail, reason);
-      console.log(`[resend-webhook] Suppressed ${maskEmail(recipientEmail)} due to ${reason}`);
+      try {
+        const result = await suppressEmailGlobal(recipientEmail, reason);
+        if (result.primaryFailed) {
+          falhou = true;
+          console.error(`[resend-webhook] Suppression of ${maskEmail(recipientEmail)} failed in a primary table`);
+        } else {
+          console.log(`[resend-webhook] Suppressed ${maskEmail(recipientEmail)} due to ${reason}`);
+        }
+      } catch (err) {
+        falhou = true;
+        console.error("[resend-webhook] Suppression error:", safeErr(err));
+      }
     }
   }
+  if (falhou) return res.status(500).json({ error: "temporary failure" });
   return res.status(200).json({ received: true });
+}
+
+// server/lib/webhookResposta.ts
+init_logSafe();
+function responderFalhaTemporaria(res, label, err) {
+  console.error(`[${label}] error:`, safeErr(err));
+  if (!res.headersSent) res.status(500).json({ error: "temporary failure" });
+}
+function corpoIgnoravel(body) {
+  return body === null || typeof body !== "object" || Array.isArray(body);
 }
 
 // server/lib/trpcBatchGuard.ts
@@ -348272,10 +348298,15 @@ var unsubscribeFormatoMw = (req, res, next) => {
 };
 app.get("/api/unsubscribe", unsubscribeLimiter, unsubscribeFormatoMw, aguardarSchemasMw, handleUnsubscribe);
 app.post("/api/unsubscribe", unsubscribeLimiter, import_express3.default.urlencoded({ extended: false }), unsubscribeFormatoMw, aguardarSchemasMw, handleUnsubscribe);
-app.post("/api/resend-webhook", import_express3.default.raw({ type: "application/json" }), (req, res, next) => {
+app.post("/api/resend-webhook", import_express3.default.raw({ type: "application/json" }), async (req, res, next) => {
   const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
   if (process.env.RESEND_WEBHOOK_SECRET && verifySvixSignature(req, raw)) {
-    void garantirSchemas(SO_LOJA).then(() => handleResendWebhook(req, res));
+    try {
+      await garantirSchemas(SO_LOJA);
+      await handleResendWebhook(req, res);
+    } catch (err) {
+      responderFalhaTemporaria(res, "resend-webhook premium", err);
+    }
     return;
   }
   next();
@@ -348506,6 +348537,10 @@ app.post("/api/resend-webhook", resendWebhookLimiter, import_express3.default.ra
       res.status(200).json({ ok: true });
       return;
     }
+    if (corpoIgnoravel(payload)) {
+      res.status(200).json({ ok: true });
+      return;
+    }
     const eventType = payload.type ?? "";
     const messageId = String(payload.data?.email_id ?? "");
     const toField = payload.data?.to;
@@ -348545,8 +348580,7 @@ app.post("/api/resend-webhook", resendWebhookLimiter, import_express3.default.ra
     }
     res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("[resend-webhook] error:", safeErr(err));
-    if (!res.headersSent) res.status(200).json({ ok: true });
+    responderFalhaTemporaria(res, "resend-webhook", err);
   }
 });
 var brevoWebhookLimiter = rate_limit_default({
@@ -348575,10 +348609,14 @@ app.post("/api/brevo-webhook", brevoWebhookLimiter, import_express3.default.json
         console.warn("[brevo-webhook] segredo recebido pela URL (?secret=) \u2014 obsoleto; configure o cabe\xE7alho Authorization: Bearer no painel do Brevo");
       }
     }
+    if (corpoIgnoravel(req.body)) {
+      res.status(200).json({ ok: true });
+      return;
+    }
     const payload = req.body;
-    const event = (payload.event ?? "").toLowerCase();
-    const recipientEmail = (payload.email ?? "").toLowerCase().trim();
-    const rawMsgId = payload["message-id"] ?? "";
+    const event = String(payload.event ?? "").toLowerCase();
+    const recipientEmail = String(payload.email ?? "").toLowerCase().trim();
+    const rawMsgId = String(payload["message-id"] ?? "");
     const messageId = rawMsgId.replace(/^<|>$/g, "");
     console.log(`[brevo-webhook] event=${event} msgId=${messageId} to=${maskEmail(recipientEmail)}`);
     await garantirSchemas(SO_CRM);
@@ -348627,8 +348665,7 @@ app.post("/api/brevo-webhook", brevoWebhookLimiter, import_express3.default.json
     }
     res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("[brevo-webhook] error:", safeErr(err));
-    if (!res.headersSent) res.status(200).json({ ok: true });
+    responderFalhaTemporaria(res, "brevo-webhook", err);
   }
 });
 var b2bInboundLimiter = rate_limit_default({

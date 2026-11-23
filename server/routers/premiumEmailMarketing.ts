@@ -9,6 +9,10 @@ import { suppressEmailGlobal } from './unsubscribe';
 import { randomUUID } from 'crypto';
 import { isBlockedEmail } from '../../shared/blockedEmailDomains';
 import { TRPCError } from '@trpc/server';
+import { cached, cacheInvalidate } from '../lib/cache';
+
+const METRICS_CACHE_KEY = 'premiumEmail:metrics';
+const METRICS_TTL_MS = 60_000;
 
 /**
  * E-mail Marketing do Sal Vita PREMIUM (loja/e-commerce, banco ordersDb).
@@ -24,7 +28,8 @@ import { TRPCError } from '@trpc/server';
  */
 export const premiumEmailMarketingRouter = router({
   // ── Dashboard Metrics & Quotas ────────────────────────────────────────────
-  getMetrics: premiumStaffProcedure.query(async () => {
+  // Resultado guardado por 60 s (a tela atualiza a cada 5 min); refreshMetrics limpa o cache para o botão "Atualizar".
+  getMetrics: premiumStaffProcedure.query(() => cached(METRICS_CACHE_KEY, METRICS_TTL_MS, async () => {
     const today = todayBrt();
     const currentMonth = today.slice(0, 7);
 
@@ -103,6 +108,11 @@ export const premiumEmailMarketingRouter = router({
       totalSuppressions,
       totalContacts,
     };
+  })),
+
+  refreshMetrics: premiumStaffProcedure.mutation(() => {
+    cacheInvalidate(METRICS_CACHE_KEY);
+    return { ok: true };
   }),
 
   // ── Audience Building Preview ──────────────────────────────────────────────

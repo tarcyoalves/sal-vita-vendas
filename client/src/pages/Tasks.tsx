@@ -32,6 +32,7 @@ import { DeleteOrderDialog } from '../components/faturamento/DeleteOrderDialog';
 import { useFatStore } from '../lib/faturamento/store';
 import { useConfirm } from '../components/useConfirm';
 import { totalPedido, formatBRL } from '../lib/faturamento/calc';
+import { textosParaEnviar, type TextosTarefa } from '../lib/tasks/textoEditado';
 import type { Pedido } from '../lib/faturamento/types';
 import { MultiSelectFilter } from '../components/tasks/MultiSelectFilter';
 import { QueryError } from '../components/QueryError';
@@ -227,6 +228,9 @@ export default function Tasks() {
   const isAdmin = user?.role === 'admin';
   const utils = trpc.useUtils();
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  // Textos como vieram do servidor (tasks.getById) ao abrir a edição: o save só envia o que o usuário mudou.
+  const [textosCarregados, setTextosCarregados] = useState<TextosTarefa>({ notes: '', description: '' });
+  const [carregandoEdicao, setCarregandoEdicao] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   // Admin abre as tarefas como atendente: só as dele. "Todos" fica nos filtros.
   const [filterAssignee, setFilterAssignee] = useState<string>(FILTER_ME);
@@ -543,6 +547,7 @@ export default function Tasks() {
   const resetForm = useCallback(() => {
     setFormData({ clientId: 0, title: "", description: "", notes: "", email: "", tags: [], reminderDate: "", reminderTime: "09:00", reminderEnabled: true, priority: "medium", assignedTo: "" });
     setEditingTask(null);
+    setTextosCarregados({ notes: '', description: '' });
   }, []);
 
   // ─── 3. PRÓXIMA TAREFA URGENTE ────────────────────────────────────────────
@@ -577,7 +582,7 @@ export default function Tasks() {
         const trimmedEmail = (formData.email || '').trim().toLowerCase();
         const originalEmail = (editingTask.email || '').trim().toLowerCase();
         const emailConfirmed = trimmedEmail && trimmedEmail !== originalEmail ? true : undefined;
-        const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, description: formData.description, notes: formData.notes, email: formData.email, tags: formData.tags, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined, emailConfirmed });
+        const result = await updateMutation.mutateAsync({ id: editingTask.id, title: formData.title, ...textosParaEnviar(textosCarregados, { notes: formData.notes, description: formData.description }), email: formData.email, tags: formData.tags, reminderDate: reminderDateTime, reminderEnabled: formData.reminderEnabled, priority: formData.priority, assignedTo: formData.assignedTo || undefined, emailConfirmed });
         toast.success("Tarefa atualizada!");
         if (!isAdmin && result.burstWarning) {
           toast.warning(`Atenção: ${result.burstCount} contatos registrados em menos de 10 minutos. Certifique-se de que cada anotação representa um contato real — a gestão monitora esse indicador.`, { duration: 12000 });
@@ -979,22 +984,39 @@ export default function Tasks() {
     }
   }, [confirmEmailTarget, confirmEmailSequenceId, confirmEmailMutation, enrollInSequenceMutation]);
 
-  const handleEdit = useCallback((task: Task) => {
-    setEditingTask(task);
-    const d = task.reminderDate ? new Date(task.reminderDate) : null;
-    const reminderDate = d
-      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      : "";
-    const reminderTime = d
-      ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-      : "09:00";
-    // Use fullTask (from getById) for notes/description when available, since
-    // tasks.list no longer returns those heavy columns.
-    const taskNotes = (fullTask?.id === task.id ? fullTask.notes : task.notes) || "";
-    const taskDesc = (fullTask?.id === task.id ? fullTask.description : task.description) || "";
-    setFormData({ clientId: task.clientId, title: task.title, description: taskDesc, notes: taskNotes, email: task.email || "", tags: task.tags ?? [], reminderDate, reminderTime, reminderEnabled: task.reminderEnabled ?? true, priority: (task.priority as "low" | "medium" | "high") || "medium", assignedTo: task.assignedTo || "" });
-    setIsModalOpen(true);
-  }, [fullTask]);
+  // Abre a edição só depois de carregar a tarefa completa: tasks.list não traz notes/description, e abrir com o
+  // formulário vazio faria o save apagar as anotações. Se não carregar, não abre.
+  const editandoRef = useRef(false);
+  const handleEdit = useCallback(async (task: Task) => {
+    if (editandoRef.current) return;
+    editandoRef.current = true;
+    setCarregandoEdicao(true);
+    try {
+      let completa: { notes?: string | null; description?: string | null };
+      try {
+        completa = await utils.tasks.getById.fetch({ id: task.id });
+      } catch {
+        toast.error("Não foi possível carregar as anotações desta tarefa. Tente novamente.");
+        return;
+      }
+      const notes = completa.notes ?? "";
+      const description = completa.description ?? "";
+      setTextosCarregados({ notes, description });
+      setEditingTask(task);
+      const d = task.reminderDate ? new Date(task.reminderDate) : null;
+      const reminderDate = d
+        ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        : "";
+      const reminderTime = d
+        ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+        : "09:00";
+      setFormData({ clientId: task.clientId, title: task.title, description, notes, email: task.email || "", tags: task.tags ?? [], reminderDate, reminderTime, reminderEnabled: task.reminderEnabled ?? true, priority: (task.priority as "low" | "medium" | "high") || "medium", assignedTo: task.assignedTo || "" });
+      setIsModalOpen(true);
+    } finally {
+      editandoRef.current = false;
+      setCarregandoEdicao(false);
+    }
+  }, [utils]);
 
   const handleOpenNewTask = useCallback(() => { resetForm(); setIsModalOpen(true); }, [resetForm]);
 
@@ -1218,8 +1240,9 @@ export default function Tasks() {
       const notesForAi = (fullTask?.id === task.id ? fullTask.notes : task.notes) || '';
       const result = await suggestMutation.mutateAsync({ title: task.title, notes: notesForAi });
       setAiSuggestion({ taskId: task.id, text: result.suggestion });
-    } catch {
-      toast.error("Erro ao gerar sugestão");
+    } catch (err) {
+      // A IA fora do ar / limite de uso vêm com mensagem própria do servidor; senão, texto genérico.
+      toast.error(err instanceof Error && err.message ? err.message : "Erro ao gerar sugestão");
     } finally {
       setLoadingSuggestion(false);
     }
@@ -2035,7 +2058,7 @@ export default function Tasks() {
                       </Button>
                     </>
                   )}
-                  <Button variant="ghost" size="icon-sm" className="max-md:hidden" aria-label={`Editar ${task.title}`} title="Editar" onClick={() => handleEdit(task)}>
+                  <Button variant="ghost" size="icon-sm" className="max-md:hidden" aria-label={`Editar ${task.title}`} title="Editar" disabled={carregandoEdicao} onClick={() => handleEdit(task)}>
                     <Pencil aria-hidden />
                   </Button>
                 </div>
@@ -2194,7 +2217,7 @@ export default function Tasks() {
                         </>
                       );
                     })()}
-                    <Button size="sm" variant="outline" onClick={() => handleEdit(task)}><Pencil aria-hidden /> Editar</Button>
+                    <Button size="sm" variant="outline" disabled={carregandoEdicao} onClick={() => handleEdit(task)}><Pencil aria-hidden /> Editar</Button>
                     <Button
                       size="sm"
                       variant={task.convertedAt ? "outline" : "default"}

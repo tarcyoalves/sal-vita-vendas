@@ -11,6 +11,7 @@ import { foldText, searchTerms, SQL_ACENTOS, SQL_SEM_ACENTOS } from '../../share
 import { ACOMPANHANDO_LIMITE, buscaDoVincularVeTodos, ETIQUETA_ACOMPANHAR, etiquetasAoConverter, extrairTermosBusca, findForWhatsappInput, FIND_WHATSAPP_LIMITE, phoneVariants, trechoDasNotas } from '../lib/whatsappLead';
 import { validarDocumentoDaTarefa } from '../lib/taskDocumento';
 import { isNewContact } from '../lib/taskNotes';
+import { camposVaziosParaIgnorar } from '../lib/taskTextoVazio';
 import { emailDoWhatsappInput, planejarEmail } from '../lib/emailDoWhatsapp';
 import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento, deduplicarNoArquivo, janelaLembretes, janelaLembretesMeus } from '../lib/taskImport';
 
@@ -444,6 +445,10 @@ export const tasksRouter = router({
       title: z.string().trim().min(1, 'Título não pode ficar vazio').max(500).optional(),
       description: z.string().max(2000).optional(),
       notes: z.string().max(5000).optional(),
+      // Sinal explícito de que o usuário apagou de propósito um texto que estava carregado. Sem ele,
+      // `notes`/`description` vazios não sobrescrevem texto existente (ver server/lib/taskTextoVazio.ts).
+      limparNotas: z.boolean().optional(),
+      limparDescricao: z.boolean().optional(),
       email: z.string().email().max(200).optional().or(z.literal('')),
       tags: z.array(z.string()).optional(),
       reminderDate: z.date().optional().nullable(),
@@ -457,10 +462,17 @@ export const tasksRouter = router({
       emailConfirmed: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const { id, emailConfirmed, ...data } = input;
+      const { id, emailConfirmed, limparNotas, limparDescricao, ...data } = input;
       const ownerFilter = ctx.user.role === 'admin'
         ? eq(tasks.id, id)
         : and(eq(tasks.id, id), await userTaskFilter(ctx.user.id, ctx.user.name ?? ''));
+      // "" sem sinal explícito não apaga texto existente: o campo é ignorado (cliente que não carregou a tarefa).
+      if (data.notes === '' || data.description === '') {
+        const [atual] = await db.select({ notes: tasks.notes, description: tasks.description }).from(tasks).where(ownerFilter).limit(1);
+        for (const campo of camposVaziosParaIgnorar({ notes: data.notes, description: data.description, limparNotas, limparDescricao }, atual)) {
+          delete data[campo];
+        }
+      }
       // Mark real contact: attendant manually saved notes (>15 chars = real annotation)
       const now = new Date();
       const setData: Record<string, any> = { ...data, updatedAt: now };

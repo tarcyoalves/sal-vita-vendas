@@ -24,6 +24,8 @@ import {
   Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useExpediente } from '../lib/useExpediente';
+import { useUsuarioAtivo } from '../lib/useUsuarioAtivo';
 import { looksLikeHtml, plainTextToEmailHtml } from '../../../shared/emailText';
 /* Prévia do passo da sequência: mesma conversão do servidor (shared/emailText.ts). */
 const PREVIEW_VARS: Record<string, string> = {
@@ -49,7 +51,19 @@ export function SalVitaEmailMarketing() {
   const utils = trpc.useUtils();
 
   // Queries
-  const metricsQuery = trpc.premiumEmailMarketing.getMetrics.useQuery(undefined, { refetchInterval: 10000 });
+  // Mesmo padrão do AppShell: só atualiza sozinho com a aba ativa e em horário de expediente (5 min);
+  // fora disso, o botão "Atualizar". O servidor guarda o resultado por 60 s (refreshMetrics limpa esse cache).
+  const expediente = useExpediente();
+  const ativo = useUsuarioAtivo();
+  const metricsQuery = trpc.premiumEmailMarketing.getMetrics.useQuery(undefined, {
+    refetchInterval: ativo && expediente ? 300_000 : false,
+    staleTime: 60_000,
+  });
+  const refreshMetricsMut = trpc.premiumEmailMarketing.refreshMetrics.useMutation();
+  const atualizarMetricas = async () => {
+    try { await refreshMetricsMut.mutateAsync(); } catch { /* sem limpar o cache do servidor, o refetch ainda traz o que há */ }
+    await metricsQuery.refetch();
+  };
   const previewAudienceQuery = trpc.premiumEmailMarketing.previewAudience.useQuery();
   const campaignsQuery = trpc.premiumEmailMarketing.getCampaigns.useQuery();
   const sequencesQuery = trpc.premiumEmailMarketing.getSequences.useQuery();
@@ -63,7 +77,7 @@ export function SalVitaEmailMarketing() {
     onSuccess: () => {
       toast.success('Campanha criada com sucesso e destinatários vinculados!');
       campaignsQuery.refetch();
-      metricsQuery.refetch();
+      void atualizarMetricas();
       setIsNewCampaignOpen(false);
     },
     onError: (err) => toast.error(`Erro ao criar campanha: ${err.message}`),
@@ -73,7 +87,7 @@ export function SalVitaEmailMarketing() {
     onSuccess: (data) => {
       toast.success(`Lote processado: ${data.sent} enviados, ${data.failed} falhas.`);
       campaignsQuery.refetch();
-      metricsQuery.refetch();
+      void atualizarMetricas();
     },
     onError: (err) => toast.error(`Erro no disparo: ${err.message}`),
   });
@@ -93,7 +107,7 @@ export function SalVitaEmailMarketing() {
     onSuccess: () => {
       toast.success('E-mail adicionado à lista de supressão (LGPD).');
       suppressionsQuery.refetch();
-      metricsQuery.refetch();
+      void atualizarMetricas();
     },
   });
 
@@ -118,7 +132,7 @@ export function SalVitaEmailMarketing() {
     onSuccess: () => {
       toast.success('E-mail removido da supressão.');
       suppressionsQuery.refetch();
-      metricsQuery.refetch();
+      void atualizarMetricas();
     },
   });
 
@@ -154,6 +168,15 @@ export function SalVitaEmailMarketing() {
             </div>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => void atualizarMetricas()}
+          disabled={metricsQuery.isFetching}
+          className="flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg border border-slate-700 text-slate-300 hover:text-white disabled:opacity-60"
+        >
+          <RefreshCw className={`w-4 h-4 ${metricsQuery.isFetching ? 'animate-spin' : ''}`} /> Atualizar
+        </button>
 
         {/* Tab Navigation */}
         <div className="flex items-center bg-slate-800/80 p-1.5 rounded-xl border border-slate-700">
