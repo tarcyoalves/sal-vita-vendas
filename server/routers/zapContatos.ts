@@ -2,9 +2,10 @@
 // (qualquer usuário logado: o opt-out e o contato valem para o time todo). Nada aqui guarda texto de mensagem.
 // Sem polling: a extensão chama ao abrir o painel, antes de montar prévia/fila e antes de cada envio automático.
 import { and, asc, gte, inArray, or, sql } from 'drizzle-orm';
+import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure } from '../trpc';
 import { db } from '../db';
-import { zapContatosEnviados, zapOptOuts } from '../db/schema';
+import { zapContatosEnviados, zapOptOuts, zapOptOutRemocoes } from '../db/schema';
 import {
   casarContatados,
   casarOptOuts,
@@ -21,6 +22,14 @@ import {
 } from '../lib/zapContatos';
 
 const dedup = <T>(xs: T[]): T[] => [...new Set(xs)];
+
+export const MSG_OPT_OUT_PROTEGIDO = "Só quem marcou ou um gestor pode tirar este contato de 'Não enviar mais'.";
+
+/** Staff (admin/gerente) tira qualquer um; os demais só os que eles mesmos marcaram. */
+export function podeRemoverOptOut(papel: string, userId: number, alvo: Array<{ userId: number }>): boolean {
+  if (papel === 'admin' || papel === 'manager') return true;
+  return alvo.every((r) => r.userId === userId);
+}
 
 export const zapContatosRouter = router({
   /** Todos os "não enviar mais" do time. `truncado` = passou do limite e a lista pode estar incompleta. */
@@ -56,8 +65,13 @@ export const zapContatosRouter = router({
     return { recebidos: linhas.length, criados: criadas.length };
   }),
 
-  /** Tira do "não enviar mais" (desfazer). Casa por telefone OU hash do nome; devolve quantos saíram. */
-  desmarcarOptOuts: protectedProcedure.input(desmarcarOptOutsInput).mutation(async ({ input }) => {
+  /**
+   * Tira do "não enviar mais" (desfazer). Casa por telefone OU hash do nome; devolve quantos saíram.
+   * Só staff (admin/gerente) ou QUEM MARCOU pode tirar um contato: um atendente não desfaz o opt-out de outro
+   * (pedido de "não me mande mais" é compromisso do time). Se algum contato casado foi marcado por outra pessoa,
+   * nada é removido. Cada remoção grava auditoria em zap_opt_out_remocoes.
+   */
+  desmarcarOptOuts: protectedProcedure.input(desmarcarOptOutsInput).mutation(async ({ ctx, input }) => {
     const refs = input.itens.map(normalizarRef);
     const telefones = dedup(refs.flatMap((r) => (r.telefone ? [r.telefone] : [])));
     const semTelefone = dedup(refs.filter((r) => !r.telefone).map((r) => r.nomeHash));
@@ -68,7 +82,27 @@ export const zapContatosRouter = router({
       ...(comTelefone.length > 0 ? [and(inArray(zapOptOuts.nomeHash, comTelefone), sql`${zapOptOuts.telefone} IS NULL`)] : []),
       ...(semTelefone.length > 0 ? [inArray(zapOptOuts.nomeHash, semTelefone)] : []),
     ];
-    const removidos = await db.delete(zapOptOuts).where(or(...condicoes)).returning({ id: zapOptOuts.id });
+    if (condicoes.length === 0) return { removidos: 0 };
+    const alvo = await db
+      .select({ id: zapOptOuts.id, chave: zapOptOuts.chave, telefone: zapOptOuts.telefone, nomeHash: zapOptOuts.nomeHash, userId: zapOptOuts.userId })
+      .from(zapOptOuts)
+      .where(or(...condicoes))
+      .limit(LIMITE_LINHAS_CONSULTA);
+    if (alvo.length === 0) return { removidos: 0 };
+    if (!podeRemoverOptOut(ctx.user.role, ctx.user.id, alvo)) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: MSG_OPT_OUT_PROTEGIDO });
+    }
+    const removidos = await db.delete(zapOptOuts).where(inArray(zapOptOuts.id, alvo.map((r) => r.id))).returning({ id: zapOptOuts.id });
+    const removidosIds = new Set(removidos.map((r) => r.id));
+    const auditoria = alvo.filter((r) => removidosIds.has(r.id)).map((r) => ({
+      chave: r.chave, telefone: r.telefone, nomeHash: r.nomeHash,
+      marcadoPorUserId: r.userId, removidoPorUserId: ctx.user.id, removidoPorPapel: ctx.user.role,
+    }));
+    if (auditoria.length > 0) {
+      // A remoção já aconteceu; a falha de auditoria é registrada (sem dados do contato) e não desfaz o pedido do usuário.
+      try { await db.insert(zapOptOutRemocoes).values(auditoria); }
+      catch (e) { console.error('[zap-contatos] auditoria de remoção de opt-out falhou:', (e as Error)?.message); }
+    }
     return { removidos: removidos.length };
   }),
 
