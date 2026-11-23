@@ -353,6 +353,7 @@ import { checkWebhookSecret } from '../server/lib/webhookSecret';
 import { getClientIp } from '../server/lib/clientIp';
 import { safeErrorMessage } from '../server/lib/safeError';
 import { handleResendWebhook, verifySvixSignature } from '../server/routers/resendWebhook';
+import { corpoIgnoravel, responderFalhaTemporaria } from '../server/lib/webhookResposta';
 import { isForbiddenBatch, emailFromTrpcBody } from '../server/lib/trpcBatchGuard';
 import { csrfRejection } from '../server/lib/csrfGuard';
 import { origensDeExtensao } from '../shared/extensao';
@@ -369,11 +370,16 @@ app.post('/api/unsubscribe', express.urlencoded({ extended: false }), aguardarSc
 // Dois produtos recebem em /api/resend-webhook: o Premium assina com RESEND_WEBHOOK_SECRET
 // (tratado aqui) e o CRM com RESEND_MKT_WEBHOOK_SECRET_1..5 (handler mais abaixo). Se a
 // assinatura não é do Premium, cai no handler do CRM, que valida e responde 401 se também falhar.
-app.post('/api/resend-webhook', express.raw({ type: 'application/json' }), (req, res, next) => {
+app.post('/api/resend-webhook', express.raw({ type: 'application/json' }), async (req, res, next) => {
   const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
   if (process.env.RESEND_WEBHOOK_SECRET && verifySvixSignature(req, raw)) {
-    // Assinatura do Premium válida: só o banco da loja entra em jogo.
-    void garantirSchemas(SO_LOJA).then(() => handleResendWebhook(req, res));
+    // Assinatura do Premium válida: só o banco da loja entra em jogo. Sem promessa solta: erro → 500 (o Resend reenvia).
+    try {
+      await garantirSchemas(SO_LOJA);
+      await handleResendWebhook(req, res);
+    } catch (err) {
+      responderFalhaTemporaria(res, 'resend-webhook premium', err);
+    }
     return;
   }
   next();
@@ -630,6 +636,7 @@ app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'appli
 
     let payload: { type?: string; data?: Record<string, unknown> };
     try { payload = JSON.parse(rawBody); } catch { res.status(200).json({ ok: true }); return; }
+    if (corpoIgnoravel(payload)) { res.status(200).json({ ok: true }); return; }
 
     const eventType = payload.type ?? '';
     const messageId = String(payload.data?.email_id ?? '');
@@ -676,8 +683,8 @@ app.post('/api/resend-webhook', resendWebhookLimiter, express.raw({ type: 'appli
 
     res.status(200).json({ ok: true });
   } catch (err) {
-    console.error('[resend-webhook] error:', safeErr(err));
-    if (!res.headersSent) res.status(200).json({ ok: true });
+    // Erro de processamento/banco: 500 para o Resend reenviar (JSON inválido e evento ignorado já responderam 200 acima).
+    responderFalhaTemporaria(res, 'resend-webhook', err);
   }
 });
 
@@ -712,6 +719,7 @@ app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb
       }
     }
 
+    if (corpoIgnoravel(req.body)) { res.status(200).json({ ok: true }); return; } // sem JSON objeto: nada a processar
     const payload = req.body as {
       event?: string;
       email?: string;
@@ -719,9 +727,9 @@ app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb
       tag?: string;
     };
 
-    const event = (payload.event ?? '').toLowerCase();
-    const recipientEmail = (payload.email ?? '').toLowerCase().trim();
-    const rawMsgId = payload['message-id'] ?? '';
+    const event = String(payload.event ?? '').toLowerCase();
+    const recipientEmail = String(payload.email ?? '').toLowerCase().trim();
+    const rawMsgId = String(payload['message-id'] ?? '');
     const messageId = rawMsgId.replace(/^<|>$/g, '');
 
     console.log(`[brevo-webhook] event=${event} msgId=${messageId} to=${maskEmail(recipientEmail)}`);
@@ -779,8 +787,8 @@ app.post('/api/brevo-webhook', brevoWebhookLimiter, express.json({ limit: '256kb
 
     res.status(200).json({ ok: true });
   } catch (err) {
-    console.error('[brevo-webhook] error:', safeErr(err));
-    if (!res.headersSent) res.status(200).json({ ok: true });
+    // Erro de processamento/banco: 500 para o Brevo reenviar (corpo inválido e evento ignorado respondem 200).
+    responderFalhaTemporaria(res, 'brevo-webhook', err);
   }
 });
 

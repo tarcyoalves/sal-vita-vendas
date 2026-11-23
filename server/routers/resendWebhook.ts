@@ -77,6 +77,10 @@ export async function handleResendWebhook(req: Request, res: Response) {
   const messageId = data.email_id || data.id;
   const recipientEmail = Array.isArray(data.to) ? data.to[0] : (data.to || data.recipient);
 
+  // Erro de banco/processamento → 500 (o Resend reenvia). Sem índice único em email_events, um reenvio depois
+  // de uma gravação parcial pode duplicar o evento; a supressão é idempotente (ON CONFLICT DO NOTHING).
+  let falhou = false;
+
   if (messageId && recipientEmail) {
     // Log event in email_events table
     try {
@@ -86,6 +90,7 @@ export async function handleResendWebhook(req: Request, res: Response) {
       `);
     } catch (err) {
       console.error('[resend-webhook] Error inserting event:', safeErr(err));
+      falhou = true;
     }
   }
 
@@ -93,10 +98,21 @@ export async function handleResendWebhook(req: Request, res: Response) {
   if (type === 'email.bounced' || type === 'email.complained') {
     if (recipientEmail) {
       const reason = type === 'email.bounced' ? 'bounce' : 'complaint';
-      await suppressEmailGlobal(recipientEmail, reason);
-      console.log(`[resend-webhook] Suppressed ${maskEmail(recipientEmail)} due to ${reason}`);
+      try {
+        const result = await suppressEmailGlobal(recipientEmail, reason);
+        if (result.primaryFailed) {
+          falhou = true; // supressão principal não gravada: precisa ser reenviada
+          console.error(`[resend-webhook] Suppression of ${maskEmail(recipientEmail)} failed in a primary table`);
+        } else {
+          console.log(`[resend-webhook] Suppressed ${maskEmail(recipientEmail)} due to ${reason}`);
+        }
+      } catch (err) {
+        falhou = true;
+        console.error('[resend-webhook] Suppression error:', safeErr(err));
+      }
     }
   }
 
+  if (falhou) return res.status(500).json({ error: 'temporary failure' });
   return res.status(200).json({ received: true });
 }
