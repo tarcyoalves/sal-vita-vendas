@@ -1935,6 +1935,11 @@ export default function Tasks() {
         </div>
       )}
 
+      {/* A atualização falhou mas há lista guardada: avisa que ela pode estar desatualizada. */}
+      {isError && tasks.length > 0 && (
+        <QueryError message="Não consegui atualizar a lista." onRetry={() => { void refetch(); }} retrying={isFetching} />
+      )}
+
       {/* Tasks List */}
       {isLoading ? (
         <Panel className="divide-y divide-slate-200">
