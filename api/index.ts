@@ -231,6 +231,8 @@ function unsubscribePage(message: string): string {
 }
 
 import { handleUnsubscribe } from '../server/routers/unsubscribe';
+import { tokenDescadastroValido } from '../server/lib/unsubscribeToken';
+import { autorizarDbStats } from '../server/lib/dbStatsAuth';
 import { syncMeTracking, handleMeWebhookEvent, autoGenerateLabels } from '../server/routers/shipping';
 import { verifyMeSignature, type MeTrackingInfo } from '../server/lib/meTracking';
 import { safeEqual } from '../server/lib/safeEqual';
@@ -246,9 +248,25 @@ import { idPagamentoMpValido, estornoPertenceAoPedido, telefoneNormalizado } fro
 import { confirmApprovedPayment, deveReenviarWebhook } from '../server/lib/confirmApprovedPayment';
 import { inicioJanelaCompra, telefoneParaBusca, selecionarUmPorTelefone, regraDeAbandono, deveSuprimirCobranca, podeUsarTemplatePix } from '../server/lib/recoveryCadence';
 
-app.get('/api/unsubscribe', aguardarSchemasMw, handleUnsubscribe);
+// Endpoint público: limite por IP (generoso, porque provedores de e-mail fazem o POST one-click de poucos IPs)
+// e token fora do formato UUID nunca acorda nem consulta o banco (o handler responde "inválido" sem tocar nele).
+const unsubscribeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  message: 'Muitas tentativas. Tente novamente mais tarde.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(getClientIp(req)),
+  validate: { xForwardedForHeader: false },
+});
+const unsubscribeFormatoMw: express.RequestHandler = (req, res, next) => {
+  const token = String(req.query.t || req.body?.t || req.query.token || '').trim();
+  if (!tokenDescadastroValido(token)) { handleUnsubscribe(req, res).catch(next); return; }
+  next();
+};
+app.get('/api/unsubscribe', unsubscribeLimiter, unsubscribeFormatoMw, aguardarSchemasMw, handleUnsubscribe);
 // RFC 8058 one-click unsubscribe sends a POST request
-app.post('/api/unsubscribe', express.urlencoded({ extended: false }), aguardarSchemasMw, handleUnsubscribe);
+app.post('/api/unsubscribe', unsubscribeLimiter, express.urlencoded({ extended: false }), unsubscribeFormatoMw, aguardarSchemasMw, handleUnsubscribe);
 
 // Webhook Resend/Svix HMAC time-safe signature verification.
 // Dois produtos recebem em /api/resend-webhook: o Premium assina com RESEND_WEBHOOK_SECRET
@@ -278,11 +296,14 @@ const adminApiLimiter = rateLimit({
 
 // DB storage and row-count monitor — admin only
 app.get('/api/db-stats', adminApiLimiter, async (req, res) => {
-  const secret = process.env.ADMIN_RESET_SECRET;
-  const adminHeader = req.headers['x-admin-secret'];
-  if (!secret || typeof adminHeader !== 'string' || !safeEqual(adminHeader, secret)) {
+  // Aceita CRON_SECRET (preferido). ADMIN_RESET_SECRET segue valendo só por compatibilidade temporária, com aviso:
+  // ele é o segredo da recuperação de emergência de senha de admin e não deve circular em monitoramento.
+  const providedSecret = req.headers['x-admin-secret'] ?? req.headers['authorization']?.replace('Bearer ', '');
+  const via = autorizarDbStats(providedSecret, { cron: process.env.CRON_SECRET, legado: process.env.ADMIN_RESET_SECRET });
+  if (!via) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+  if (via === 'legado') console.warn('[db-stats] autenticado com ADMIN_RESET_SECRET (obsoleto): passe a usar CRON_SECRET');
   try {
     const [sizes, counts, dbSizeBytes] = await Promise.all([
       sqlClient`
