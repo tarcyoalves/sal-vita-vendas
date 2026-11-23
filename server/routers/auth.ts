@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { eq, and, gt, isNull, count, sql } from 'drizzle-orm';
+import { eq, and, or, gt, isNull, count, sql, notLike } from 'drizzle-orm';
 import { randomBytes, randomInt } from 'crypto';
 import { router, publicProcedure, protectedProcedure, adminProcedure } from '../trpc';
 import { db } from '../db';
@@ -16,6 +16,7 @@ import { safeEqual } from '../lib/safeEqual';
 import { emailEquals } from '../lib/userEmail';
 import { getClientIp } from '../lib/clientIp';
 import { createEmergencyThrottle } from '../lib/emergencyThrottle';
+import { hashResetToken, PREFIXO_HASH_RESET } from '../lib/resetToken';
 import {
   bloqueadoCompartilhado, chaveHash, ContadorIndisponivel, crmAttemptsDb, limparCompartilhado, registrarFalhaCompartilhada,
 } from '../lib/authAttempts';
@@ -223,9 +224,10 @@ export const authRouter = router({
       const token = randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
+      // O banco guarda só o SHA-256; o link do e-mail leva o token em claro (ver server/lib/resetToken.ts).
       await db.insert(passwordResetTokens).values({
         userId: user.id,
-        token,
+        token: hashResetToken(token),
         expiresAt,
       });
 
@@ -263,7 +265,7 @@ export const authRouter = router({
 
   resetPasswordWithToken: publicProcedure
     .input(z.object({
-      token: z.string().min(1),
+      token: z.string().min(1).max(200),
       newPassword: z.string().min(SENHA_MINIMA, SENHA_MINIMA_MSG),
     }))
     .mutation(async ({ input }) => {
@@ -273,7 +275,12 @@ export const authRouter = router({
       const [resetToken] = await db.update(passwordResetTokens)
         .set({ usedAt: now })
         .where(and(
-          eq(passwordResetTokens.token, input.token),
+          // Formato novo (hash) OU legado em claro (válido por até 30 min após o deploy). O legado exclui
+          // linhas `sha256:` para que um hash vazado não sirva como se fosse um token em claro.
+          or(
+            eq(passwordResetTokens.token, hashResetToken(input.token)),
+            and(eq(passwordResetTokens.token, input.token), notLike(passwordResetTokens.token, `${PREFIXO_HASH_RESET}%`)),
+          ),
           isNull(passwordResetTokens.usedAt),
           gt(passwordResetTokens.expiresAt, now),
         ))
