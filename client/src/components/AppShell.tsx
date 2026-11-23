@@ -254,7 +254,7 @@ export default function AppShell({ children }: AppShellProps) {
   const changePasswordMutation = trpc.auth.changePassword.useMutation();
 
   // Startup blocking modal (role=user only)
-  const { data: currentSession, isLoading: sessionLoading, refetch: refetchSession } =
+  const { data: currentSession, isLoading: sessionLoading, isError: sessionError, isFetching: sessionFetching, refetch: refetchSession } =
     trpc.workSessions.current.useQuery(undefined, { enabled: !!user && role === "user" });
   const { data: sellerProfile } = trpc.sellers.myProfile.useQuery(undefined, {
     enabled: !!user && role === "user",
@@ -281,8 +281,11 @@ export default function AppShell({ children }: AppShellProps) {
   const sessionIsStale = hasLiveSession && !sessionIsToday;
   // Show retomar when session is from today but tab was closed (ack not in sessionStorage)
   const showRetomar = sessionIsToday && !isSessionAcked(currentSession?.id);
+  // A consulta falhou e não há dado antigo: não dá para saber se existe sessão. Não oferece "iniciar" (poderia abrir
+  // uma sessão duplicada); pede para tentar de novo.
+  const sessionCheckFailed = !!user && role === "user" && sessionError && currentSession === undefined;
   const needsStartup =
-    !!user && role === "user" && !sessionLoading && (
+    !!user && role === "user" && !sessionLoading && !sessionCheckFailed && (
       !currentSession || currentSession.status === "ended" || sessionIsStale || showRetomar
     );
 
@@ -684,9 +687,24 @@ export default function AppShell({ children }: AppShellProps) {
       )}
 
       {/* ── Startup blocking modal (attendants) ── */}
+      {sessionCheckFailed && !user?.mustChangePassword && (
+        <div className="fixed inset-0 z-[200] bg-background flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+          <div role="alert" className="bg-white rounded-lg border border-slate-200 shadow-lg p-6 sm:p-8 w-full max-w-sm max-h-[90dvh] overflow-y-auto text-center">
+            {brandMark}
+            <h2 className="text-lg font-semibold text-slate-900 mb-1">Não consegui verificar sua sessão</h2>
+            <p className="text-slate-600 text-sm mb-6">
+              Sem isso não sei se você já registrou entrada hoje. Confira a internet e tente de novo.
+            </p>
+            <Button onClick={() => { void refetchSession(); }} disabled={sessionFetching} className="w-full h-11 text-[15px]">
+              {sessionFetching ? <><Loader2 className="animate-spin" /> Tentando…</> : "Tentar de novo"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {needsStartup && !user?.mustChangePassword && (
-        <div className="fixed inset-0 z-[200] bg-background flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg border border-slate-200 shadow-lg p-6 sm:p-8 w-full max-w-sm text-center">
+        <div className="fixed inset-0 z-[200] bg-background flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg border border-slate-200 shadow-lg p-6 sm:p-8 w-full max-w-sm max-h-[90dvh] overflow-y-auto text-center">
             {brandMark}
             {showRetomar ? (
               <>
