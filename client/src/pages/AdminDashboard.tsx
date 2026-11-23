@@ -2,7 +2,7 @@ import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Badge } from '../components/ui/badge';
 import { Skeleton } from '../components/ui/skeleton';
-import { Page, PageHeader, Panel, PanelHeader, StatStrip, Stat, EmptyState } from '../components/layout/Page';
+import { Page, PageHeader, Panel, PanelHeader, StatStrip, Stat, EmptyState, AccessDenied } from '../components/layout/Page';
 import { Button } from '../components/ui/button';
 import AvisosAdmin from '../components/AvisosAdmin';
 import { useEffect, useMemo, useState } from "react";
@@ -528,7 +528,7 @@ export default function AdminDashboard() {
   }
 
 
-  if (!user || (user.role !== "admin" && user.role !== "manager")) return null;
+  if (!user || (user.role !== "admin" && user.role !== "manager")) return <AccessDenied area="Painel do administrador" />;
 
   // Agregados vindos do useMemo acima (calculados uma vez por tarefas/atendentes/minuto).
   const {

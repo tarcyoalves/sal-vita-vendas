@@ -11,7 +11,7 @@ import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Skeleton } from '../components/ui/skeleton';
 import { QueryError } from '../components/QueryError';
-import { Page, PageHeader, Panel, PanelHeader, EmptyState } from '../components/layout/Page';
+import { Page, PageHeader, Panel, PanelHeader, EmptyState, AccessDenied } from '../components/layout/Page';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import {
   DropdownMenu,
@@ -479,7 +479,7 @@ export default function Attendants() {
     );
   }
 
-  if (!user || user.role !== "admin") return null;
+  if (!user || user.role !== "admin") return <AccessDenied area="Atendentes" />;
 
   const roleLabel = (r?: string | null) => (r === "admin" ? "Admin" : r === "manager" ? "Gerente" : "Atendente");
   const ipRestricted = (a: Attendant) => !!a.ipRestrictionEnabled && (a.allowedIps?.length ?? 0) > 0;
