@@ -141,7 +141,7 @@ Após primeiro login, `mustChangePassword = true` obriga o usuário a definir um
 | `/admin/email-marketing` | EmailMarketing | Admin, gerente |
 | `/admin/faturamento` | Faturamento | Admin, gerente |
 | `/documentos` | Documentos | Todos (anexar/editar: admin, gerente) |
-| `/tv` | TvDashboard | Painel TV (sem auth) |
+| `/tv` | — | Desativada: não há rota. `TvDashboard.tsx` fica no repo (tests/expediente.test.ts o lê) mas não é importado |
 | `/sal-vita` | SalVitaLanding | Público (landing page) |
 
 ## Lógica de dois domínios (IMPORTANTE)
