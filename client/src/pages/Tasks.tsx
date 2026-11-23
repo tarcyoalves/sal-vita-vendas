@@ -32,6 +32,7 @@ import { DeleteOrderDialog } from '../components/faturamento/DeleteOrderDialog';
 import { useFatStore } from '../lib/faturamento/store';
 import { useConfirm } from '../components/useConfirm';
 import { totalPedido, formatBRL } from '../lib/faturamento/calc';
+import { ATALHOS_CONTATO, anexarNotaContato, proximoLembrete, rotuloLembrete, type AtalhoContato } from '../lib/tasks/registrarContato';
 import { PASSO_LISTA, chaveCriterios, fatiarLista, proximoLimite, rotuloMostrarMais, textoContador } from '../lib/tasks/paginacao';
 import { mensagemDoServidor } from '../lib/erroMensagem';
 import { textosParaEnviar, type TextosTarefa } from '../lib/tasks/textoEditado';
@@ -1081,6 +1082,51 @@ export default function Tasks() {
       setCarregandoEdicao(false);
     }
   }, [utils, abrirFormulario]);
+
+  // ── Registrar contato em um toque ──────────────────────────────────────────
+  // Acrescenta a nota (com data/hora) ao FIM das anotações e reagenda o lembrete. Lê a tarefa completa de novo
+  // antes de gravar (tasks.list não traz as anotações e outra pessoa pode ter mexido nelas). Nunca substitui.
+  const [notaContato, setNotaContato] = useState("");
+  const [registrandoContatoId, setRegistrandoContatoId] = useState<number | null>(null);
+  const registrandoContatoRef = useRef(false);
+  useEffect(() => { setNotaContato(""); }, [expandedTaskId]);
+  const registrarContato = async (task: Task, atalho: AtalhoContato) => {
+    if (registrandoContatoRef.current) return;
+    registrandoContatoRef.current = true;
+    setRegistrandoContatoId(task.id);
+    try {
+      let completa: { notes?: string | null };
+      try {
+        completa = await utils.tasks.getById.fetch({ id: task.id }, { staleTime: 0 });
+      } catch (e) {
+        toast.error(`Não registrei o contato: ${mensagemDoServidor(e, "não consegui ler as anotações da tarefa.")} Nada foi alterado.`);
+        return;
+      }
+      const agora = new Date();
+      const nota = anexarNotaContato(completa.notes, notaContato, agora);
+      if (!nota.ok) {
+        toast.error("As anotações desta tarefa estão cheias (limite de 5000 letras). Apague linhas antigas em Editar e tente de novo.");
+        return;
+      }
+      const quando = proximoLembrete(atalho, agora);
+      try {
+        const result = await updateMutation.mutateAsync({ id: task.id, notes: nota.notes, reminderDate: quando, reminderEnabled: true });
+        toast.success(`Contato registrado. Próximo lembrete: ${rotuloLembrete(quando)}`);
+        if (!isAdmin && result.burstWarning) {
+          toast.warning(`Atenção: ${result.burstCount} contatos registrados em menos de 10 minutos. Certifique-se de que cada anotação representa um contato real — a gestão monitora esse indicador.`, { duration: 12000 });
+        }
+        if (!isAdmin) lastContactTimeRef.current = Date.now();
+        setNotaContato("");
+        void utils.tasks.getById.invalidate({ id: task.id });
+        void refetch();
+      } catch (e) {
+        toast.error(`Não registrei o contato: ${mensagemDoServidor(e, "erro ao salvar.")}`);
+      }
+    } finally {
+      registrandoContatoRef.current = false;
+      setRegistrandoContatoId(null);
+    }
+  };
 
   const handleOpenNewTask = useCallback(() => {
     resetForm();
@@ -2150,6 +2196,27 @@ export default function Tasks() {
                     {!!task.contactCount && ` · ${task.contactCount} contato(s)`}
                     {task.convertedAt && ` · Cliente ativo desde ${new Date(task.convertedAt).toLocaleDateString("pt-BR")}`}
                   </p>
+                  {(task.status ?? 'pending') === 'pending' && (
+                    <div className="rounded-md border border-slate-200 bg-white px-3 py-2.5">
+                      <p className="text-sm font-semibold text-slate-900">Registrar contato</p>
+                      <Input
+                        value={notaContato}
+                        onChange={(e) => setNotaContato(e.target.value)}
+                        maxLength={300}
+                        placeholder="O que foi falado? (pode deixar em branco)"
+                        aria-label={`Nota do contato com ${task.title}`}
+                        className="mt-2"
+                      />
+                      <p className="mt-2 text-xs text-slate-600">Toque em quando quer ser lembrado de novo. A nota entra no fim das anotações, com data e hora.</p>
+                      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {ATALHOS_CONTATO.map((a) => (
+                          <Button key={a.id} type="button" size="sm" variant="outline" disabled={registrandoContatoId !== null} onClick={() => registrarContato(task, a.id)}>
+                            {registrandoContatoId === task.id ? "Gravando..." : a.rotulo}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {aiSuggestion?.taskId === task.id && (
                     <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm">
                       <p className="text-xs font-medium text-slate-500">Sugestão de abordagem</p>
