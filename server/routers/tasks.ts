@@ -781,7 +781,7 @@ export const tasksRouter = router({
 
   deleteMany: protectedProcedure
     .input(z.object({
-      ids: z.array(z.number()).min(1),
+      ids: z.array(z.number()).min(1).max(2000),
       reason: z.string().max(500).optional().default('Não informado'),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -793,18 +793,6 @@ export const tasksRouter = router({
         .from(tasks).where(ownerFilter);
       if (found.length === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'Nenhuma tarefa encontrada ou sem permissão' });
 
-      await db.insert(taskDeletionLogs).values(found.map(t => ({
-        taskId: t.id,
-        taskTitle: t.title,
-        taskNotes: t.notes ?? null,
-        deletedByUserId: ctx.user.id,
-        deletedByName: ctx.user.name ?? ctx.user.email,
-        reason: input.reason,
-        reviewedByAdmin: ctx.user.role === 'admin',
-        cnpj: t.cnpj,
-        phone: t.phone,
-      })));
-
       const emails = [...new Set(found.map(t => t.email?.toLowerCase().trim()).filter((e): e is string => !!e))];
       for (const email of emails) {
         try {
@@ -814,8 +802,29 @@ export const tasksRouter = router({
         }
       }
 
-      await db.delete(tasks).where(inArray(tasks.id, found.map(t => t.id)));
-      return { ok: true, count: found.length };
+      // Apaga PRIMEIRO e loga só o que este pedido de fato apagou (DELETE ... RETURNING): duas chamadas
+      // simultâneas não geram log em dobro, e um log nunca descreve uma tarefa que continua existindo.
+      const apagadas = await db.delete(tasks).where(inArray(tasks.id, found.map(t => t.id)))
+        .returning({ id: tasks.id, title: tasks.title, notes: tasks.notes, cnpj: tasks.cnpj, phone: tasks.phone });
+      if (apagadas.length > 0) {
+        try {
+          await db.insert(taskDeletionLogs).values(apagadas.map(t => ({
+            taskId: t.id,
+            taskTitle: t.title,
+            taskNotes: t.notes ?? null,
+            deletedByUserId: ctx.user.id,
+            deletedByName: ctx.user.name ?? ctx.user.email,
+            reason: input.reason,
+            reviewedByAdmin: ctx.user.role === 'admin',
+            cnpj: t.cnpj,
+            phone: t.phone,
+          })));
+        } catch (err) {
+          // A exclusão já aconteceu; sem o log a revisão do admin perde a linha — fica registrado com os ids.
+          console.error('[tasks.deleteMany] log de exclusão falhou (tarefas já apagadas, ids):', apagadas.map(a => a.id).join(','), safeErr(err));
+        }
+      }
+      return { ok: true, count: apagadas.length };
     }),
 
   // Verifica, antes de importar, quais CNPJs/telefones já correspondem a uma tarefa
