@@ -69,6 +69,8 @@ export interface ConfigReativacao {
   textos3: string[];
   /** Só entra quem tem este termo no nome ("CLIENTE"): contato pessoal/fornecedor nunca recebe. Vazio = qualquer contato salvo. */
   termo: string;
+  /** O termo casa por PALAVRA inteira do nome (v0.7.63). Config salva antes disso (sem o campo) mantém o comportamento antigo (pedaço). */
+  palavraInteira: boolean;
   /** Só contatos com sinal de que EU já falei com eles (mesma regra da Varredura). */
   soMinha: boolean;
   /** Depois da etapa final sem resposta: agenda uma nova tentativa no CRM. */
@@ -92,6 +94,7 @@ export const CONFIG_REATIVACAO_PADRAO: ConfigReativacao = {
   textos2: [],
   textos3: [],
   termo: 'CLIENTE',
+  palavraInteira: true,
   soMinha: true,
   agendaLonga: true,
   agendaLongaDias: AGENDA_LONGA_PADRAO,
@@ -131,6 +134,8 @@ export function normalizarConfigReativacao(c: Partial<ConfigReativacao> | null |
     textos2: normalizarTextos(c?.textos2),
     textos3: normalizarTextos(c?.textos3),
     termo: typeof c?.termo === 'string' ? c.termo.replace(/\s+/g, ' ').trim().slice(0, 80) : CONFIG_REATIVACAO_PADRAO.termo,
+    // Sem config salva = padrão novo (ligado); config já salva sem o campo = comportamento antigo (as campanhas não mudam sozinhas).
+    palavraInteira: c == null ? true : c.palavraInteira === true,
     soMinha: c?.soMinha !== false,
     agendaLonga: c?.agendaLonga !== false,
     agendaLongaDias: Math.min(AGENDA_LONGA_MAX, Math.max(AGENDA_LONGA_MIN, inteiro(c?.agendaLongaDias, AGENDA_LONGA_PADRAO))),
@@ -298,6 +303,7 @@ export function filtrosDaReativacao(config: ConfigReativacao, agora: Date): Filt
   return {
     ...FILTROS_PADRAO,
     contem: separarTermos(config.termo),
+    palavraInteira: config.palavraInteira,
     // "última conversa nesta data ou antes": há pelo menos `etapas[0]` dias.
     ultimaConversaAntesDe: somarDias(hojeNoFuso(agora), -config.etapas[0]),
     excluirContatadosHaDias: DIAS_SEM_REPETIR_PADRAO_REATIVACAO,

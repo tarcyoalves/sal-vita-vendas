@@ -8,7 +8,8 @@ export const DIAS_SEM_REPETIR_PADRAO_REATIVACAO = DIAS_SEM_REPETIR;
 import type { ContatoVarrido } from './contatos';
 import { rotuloDaFase, type Contato, type Fase } from './crm-tipos';
 import { diferencaDias, formatarDataBr, hojeNoFuso, type DataIso } from './datas';
-import { normalizarTexto } from './nomes';
+import { nomeTemTermo, normalizarTexto, palavrasDoNome } from './nomes';
+import { dddDoTelefone, lerRegiao, regiaoVazia } from './regiao';
 
 export interface Filtros {
   /** Nome precisa conter TODOS estes termos (sem diferenciar maiúscula/acento). */
@@ -33,6 +34,16 @@ export interface Filtros {
    * mandou mensagem (ver `falouComOContato`). Ligado por padrão no painel (aba Varredura); aqui o padrão é desligado.
    */
   soComMensagemMinha?: boolean;
+  /**
+   * Termos "contém"/"não contém" casam por PALAVRA inteira do nome ("PR" não casa com "COMPRAS"). Ausente ou false = comportamento
+   * antigo (pedaço do texto): filtro salvo antes da 0.7.63 não muda. O painel cria os novos com isto LIGADO.
+   */
+  palavraInteira?: boolean;
+  /**
+   * Região (v0.7.63): itens "PR", "45" (ver `lerRegiao`). O contato atende se o nome tem a UF como palavra inteira ou se o
+   * telefone conhecido tem um dos DDDs. Vazio/ausente = sem filtro de região.
+   */
+  regiao?: string[];
 }
 
 export const FILTROS_PADRAO: Filtros = {
@@ -62,6 +73,8 @@ export interface ContextoFiltro {
   aguardandoPorChave?: ReadonlyMap<string, boolean>;
   /** Chaves de contatos com registro do atendente no CRM da extensão (nota, fase ou conversão). */
   comRegistroDoAtendente?: ReadonlySet<string>;
+  /** Telefone conhecido por chave (normalizado 55+DDD+número), do CRM da extensão. Usado só no filtro de região. */
+  telefonePorChave?: ReadonlyMap<string, string>;
   /**
    * Último contato da EQUIPE por chave (ISO, de qualquer atendente/computador; v0.7.60). Só entra no intervalo mínimo entre contatos
    * (NÃO conta como "o atendente já falou com este contato": quem decide isso é `ultimoEnvioPorChave`).
@@ -81,6 +94,7 @@ export function diasSemRepetir(filtros: Filtros): number {
   return Math.max(DIAS_SEM_REPETIR, n);
 }
 
+export const MOTIVO_SEM_TELEFONE_PARA_DDD = 'sem telefone conhecido para conferir o DDD';
 export const MOTIVO_SEM_MENSAGEM_MINHA = 'sem mensagem sua (nenhum sinal de conversa feita por você)';
 export const MOTIVO_POSSIVEL_GRUPO = 'pode ser grupo (a prévia da lista começa com "Fulano:") — confira antes de incluir';
 export const MOTIVO_SINAL_DESCONHECIDO = 'sinal de conversa sua desconhecido — varra de novo';
@@ -129,6 +143,35 @@ export function avaliarContato(c: ContatoVarrido, filtros: Filtros, ctx: Context
   return d;
 }
 
+/** "a palavra "PR"" / "as palavras "salto do lontra"" (palavra inteira) ou só `"PR"` (comportamento antigo). */
+export function descreverTermo(termo: string, palavraInteira: boolean): string {
+  if (!palavraInteira) return `"${termo}"`;
+  return palavrasDoNome(termo).length > 1 ? `as palavras "${termo}"` : `a palavra "${termo}"`;
+}
+
+interface DecisaoRegiao {
+  /** 'incluido' = atende (ou não há filtro: motivo vazio); 'excluido' = fora; 'revisar' = não dá para conferir. */
+  situacao: Situacao;
+  motivo: string;
+}
+
+/**
+ * Filtro de região. Atende se (a) o nome tem a UF como palavra inteira ou (b) o telefone conhecido tem um dos DDDs.
+ * Sem UF no nome e sem telefone conhecido: revisar (nunca entra direto, nunca some).
+ */
+function avaliarRegiao(c: ContatoVarrido, nomeNormalizado: string, filtros: Filtros, ctx: ContextoFiltro): DecisaoRegiao {
+  const r = lerRegiao(filtros.regiao);
+  if (regiaoVazia(r)) return { situacao: 'incluido', motivo: '' };
+  const palavras = palavrasDoNome(nomeNormalizado);
+  const ufNoNome = r.ufs.find((uf) => palavras.includes(uf.toLowerCase()));
+  if (ufNoNome) return { situacao: 'incluido', motivo: `UF ${ufNoNome} no nome` };
+  const telefone = ctx.telefonePorChave?.get(c.chave);
+  if (!telefone) return { situacao: 'revisar', motivo: MOTIVO_SEM_TELEFONE_PARA_DDD };
+  const ddd = dddDoTelefone(telefone);
+  if (ddd && r.ddds.includes(ddd)) return { situacao: 'incluido', motivo: `DDD ${ddd}` };
+  return { situacao: 'excluido', motivo: `fora da região (${ddd ? `DDD ${ddd}` : 'telefone fora do Brasil'})` };
+}
+
 function avaliarSemFiltroDeMensagemMinha(c: ContatoVarrido, filtros: Filtros, ctx: ContextoFiltro): Decisao {
   const nome = normalizarTexto(c.nome);
 
@@ -137,14 +180,17 @@ function avaliarSemFiltroDeMensagemMinha(c: ContatoVarrido, filtros: Filtros, ct
   if (c.pareceGrupo) return { situacao: 'excluido', motivo: 'grupo ou lista de transmissão' };
   if (!filtros.incluirSemConversa && !c.temConversa) return { situacao: 'excluido', motivo: 'sem conversa anterior' };
 
+  const inteira = filtros.palavraInteira === true;
   for (const termo of filtros.contem) {
-    if (!nome.includes(normalizarTexto(termo))) return { situacao: 'excluido', motivo: `nome não contém "${termo}"` };
+    if (!nomeTemTermo(c.nome, termo, inteira)) return { situacao: 'excluido', motivo: `nome não contém ${descreverTermo(termo, inteira)}` };
   }
   for (const termo of filtros.naoContem) {
-    if (normalizarTexto(termo) !== '' && nome.includes(normalizarTexto(termo))) {
-      return { situacao: 'excluido', motivo: `nome contém "${termo}"` };
-    }
+    if (normalizarTexto(termo) === '' || (inteira && palavrasDoNome(termo).length === 0)) continue;
+    if (nomeTemTermo(c.nome, termo, inteira)) return { situacao: 'excluido', motivo: `nome contém ${descreverTermo(termo, inteira)}` };
   }
+
+  const regiao = avaliarRegiao(c, nome, filtros, ctx);
+  if (regiao.situacao === 'excluido') return { situacao: 'excluido', motivo: regiao.motivo };
 
   const envioLocal = ctx.ultimoEnvioPorChave.get(c.chave);
   const envioEquipe = ctx.contatadoPelaEquipePorChave?.get(c.chave);
@@ -185,7 +231,8 @@ function avaliarSemFiltroDeMensagemMinha(c: ContatoVarrido, filtros: Filtros, ct
 
   const usaData = filtros.ultimaConversaAntesDe != null || filtros.ultimaConversaDepoisDe != null;
   const partes: string[] = [];
-  for (const termo of filtros.contem) partes.push(`contém "${termo}"`);
+  for (const termo of filtros.contem) partes.push(`contém ${descreverTermo(termo, inteira)}`);
+  if (regiao.situacao === 'incluido' && regiao.motivo) partes.push(regiao.motivo);
 
   if (usaData) {
     if (c.ultimaConversa == null) {
@@ -228,6 +275,9 @@ function avaliarSemFiltroDeMensagemMinha(c: ContatoVarrido, filtros: Filtros, ct
   if (filtros.aguardandoResposta) {
     partes.push('aguardando resposta');
   }
+
+  // Região sem como conferir (sem a UF no nome e sem telefone conhecido): nunca entra sozinho e nunca some.
+  if (regiao.situacao === 'revisar') return { situacao: 'revisar', motivo: regiao.motivo };
 
   // Grupo com foto não tem o ícone padrão: só a prévia "Fulano: texto" denuncia. Nunca entra sozinho.
   if (c.possivelGrupo) return { situacao: 'revisar', motivo: MOTIVO_POSSIVEL_GRUPO };

@@ -10,6 +10,29 @@ export function normalizarTexto(s: string): string {
     .trim();
 }
 
+/** Palavras de um texto já normalizado: separadas por espaço, hífen, barra, parênteses, vírgula, ponto, etc. */
+export function palavrasDoNome(texto: string): string[] {
+  return normalizarTexto(texto)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+}
+
+/**
+ * O nome tem o termo? Com `palavraInteira` o termo casa por PALAVRA (ou sequência de palavras) do nome normalizado:
+ * "PR" casa com "CLIENTE (PR)", "X-PR" e "PR." mas não com "COMPRAS"; "salto do lontra" casa com a sequência inteira.
+ * Sem `palavraInteira` é o comportamento antigo (pedaço do texto). Termo vazio sempre casa.
+ */
+export function nomeTemTermo(nome: string, termo: string, palavraInteira: boolean): boolean {
+  if (!palavraInteira) return normalizarTexto(nome).includes(normalizarTexto(termo));
+  const alvo = palavrasDoNome(termo);
+  if (alvo.length === 0) return true;
+  const palavras = palavrasDoNome(nome);
+  for (let i = 0; i + alvo.length <= palavras.length; i += 1) {
+    if (alvo.every((p, k) => palavras[i + k] === p)) return true;
+  }
+  return false;
+}
+
 /**
  * Chave do contato. A lista do WhatsApp não mostra o telefone de contato salvo, então a
  * identidade local é o nome salvo. Dois chats com o mesmo nome são marcados como duplicados

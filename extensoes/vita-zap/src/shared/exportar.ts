@@ -114,6 +114,9 @@ const filtrosSchema = z.object({
   aguardandoResposta: z.boolean().optional(),
   // Sem isto o backup apagava o filtro "só contatos com conversa minha" (achado no teste de restauração completa).
   soComMensagemMinha: z.boolean().optional(),
+  // 0.7.63: opcionais, para o backup antigo (sem eles) continuar valendo.
+  palavraInteira: z.boolean().optional(),
+  regiao: z.array(z.string()).optional(),
 });
 
 const itemSchema = z.object({

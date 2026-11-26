@@ -11,7 +11,7 @@
 import type { ContatoVarrido } from './contatos';
 import { diferencaDias, somarDias, type DataIso } from './datas';
 import type { MensagemLida } from './mensagens';
-import { normalizarTexto } from './nomes';
+import { nomeTemTermo, normalizarTexto } from './nomes';
 
 export const PERIODO_MIN = 1;
 export const PERIODO_MAX = 60;
@@ -117,6 +117,8 @@ export interface ContextoBusca {
   hoje: DataIso;
   /** Chaves marcadas "Não enviar mais" (ou "Não é cliente"). */
   naoEnviar: ReadonlySet<string>;
+  /** Os termos do nome casam por palavra inteira (v0.7.63). Ausente = pedaço do texto (comportamento antigo). */
+  palavraInteira?: boolean;
 }
 
 export interface Candidatas {
@@ -135,7 +137,7 @@ export interface Candidatas {
  */
 export function candidatosDoPedido(contatos: ReadonlyArray<ContatoVarrido>, plano: PlanoPedido, ctx: ContextoBusca): Candidatas {
   const desde = somarDias(ctx.hoje, -plano.periodoDias);
-  const termos = plano.termosNomeContato.map(normalizarTexto).filter(Boolean);
+  const termos = plano.termosNomeContato.filter((t) => normalizarTexto(t) !== '');
   const quem = plano.respondeu === false ? 'eu' : plano.quemFalouPorUltimo;
   const motivos = new Map<string, number>();
   const fora = (m: string) => motivos.set(m, (motivos.get(m) ?? 0) + 1);
@@ -148,7 +150,7 @@ export function candidatosDoPedido(contatos: ReadonlyArray<ContatoVarrido>, plan
     else if (c.duplicado) fora('mais de uma conversa com este nome');
     else if (c.ultimaConversa == null) fora('data da última conversa incerta (varra de novo)');
     else if (diferencaDias(c.ultimaConversa, desde) < 0 || diferencaDias(c.ultimaConversa, ctx.hoje) > 0) fora(`última conversa fora dos últimos ${plano.periodoDias} dias`);
-    else if (termos.length > 0 && !termos.every((t) => normalizarTexto(c.nome).includes(t))) fora('o nome não tem os termos pedidos');
+    else if (termos.length > 0 && !termos.every((t) => nomeTemTermo(c.nome, t, ctx.palavraInteira === true))) fora('o nome não tem os termos pedidos');
     else if (quem === 'eu' && c.ultimaDeMim === false) fora('a lista mostra o cliente falando por último');
     else if (quem === 'cliente' && c.ultimaDeMim === true) fora('a lista mostra você falando por último');
     else dentro.push(c);
