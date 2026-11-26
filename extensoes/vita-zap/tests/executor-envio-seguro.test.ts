@@ -214,6 +214,16 @@ describe('eventos do envio automático', () => {
     expect(abertos(t.pedidos)).toEqual(['Ana']);
   });
 
+  it('abriuProgramar (0.7.64): item vira "revisar", conta no freio e PAUSA; nunca reenvia', async () => {
+    const { t } = await aguardando();
+    await t.ex.aoReceberEvento({ tipo: 'vitaZap:abriuProgramar', nome: 'Ana', motivo: 'abriu Programar mensagem', fechou: true });
+    expect(status(t.ex, 'Ana')).toBe('revisar');
+    expect(t.ex.atual.campanha.itens[0].motivo).toMatch(/abriu_programar/);
+    expect(t.ex.atual.campanha.problemasSeguidos).toBe(1);
+    expect(t.ex.atual.campanha.status).toBe('pausada');
+    expect(abertos(t.pedidos)).toEqual(['Ana']);
+  });
+
   it('observacaoExpirada: item vira "revisar", NÃO conta no freio, campanha pausa com aviso', async () => {
     const { t } = await aguardando();
     await t.ex.aoReceberEvento({ tipo: 'vitaZap:observacaoExpirada', nome: 'Ana' });

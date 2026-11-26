@@ -5,6 +5,7 @@
 
 import type { EventoConteudo, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
 import { abrirConversaPorTelefoneSemRecarregar } from './abrir-por-telefone';
+import { diagnosticarRodape } from './envio-humano';
 import { abrirEColar, consultarEnvio, lerConversa, limparCaixa, pararObservacao, registrarBatimento } from './execucao';
 import { ErroSeletor } from './lista';
 import { iniciarCrm } from './crm';
@@ -22,6 +23,9 @@ const jaCarregado = window.__vitaZapCarregado === true;
 window.__vitaZapCarregado = true;
 
 let ocupado = false;
+
+// Diagnóstico para o dono (0.7.64): no DevTools da aba do WhatsApp, escolha o contexto "Vita Zap" e rode __vitaZapDiagnosticoRodape().
+(window as unknown as { __vitaZapDiagnosticoRodape?: () => string[] }).__vitaZapDiagnosticoRodape = () => diagnosticarRodape(document);
 
 function emitir(evento: EventoConteudo): void {
   // O painel pode estar fechado: aí não há ouvinte e o Chrome rejeita — ignorar.
@@ -50,6 +54,8 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
   switch (pedido.tipo) {
     case 'batimento':
       return { ok: true };
+    case 'diagnosticarRodape':
+      return { ok: true, avisos: diagnosticarRodape(document) };
     case 'consultarEnvio':
       return consultarEnvio(pedido.nome, pedido.texto, pedido.idsAntes);
     case 'lerConversa':

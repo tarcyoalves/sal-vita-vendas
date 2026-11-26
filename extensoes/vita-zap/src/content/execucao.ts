@@ -607,6 +607,10 @@ export async function abrirEColar(
       if (r.ok || resolvido) return;
       resolvido = true;
       pararObservacao();
+      if (r.codigo === 'abriu_programar') {
+        emitir({ tipo: 'vitaZap:abriuProgramar', nome, motivo: r.motivo, fechou: r.fechou === true });
+        return;
+      }
       if (r.codigo === 'envio_nao_confirmado') {
         emitir({ tipo: 'vitaZap:envioNaoConfirmado', nome, motivo: r.motivo });
         return;

@@ -6,8 +6,9 @@ import { textoComEmoji } from './dom';
 // 1. Janela de conferência: pausa de 2,2 s a 3,8 s depois de colar o texto (o atendente ainda pode intervir).
 // 2. Reconferência imediatamente antes do clique (conversa, texto exato, caixa não vazia, sem aviso).
 // 3. O botão só é procurado dentro de '#main footer', só com a caixa NÃO vazia (com a caixa vazia o botão
-//    do mesmo lugar é o MICROFONE) e só por rótulo/ícone exato de "Enviar"/"Send". Nada de adivinhar
-//    "o último botão à direita".
+//    do mesmo lugar é o MICROFONE) e só por rótulo/ícone EXATO de "Enviar"/"Send" (0.7.64: nada de casamento por
+//    pedaço do texto, lista negativa "programar/schedule/menu/..." e, se sobrar mais de um botão, NÃO clica).
+//    Nada de adivinhar "o último botão à direita".
 // 4. Sem confirmação não há sucesso: depois do clique o detector tem 20 s para ver a mensagem sair.
 // 5. Não existe envio pelo teclado (Enter sintético): sem botão confiável, o envio é cancelado.
 
@@ -44,47 +45,158 @@ function caixaDoRodape(footer: Element): HTMLElement | null {
   return footer.querySelector<HTMLElement>('div[contenteditable="true"]');
 }
 
-/**
- * Localiza o botão Enviar. Só no rodapé da conversa aberta ('#main footer'), só se a caixa NÃO está vazia
- * (vazia, o botão ali é o microfone) e só por rótulo ("Enviar"/"Send") ou ícone ("send"/"wds-ic-send-filled")
- * exatos. Nunca devolve o microfone. Sem candidato confiável → null (o envio é cancelado).
- */
-export function encontrarBotaoEnviar(raiz: ParentNode = document): HTMLElement | null {
-  const footer = raiz.querySelector('#main footer');
-  if (!footer) return null;
-  const caixa = caixaDoRodape(footer);
-  if (!caixa || textoComEmoji(caixa).trim() === '') return null;
+/** Minúsculas, sem acento, espaços colapsados. */
+function normalizar(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-  const candidatos: HTMLElement[] = [];
-  const sendTestId = footer.querySelector<HTMLElement>('[data-testid="send"], [data-testid="compose-btn-send"], [data-tab="11"]');
-  if (sendTestId) {
-    const b = botaoDe(sendTestId) ?? sendTestId;
-    if (!ehMicrofone(b)) candidatos.push(b);
+/**
+ * Lista NEGATIVA (0.7.64). O WhatsApp Web ganhou "Programar mensagem": um botão/ícone de programar no rodapé nunca pode
+ * ser tomado por Enviar. Casamento por pedaço de propósito (só deixa o filtro MAIS rígido): programar/programada,
+ * agendar/agendada, schedule(d), later, depois, clock/relógio, timer, alarm, calendar/calendário, menu, more/mais opções,
+ * dropdown, chevron, down.
+ */
+const NEGATIVA = /programa|agenda|schedul|later|depois|clock|relogio|timer|alarm|calendar|calendario|menu|more|mais opcoes|dropdown|chevron|down/;
+
+/** Rótulos/ícones/ids/títulos de um elemento (só ele, sem descendentes). Nunca o texto de mensagem. */
+function marcasDoElemento(el: Element): string[] {
+  const m: string[] = [];
+  for (const a of ['aria-label', 'title', 'data-icon', 'data-testid']) {
+    const v = el.getAttribute(a);
+    if (v) m.push(v);
   }
-  for (const b of footer.querySelectorAll<HTMLElement>('button, [role="button"]')) {
-    if (ehRotuloEnviar(b.getAttribute('aria-label') ?? '')) candidatos.push(b);
+  if (el.tagName.toLowerCase() === 'title' && el.parentElement?.tagName.toLowerCase() === 'svg') m.push(el.textContent ?? '');
+  return m;
+}
+
+/** Marcas do botão, de todos os descendentes e (se o alvo é um descendente) dos ancestrais entre o alvo e o botão. */
+function marcasDoBotao(botao: HTMLElement, alvo: Element | null = null): string[] {
+  const m = marcasDoElemento(botao);
+  for (const d of botao.querySelectorAll('*')) m.push(...marcasDoElemento(d));
+  for (let a: Element | null = alvo; a && a !== botao && botao.contains(a); a = a.parentElement) m.push(...marcasDoElemento(a));
+  const texto = (botao.textContent ?? '').trim();
+  if (texto && texto.length <= 60) m.push(texto);
+  return m;
+}
+
+/** Motivo (a marca) pelo qual o candidato cai na lista negativa, ou null. */
+function motivoNegativo(botao: HTMLElement, alvo: Element | null = null): string | null {
+  for (const marca of marcasDoBotao(botao, alvo)) {
+    if (NEGATIVA.test(normalizar(marca))) return marca;
+  }
+  return null;
+}
+
+export interface DiagnosticoBotao {
+  ariaLabel: string;
+  title: string;
+  dataIcon: string[];
+  dataTestid: string[];
+  svgTitle: string[];
+  /** 'aceito' | 'microfone' | 'negativa:<marca>' | 'nao_parece_enviar' */
+  situacao: string;
+}
+
+/** Descreve os botões do rodapé SEM conteúdo de mensagem: só rótulo, ícone, data-testid e título do svg. */
+function descreverBotao(b: HTMLElement, situacao: string): DiagnosticoBotao {
+  const todos = [b, ...Array.from(b.querySelectorAll<HTMLElement>('*'))];
+  const vals = (attr: string) => todos.map((e) => e.getAttribute(attr) ?? '').filter(Boolean);
+  return {
+    ariaLabel: b.getAttribute('aria-label') ?? '',
+    title: b.getAttribute('title') ?? '',
+    dataIcon: vals('data-icon'),
+    dataTestid: vals('data-testid'),
+    svgTitle: Array.from(b.querySelectorAll('svg > title')).map((t) => (t.textContent ?? '').trim()),
+    situacao,
+  };
+}
+
+export interface AnaliseBotaoEnviar {
+  /** O único botão Enviar aceito, ou null. */
+  botao: HTMLElement | null;
+  /** Mais de um botão distinto aceito (o WhatsApp mudou): não clicar. */
+  ambiguo: boolean;
+  /** Todos os botões do rodapé, para diagnóstico. */
+  botoes: DiagnosticoBotao[];
+}
+
+/** Aceito só por igualdade exata (ícone do conjunto ICONES_BOTAO, rótulo de ehRotuloEnviar, data-testid de enviar). */
+function analisarRodape(raiz: ParentNode): AnaliseBotaoEnviar {
+  const footer = raiz.querySelector('#main footer');
+  if (!footer) return { botao: null, ambiguo: false, botoes: [] };
+  const caixa = caixaDoRodape(footer);
+  const caixaPreenchida = !!caixa && textoComEmoji(caixa).trim() !== '';
+
+  const brutos: Array<{ b: HTMLElement; alvo: Element }> = [];
+  for (const el of footer.querySelectorAll<HTMLElement>('[data-testid="send"], [data-testid="compose-btn-send"]')) {
+    brutos.push({ b: botaoDe(el) ?? el, alvo: el });
   }
   for (const el of footer.querySelectorAll<HTMLElement>('[aria-label]')) {
-    if (ehRotuloEnviar(el.getAttribute('aria-label') ?? '')) {
-      const b = botaoDe(el) ?? el;
-      candidatos.push(b);
-    }
+    if (ehRotuloEnviar(el.getAttribute('aria-label') ?? '')) brutos.push({ b: botaoDe(el) ?? el, alvo: el });
   }
   for (const ic of footer.querySelectorAll<HTMLElement>('[data-icon]')) {
-    const val = (ic.getAttribute('data-icon') ?? '').toLowerCase();
-    if (ICONES_BOTAO.has(val) || val.includes('send')) {
+    if (ICONES_BOTAO.has((ic.getAttribute('data-icon') ?? '').trim().toLowerCase())) {
       const b = botaoDe(ic);
-      if (b) candidatos.push(b);
+      if (b) brutos.push({ b, alvo: ic });
     }
   }
   for (const t of footer.querySelectorAll('svg > title')) {
-    const val = (t.textContent ?? '').trim().toLowerCase();
-    if (ICONES_BOTAO.has(val) || val.includes('send') || val.includes('enviar')) {
+    if (ICONES_BOTAO.has((t.textContent ?? '').trim().toLowerCase())) {
       const b = botaoDe(t);
-      if (b) candidatos.push(b);
+      if (b) brutos.push({ b, alvo: t });
     }
   }
-  return candidatos.find((b) => !ehMicrofone(b) && footer.contains(b)) ?? null;
+
+  const aceitos: HTMLElement[] = [];
+  const situacaoDe = new Map<HTMLElement, string>();
+  for (const { b, alvo } of brutos) {
+    if (!footer.contains(b)) continue;
+    if (ehMicrofone(b)) {
+      situacaoDe.set(b, 'microfone');
+      continue;
+    }
+    const neg = motivoNegativo(b, alvo);
+    if (neg !== null) {
+      situacaoDe.set(b, `negativa:${neg}`);
+      continue;
+    }
+    if (!aceitos.includes(b)) aceitos.push(b);
+  }
+  // Candidatos aninhados (um dentro do outro) são o mesmo botão: fica o mais interno.
+  const distintos = aceitos.filter((a) => !aceitos.some((o) => o !== a && a.contains(o)));
+  for (const a of distintos) situacaoDe.set(a, 'aceito');
+
+  const botoes = Array.from(footer.querySelectorAll<HTMLElement>('button, [role="button"]')).map((b) =>
+    descreverBotao(b, situacaoDe.get(b) ?? (ehMicrofone(b) ? 'microfone' : (motivoNegativo(b) ? `negativa:${motivoNegativo(b)}` : 'nao_parece_enviar'))),
+  );
+  if (!caixaPreenchida) return { botao: null, ambiguo: false, botoes };
+  return { botao: distintos.length === 1 ? distintos[0] : null, ambiguo: distintos.length > 1, botoes };
+}
+
+/**
+ * Localiza o botão Enviar. Só no rodapé da conversa aberta ('#main footer'), só se a caixa NÃO está vazia
+ * (vazia, o botão ali é o microfone), só por rótulo ("Enviar"/"Send") ou ícone ("send"/"wds-ic-send-filled")
+ * EXATOS e fora da lista negativa (programar/agendar/menu...). Nunca devolve o microfone. Sem candidato confiável,
+ * ou com MAIS DE UM botão distinto aceito → null (o envio é cancelado).
+ */
+export function encontrarBotaoEnviar(raiz: ParentNode = document): HTMLElement | null {
+  return analisarRodape(raiz).botao;
+}
+
+/** Linhas de diagnóstico dos botões do rodapé (rótulo, ícone, data-testid, título do svg). Sem conteúdo de mensagem. */
+export function diagnosticarRodape(raiz: ParentNode = document): string[] {
+  if (!raiz.querySelector('#main footer')) return ['Rodapé da conversa não encontrado (abra uma conversa).'];
+  const a = analisarRodape(raiz);
+  if (a.botoes.length === 0) return ['Nenhum botão no rodapé.'];
+  return a.botoes.map((b, i) => {
+    const partes = [`aria-label="${b.ariaLabel}"`, `title="${b.title}"`, `data-icon=[${b.dataIcon.join(',')}]`, `data-testid=[${b.dataTestid.join(',')}]`, `svg-title=[${b.svgTitle.join(',')}]`, `=> ${b.situacao}`];
+    return `botão ${i + 1}: ${partes.join(' ')}`;
+  });
 }
 
 /**
@@ -131,8 +243,8 @@ export async function clicarBotaoEnviarHumano(botao: HTMLElement, vetar: () => s
   if (temPointer) botao.dispatchEvent(new PointerEvent('pointerdown', ponteiro));
   botao.dispatchEvent(new MouseEvent('mousedown', { ...base, buttons: 1 }));
 
-  // Tempo de pressão de um dedo humano real no botão
-  await new Promise((resolve) => setTimeout(resolve, 80 + Math.floor(Math.random() * 80)));
+  // Pressão curta (30-60 ms, 0.7.64): nada que pareça toque longo. Nunca se dispara contextmenu.
+  await new Promise((resolve) => setTimeout(resolve, 30 + Math.floor(Math.random() * 31)));
 
   // Reconferência IMEDIATAMENTE antes do clique: nada pode ter mudado nem o botão ter sumido.
   const veto = vetar();
@@ -151,9 +263,57 @@ export async function clicarBotaoEnviarHumano(botao: HTMLElement, vetar: () => s
   return null;
 }
 
+
+/** Janela em que se vigia o diálogo de programar depois do clique. */
+export const JANELA_PROGRAMAR_MS = 2_000;
+
+const MOTIVO_PROGRAMAR = 'O WhatsApp abriu "Programar mensagem" em vez de enviar. Fechei sem programar e pausei: confira a conversa.';
+const MOTIVO_PROGRAMAR_ABERTO = 'O WhatsApp abriu "Programar mensagem" em vez de enviar. Não consegui fechar com segurança e deixei aberto: feche sem programar e confira a conversa.';
+const ROTULOS_FECHAR = new Set(['fechar', 'close', 'cancelar', 'cancel', 'x', 'close-refreshed', 'x-viewer', 'x-alt', 'wds-ic-close', 'wds-ic-cancel', 'cancel-refreshed']);
+const NUNCA_FECHAR = /enviar|send|confirm|programar|agendar|schedul|salvar|save|^ok$|concluir|done|avancar|next/;
+
+/** Diálogo/menu aberto cujo título/rótulo menciona programar/schedule. */
+function acharDialogoProgramar(raiz: ParentNode): HTMLElement | null {
+  const sel = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-animate-modal-popup], [data-testid*="modal"]';
+  for (const d of raiz.querySelectorAll<HTMLElement>(sel)) {
+    const rot = normalizar(`${d.getAttribute('aria-label') ?? ''} ${d.getAttribute('title') ?? ''}`);
+    const cab = Array.from(d.querySelectorAll('h1,h2,h3,[role="heading"],[aria-label],svg > title')).map((e) => normalizar(e.getAttribute('aria-label') ?? e.textContent ?? ''));
+    const txt = normalizar((d.textContent ?? '').slice(0, 300));
+    if (/programar mensagem|schedule message|programa|schedul/.test(rot) || cab.some((c) => /programar|schedule/.test(c)) || /programar mensagem|schedule message/.test(txt)) return d;
+  }
+  return null;
+}
+
+/** Botão de fechar/cancelar do PRÓPRIO diálogo (nunca o verde de confirmar). Rótulo/ícone exato. */
+function acharFechar(dialogo: HTMLElement): HTMLElement | null {
+  for (const b of dialogo.querySelectorAll<HTMLElement>('button, [role="button"]')) {
+    const marcas = marcasDoBotao(b).map(normalizar);
+    if (marcas.some((m) => NUNCA_FECHAR.test(m))) continue;
+    const ic = Array.from(b.querySelectorAll('[data-icon], svg > title')).map((e) => normalizar(e.getAttribute('data-icon') ?? e.textContent ?? ''));
+    const rot = normalizar(`${b.getAttribute('aria-label') ?? ''}`);
+    const tit = normalizar(`${b.getAttribute('title') ?? ''}`);
+    const txt = normalizar((b.textContent ?? '').trim());
+    if (ROTULOS_FECHAR.has(rot) || ROTULOS_FECHAR.has(tit) || ic.some((i) => ROTULOS_FECHAR.has(i)) || ROTULOS_FECHAR.has(txt)) return b;
+  }
+  return null;
+}
+
+async function fecharDialogoProgramar(dialogo: HTMLElement): Promise<ResultadoEnvio> {
+  const fechar = acharFechar(dialogo);
+  if (!fechar) return { ok: false, codigo: 'abriu_programar', motivo: MOTIVO_PROGRAMAR_ABERTO, fechou: false };
+  try {
+    fechar.click();
+  } catch {
+    fechar.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+  }
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  if (dialogo.isConnected && acharDialogoProgramar(document) === dialogo) return { ok: false, codigo: 'abriu_programar', motivo: MOTIVO_PROGRAMAR_ABERTO, fechou: false };
+  return { ok: false, codigo: 'abriu_programar', motivo: MOTIVO_PROGRAMAR, fechou: true };
+}
+
 export type ResultadoEnvio =
   | { ok: true }
-  | { ok: false; codigo: 'reconferencia_falhou' | 'botao_enviar_ausente' | 'envio_nao_confirmado'; motivo: string };
+  | { ok: false; codigo: 'reconferencia_falhou' | 'botao_enviar_ausente' | 'envio_nao_confirmado' | 'abriu_programar'; motivo: string; fechou?: boolean };
 
 export interface OpcoesEnvioHumano {
   /** Devolve o motivo do veto (não clicar) ou null se tudo confere. Roda antes de procurar o botão e de novo logo antes do clique. */
@@ -171,7 +331,13 @@ export interface OpcoesEnvioHumano {
 export async function enviarHumano(raiz: ParentNode = document, opcoes: OpcoesEnvioHumano): Promise<ResultadoEnvio> {
   const veto = opcoes.reconferir();
   if (veto) return { ok: false, codigo: 'reconferencia_falhou', motivo: veto };
-  const botao = encontrarBotaoEnviar(raiz);
+  const analise = analisarRodape(raiz);
+  if (analise.ambiguo) {
+    // Diagnóstico (rótulos/ícones, sem texto de mensagem) no console da aba do WhatsApp.
+    console.warn('[Vita Zap] Mais de um botão parecido com Enviar no rodapé:', diagnosticarRodape(raiz));
+    return { ok: false, codigo: 'botao_enviar_ausente', motivo: 'Achei mais de um botão parecido com Enviar no rodapé (o WhatsApp mudou). Não cliquei em nada.' };
+  }
+  const botao = analise.botao;
   if (!botao) return { ok: false, codigo: 'botao_enviar_ausente', motivo: 'Não achei o botão Enviar no rodapé da conversa (com a caixa preenchida). Não cliquei em nada.' };
   const vetoDoClique = await clicarBotaoEnviarHumano(botao, opcoes.reconferir);
   if (vetoDoClique) return { ok: false, codigo: 'reconferencia_falhou', motivo: vetoDoClique };
@@ -179,6 +345,16 @@ export async function enviarHumano(raiz: ParentNode = document, opcoes: OpcoesEn
   const prazo = opcoes.prazoConfirmacaoMs ?? PRAZO_CONFIRMACAO_MS;
   const passo = opcoes.passoMs ?? 250;
   const fim = Date.now() + prazo;
+
+  // Rede de segurança: até 2 s depois do clique, um diálogo "Programar mensagem" NÃO é sucesso. Nunca se confirma nada nele.
+  const fimVigia = Date.now() + JANELA_PROGRAMAR_MS;
+  for (;;) {
+    if (opcoes.confirmar()) return { ok: true };
+    const dialogo = acharDialogoProgramar(raiz);
+    if (dialogo) return await fecharDialogoProgramar(dialogo);
+    if (Date.now() >= fimVigia || Date.now() >= fim) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
   for (;;) {
     if (opcoes.confirmar()) return { ok: true };
     if (Date.now() >= fim) break;

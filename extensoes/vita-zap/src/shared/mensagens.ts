@@ -27,7 +27,9 @@ export type PedidoConteudo =
    * Follow-up: abre a conversa de `nome` (identidade estrita, só individual) e devolve as últimas mensagens lidas.
    * Só leitura: não escreve na caixa nem clica em nada além de abrir a conversa pela busca.
    */
-  | { tipo: 'lerConversa'; nome: string };
+  | { tipo: 'lerConversa'; nome: string }
+  /** Diagnóstico (0.7.64): rótulo/ícone/data-testid/título svg dos botões do rodapé, sem texto de mensagem. Volta em `avisos`. */
+  | { tipo: 'diagnosticarRodape' };
 
 /** Uma mensagem da conversa aberta, como o follow-up a lê. `quando` = ISO (carimbo do WhatsApp, fuso de Fortaleza) ou null. */
 export interface MensagemLida {
@@ -90,6 +92,8 @@ export type EventoConteudo =
   | { tipo: 'vitaZap:envioBloqueado'; nome: string; codigo: 'reconferencia_falhou' | 'botao_enviar_ausente' | 'painel_ausente'; motivo: string; limpou: boolean }
   /** Clique feito, mas o detector não viu a mensagem sair em 20 s. Pode ter saído: conferir. */
   | { tipo: 'vitaZap:envioNaoConfirmado'; nome: string; motivo: string }
+  /** O WhatsApp abriu "Programar mensagem" em vez de enviar (0.7.64). Nada foi programado; `fechou` = o diálogo foi fechado pelo X. */
+  | { tipo: 'vitaZap:abriuProgramar'; nome: string; motivo: string; fechou: boolean }
   /** O observador desistiu (30 min sem ver a mensagem sair). */
   | { tipo: 'vitaZap:observacaoExpirada'; nome: string }
   | { tipo: 'vitaZap:progressoVarredura'; lidas: number; unicas: number };
@@ -101,6 +105,7 @@ export function ehEventoConteudo(v: unknown): v is EventoConteudo {
     tipo === 'vitaZap:envioDetectado' ||
     tipo === 'vitaZap:envioBloqueado' ||
     tipo === 'vitaZap:envioNaoConfirmado' ||
+    tipo === 'vitaZap:abriuProgramar' ||
     tipo === 'vitaZap:observacaoExpirada' ||
     tipo === 'vitaZap:progressoVarredura'
   );

@@ -290,6 +290,14 @@ export class Executor {
       if (this.ativo) await this.pausar(motivo);
       return;
     }
+    if (ev.tipo === 'vitaZap:abriuProgramar') {
+      // Nada foi programado nem enviado (o diálogo foi fechado ou deixado aberto). Revisar (nunca repetir sozinho), freio e pausa.
+      const motivo = `abriu_programar: ${ev.motivo}`;
+      await this.gravarMarcador(null);
+      await this.marcarComo(item, 'revisar', motivo, true);
+      if (this.ativo) await this.pausar(motivo);
+      return;
+    }
     if (ev.tipo === 'vitaZap:envioNaoConfirmado') {
       // Clicou e não viu sair: PODE ter saído. Revisar (nunca reenviar sozinho), conta no freio e pausa.
       const motivo = `envio_nao_confirmado: ${ev.motivo}`;

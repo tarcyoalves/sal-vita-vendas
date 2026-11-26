@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.63: filtro mais preciso, "Palavra inteira" nos termos do nome e região por UF ou DDD (seção 3.9); v0.7.60: "não enviar mais" e contato registrado compartilhados pela equipe (CRM como fonte), tela Hoje e resultado por texto (seção 3.8); v0.7.59: modo Observação + placar da IA, releitura antes de enviar, prioridade da fila, aviso do histórico sumindo e "O que a IA fez" com Desfazer (seção 3.7); v0.7.56: reativação por inatividade 25/30/40 dias + trava de agendamento do CRM (seção 3.5); v0.7.55: o dono escreve a mensagem de cobrança (seção 3.4); 0.7.54: follow-up com IA no painel; antes, v0.7.36: Bloqueio seguro de tela com vidro embaçado + CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.64: o envio automático nunca confunde "Programar mensagem" com Enviar (seção 3.10); v0.7.63: filtro mais preciso, "Palavra inteira" nos termos do nome e região por UF ou DDD (seção 3.9); v0.7.60: "não enviar mais" e contato registrado compartilhados pela equipe (CRM como fonte), tela Hoje e resultado por texto (seção 3.8); v0.7.59: modo Observação + placar da IA, releitura antes de enviar, prioridade da fila, aviso do histórico sumindo e "O que a IA fez" com Desfazer (seção 3.7); v0.7.56: reativação por inatividade 25/30/40 dias + trava de agendamento do CRM (seção 3.5); v0.7.55: o dono escreve a mensagem de cobrança (seção 3.4); 0.7.54: follow-up com IA no painel; antes, v0.7.36: Bloqueio seguro de tela com vidro embaçado + CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -776,3 +776,27 @@ Pedido do dono (contato de exemplo "CLIENTE PENSO SALTO DO LONTRA PR"): contém 
 - **Limite:** o telefone só vem do CRM da extensão (contato com telefone ou conversa já aberta por telefone). Contato salvo
   só com nome, sem telefone aprendido, e sem a UF no nome vai para "revisar". Não consulta o CRM Lembretes nem o registro da
   reativação na prévia.
+
+### 3.10 Envio automático x "Programar mensagem" (v0.7.64)
+
+Defeito em produção (26/11): o WhatsApp Web ganhou o recurso de programar mensagens e o envio automático abriu o diálogo
+"Programar mensagem" em vez de enviar. Causa provável: `encontrarBotaoEnviar` aceitava `data-icon`/`svg > title` que
+*contivessem* "send"/"enviar", então "schedule-send" ou "Programar envio" casava como Enviar. (Não foi visto o DOM real.)
+
+- **Só igualdade exata:** rótulo de `ehRotuloEnviar`, ícone do conjunto `ICONES_BOTAO` ou `data-testid` `send`/`compose-btn-send`.
+  `[data-tab="11"]` deixou de ser aceito.
+- **Lista negativa** (programar, agendar, schedule, later, depois, clock/relógio, timer, alarm, calendar/calendário, menu,
+  more/mais opções, dropdown, chevron, down) aplicada ao botão, a todos os descendentes e aos ancestrais até o botão
+  (aria-label, title, data-icon, data-testid, svg > title, texto). Casou, o candidato é descartado.
+- **Ambiguidade:** mais de um botão distinto aceito → não clica; devolve `botao_enviar_ausente` ("Achei mais de um botão
+  parecido com Enviar no rodapé (o WhatsApp mudou). Não cliquei em nada.") e escreve o diagnóstico no console.
+- **Pressão do clique** de 30 a 60 ms (era 80 a 160); nenhum `contextmenu`.
+- **Rede de segurança:** até 2 s depois do clique, se aparecer diálogo/menu "Programar mensagem"/"Schedule message", nada é
+  confirmado nele; só é fechado pelo botão Fechar/Close/Cancelar/X do próprio diálogo (nunca o verde). Resultado
+  `abriu_programar` → evento `vitaZap:abriuProgramar` → o item vira "revisar", conta no freio e a campanha PAUSA. Sem botão
+  de fechar seguro, o diálogo fica aberto e a pausa é a mesma.
+- **Diagnóstico para colar quando o WhatsApp mudar:** abra uma conversa, digite algo na caixa, abra o DevTools (F12) da aba do
+  WhatsApp, escolha no seletor de contexto do Console "Vita Zap" (a extensão) e rode `__vitaZapDiagnosticoRodape()`. Sai
+  uma linha por botão do rodapé (aria-label, title, data-icon, data-testid, título do svg, e se foi aceito/descartado),
+  sem texto de mensagem. O mesmo vem do pedido `diagnosticarRodape` (campo `avisos`). Não há botão no painel para isso.
+- **Não validado no WhatsApp real** (ver seção 6): os testes usam HTML sintético.
