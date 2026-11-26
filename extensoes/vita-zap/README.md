@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.60: "não enviar mais" e contato registrado compartilhados pela equipe (CRM como fonte), tela Hoje e resultado por texto (seção 3.8); v0.7.59: modo Observação + placar da IA, releitura antes de enviar, prioridade da fila, aviso do histórico sumindo e "O que a IA fez" com Desfazer (seção 3.7); v0.7.56: reativação por inatividade 25/30/40 dias + trava de agendamento do CRM (seção 3.5); v0.7.55: o dono escreve a mensagem de cobrança (seção 3.4); 0.7.54: follow-up com IA no painel; antes, v0.7.36: Bloqueio seguro de tela com vidro embaçado + CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.63: filtro mais preciso, "Palavra inteira" nos termos do nome e região por UF ou DDD (seção 3.9); v0.7.60: "não enviar mais" e contato registrado compartilhados pela equipe (CRM como fonte), tela Hoje e resultado por texto (seção 3.8); v0.7.59: modo Observação + placar da IA, releitura antes de enviar, prioridade da fila, aviso do histórico sumindo e "O que a IA fez" com Desfazer (seção 3.7); v0.7.56: reativação por inatividade 25/30/40 dias + trava de agendamento do CRM (seção 3.5); v0.7.55: o dono escreve a mensagem de cobrança (seção 3.4); 0.7.54: follow-up com IA no painel; antes, v0.7.36: Bloqueio seguro de tela com vidro embaçado + CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -203,6 +203,16 @@ e salve. Sem isso nenhuma campanha roda. Confira também se o WhatsApp Web está
    de, dias sem repetir), escreva o texto base com `{primeiroNome}` e até 3 variações. Clique
    em *Gerar prévia*: cada contato aparece com o motivo de inclusão e o texto sorteado. Remova
    quem quiser, corrija o primeiro nome se preciso e clique em **Aprovar**.
+   - **Palavra inteira e Região (v0.7.63).** **"Palavra inteira"** (ligada por padrão nos filtros novos do painel): os
+     termos de "Nome contém" e "Nome NÃO contém" casam por PALAVRA do nome (sem acento nem maiúscula; separadores:
+     espaço, hífen, barra, parênteses, vírgula, ponto...). `PR` casa com "CLIENTE (PR)", "X-PR" e "PR.", mas não com
+     "COMPRAS" nem "PRECISA"; "salto do lontra" casa como sequência de palavras. Desligada, volta a casar por pedaço.
+     **Região (UF ou DDD, separados por vírgula)**, ex.: `PR, 41, 45, 46`: o contato atende se o nome tem a UF como
+     palavra inteira **ou** se o telefone que a extensão já conhece dele (CRM da extensão: contato ou conversa vista;
+     com ou sem o 9º dígito) tem um dos DDDs. Item que não é UF nem DDD do Brasil aparece como erro ao lado do campo e
+     trava o *Gerar prévia* (nada é ignorado em silêncio). Sem a UF no nome e sem telefone conhecido, o contato vai
+     para **Revisar** ("sem telefone conhecido para conferir o DDD"); nunca entra sozinho nem some. O atalho "+ incluir
+     os DDDs de PR" completa o campo. Motivos na prévia: "UF PR no nome", "DDD 45", "fora da região (DDD 11)".
    - **Revisar**: contatos com data incerta ("segunda-feira" ambígua, formato desconhecido) ou
      nome repetido em duas conversas ou **possível grupo** (v0.7.29: a prévia da linha começa com
      "Fulano:", assim o WhatsApp mostra a última mensagem de um grupo, também o que tem foto e por isso
@@ -749,3 +759,20 @@ Banco local v4 (lojas novas e aditivas `julgamentos` e `acoesIa`; nada do que ex
 - **Resultado por texto** (só local, nada vai ao servidor): ao lado de cada texto seu (cobrança, reativação por etapa, Pedir à IA) aparece "enviado 42 · respondeu 9 (21%)", com aviso de amostra pequena (menos de 20 envios). O texto é identificado pelo hash do conteúdo: **editar o texto zera a contagem dele**. Respondeu = a leitura que o follow-up/reativação já faz achou resposta do cliente em até 7 dias.
 
 Banco local v5 (só a loja nova `resultadosTexto`; o estado da sincronização fica em `followupConfig` id `equipe`; os campos novos `origem` e `crm` do "não enviar mais" são opcionais). Arquivos: `shared/equipe.ts`, `shared/servico-equipe.ts`, `shared/hash.ts`, `shared/hoje.ts`, `shared/resultado-texto.ts`, `sidepanel/sincronia-equipe.ts`, `sidepanel/equipe.ts`, `sidepanel/Hoje.tsx`, `sidepanel/abas.ts`, `sidepanel/ResultadosTexto.tsx`, `sidepanel/saude-painel.ts`; mudaram `executor.ts`, `banco.ts`, os motores, `Previa.tsx`, `Dados.tsx`, `App.tsx`, `MensagemCobranca.tsx`. Detalhes em `docs/PLANO-CAMPANHAS-WHATSAPP.md`, seção 14.
+
+### 3.9 Filtro mais preciso (v0.7.63)
+
+Pedido do dono (contato de exemplo "CLIENTE PENSO SALTO DO LONTRA PR"): contém `CLIENTE`, `PR`; ou DDD 45, 46, 41.
+
+- `Filtros.palavraInteira` e `Filtros.regiao` (itens `"PR"`, `"45"`) são **opcionais**: filtro/campanha/backup salvo antes da
+  0.7.63 não tem os campos e mantém o comportamento antigo (pedaço do texto, sem região). O painel cria os novos com
+  "Palavra inteira" LIGADA (preferência `vitaZap:palavraInteira`; a região em `vitaZap:regiao`).
+- Funções puras: `nomeTemTermo`/`palavrasDoNome` (`src/shared/nomes.ts`), `lerRegiao`, `DDDS_POR_UF`, `dddDoTelefone`,
+  `incluirDddsDaUf` (`src/shared/regiao.ts`), `telefonesConhecidosPorChave` (`src/shared/crm-telefone-conhecido.ts`) e o
+  `avaliarContato` de `filtros.ts` (o `ContextoFiltro` ganhou `telefonePorChave`).
+- **Onde vale:** Prévia (palavra inteira + região, também nas Rotinas Rápidas); **Reativação** (opção "Palavra inteira" nos
+  Ajustes: config nova = ligada, config já salva = antiga) e **Pedir à IA** (caixa "Palavra inteira", ligada por padrão) só
+  usam a palavra inteira; **não** têm campo de região.
+- **Limite:** o telefone só vem do CRM da extensão (contato com telefone ou conversa já aberta por telefone). Contato salvo
+  só com nome, sem telefone aprendido, e sem a UF no nome vai para "revisar". Não consulta o CRM Lembretes nem o registro da
+  reativação na prévia.
