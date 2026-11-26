@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { salvarCampanha, type Banco } from '../shared/banco';
+import { guardarAnexos, salvarCampanha, type Banco } from '../shared/banco';
+import { montarMetadados, validarAnexos } from '../shared/anexos';
+import { CampoAnexos, ListaAnexos } from './Anexos';
 import { type Campanha, criarItens, type ItemCampanha, novoId, textoDoItem, validarParaAprovar } from '../shared/campanha';
 import { DIAS_SEM_REPETIR, MARCADOR_PRIMEIRO_NOME, MAX_VARIACOES } from '../shared/constantes';
 import { formatarDataBr, lerDataIso, hojeNoFuso, somarDias, diferencaDias } from '../shared/datas';
@@ -50,6 +52,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
   const [dias, setDias] = useState(DIAS_SEM_REPETIR);
   const [base, setBase] = useState(() => lerPreferencia('textoBase', TEXTO_EXEMPLO));
   const [variacoes, setVariacoes] = useState<string[]>(() => Array.from({ length: MAX_VARIACOES }, () => ''));
+  const [anexosArquivos, setAnexosArquivos] = useState<File[]>([]);
   const [itens, setItens] = useState<ItemCampanha[] | null>(null);
   const [assinaturaPrevia, setAssinaturaPrevia] = useState('');
   const [errosAprovacao, setErrosAprovacao] = useState<string[]>([]);
@@ -505,14 +508,16 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
 
   async function aprovar() {
     if (!itens) return;
-    const erros = [...errosTexto, ...validarParaAprovar({ itens: itensMarcados, modelos })];
+    const erros = [...errosTexto, ...validarAnexos(anexosArquivos), ...validarParaAprovar({ itens: itensMarcados, modelos })];
     setErrosAprovacao(erros);
     if (erros.length > 0 || desatualizada) return;
     setSalvando(true);
     try {
       const agora = new Date();
+      const idCampanha = novoId(agora);
+      const anexos = anexosArquivos.length > 0 ? await montarMetadados(anexosArquivos, () => `a${novoId(new Date())}`) : [];
       const campanha: Campanha = {
-        id: novoId(agora),
+        id: idCampanha,
         nome: nome.trim() || `Campanha ${hojeBr}`,
         criadaEm: agora.toISOString(),
         aprovadaEm: agora.toISOString(),
@@ -525,8 +530,12 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
         problemasSeguidos: 0,
         ultimoEnvioEm: null,
         intervaloAtualSeg: null,
+        ...(anexos.length > 0 ? { anexos } : {}),
       };
+      // Os arquivos primeiro: a campanha nunca aparece prometendo um anexo que não foi guardado.
+      if (anexos.length > 0) await guardarAnexos(db, campanha.id, anexos.map((m, i) => ({ anexoId: m.id, nome: m.nome, tipo: m.tipo, blob: anexosArquivos[i] })));
       await salvarCampanha(db, campanha);
+      setAnexosArquivos([]);
       setItens(null);
       await aoAprovar(campanha.id);
     } finally {
@@ -1191,6 +1200,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
             {e}
           </p>
         ))}
+        <CampoAnexos arquivos={anexosArquivos} aoMudar={setAnexosArquivos} />
         <label>
           Nome da campanha
           <input value={nome} onChange={(e) => setNome(e.target.value)} />
@@ -1250,6 +1260,14 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
 
       {itens && (
         <div className="cartao">
+          {anexosArquivos.length > 0 && (
+            <div data-previa-anexos>
+              <p className="info">
+                <b>Anexos desta campanha</b> · modo: <b>texto primeiro, arquivos depois</b> (sem legenda). No envio manual, a prévia do WhatsApp fica aberta e você aperta o botão de enviar dela.
+              </p>
+              <ListaAnexos linhas={anexosArquivos.map((f, i) => ({ chave: `${i}:${f.name}`, nome: f.name, tipo: f.type || (f.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'), tamanho: f.size, blob: f }))} />
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
             <h3 style={{ margin: 0 }}>Prévia · {itensMarcados.length} marcado{itensMarcados.length !== 1 ? 's' : ''} (de {itens.length})</h3>
             {itens.some((i) => i.marcado === false) && (

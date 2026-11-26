@@ -12,6 +12,8 @@ import { acharContato } from '../shared/crm-contatos';
 import { type EstadoExecutor, Executor } from './executor';
 import { iniciarBatimento, protegerContraFechamento } from './protecao';
 import { pedir } from './whatsapp';
+import { AnexosDaCampanha, TrocarAnexos } from './Anexos';
+import { resumoDoProgresso } from '../shared/anexos';
 import { assinarTrava, donoDaTrava, liberar, ROTULO_DONO, tentarTravar } from './trava-whatsapp';
 import { lerPreferencia, salvarPreferencia } from './preferencias';
 
@@ -28,6 +30,7 @@ const ROTULO_FASE: Record<EstadoExecutor['fase'], string> = {
   parada: 'Parada',
   abrindo: 'Abrindo a conversa…',
   aguardando_envio: 'Aguardando envio',
+  aguardando_anexo: 'Aguardando o anexo',
   rascunho_diferente: 'Já há um texto na caixa',
   intervalo: 'Intervalo entre contatos',
   concluida: 'Concluída',
@@ -229,6 +232,19 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
         </p>
       </div>
 
+      {((c.anexos && c.anexos.length > 0) || (!rodando && c.status !== 'concluida' && !c.tipo)) && (
+        <details className="cartao" data-anexos-da-campanha open={(c.anexos?.length ?? 0) > 0}>
+          <summary><b>Anexos ({c.anexos?.length ?? 0})</b></summary>
+          {c.anexos && c.anexos.length > 0 && (
+            <>
+              <p className="ajuda">Modo: texto primeiro, arquivos depois (sem legenda). Os anexos não vão no backup; anexe de novo após restaurar.</p>
+              <AnexosDaCampanha db={db} campanhaId={c.id} anexos={c.anexos} />
+            </>
+          )}
+          {!rodando && c.status !== 'concluida' && <TrocarAnexos db={db} campanhaId={c.id} aoSalvar={(a, guardar) => executor.definirAnexos(a, guardar)} />}
+        </details>
+      )}
+
       <div className={`cartao estado-${estado.fase}`}>
         <h3>{ROTULO_FASE[estado.fase]}</h3>
         {estado.fase === 'intervalo' && faltaSeg != null && <p className="contagem">Próximo em {faltaSeg} s</p>}
@@ -283,6 +299,17 @@ export function Execucao({ db, dados, campanhaId, aoEscolher, aoMudar, crm }: Pr
             )}
           </p>
         )}
+
+        {estado.fase === 'aguardando_anexo' && item != null && (
+          <p className="ajuda">
+            {estado.envioAutomatico ? (
+              <>O arquivo foi colado e o envio automático clica no botão de enviar da prévia do WhatsApp depois da conferência. Para impedir, use <b>Pausar</b> agora.</>
+            ) : (
+              <>O arquivo está na prévia do WhatsApp, sem legenda. Aperte o botão de <b>enviar da prévia</b> (ou feche a prévia e use <b>Pausar</b>). A extensão percebe o envio e segue sozinha.</>
+            )}
+          </p>
+        )}
+        {item?.progresso && c.anexos && <p className="info">{resumoDoProgresso(item.progresso, c.anexos.length)}</p>}
 
         {estado.fase === 'rascunho_diferente' && item != null && (
           <div className="botoes">

@@ -97,6 +97,22 @@ export function colarComClipboard(el: HTMLElement, texto: string): void {
   } catch {}
 }
 
+/**
+ * Cola um ARQUIVO na caixa da conversa (0.7.65), pelo mesmo caminho do texto: ClipboardEvent('paste') com DataTransfer. O WhatsApp
+ * responde abrindo a prévia de mídia; a legenda fica VAZIA (nenhum texto é colado nela). Devolve false se o navegador recusou montar o evento.
+ */
+export function colarArquivoComClipboard(el: HTMLElement, arquivo: File): boolean {
+  el.focus();
+  try {
+    const dt = new DataTransfer();
+    dt.items.add(arquivo);
+    el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Fallback final para inserir texto diretamente no parágrafo do Lexical caso execCommand e paste falhem. */
 export function colarDiretoNoParagrafo(el: HTMLElement, texto: string): void {
   el.focus();

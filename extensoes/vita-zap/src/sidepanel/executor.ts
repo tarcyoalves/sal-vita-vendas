@@ -14,16 +14,20 @@ import {
   type EmVoo,
   type ItemCampanha,
   type StatusItem,
+  comAnexoEnviado,
+  comTextoEnviado,
   marcarItem,
   proximoPendente,
   textoDoItem,
 } from '../shared/campanha';
+import { blobParaBase64, type ArquivoParaColar } from '../shared/anexos';
 import { diasSemRepetir, ultimoEnvioPorChave } from '../shared/filtros';
 import { diferencaDias, hojeNoFuso } from '../shared/datas';
 import {
   type Banco,
   lerConfig,
   lerConfigFollowup,
+  lerAnexoGuardado,
   lerConfigReativacao,
   lerReativacao,
   listarEnvios,
@@ -79,7 +83,7 @@ export const PREFIXO_PAUSA_CRM = 'CRM indisponível';
 /** Pausa porque o automático não está no modo Ligado (Observação ou Desligado): nada é enviado. Benigna: não exige "Retomar". */
 export const PREFIXO_PAUSA_MODO = 'automático em';
 
-export type FaseExecucao = 'parada' | 'abrindo' | 'aguardando_envio' | 'rascunho_diferente' | 'intervalo' | 'concluida';
+export type FaseExecucao = 'parada' | 'abrindo' | 'aguardando_envio' | 'aguardando_anexo' | 'rascunho_diferente' | 'intervalo' | 'concluida';
 
 export interface EstadoExecutor {
   campanha: Campanha;
@@ -156,6 +160,15 @@ export class Executor {
       await this.gravarMarcador(null);
       return true;
     }
+    if (m.anexoIndice != null) {
+      // O texto já saiu; o anexo estava em andamento quando o painel fechou. Não dá para provar se saiu: "revisar", sem reenviar nada.
+      const agora = this.deps.agora();
+      await this.gravar({
+        ...marcarItem(c, item.chave, 'revisar', agora, `o painel fechou com o anexo ${m.anexoIndice + 1} em andamento e não dá para provar se saiu; não reenviei. Confira no WhatsApp`),
+        emVoo: null,
+      });
+      return true;
+    }
     const r = await this.deps.pedir({ tipo: 'consultarEnvio', nome: m.nome, texto: m.texto, idsAntes: m.idsAntes }, true);
     if (!r.ok) {
       this.publicar({
@@ -167,6 +180,11 @@ export class Executor {
     if (r.situacao === 'enviado') {
       await registrarEnvio(this.deps.db, { campanhaId: c.id, chave: item.chave, nome: item.nome, enviadoEm: agora.toISOString(), textoConfere: true });
       await this.depoisDoEnvio(item, c, agora.toISOString());
+      if (this.temAnexos(c)) {
+        // O texto saiu: grava o progresso e deixa o item pendente; o passo seguinte só continua pelos anexos (nunca reenvia o texto).
+        await this.gravar({ ...comTextoEnviado(c, item.chave, 'texto confirmado ao reabrir o painel'), emVoo: null });
+        return true;
+      }
       const cfg = await lerConfig(this.deps.db);
       await this.gravar({
         ...marcarItem(c, item.chave, 'enviado', agora, 'confirmado ao reabrir o painel'),
@@ -235,6 +253,12 @@ export class Executor {
       this.ativo = false;
       return;
     }
+    const faltando = await this.anexosAusentes();
+    if (faltando.length > 0) {
+      this.ativo = false;
+      this.publicar({ mensagem: `Os arquivos anexados não estão neste computador (${faltando.join(', ')}). O backup não leva anexos: anexe de novo na campanha. Não enviei nada.` });
+      return;
+    }
     // Retomar também reconsidera quem ficou "aguardando o CRM" (nada foi aberto nem colado para eles).
     this.crmFora = null;
     const c0 = this.estado.campanha;
@@ -279,6 +303,7 @@ export class Executor {
   /** Evento do content script: envio detectado, bloqueado antes do clique, não confirmado ou observação expirada. */
   async aoReceberEvento(ev: EventoConteudo): Promise<void> {
     if (ev.tipo === 'vitaZap:progressoVarredura') return;
+    if (ev.tipo === 'vitaZap:anexoEnviado' || ev.tipo === 'vitaZap:anexoFalhou') return this.aoEventoDeAnexo(ev);
     const item = this.estado.itemAtual;
     if (!this.ativo || this.estado.fase !== 'aguardando_envio' || !item || ev.nome !== item.nome) return;
 
@@ -324,6 +349,13 @@ export class Executor {
       textoConfere: ev.textoConfere,
     });
     await this.depoisDoEnvio(item, c, agora.toISOString());
+    if (this.temAnexos(c)) {
+      // Texto enviado: registra o progresso (o item segue pendente) e segue para os anexos, um por vez.
+      await this.gravar({ ...comTextoEnviado(c, item.chave, ev.textoConfere ? null : 'texto enviado foi editado'), emVoo: null });
+      this.publicar({ itemAtual: item });
+      await this.proximoAnexo(item.chave);
+      return;
+    }
     const marcada = marcarItem(c, item.chave, 'enviado', agora, ev.textoConfere ? null : 'texto enviado foi editado');
     const cfg = await lerConfig(this.deps.db);
     await this.gravar({
@@ -334,6 +366,100 @@ export class Executor {
     });
     this.publicar({ itemAtual: null });
     await this.avancar();
+  }
+
+  // ── Anexos (0.7.65) ─────────────────────────────────────────────────────────────────────────────────────────────
+
+  private temAnexos(c: Campanha): boolean {
+    return (c.anexos?.length ?? 0) > 0;
+  }
+
+  /** Nomes dos anexos cujo arquivo (Blob) não está guardado neste computador (ex.: depois de restaurar um backup). */
+  async anexosAusentes(): Promise<string[]> {
+    const c = this.estado.campanha;
+    const faltam: string[] = [];
+    for (const a of c.anexos ?? []) if (!(await lerAnexoGuardado(this.deps.db, c.id, a.id))) faltam.push(a.nome);
+    return faltam;
+  }
+
+  /** Troca os anexos da campanha (só parada e sem ninguém no meio dos anexos). `guardar` grava os Blobs, e só roda se a troca é permitida. */
+  async definirAnexos(anexos: Campanha['anexos'], guardar: () => Promise<void> = async () => undefined): Promise<boolean> {
+    const c = this.estado.campanha;
+    if (this.ativo || c.itens.some((i) => i.progresso?.textoEnviado)) return false;
+    await guardar();
+    await this.gravar({ ...c, anexos: anexos && anexos.length > 0 ? anexos : undefined });
+    return true;
+  }
+
+  /** Falha do anexo `indice`: NUNCA reenvia nada. O contato vai para "revisar" (progresso preservado), conta no freio e a campanha pausa. */
+  private async falhaDoAnexo(item: ItemCampanha, indice: number, motivo: string): Promise<void> {
+    const c = this.estado.campanha;
+    const saiu = c.itens.find((i) => i.chave === item.chave)?.progresso?.anexosEnviados ?? indice;
+    const texto = `anexo ${indice + 1}: ${motivo}. O texto já foi enviado${saiu > 0 ? ` e ${saiu} anexo(s)` : ''}; não reenviei o que já saiu`;
+    await this.gravarMarcador(null);
+    await this.marcarComo(item, 'revisar', texto, true);
+    if (this.ativo) await this.pausar(texto);
+  }
+
+  private async arquivoParaColar(c: Campanha, indice: number): Promise<ArquivoParaColar | null> {
+    const meta = c.anexos?.[indice];
+    if (!meta) return null;
+    const g = await lerAnexoGuardado(this.deps.db, c.id, meta.id);
+    if (!g) return null;
+    return { nome: meta.nome, tipo: meta.tipo, tamanho: meta.tamanho, base64: await blobParaBase64(g.blob) };
+  }
+
+  /** Cola o próximo anexo pendente do contato (ou fecha o item se todos saíram). */
+  private async proximoAnexo(chave: string): Promise<void> {
+    if (!this.ativo) return;
+    const c = this.estado.campanha;
+    const item = c.itens.find((i) => i.chave === chave);
+    if (!item || item.status !== 'pendente' || !item.progresso?.textoEnviado) return;
+    const total = c.anexos?.length ?? 0;
+    const indice = item.progresso.anexosEnviados;
+    if (indice >= total) {
+      const agora = this.deps.agora();
+      const cfg = await lerConfig(this.deps.db);
+      await this.gravar({
+        ...marcarItem(c, chave, 'enviado', agora, item.motivo),
+        emVoo: null,
+        ultimoEnvioEm: agora.toISOString(),
+        intervaloAtualSeg: sortearIntervaloSeg(cfg, this.deps.aleatorio),
+      });
+      this.publicar({ itemAtual: null });
+      await this.avancar();
+      return;
+    }
+    const envioAuto = this.deps.obterEnvioAutomatico ? this.deps.obterEnvioAutomatico() : this.envioAutomatico;
+    this.publicar({ fase: 'aguardando_anexo', itemAtual: item, liberaEm: null, mensagem: null });
+    const arquivo = await this.arquivoParaColar(c, indice);
+    if (!arquivo) {
+      await this.falhaDoAnexo(item, indice, `o arquivo "${c.anexos?.[indice]?.nome ?? '?'}" não está guardado neste computador (o backup não leva anexos)`);
+      return;
+    }
+    await this.gravarMarcador({ chave, nome: item.nome, texto: '', idsAntes: null, desde: this.deps.agora().toISOString(), anexoIndice: indice });
+    let r: RespostaConteudo;
+    try {
+      r = await this.deps.pedir({ tipo: 'colarAnexo', nome: item.nome, arquivo, indice, total, envioAutomatico: envioAuto }, true);
+    } catch (e) {
+      r = { ok: false, codigo: 'interno', erro: e instanceof Error ? e.message : String(e) };
+    }
+    if (!this.ativo) return; // pausado: o marcador fica e, ao retomar, o anexo vai para "revisar" (nunca reenvia sozinho)
+    if (!r.ok) await this.falhaDoAnexo(item, indice, r.erro);
+    // r.ok: a prévia está pronta; o desfecho chega por evento (anexoEnviado/anexoFalhou).
+  }
+
+  private async aoEventoDeAnexo(ev: Extract<EventoConteudo, { tipo: 'vitaZap:anexoEnviado' | 'vitaZap:anexoFalhou' }>): Promise<void> {
+    const item = this.estado.itemAtual;
+    if (!this.ativo || this.estado.fase !== 'aguardando_anexo' || !item || ev.nome !== item.nome) return;
+    const atual = this.estado.campanha.itens.find((i) => i.chave === item.chave)?.progresso?.anexosEnviados;
+    if (atual !== ev.indice) return; // evento de outro anexo (atrasado/repetido): ignora
+    if (ev.tipo === 'vitaZap:anexoFalhou') {
+      await this.falhaDoAnexo(item, ev.indice, `${ev.codigo}: ${ev.motivo}`);
+      return;
+    }
+    await this.gravar({ ...comAnexoEnviado(this.estado.campanha, item.chave, ev.indice), emVoo: null });
+    await this.proximoAnexo(item.chave);
   }
 
   /** Botões Pular / Não é cliente / Problema / Não enviar mais. */
@@ -517,6 +643,14 @@ export class Executor {
     const idsEnviados = new Set(envios.map((e) => e.id));
     let item = proximoPendente(c);
     while (item) {
+      // 0.7.65: o texto deste contato JÁ saiu (retomada com anexos pendentes). Nada de reenviar o texto: só os anexos faltantes, e só
+      // se ele não entrou em "não enviar mais" nesse meio-tempo (a checagem de "contatado recentemente" seria a do nosso próprio texto).
+      if (item.progresso?.textoEnviado) {
+        if (!bloqueados.has(item.chave)) break;
+        c = marcarItem(c, item.chave, 'revisar', agora, 'marcado "Não enviar mais" depois do texto; os anexos que faltavam não foram enviados');
+        item = proximoPendente(c);
+        continue;
+      }
       const ultimoEnvio = ultimo.get(item.chave);
       let motivo: string | null = null;
       let status: 'pulado' | 'nao_enviar' | 'enviado' | null = null;
@@ -546,6 +680,11 @@ export class Executor {
       this.ativo = false;
       await this.gravar({ ...c, status: 'concluida', motivoPausa: null });
       this.publicar({ fase: 'concluida', itemAtual: null, liberaEm: null, mensagem: 'Campanha concluída.' });
+      return;
+    }
+
+    if (item.progresso?.textoEnviado) {
+      await this.proximoAnexo(item.chave);
       return;
     }
 

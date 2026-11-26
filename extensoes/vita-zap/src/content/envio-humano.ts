@@ -125,27 +125,26 @@ export interface AnaliseBotaoEnviar {
   botoes: DiagnosticoBotao[];
 }
 
-/** Aceito só por igualdade exata (ícone do conjunto ICONES_BOTAO, rótulo de ehRotuloEnviar, data-testid de enviar). */
-function analisarRodape(raiz: ParentNode): AnaliseBotaoEnviar {
-  const footer = raiz.querySelector('#main footer');
-  if (!footer) return { botao: null, ambiguo: false, botoes: [] };
-  const caixa = caixaDoRodape(footer);
-  const caixaPreenchida = !!caixa && textoComEmoji(caixa).trim() !== '';
-
+/**
+ * Aceito só por igualdade exata (ícone do conjunto ICONES_BOTAO, rótulo de ehRotuloEnviar, data-testid de enviar), SÓ dentro do
+ * `escopo` (o rodapé da conversa ou, desde a 0.7.65, a prévia de mídia). Mesma lista negativa, mesma ambiguidade nos dois.
+ * `liberado` = condição do escopo para existir botão (rodapé: caixa não vazia; prévia: sempre).
+ */
+function analisarEscopo(escopo: Element, liberado: boolean): AnaliseBotaoEnviar {
   const brutos: Array<{ b: HTMLElement; alvo: Element }> = [];
-  for (const el of footer.querySelectorAll<HTMLElement>('[data-testid="send"], [data-testid="compose-btn-send"]')) {
+  for (const el of escopo.querySelectorAll<HTMLElement>('[data-testid="send"], [data-testid="compose-btn-send"]')) {
     brutos.push({ b: botaoDe(el) ?? el, alvo: el });
   }
-  for (const el of footer.querySelectorAll<HTMLElement>('[aria-label]')) {
+  for (const el of escopo.querySelectorAll<HTMLElement>('[aria-label]')) {
     if (ehRotuloEnviar(el.getAttribute('aria-label') ?? '')) brutos.push({ b: botaoDe(el) ?? el, alvo: el });
   }
-  for (const ic of footer.querySelectorAll<HTMLElement>('[data-icon]')) {
+  for (const ic of escopo.querySelectorAll<HTMLElement>('[data-icon]')) {
     if (ICONES_BOTAO.has((ic.getAttribute('data-icon') ?? '').trim().toLowerCase())) {
       const b = botaoDe(ic);
       if (b) brutos.push({ b, alvo: ic });
     }
   }
-  for (const t of footer.querySelectorAll('svg > title')) {
+  for (const t of escopo.querySelectorAll('svg > title')) {
     if (ICONES_BOTAO.has((t.textContent ?? '').trim().toLowerCase())) {
       const b = botaoDe(t);
       if (b) brutos.push({ b, alvo: t });
@@ -155,7 +154,7 @@ function analisarRodape(raiz: ParentNode): AnaliseBotaoEnviar {
   const aceitos: HTMLElement[] = [];
   const situacaoDe = new Map<HTMLElement, string>();
   for (const { b, alvo } of brutos) {
-    if (!footer.contains(b)) continue;
+    if (!escopo.contains(b)) continue;
     if (ehMicrofone(b)) {
       situacaoDe.set(b, 'microfone');
       continue;
@@ -171,11 +170,114 @@ function analisarRodape(raiz: ParentNode): AnaliseBotaoEnviar {
   const distintos = aceitos.filter((a) => !aceitos.some((o) => o !== a && a.contains(o)));
   for (const a of distintos) situacaoDe.set(a, 'aceito');
 
-  const botoes = Array.from(footer.querySelectorAll<HTMLElement>('button, [role="button"]')).map((b) =>
+  const botoes = Array.from(escopo.querySelectorAll<HTMLElement>('button, [role="button"]')).map((b) =>
     descreverBotao(b, situacaoDe.get(b) ?? (ehMicrofone(b) ? 'microfone' : (motivoNegativo(b) ? `negativa:${motivoNegativo(b)}` : 'nao_parece_enviar'))),
   );
-  if (!caixaPreenchida) return { botao: null, ambiguo: false, botoes };
+  if (!liberado) return { botao: null, ambiguo: false, botoes };
   return { botao: distintos.length === 1 ? distintos[0] : null, ambiguo: distintos.length > 1, botoes };
+}
+
+function analisarRodape(raiz: ParentNode): AnaliseBotaoEnviar {
+  const footer = raiz.querySelector('#main footer');
+  if (!footer) return { botao: null, ambiguo: false, botoes: [] };
+  const caixa = caixaDoRodape(footer);
+  return analisarEscopo(footer, !!caixa && textoComEmoji(caixa).trim() !== '');
+}
+
+// ── Prévia de mídia (0.7.65): a tela que o WhatsApp abre quando se cola uma foto/PDF ─────────────────────────────
+
+/** Seletores prováveis da prévia (sem garantia: o WhatsApp muda). Vale o primeiro que não esteja no rodapé nem na lista. */
+const SELETORES_PREVIA = ['[data-testid="media-editor-container"]', '[data-testid="media-editor"]', '[data-testid="media-viewer"]', '[data-testid="media-caption-container"]'];
+const FORA_DA_PREVIA = '#main footer, #side, #pane-side, [data-vita-zap]';
+const REGIAO_PROIBIDA = '#main footer, #side, #pane-side';
+
+function temEnviarOuFechar(el: Element): boolean {
+  const a = analisarEscopo(el, true);
+  return a.botao !== null || a.ambiguo || acharFechar(el as HTMLElement) !== null;
+}
+
+/**
+ * Acha a prévia de mídia aberta, ou null. Sem seletor fixo confiável: parte da caixa de legenda (um contenteditable FORA do rodapé e
+ * da lista de conversas) e sobe até o menor ancestral que tenha um botão Enviar/Fechar; depois amplia até 3 níveis sem engolir o
+ * rodapé nem a lista. Nunca devolve uma região que contenha o rodapé da conversa.
+ */
+export function localizarPrevia(raiz: ParentNode = document): HTMLElement | null {
+  for (const sel of SELETORES_PREVIA) {
+    for (const el of raiz.querySelectorAll<HTMLElement>(sel)) {
+      if (!el.closest(FORA_DA_PREVIA) && !el.querySelector('#main footer')) return el;
+    }
+  }
+  const ancoras = raiz.querySelectorAll<HTMLElement>('[contenteditable="true"]');
+  for (const ancora of ancoras) {
+    if (ancora.closest(FORA_DA_PREVIA)) continue;
+    let a: HTMLElement | null = ancora.parentElement;
+    for (let n = 0; a && n < 10; n += 1, a = a.parentElement) {
+      if (a.querySelector(REGIAO_PROIBIDA)) break;
+      if (!temEnviarOuFechar(a)) continue;
+      let regiao: HTMLElement = a;
+      for (let k = 0; k < 3; k += 1) {
+        const pai: HTMLElement | null = regiao.parentElement;
+        if (!pai || pai.querySelector(REGIAO_PROIBIDA) || pai.tagName === 'BODY') break;
+        regiao = pai;
+      }
+      return regiao;
+    }
+  }
+  return null;
+}
+
+/** Os botões e a situação de cada um na prévia aberta (para o envio e para o diagnóstico). */
+function analisarPrevia(raiz: ParentNode): AnaliseBotaoEnviar & { previa: HTMLElement | null } {
+  const previa = localizarPrevia(raiz);
+  if (!previa) return { botao: null, ambiguo: false, botoes: [], previa: null };
+  return { ...analisarEscopo(previa, true), previa };
+}
+
+export interface ArquivoDaPrevia {
+  nome: string;
+  /** Tipo MIME (image/..., application/pdf). */
+  tipo: string;
+}
+
+/**
+ * A prévia mostra O arquivo? Pelo nome (com ou sem extensão) ou, para imagem, por uma miniatura (img blob:/data:, canvas, vídeo); para
+ * PDF, também por um ícone de documento. Se a tela mostra uma contagem "N de M" com M diferente de 1, há outros arquivos na fila: não vale.
+ */
+export function previaMostraArquivo(previa: ParentNode, arquivo: ArquivoDaPrevia): boolean {
+  const texto = normalizar((previa as Element).textContent ?? '');
+  const nome = normalizar(arquivo.nome);
+  const semExtensao = nome.replace(/\.[a-z0-9]+$/, '');
+  const pelaNome = nome !== '' && (texto.includes(nome) || (semExtensao.length >= 3 && texto.includes(semExtensao)));
+  const miniatura = !!previa.querySelector('img[src^="blob:"], img[src^="data:"], canvas, video');
+  const icone = Array.from(previa.querySelectorAll('[data-icon], svg > title')).some((e) => /pdf|document|file|doc/i.test(e.getAttribute('data-icon') ?? e.textContent ?? ''));
+  const contagem = /\b(\d+)\s*(?:de|of|\/)\s*(\d+)\b/.exec(texto);
+  if (contagem && Number(contagem[2]) !== 1) return false;
+  return arquivo.tipo.startsWith('image/') ? pelaNome || miniatura : pelaNome || icone;
+}
+
+/** Texto digitado na legenda da prévia (a campanha nunca escreve nela: tem de estar vazio). */
+export function legendaDaPrevia(previa: ParentNode): string {
+  return Array.from(previa.querySelectorAll<HTMLElement>('[contenteditable="true"]'))
+    .map((c) => textoComEmoji(c).trim())
+    .join('');
+}
+
+/**
+ * Fecha a prévia pelo X/Cancelar DELA (nunca por um botão de enviar: acharFechar recusa qualquer marca de enviar/programar).
+ * Devolve true se a prévia não está mais na tela.
+ */
+export async function fecharPreviaDeMidia(raiz: ParentNode = document): Promise<boolean> {
+  const previa = localizarPrevia(raiz);
+  if (!previa) return true;
+  const fechar = acharFechar(previa);
+  if (!fechar) return false;
+  try {
+    fechar.click();
+  } catch {
+    fechar.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+  }
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  return localizarPrevia(raiz) === null;
 }
 
 /**
@@ -188,15 +290,24 @@ export function encontrarBotaoEnviar(raiz: ParentNode = document): HTMLElement |
   return analisarRodape(raiz).botao;
 }
 
-/** Linhas de diagnóstico dos botões do rodapé (rótulo, ícone, data-testid, título do svg). Sem conteúdo de mensagem. */
-export function diagnosticarRodape(raiz: ParentNode = document): string[] {
-  if (!raiz.querySelector('#main footer')) return ['Rodapé da conversa não encontrado (abra uma conversa).'];
-  const a = analisarRodape(raiz);
-  if (a.botoes.length === 0) return ['Nenhum botão no rodapé.'];
-  return a.botoes.map((b, i) => {
+function linhasDe(botoes: DiagnosticoBotao[], prefixo = 'botão'): string[] {
+  return botoes.map((b, i) => {
     const partes = [`aria-label="${b.ariaLabel}"`, `title="${b.title}"`, `data-icon=[${b.dataIcon.join(',')}]`, `data-testid=[${b.dataTestid.join(',')}]`, `svg-title=[${b.svgTitle.join(',')}]`, `=> ${b.situacao}`];
-    return `botão ${i + 1}: ${partes.join(' ')}`;
+    return `${prefixo} ${i + 1}: ${partes.join(' ')}`;
   });
+}
+
+/**
+ * Linhas de diagnóstico dos botões do rodapé (rótulo, ícone, data-testid, título do svg). Sem conteúdo de mensagem.
+ * 0.7.65: com a prévia de mídia aberta, lista também os botões dela (aceito/descartado), sob "Prévia de mídia".
+ */
+export function diagnosticarRodape(raiz: ParentNode = document): string[] {
+  const previa = analisarPrevia(raiz);
+  const linhasPrevia = previa.previa ? ['Prévia de mídia aberta:', ...(previa.botoes.length === 0 ? ['Nenhum botão na prévia.'] : linhasDe(previa.botoes, 'prévia botão'))] : [];
+  if (!raiz.querySelector('#main footer')) return ['Rodapé da conversa não encontrado (abra uma conversa).', ...linhasPrevia];
+  const a = analisarRodape(raiz);
+  if (a.botoes.length === 0) return ['Nenhum botão no rodapé.', ...linhasPrevia];
+  return [...linhasDe(a.botoes), ...linhasPrevia];
 }
 
 /**
@@ -322,6 +433,8 @@ export interface OpcoesEnvioHumano {
   confirmar: () => boolean;
   prazoConfirmacaoMs?: number;
   passoMs?: number;
+  /** 'rodape' (padrão): botão Enviar do rodapé, com a caixa preenchida. 'previa' (0.7.65): botão Enviar DA PRÉVIA de mídia, mesmas regras. */
+  escopo?: 'rodape' | 'previa';
 }
 
 /**
@@ -331,14 +444,21 @@ export interface OpcoesEnvioHumano {
 export async function enviarHumano(raiz: ParentNode = document, opcoes: OpcoesEnvioHumano): Promise<ResultadoEnvio> {
   const veto = opcoes.reconferir();
   if (veto) return { ok: false, codigo: 'reconferencia_falhou', motivo: veto };
-  const analise = analisarRodape(raiz);
+  const emPrevia = opcoes.escopo === 'previa';
+  const analise = emPrevia ? analisarPrevia(raiz) : analisarRodape(raiz);
   if (analise.ambiguo) {
     // Diagnóstico (rótulos/ícones, sem texto de mensagem) no console da aba do WhatsApp.
-    console.warn('[Vita Zap] Mais de um botão parecido com Enviar no rodapé:', diagnosticarRodape(raiz));
-    return { ok: false, codigo: 'botao_enviar_ausente', motivo: 'Achei mais de um botão parecido com Enviar no rodapé (o WhatsApp mudou). Não cliquei em nada.' };
+    console.warn(emPrevia ? '[Vita Zap] Mais de um botão parecido com Enviar na prévia de mídia:' : '[Vita Zap] Mais de um botão parecido com Enviar no rodapé:', diagnosticarRodape(raiz));
+    return { ok: false, codigo: 'botao_enviar_ausente', motivo: `Achei mais de um botão parecido com Enviar ${emPrevia ? 'na prévia de mídia' : 'no rodapé'} (o WhatsApp mudou). Não cliquei em nada.` };
   }
   const botao = analise.botao;
-  if (!botao) return { ok: false, codigo: 'botao_enviar_ausente', motivo: 'Não achei o botão Enviar no rodapé da conversa (com a caixa preenchida). Não cliquei em nada.' };
+  if (!botao) {
+    return {
+      ok: false,
+      codigo: 'botao_enviar_ausente',
+      motivo: emPrevia ? 'Não achei o botão Enviar na prévia de mídia. Não cliquei em nada.' : 'Não achei o botão Enviar no rodapé da conversa (com a caixa preenchida). Não cliquei em nada.',
+    };
+  }
   const vetoDoClique = await clicarBotaoEnviarHumano(botao, opcoes.reconferir);
   if (vetoDoClique) return { ok: false, codigo: 'reconferencia_falhou', motivo: vetoDoClique };
 
@@ -351,7 +471,12 @@ export async function enviarHumano(raiz: ParentNode = document, opcoes: OpcoesEn
   for (;;) {
     if (opcoes.confirmar()) return { ok: true };
     const dialogo = acharDialogoProgramar(raiz);
-    if (dialogo) return await fecharDialogoProgramar(dialogo);
+    if (dialogo) {
+      const fechado = await fecharDialogoProgramar(dialogo);
+      // Da prévia: depois de fechar o "Programar mensagem", a prévia (com o arquivo) ainda pode estar aberta: fecha também. Nada foi enviado.
+      if (emPrevia && fechado.ok === false && fechado.fechou === true) await fecharPreviaDeMidia(raiz);
+      return fechado;
+    }
     if (Date.now() >= fimVigia || Date.now() >= fim) break;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

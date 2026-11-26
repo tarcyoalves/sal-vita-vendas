@@ -99,6 +99,9 @@ export const SELETORES = {
   botaoItalico: ['[aria-label^="Itálico"]', '[aria-label^="Italic"]', '[title^="Itálico"]', '[title^="Italic"]'],
 
   /** Janela/aviso aberto sobre a conversa (erro, confirmação, "não foi possível...") */
+  /** Mídia dentro de uma bolha de mensagem (miniatura, vídeo, ícone de documento/PDF): o anexo apareceu na conversa (0.7.65). */
+  midiaEmMensagem: ['img', 'video', 'canvas', '[data-icon*="doc" i]', '[data-icon*="pdf" i]', '[data-icon*="file" i]'],
+
   avisoWhatsApp: ['[role="alertdialog"]', '[role="dialog"]', '[data-animate-modal-popup="true"]', '[role="alert"]', '[data-testid="popup-contents"]'],
 
   // ── CRM (barra de abas, lembretes, notas, respostas rápidas) ─────────────────

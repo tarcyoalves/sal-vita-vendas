@@ -12,11 +12,12 @@ import { normalizarTexto } from '../shared/nomes';
 import { telefoneDoJid, telefoneDoNomeExibido } from '../shared/telefone';
 import { normalizarParaComparar } from '../shared/texto';
 import { abrirLinhaDaLista } from './abrir-conversa';
-import { colarComClipboard, colarDiretoNoParagrafo, escreverNoCampo, esperar, esperarAte, limparCampo, limparMarcas, textoComEmoji, textoDoCampoComEmoji } from './dom';
+import { aleatorioEntre, colarArquivoComClipboard, colarComClipboard, colarDiretoNoParagrafo, escreverNoCampo, esperar, esperarAte, limparCampo, limparMarcas, textoComEmoji, textoDoCampoComEmoji } from './dom';
 import { lerConversasVisiveis } from './extrair';
 import { buscar, exigir, linhasDaLista } from './lista';
 import { dentroDe, encontrar, encontrarTodos, encontrarTodosAlternativas, existeAlgum, SELETORES } from './selectors';
-import { agendarEnvioHumano, enviarHumano, PRAZO_CONFIRMACAO_MS } from './envio-humano';
+import { agendarEnvioHumano, enviarHumano, fecharPreviaDeMidia, legendaDaPrevia, localizarPrevia, PRAZO_CONFIRMACAO_MS, previaMostraArquivo, type ArquivoDaPrevia } from './envio-humano';
+import { base64ParaBytes, type ArquivoParaColar } from '../shared/anexos';
 import { mesmaConversa, mesmoNome } from '../shared/abrir-por-telefone';
 import { lerResultadosDaBusca } from './extrair';
 
@@ -308,6 +309,26 @@ function observarEnvio(nome: string, textoColado: string, antes: ReadonlySet<str
   observador.observe(document.body, { childList: true, subtree: true });
 }
 
+/** Observador genérico (anexos): `condicao` verdadeira → `aoDetectar`; sem isso em `limiteMs` → `aoExpirar`. Substitui qualquer observação anterior. */
+function observarCondicao(condicao: () => boolean, aoDetectar: () => void, aoExpirar: () => void, limiteMs: number): void {
+  pararObservacao();
+  const verificar = (): void => {
+    if (!observacao) return;
+    observacao.timer = null;
+    if (condicao()) aoDetectar();
+  };
+  const observador = new MutationObserver(() => {
+    if (observacao && !observacao.timer) observacao.timer = setTimeout(verificar, 400);
+  });
+  const expirar = (): void => {
+    if (!observacao) return;
+    pararObservacao();
+    aoExpirar();
+  };
+  observacao = { observador, timer: null, limite: setTimeout(expirar, limiteMs) };
+  observador.observe(document.body, { childList: true, subtree: true });
+}
+
 // ── Abrir e colar ────────────────────────────────────────────────────────────
 
 /** Nome da conversa aberta agora (cabeçalho), ou null. */
@@ -407,9 +428,11 @@ async function abrirConversaPorNome(nome: string, usarSeJaAberta = false, estrit
 }
 
 /** Existe uma janela/aviso do WhatsApp aberto sobre a conversa? */
-function avisoDoWhatsAppAberto(): boolean {
+function avisoDoWhatsAppAberto(ignorar: Element | null = null): boolean {
   for (const el of document.querySelectorAll<HTMLElement>(SELETORES.avisoWhatsApp.join(','))) {
     if (el.hidden || el.getAttribute('aria-hidden') === 'true') continue;
+    // A própria prévia de mídia pode ser um "dialog": não é aviso.
+    if (ignorar && (ignorar.contains(el) || el.contains(ignorar))) continue;
     // Ignora elementos dentro do chat (#main), menu lateral (#side) ou da própria extensão.
     // Modais e alertas de bloqueio reais ficam como overlays fora de #main e #side.
     if (dentroDe(el, 'painelConversa') || dentroDe(el, 'colunaEsquerda') || el.closest('[data-vita-zap]')) continue;
@@ -622,6 +645,137 @@ export async function abrirEColar(
   }
 
   return { ok: true, idsAntes };
+}
+
+// ── Anexos (0.7.65): foto/PDF depois do texto, legenda SEMPRE vazia ───────────────────────────────────────────────
+
+/** Pausa humana antes de colar o arquivo (o texto acabou de sair). */
+export const PAUSA_ANTES_ANEXO_MS: readonly [number, number] = [1500, 3000];
+/** Quanto se espera a prévia de mídia abrir depois de colar. */
+export const ESPERA_PREVIA_MS = 8_000;
+/** Manual: quanto tempo se espera o atendente apertar o botão da prévia. */
+export const LIMITE_OBSERVACAO_ANEXO_MS = 10 * 60 * 1000;
+
+/** Nova mensagem NOSSA (id fora da foto `antes`) que parece mídia: miniatura/vídeo/ícone de documento ou o nome do arquivo. */
+function acharMidiaEnviada(arquivo: ArquivoDaPrevia, antes: ReadonlySet<string>): boolean {
+  const nome = normalizarParaComparar(arquivo.nome);
+  for (const el of encontrarTodos(document, 'mensagem')) {
+    const id = el.getAttribute('data-id') ?? '';
+    if (id === '' || antes.has(id) || !mensagemEhMinha(el)) continue;
+    if (existeAlgum(el, 'midiaEmMensagem')) return true;
+    if (nome !== '' && normalizarParaComparar(el.textContent ?? '').includes(nome)) return true;
+  }
+  return false;
+}
+
+/** Reconferência imediatamente antes do clique da PRÉVIA: conversa certa, prévia aberta mostrando o arquivo, legenda vazia, sem aviso. */
+export function reconferirPrevia(nome: string, arquivo: ArquivoDaPrevia): string | null {
+  if (!painelVivo()) return 'o painel parou de responder (fechado ou travado)';
+  if (!mesmaConversa(tituloAberto(), nome)) return `a conversa aberta mudou: não é mais "${nome}"`;
+  const tipo = classificarConversa(idsDasMensagens(), document, nome, false, true);
+  if (tipo === 'grupo') return `"${nome}" parece grupo, comunidade ou transmissão`;
+  if (tipo === 'desconhecido') return `não consegui confirmar que "${nome}" é conversa individual`;
+  const previa = localizarPrevia(document);
+  if (!previa) return 'a prévia de mídia sumiu';
+  if (!previaMostraArquivo(previa, arquivo)) return 'a prévia não mostra mais o arquivo esperado';
+  if (legendaDaPrevia(previa) !== '') return 'a legenda da prévia não está vazia (a campanha não escreve legenda)';
+  if (avisoDoWhatsAppAberto(previa)) return 'o WhatsApp está mostrando um aviso/janela';
+  return null;
+}
+
+/**
+ * Cola UM arquivo na conversa aberta e deixa a prévia de mídia pronta (legenda vazia). Falhas ANTES do envio (prévia não abriu, não
+ * mostra o arquivo, caixa ocupada, conversa não confirmada) voltam como erro e a prévia aberta é fechada pelo X. Manual: a prévia fica
+ * aberta e o atendente aperta o botão dela; automático: pausa humana, reconferência e clique na prévia (envio-humano.ts). Em ambos o
+ * desfecho chega por evento (anexoEnviado/anexoFalhou) quando a prévia some e a mensagem de mídia aparece.
+ */
+export async function colarAnexo(
+  nome: string,
+  pedido: ArquivoParaColar,
+  indice: number,
+  envioAutomatico = false,
+  emitir: Emitir = () => undefined,
+): Promise<RespostaConteudo> {
+  pararObservacao();
+  inserido = null;
+  registrarBatimento();
+  const falha = await abrirConversaPorNome(nome, true, true);
+  if (falha) return falha;
+  await buscar('');
+  await esperarAte(() => (idsDasMensagens().length > 0 ? true : null), 2500);
+  const tipo = classificarConversa(idsDasMensagens(), document, nome, false, true);
+  if (tipo === 'grupo') return erro('grupo', `"${nome}" é grupo, comunidade ou lista de transmissão.`);
+  if (tipo === 'desconhecido') return erro('nao_confirmado', `Não consegui confirmar que "${nome}" é conversa individual. Não colei nada.`);
+  const caixa = encontrar(document, 'caixaMensagem');
+  if (!caixa) return erro('seletor', 'Caixa de mensagem não encontrada.');
+  if (textoDoCampoComEmoji(caixa).trim() !== '') return erro('caixa_ocupada', `Há texto na caixa de "${nome}". Não colei o anexo para não misturar com o seu texto.`);
+  if (localizarPrevia(document)) return erro('anexo_previa', 'Já havia uma prévia de mídia aberta. Não mexi nela e não colei o anexo.');
+
+  await esperar(aleatorioEntre(PAUSA_ANTES_ANEXO_MS[0], PAUSA_ANTES_ANEXO_MS[1]));
+  // Reconfere depois da pausa: o atendente pode ter digitado ou trocado de conversa.
+  if (!mesmaConversa(tituloAberto(), nome)) return erro('cabecalho', `A conversa aberta mudou: não é mais "${nome}".`);
+  if (textoDoCampoComEmoji(caixa).trim() !== '') return erro('caixa_ocupada', `Há texto na caixa de "${nome}". Não colei o anexo.`);
+  const antes = new Set(idsDasMensagens());
+  const arquivo: ArquivoDaPrevia = { nome: pedido.nome, tipo: pedido.tipo };
+  const file = new File([base64ParaBytes(pedido.base64)], pedido.nome, { type: pedido.tipo });
+  if (!colarArquivoComClipboard(caixa, file)) return erro('anexo_previa', 'O navegador não deixou colar o arquivo. Nada foi enviado.');
+
+  if (!(await esperarAte(() => localizarPrevia(document), ESPERA_PREVIA_MS, 150))) {
+    return erro('anexo_previa', `A prévia de mídia do WhatsApp não abriu em ${Math.round(ESPERA_PREVIA_MS / 1000)} s. Nada foi enviado.`);
+  }
+  const mostra = await esperarAte(() => {
+    const p = localizarPrevia(document);
+    return p && previaMostraArquivo(p, arquivo) ? p : null;
+  }, 3000, 150);
+  if (!mostra) {
+    const fechou = await fecharPreviaDeMidia(document);
+    return erro('anexo_previa', `A prévia abriu, mas não mostra o arquivo "${pedido.nome}". ${fechou ? 'Fechei a prévia sem enviar.' : 'Não consegui fechar a prévia: feche você, sem enviar.'}`);
+  }
+  if (legendaDaPrevia(mostra) !== '') {
+    const fechou = await fecharPreviaDeMidia(document);
+    return erro('anexo_previa', `A legenda da prévia não estava vazia. ${fechou ? 'Fechei a prévia sem enviar.' : 'Não consegui fechar a prévia: feche você, sem enviar.'}`);
+  }
+
+  let resolvido = false;
+  const saiu = (): boolean => mesmaConversa(tituloAberto(), nome) && localizarPrevia(document) === null && acharMidiaEnviada(arquivo, antes);
+  const enviado = (): void => {
+    if (resolvido) return;
+    resolvido = true;
+    pararObservacao();
+    emitir({ tipo: 'vitaZap:anexoEnviado', nome, indice });
+  };
+  observarCondicao(saiu, enviado, () => {
+    if (resolvido) return;
+    resolvido = true;
+    emitir({ tipo: 'vitaZap:anexoFalhou', nome, indice, codigo: 'sem_confirmacao', motivo: `Não vi o anexo "${pedido.nome}" sair em ${Math.round(LIMITE_OBSERVACAO_ANEXO_MS / 60000)} min. Ele PODE ter saído: confira a conversa.`, fechou: false });
+  }, LIMITE_OBSERVACAO_ANEXO_MS);
+
+  if (envioAutomatico) {
+    cancelarEnvioAuto = agendarEnvioHumano(async () => {
+      cancelarEnvioAuto = null;
+      if (resolvido) return;
+      const r = await enviarHumano(document, {
+        escopo: 'previa',
+        reconferir: () => reconferirPrevia(nome, arquivo),
+        confirmar: () => {
+          if (resolvido) return true;
+          if (!saiu()) return false;
+          enviado();
+          return true;
+        },
+        prazoConfirmacaoMs: PRAZO_CONFIRMACAO_MS,
+      });
+      if (r.ok || resolvido) return;
+      resolvido = true;
+      pararObservacao();
+      let fechou = r.fechou === true;
+      // Nada foi clicado: a prévia aberta com o arquivo não pode ficar esperando; fecha pelo X dela.
+      if (r.codigo === 'botao_enviar_ausente' || r.codigo === 'reconferencia_falhou') fechou = await fecharPreviaDeMidia(document);
+      const codigo = r.codigo === 'reconferencia_falhou' && /painel parou/.test(r.motivo) ? 'painel_ausente' : r.codigo;
+      emitir({ tipo: 'vitaZap:anexoFalhou', nome, indice, codigo, motivo: r.motivo, fechou });
+    });
+  }
+  return { ok: true };
 }
 
 /**

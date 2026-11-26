@@ -64,7 +64,7 @@ describe('IndexedDB v4: só ACRESCENTA duas lojas, nada do que existe é perdido
     v3.close();
 
     const db = await abrirBanco(nome);
-    expect([...db.objectStoreNames].sort()).toEqual(['acoesIa', 'campanhas', 'config', 'contatos', 'envios', 'followupConfig', 'followups', 'julgamentos', 'naoEnviar', 'reativacoes', 'resultadosTexto']); // v5 (0.7.60) acrescenta SÓ a loja do resultado por texto
+    expect([...db.objectStoreNames].sort()).toEqual(['acoesIa', 'anexos', 'campanhas', 'config', 'contatos', 'envios', 'followupConfig', 'followups', 'julgamentos', 'naoEnviar', 'reativacoes', 'resultadosTexto']); // v5 (0.7.60) acrescenta SÓ a loja do resultado por texto
     expect(await db.getAll('contatos')).toHaveLength(1);
     expect(await db.getAll('campanhas')).toHaveLength(1);
     expect(await listarEnvios(db)).toHaveLength(1);

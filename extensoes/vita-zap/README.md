@@ -1,4 +1,4 @@
-# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.64: o envio automático nunca confunde "Programar mensagem" com Enviar (seção 3.10); v0.7.63: filtro mais preciso, "Palavra inteira" nos termos do nome e região por UF ou DDD (seção 3.9); v0.7.60: "não enviar mais" e contato registrado compartilhados pela equipe (CRM como fonte), tela Hoje e resultado por texto (seção 3.8); v0.7.59: modo Observação + placar da IA, releitura antes de enviar, prioridade da fila, aviso do histórico sumindo e "O que a IA fez" com Desfazer (seção 3.7); v0.7.56: reativação por inatividade 25/30/40 dias + trava de agendamento do CRM (seção 3.5); v0.7.55: o dono escreve a mensagem de cobrança (seção 3.4); 0.7.54: follow-up com IA no painel; antes, v0.7.36: Bloqueio seguro de tela com vidro embaçado + CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
+# Vita Zap — extensão do Chrome para o WhatsApp Web (v0.7.65: anexos na campanha, foto ou PDF depois do texto (seção 3.11); v0.7.64: o envio automático nunca confunde "Programar mensagem" com Enviar (seção 3.10); v0.7.63: filtro mais preciso, "Palavra inteira" nos termos do nome e região por UF ou DDD (seção 3.9); v0.7.60: "não enviar mais" e contato registrado compartilhados pela equipe (CRM como fonte), tela Hoje e resultado por texto (seção 3.8); v0.7.59: modo Observação + placar da IA, releitura antes de enviar, prioridade da fila, aviso do histórico sumindo e "O que a IA fez" com Desfazer (seção 3.7); v0.7.56: reativação por inatividade 25/30/40 dias + trava de agendamento do CRM (seção 3.5); v0.7.55: o dono escreve a mensagem de cobrança (seção 3.4); 0.7.54: follow-up com IA no painel; antes, v0.7.36: Bloqueio seguro de tela com vidro embaçado + CRM na barra superior + integração com o CRM Lembretes + campanhas "uma tecla" com envio manual por padrão e envio automático opcional, sem IA)
 
 Copiloto comercial que vive num **painel lateral** ao lado do WhatsApp Web. Ele acha os
 contatos nas suas conversas, monta a lista, escreve a mensagem e abre cada conversa com o
@@ -800,3 +800,52 @@ Defeito em produção (26/11): o WhatsApp Web ganhou o recurso de programar mens
   uma linha por botão do rodapé (aria-label, title, data-icon, data-testid, título do svg, e se foi aceito/descartado),
   sem texto de mensagem. O mesmo vem do pedido `diagnosticarRodape` (campo `avisos`). Não há botão no painel para isso.
 - **Não validado no WhatsApp real** (ver seção 6): os testes usam HTML sintético.
+
+### 3.11 Anexos na campanha: foto ou PDF depois do texto (v0.7.65)
+
+Pedido do dono: mandar, além do texto, a foto do produto ou o PDF da tabela/catálogo.
+
+- **Onde:** campo **Anexos** no cartão "Texto" da aba Prévia (ao criar a campanha) e, para anexar de novo ou trocar, no cartão
+  "Anexos" da aba Envio (só com a campanha parada e antes de qualquer texto sair).
+- **Limites:** até **3** arquivos; imagem (jpg, png, webp) ou PDF; **5 MB** por arquivo e **12 MB** no total. Fora disso a
+  interface recusa com a mensagem do motivo e não guarda nada.
+- **Onde ficam:** os arquivos (Blob) ficam no IndexedDB deste computador, numa loja nova `anexos` (banco v6; só ACRESCENTA a loja,
+  nenhuma antiga muda). A campanha guarda só os metadados (nome, tipo, tamanho, hash SHA-256). Apagar a campanha apaga os anexos.
+- **Backup:** leva **só os metadados**; os arquivos **não** vão. A interface avisa: "Os anexos não vão no backup; anexe de novo
+  após restaurar." Campanha restaurada com anexos cujo arquivo falta **não inicia** (nada é aberto nem colado) e pede para anexar
+  de novo no cartão "Anexos". "Substituir" na importação também limpa a loja de anexos (arquivos de campanhas apagadas).
+- **Modo único, decidido pelo dono: "Texto primeiro, arquivos depois".** O texto sai como mensagem normal (todo o fluxo de sempre:
+  travas, opt-out, CRM, "já há texto na caixa", observação) e, depois que a saída é confirmada, cada arquivo sai **sozinho e sem
+  legenda**, na ordem. A legenda da prévia de mídia fica **sempre vazia**: o programa nunca escreve nela e, se aparecer texto lá
+  (atendente digitou), o envio automático não clica. Não existe modo "foto com o texto como legenda" nem seletor de modo (o
+  primeiro desenho tinha os dois; ficou só este, e por isso o caso "vários arquivos / PDF com legenda" não existe).
+- **Mecânica (content script, `colarAnexo`):** abre/confere a conversa individual (mesma identidade estrita do texto), exige a caixa
+  vazia e nenhuma prévia já aberta, espera uma pausa humana (1,5 a 3 s), cola o `File` por `ClipboardEvent('paste')` com
+  `DataTransfer` (mesmo caminho do texto, em `dom.ts`), espera a prévia de mídia abrir (até 8 s) e confere que ela mostra o arquivo
+  (nome, miniatura de imagem/ícone de PDF, contagem "N de M" só vale com M = 1). Se não abrir ou não mostrar o arquivo: **não
+  envia**, fecha a prévia pelo X dela, devolve `anexo_previa`.
+- **Envio manual (padrão):** o programa cola o arquivo e **deixa a prévia aberta**; o atendente aperta o botão de enviar da
+  prévia do WhatsApp. A extensão percebe (prévia fechou e surgiu uma bolha de mídia nossa nova na conversa) e segue para o
+  próximo arquivo/contato.
+- **Envio automático (opcional):** `enviarHumano(..., { escopo: 'previa' })` em `envio-humano.ts` (o único `.click()` continua lá):
+  **mesmas regras exatas** do rodapé (igualdade exata de rótulo/ícone, lista negativa programar/agendar/schedule/clock/chevron/menu,
+  ambiguidade = não clica, pressão de 30-60 ms sem `contextmenu`, rede de segurança do diálogo "Programar mensagem" fechado pelo X
+  e, aqui, também a prévia). A prévia é localizada a partir da caixa de legenda (um `contenteditable` fora do rodapé e da lista de
+  conversas) e nunca engloba o rodapé. Reconferência imediatamente antes do clique: conversa, prévia aberta mostrando o arquivo,
+  legenda vazia, nenhum aviso do WhatsApp.
+- **Falha do anexo (qualquer uma):** NÃO reenvia, o contato vira **"revisar"**, **conta no freio** e a campanha **pausa**
+  (como `envio_nao_confirmado`/`abriu_programar`). Eventos novos: `vitaZap:anexoEnviado` e `vitaZap:anexoFalhou`.
+- **Retomar não duplica:** cada contato guarda `progresso { textoEnviado, anexosEnviados }` (também no backup). O contato fica
+  "pendente" até o último anexo sair; ao retomar (ou recolocar como pendente) só continua do anexo seguinte, nunca reenvia o
+  texto. Painel fechado com um anexo em andamento: "revisar" (não dá para provar se saiu). Se o contato entrou em "Não enviar
+  mais" depois do texto, os anexos que faltam não saem (vira "revisar").
+- **Prévia da campanha e Envio:** miniaturas (imagem) ou ícone + nome (PDF), o modo (texto primeiro, arquivos depois, sem legenda)
+  e a explicação do envio manual.
+- **Diagnóstico:** `__vitaZapDiagnosticoRodape()` / pedido `diagnosticarRodape` lista também os botões da prévia de mídia quando
+  ela está aberta (rótulo, ícone, data-testid, título do svg, aceito/descartado), sob "Prévia de mídia aberta:", sem texto de mensagem.
+- **Não testado no WhatsApp real.** Todos os testes usam HTML sintético (`tests/ajuda/whatsapp-anexo-falso.ts`). Em especial: se a
+  colagem de `File` com `ClipboardEvent` sintético abre a prévia no WhatsApp Web de verdade (o evento sintético não é `isTrusted`:
+  é a maior incerteza); como a prévia é montada no DOM (a heurística de localização por caixa de legenda pode errar); o rótulo/ícone
+  real do botão Enviar da prévia; se existe botão Enviar dividido/"Programar" na prévia; se a miniatura/nome aparecem como os
+  testes supõem; se fechar a prévia pelo X pede confirmação ("Descartar?"); o aspecto da bolha de mídia enviada (a confirmação
+  depende de uma mensagem nossa nova com miniatura/ícone de documento/nome); PDF: se o WhatsApp aceita PDF colado do mesmo modo que imagem.

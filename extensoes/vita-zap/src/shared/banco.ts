@@ -4,6 +4,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import { acharEnvioDaResposta, comResposta, idsParaPodarEnvios, type EnvioDoTexto } from './resultado-texto';
 import { type AcaoIa, type Julgamento, type MarcoOrientacoes, idsAcoesParaPodar, idsParaPodar } from './automaticos';
+import type { AnexoGuardado } from './anexos';
 import type { Campanha } from './campanha';
 import type { ContatoVarrido } from './contatos';
 import { VERSAO_BACKUP, type Backup, type BackupArquivo, type Envio, type NaoEnviar } from './exportar';
@@ -29,6 +30,8 @@ interface EsquemaVitaZap extends DBSchema {
   acoesIa: { key: string; value: AcaoIa };
   /** Resultado por texto (v0.7.60): um registro por envio de texto do dono (hash do modelo + se respondeu). Só local. Loja nova, aditiva. */
   resultadosTexto: { key: string; value: EnvioDoTexto };
+  /** Anexos da campanha (v0.7.65): os Blobs. Loja nova, aditiva, FORA do backup (a campanha só leva os metadados). */
+  anexos: { key: string; value: AnexoGuardado; indexes: { porCampanha: string } };
 }
 
 /** Estado da sincronização com a equipe (v0.7.60). Fica em followupConfig, id 'equipe'. */
@@ -40,7 +43,7 @@ export interface EstadoEquipe {
 }
 
 export const NOME_BANCO = 'vita-zap';
-const VERSAO_BANCO = 5;
+const VERSAO_BANCO = 6;
 
 export type Banco = IDBPDatabase<EsquemaVitaZap>;
 
@@ -73,6 +76,11 @@ export function abrirBanco(nome: string = NOME_BANCO): Promise<Banco> {
       // v5 (0.7.60): resultado por texto. Só ACRESCENTA uma loja; nada do que já existe muda (o estado da sincronização com a equipe fica em followupConfig, id 'equipe').
       if (versaoAnterior < 5) {
         db.createObjectStore('resultadosTexto', { keyPath: 'id' });
+      }
+      // v6 (0.7.65): anexos da campanha. Só ACRESCENTA uma loja; nada do que já existe muda.
+      if (versaoAnterior < 6) {
+        const anexos = db.createObjectStore('anexos', { keyPath: 'id' });
+        anexos.createIndex('porCampanha', 'campanhaId');
       }
     },
   });
@@ -109,8 +117,34 @@ export async function listarCampanhas(db: Banco): Promise<Campanha[]> {
   return todas.sort((a, b) => b.criadaEm.localeCompare(a.criadaEm));
 }
 
+/** Apaga a campanha E os arquivos anexados a ela (uma transação só). */
 export async function apagarCampanha(db: Banco, id: string): Promise<void> {
-  await db.delete('campanhas', id);
+  const tx = db.transaction(['campanhas', 'anexos'], 'readwrite');
+  const chaves = await tx.objectStore('anexos').index('porCampanha').getAllKeys(id);
+  await Promise.all([tx.objectStore('campanhas').delete(id), ...chaves.map((k) => tx.objectStore('anexos').delete(k)), tx.done]);
+}
+
+// ── Anexos da campanha (v0.7.65) ─────────────────────────────────────────────
+
+/** Guarda os arquivos de uma campanha (troca tudo o que ela tinha). */
+export async function guardarAnexos(db: Banco, campanhaId: string, arquivos: ReadonlyArray<{ anexoId: string; nome: string; tipo: string; blob: Blob }>): Promise<void> {
+  const tx = db.transaction('anexos', 'readwrite');
+  const antigos = await tx.store.index('porCampanha').getAllKeys(campanhaId);
+  await Promise.all([
+    ...antigos.map((k) => tx.store.delete(k)),
+    ...arquivos.map((a) => tx.store.put({ id: `${campanhaId}:${a.anexoId}`, campanhaId, anexoId: a.anexoId, nome: a.nome, tipo: a.tipo, tamanho: a.blob.size, blob: a.blob })),
+    tx.done,
+  ]);
+}
+
+export function lerAnexoGuardado(db: Banco, campanhaId: string, anexoId: string): Promise<AnexoGuardado | undefined> {
+  return db.get('anexos', `${campanhaId}:${anexoId}`);
+}
+
+export async function apagarAnexosDaCampanha(db: Banco, campanhaId: string): Promise<void> {
+  const tx = db.transaction('anexos', 'readwrite');
+  const chaves = await tx.store.index('porCampanha').getAllKeys(campanhaId);
+  await Promise.all([...chaves.map((k) => tx.store.delete(k)), tx.done]);
 }
 
 // ── Envios ───────────────────────────────────────────────────────────────────
@@ -364,7 +398,7 @@ export function mesclarNaoEnviar(existente: NaoEnviar, vindo: NaoEnviar): NaoEnv
  * Lojas que o backup não traz (formato 1) ficam como estão.
  */
 export async function importarTudo(db: Banco, b: Backup, modo: 'mesclar' | 'substituir'): Promise<void> {
-  const lojas = ['contatos', 'campanhas', 'envios', 'naoEnviar', 'config', 'followups', 'followupConfig', 'reativacoes', 'julgamentos', 'acoesIa', 'resultadosTexto'] as const;
+  const lojas = ['contatos', 'campanhas', 'envios', 'naoEnviar', 'config', 'followups', 'followupConfig', 'reativacoes', 'julgamentos', 'acoesIa', 'resultadosTexto', 'anexos'] as const;
   const tx = db.transaction(lojas, 'readwrite');
   const substituir = modo === 'substituir';
   // Lê o que existe ANTES de apagar/gravar (e dentro da transação: nada se intromete no meio).
@@ -381,7 +415,8 @@ export async function importarTudo(db: Banco, b: Backup, modo: 'mesclar' | 'subs
   ]);
   const ops: Promise<unknown>[] = [];
   if (substituir) {
-    const limpar: Array<(typeof lojas)[number]> = ['contatos', 'campanhas', 'envios', 'config'];
+    // Os anexos (Blobs) não vão no backup: ao substituir as campanhas os arquivos das antigas ficariam órfãos, então saem junto.
+    const limpar: Array<(typeof lojas)[number]> = ['contatos', 'campanhas', 'envios', 'config', 'anexos'];
     if (b.followups) limpar.push('followups');
     if (b.reativacoes) limpar.push('reativacoes');
     if (b.julgamentos) limpar.push('julgamentos');

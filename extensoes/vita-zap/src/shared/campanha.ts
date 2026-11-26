@@ -4,6 +4,7 @@ import type { Filtros } from './filtros';
 import { registrarProblema } from './politica';
 import { montarMensagem, sortearModelo, usaPrimeiroNome, validarModelo } from './texto';
 import { primeiroNome as extrairPrimeiroNome } from './nomes';
+import type { AnexoMeta, ProgressoItem } from './anexos';
 
 /**
  * 'revisar': pode ter saído, ou a conversa não foi confirmada. Nunca é reenviado sozinho; o atendente confere.
@@ -26,6 +27,8 @@ export interface ItemCampanha {
   ultimaConversa?: string | null;
   /** Se marcado para envio na prévia (padrão true para incluídos; contatos de revisar entram false). */
   marcado?: boolean;
+  /** 0.7.65, só em campanha com anexos: o que já saiu para este contato. O item segue 'pendente' até o último anexo sair. */
+  progresso?: ProgressoItem;
 }
 
 /**
@@ -40,6 +43,8 @@ export interface EmVoo {
   /** Foto dos ids das mensagens da conversa tirada antes de colar (null enquanto a conversa ainda abre). */
   idsAntes: string[] | null;
   desde: string;
+  /** 0.7.65: o que estava em voo era o anexo de índice N (o texto já saiu). Ao reabrir, vai para "revisar": nunca se reenvia. */
+  anexoIndice?: number;
 }
 
 export interface Campanha {
@@ -60,6 +65,8 @@ export interface Campanha {
   intervaloAtualSeg: number | null;
   /** Mensagem em andamento (ver EmVoo). Ausente/null = nada em voo. */
   emVoo?: EmVoo | null;
+  /** 0.7.65: metadados dos anexos (até 3). Os arquivos ficam na loja `anexos` do IndexedDB e NÃO vão no backup. */
+  anexos?: AnexoMeta[];
 }
 
 export function novoId(agora: Date, aleatorio: () => number = Math.random): string {
@@ -156,4 +163,20 @@ export function marcarItem(
     return { ...novo, status: 'concluida', motivoPausa: null };
   }
   return novo;
+}
+
+/** Texto do contato saiu: em campanha com anexos o item continua 'pendente' com o progresso gravado (retomar não reenvia o texto). */
+export function comTextoEnviado(c: Campanha, chave: string, motivo: string | null = null): Campanha {
+  return { ...c, itens: c.itens.map((i) => (i.chave === chave ? { ...i, motivo, progresso: { textoEnviado: true, anexosEnviados: 0 } } : i)) };
+}
+
+/** O anexo de índice `indice` saiu: o progresso sobe para indice + 1 (nunca diminui). */
+export function comAnexoEnviado(c: Campanha, chave: string, indice: number): Campanha {
+  return {
+    ...c,
+    itens: c.itens.map((i) => {
+      if (i.chave !== chave || !i.progresso) return i;
+      return { ...i, progresso: { ...i.progresso, anexosEnviados: Math.max(i.progresso.anexosEnviados, indice + 1) } };
+    }),
+  };
 }

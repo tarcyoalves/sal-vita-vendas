@@ -97,7 +97,7 @@ describe('modo Observação: nada de efeito colateral', () => {
 
   it('o "O que a IA fez" é gravado pelos motores no IndexedDB (acoesIa) e a loja é nova e aditiva (versão 4)', () => {
     const b = ler('src/shared/banco.ts');
-    expect(b).toMatch(/const VERSAO_BANCO = [45]/); // v5 (0.7.60) só acrescenta a loja do resultado por texto
+    expect(b).toMatch(/const VERSAO_BANCO = [456]/); // v5 (0.7.60) só acrescenta a loja do resultado por texto
     expect(b).toMatch(/if \(versaoAnterior < 4\) \{\s*db\.createObjectStore\('julgamentos'/);
     expect(b).toMatch(/db\.createObjectStore\('acoesIa'/);
     // nada de apagar/limpar lojas antigas na migração

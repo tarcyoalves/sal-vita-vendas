@@ -130,6 +130,8 @@ const itemSchema = z.object({
   // Também descartados antes: a data da última conversa mostrada no Envio e a marca da prévia.
   ultimaConversa: z.string().nullable().optional(),
   marcado: z.boolean().optional(),
+  // 0.7.65: progresso dos anexos (sem isto o backup apagaria o "texto já enviado" e o texto sairia de novo).
+  progresso: z.object({ textoEnviado: z.boolean(), anexosEnviados: z.number() }).optional(),
 });
 
 const campanhaSchema = z.object({
@@ -149,9 +151,11 @@ const campanhaSchema = z.object({
   ultimoEnvioEm: z.string().nullable(),
   intervaloAtualSeg: z.number().nullable(),
   emVoo: z
-    .object({ chave: z.string(), nome: z.string(), texto: z.string(), idsAntes: z.array(z.string()).nullable(), desde: z.string() })
+    .object({ chave: z.string(), nome: z.string(), texto: z.string(), idsAntes: z.array(z.string()).nullable(), desde: z.string(), anexoIndice: z.number().optional() })
     .nullable()
     .optional(),
+  // 0.7.65: SÓ metadados (nome, tipo, tamanho, hash). Os arquivos não vão no backup: anexe de novo após restaurar.
+  anexos: z.array(z.object({ id: z.string().min(1), nome: z.string(), tipo: z.string(), tamanho: z.number(), hash: z.string() })).optional(),
 });
 
 const envioSchema = z.object({

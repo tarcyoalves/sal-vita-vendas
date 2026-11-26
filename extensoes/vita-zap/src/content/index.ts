@@ -6,7 +6,7 @@
 import type { EventoConteudo, PedidoConteudo, RespostaConteudo } from '../shared/mensagens';
 import { abrirConversaPorTelefoneSemRecarregar } from './abrir-por-telefone';
 import { diagnosticarRodape } from './envio-humano';
-import { abrirEColar, consultarEnvio, lerConversa, limparCaixa, pararObservacao, registrarBatimento } from './execucao';
+import { abrirEColar, colarAnexo, consultarEnvio, lerConversa, limparCaixa, pararObservacao, registrarBatimento } from './execucao';
 import { ErroSeletor } from './lista';
 import { iniciarCrm } from './crm';
 import { iniciarBarraFormatacao } from './barra-formatacao';
@@ -78,6 +78,8 @@ async function tratar(pedido: PedidoConteudo): Promise<RespostaConteudo> {
     }
     case 'abrirPorTelefone':
       return abrirConversaPorTelefoneSemRecarregar(pedido.telefone, pedido.nomeDica);
+    case 'colarAnexo':
+      return colarAnexo(pedido.nome, pedido.arquivo, pedido.indice, pedido.envioAutomatico === true, emitir);
     case 'abrirEColar':
       return abrirEColar(pedido.nome, pedido.texto, (texto, textoConfere) =>
         emitir({ tipo: 'vitaZap:envioDetectado', nome: pedido.nome, texto, textoConfere }),

@@ -46,10 +46,11 @@ describe('a equipe é conferida no ponto ÚNICO de envio', () => {
       expect(s, f).toMatch(/aoEnviar: equipe\?\.aoEnviar/);
     }
   });
-  it('o IndexedDB só ganhou uma loja (v5)', () => {
+  it('o IndexedDB só ganhou lojas novas, nenhuma antiga mexida (v5 resultadosTexto, v6 anexos)', () => {
     const b = ler('src/shared/banco.ts');
-    expect(b).toMatch(/const VERSAO_BANCO = 5/);
+    expect(b).toMatch(/const VERSAO_BANCO = 6/);
     expect(b).toMatch(/if \(versaoAnterior < 5\) \{\s*db\.createObjectStore\('resultadosTexto', \{ keyPath: 'id' \}\);\s*\}/);
-    expect(b.match(/createObjectStore\(/g)?.length).toBe(11); // 10 lojas até a v4 + a nova: nenhuma loja antiga foi mexida
+    expect(b).toMatch(/if \(versaoAnterior < 6\) \{\s*const anexos = db\.createObjectStore\('anexos', \{ keyPath: 'id' \}\);/);
+    expect(b.match(/createObjectStore\(/g)?.length).toBe(12); // 11 lojas até a v5 + a nova: nenhuma loja antiga foi mexida
   });
 });

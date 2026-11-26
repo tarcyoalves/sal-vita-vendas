@@ -5,6 +5,7 @@
 // abrirEColar, desligado por padrão) e vive isolado em content/envio-humano.ts, com reconferência
 // imediatamente antes do clique e confirmação depois. Não existe pedido "enviar" avulso.
 
+import type { ArquivoParaColar } from './anexos';
 import type { LinhaBruta } from './contatos';
 
 export type PedidoConteudo =
@@ -29,7 +30,13 @@ export type PedidoConteudo =
    */
   | { tipo: 'lerConversa'; nome: string }
   /** Diagnóstico (0.7.64): rótulo/ícone/data-testid/título svg dos botões do rodapé, sem texto de mensagem. Volta em `avisos`. */
-  | { tipo: 'diagnosticarRodape' };
+  | { tipo: 'diagnosticarRodape' }
+  /**
+   * Anexo (0.7.65): com o texto JÁ enviado, cola UM arquivo na caixa da conversa aberta (ClipboardEvent), espera a prévia de mídia do
+   * WhatsApp (até ~8 s), confere que ela mostra o arquivo e deixa a legenda VAZIA. Manual: a prévia fica aberta para o atendente enviar.
+   * Automático: clica no enviar DA PRÉVIA (regras exatas de envio-humano.ts). O desfecho vem em eventos (anexoEnviado/anexoFalhou).
+   */
+  | { tipo: 'colarAnexo'; nome: string; arquivo: ArquivoParaColar; indice: number; total: number; envioAutomatico?: boolean };
 
 /** Uma mensagem da conversa aberta, como o follow-up a lê. `quando` = ISO (carimbo do WhatsApp, fuso de Fortaleza) ou null. */
 export interface MensagemLida {
@@ -50,6 +57,7 @@ export type CodigoErro =
   | 'caixa_ocupada' // já havia rascunho na caixa (não sobrescrevemos)
   | 'rascunho_diferente' // a caixa tem texto diferente do que seria colado (nem igual, nem vazia): não mexemos; o atendente decide
   | 'colar_falhou' // o texto não ficou na caixa
+  | 'anexo_previa' // anexo: a prévia de mídia não abriu / não mostra o arquivo / já havia uma aberta (nada foi enviado)
   | 'botao_enviar_ausente' // envio automático: sem botão Enviar confiável (nunca cai no microfone)
   | 'ocupado' // outra operação em andamento
   | 'interno';
@@ -94,6 +102,10 @@ export type EventoConteudo =
   | { tipo: 'vitaZap:envioNaoConfirmado'; nome: string; motivo: string }
   /** O WhatsApp abriu "Programar mensagem" em vez de enviar (0.7.64). Nada foi programado; `fechou` = o diálogo foi fechado pelo X. */
   | { tipo: 'vitaZap:abriuProgramar'; nome: string; motivo: string; fechou: boolean }
+  /** Anexo de índice `indice` saiu (prévia fechou e a mensagem de mídia apareceu na conversa). */
+  | { tipo: 'vitaZap:anexoEnviado'; nome: string; indice: number }
+  /** Anexo NÃO confirmado. Nada foi reenviado. `fechou` = a prévia/diálogo foi fechado pelo X. */
+  | { tipo: 'vitaZap:anexoFalhou'; nome: string; indice: number; codigo: 'reconferencia_falhou' | 'botao_enviar_ausente' | 'painel_ausente' | 'abriu_programar' | 'envio_nao_confirmado' | 'sem_confirmacao'; motivo: string; fechou: boolean }
   /** O observador desistiu (30 min sem ver a mensagem sair). */
   | { tipo: 'vitaZap:observacaoExpirada'; nome: string }
   | { tipo: 'vitaZap:progressoVarredura'; lidas: number; unicas: number };
@@ -106,6 +118,8 @@ export function ehEventoConteudo(v: unknown): v is EventoConteudo {
     tipo === 'vitaZap:envioBloqueado' ||
     tipo === 'vitaZap:envioNaoConfirmado' ||
     tipo === 'vitaZap:abriuProgramar' ||
+    tipo === 'vitaZap:anexoEnviado' ||
+    tipo === 'vitaZap:anexoFalhou' ||
     tipo === 'vitaZap:observacaoExpirada' ||
     tipo === 'vitaZap:progressoVarredura'
   );
