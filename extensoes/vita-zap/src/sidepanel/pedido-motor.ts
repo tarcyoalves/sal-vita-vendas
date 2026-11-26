@@ -74,6 +74,8 @@ export interface DependenciasPedido {
 export interface OpcoesRodadaPedido {
   parar?: () => boolean;
   aoProgredir?: (texto: string) => void;
+  /** Termos do nome por palavra inteira (v0.7.63). Ausente = pedaço do texto. */
+  palavraInteira?: boolean;
 }
 
 export type ResultadoInterpretar = { ok: true; valor: PedidoInterpretado } | { ok: false; mensagem: string };
@@ -166,7 +168,7 @@ export class MotorPedido {
 
     await this.d.preparar?.(contatos.filter((c) => c.temConversa && !c.soNumero && !c.pareceGrupo).map((c) => ({ nome: c.nome, chave: c.chave })));
     const naoEnviar = new Set((await listarNaoEnviar(this.d.db)).map((n) => n.chave));
-    const cand = candidatosDoPedido(contatos, plano, { hoje: hojeNoFuso(agora0), naoEnviar });
+    const cand = candidatosDoPedido(contatos, plano, { hoje: hojeNoFuso(agora0), naoEnviar, palavraInteira: opcoes.palavraInteira });
     const r: ResultadoPedido = { ...base, candidatos: cand.candidatos.length, cortados: cand.cortados, fora: cand.fora };
     // O pedido usado fica salvo para repetir, mesmo que nada seja achado.
     const antes = await lerPedidos(this.d.db);

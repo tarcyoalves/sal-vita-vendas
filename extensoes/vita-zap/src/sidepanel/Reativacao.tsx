@@ -536,6 +536,10 @@ function Ajustes({ config, ocupado, onSalvar }: { config: ConfigReativacao; ocup
         <input type="text" value={termo} disabled={ocupado} style={{ width: 140 }} aria-label="Termo no nome" onChange={(e) => setTermo(e.target.value)} onBlur={() => termo !== config.termo && void onSalvar({ termo })} />
       </label>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 12.5, cursor: 'pointer' }}>
+        <input type="checkbox" checked={config.palavraInteira} disabled={ocupado} onChange={(e) => void onSalvar({ palavraInteira: e.target.checked })} />
+        <span>Palavra inteira (&quot;PR&quot; não casa com &quot;COMPRAS&quot;)</span>
+      </label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, fontSize: 12.5, cursor: 'pointer' }}>
         <input type="checkbox" checked={config.soMinha} disabled={ocupado} onChange={(e) => void onSalvar({ soMinha: e.target.checked })} />
         <span>Só contatos que já receberam mensagem minha (mesma regra da Varredura)</span>
       </label>

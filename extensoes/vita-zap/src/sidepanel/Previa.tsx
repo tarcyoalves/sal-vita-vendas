@@ -5,11 +5,13 @@ import { DIAS_SEM_REPETIR, MARCADOR_PRIMEIRO_NOME, MAX_VARIACOES } from '../shar
 import { formatarDataBr, lerDataIso, hojeNoFuso, somarDias, diferencaDias } from '../shared/datas';
 import { aplicarFiltros, type ContatoAvaliado, type Filtros, MOTIVO_SEM_MENSAGEM_MINHA, MOTIVO_SINAL_DESCONHECIDO, temRegistroDoAtendente, ultimoEnvioPorChave } from '../shared/filtros';
 import { separarTermos } from '../shared/nomes';
+import { DDDS_POR_UF, ddsDaUf, incluirDddsDaUf, lerRegiao } from '../shared/regiao';
 import { validarModelos } from '../shared/texto';
 import type { DadosLocais } from './App';
 import { carregarRotinasSalvas, lerPreferencia, lerSoComConversaMinha, salvarPreferencia, salvarRotinas, salvarSoComConversaMinha } from './preferencias';
 import type { CrmPainel } from './crm';
 import { acharContato } from '../shared/crm-contatos';
+import { telefonesConhecidosPorChave } from '../shared/crm-telefone-conhecido';
 import { CORES_ETIQUETA, FASES, type Fase } from '../shared/crm-tipos';
 import { chaveDaConversa } from '../shared/crm-regras';
 import { novaRotina, type Rotina } from '../shared/rotinas';
@@ -38,6 +40,11 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
   const [contem, setContem] = useState(() => lerPreferencia('termo', 'CLIENTE'));
   const [incluirSemConversa, setIncluirSemConversa] = useState(false);
   const [naoContem, setNaoContem] = useState('');
+  // 0.7.63: palavra inteira (ligada por padrão nos filtros NOVOS do painel) e região por UF/DDD.
+  const [palavraInteira, setPalavraInteira] = useState(() => lerPreferencia('palavraInteira', '1') !== '0');
+  const [regiao, setRegiao] = useState(() => lerPreferencia('regiao', ''));
+  const regiaoLida = useMemo(() => lerRegiao(regiao), [regiao]);
+  const regiaoItens = useMemo(() => [...regiaoLida.ufs, ...regiaoLida.ddds], [regiaoLida]);
   const [antesDe, setAntesDe] = useState('');
   const [depoisDe, setDepoisDe] = useState('');
   const [dias, setDias] = useState(DIAS_SEM_REPETIR);
@@ -158,8 +165,16 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
       fases: fasesSelecionadas.length > 0 ? fasesSelecionadas : undefined,
       aguardandoResposta: aguardandoResposta || undefined,
       soComMensagemMinha: soMinha || undefined,
+      palavraInteira,
+      regiao: regiaoItens.length > 0 ? regiaoItens : undefined,
     }),
-    [contem, naoContem, antesDe, depoisDe, dias, incluirSemConversa, tagsSelecionadas, fasesSelecionadas, aguardandoResposta, soMinha],
+    [palavraInteira, regiaoItens, contem, naoContem, antesDe, depoisDe, dias, incluirSemConversa, tagsSelecionadas, fasesSelecionadas, aguardandoResposta, soMinha],
+  );
+
+  // Telefone conhecido por contato (CRM da extensão), só para o filtro de região. Sem região, nem calcula.
+  const telefonePorChave = useMemo(
+    () => (regiaoItens.length > 0 ? telefonesConhecidosPorChave(crm?.dados, dados.contatos) : undefined),
+    [regiaoItens, crm?.dados, dados.contatos],
   );
 
   // Equipe (0.7.60): "não enviar mais" de qualquer atendente (vai para a lista local) e contato recente de qualquer atendente.
@@ -179,8 +194,9 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
         fasePorChave,
         aguardandoPorChave,
         comRegistroDoAtendente,
+        telefonePorChave,
       }),
-    [dados, filtros, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente, daEquipe],
+    [dados, filtros, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente, daEquipe, telefonePorChave],
   );
 
   // Trava de agendamento (0.7.56): quem tem agendamento futuro no CRM NÃO entra na campanha (o agendamento prevalece).
@@ -242,6 +258,8 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
         fases: r.fases,
         aguardandoResposta: r.aguardandoResposta,
         soComMensagemMinha: false,
+        palavraInteira,
+        regiao: regiaoItens.length > 0 ? regiaoItens : undefined,
       };
       const av = aplicarFiltros(dados.contatos, f, {
         agora,
@@ -252,12 +270,13 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
         fasePorChave,
         aguardandoPorChave,
         comRegistroDoAtendente,
+        telefonePorChave,
       });
       const qtd = av.filter((x) => x.decisao.situacao === 'incluido').length;
       res.set(r.id, qtd);
     }
     return res;
-  }, [rotinas, dados, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente, contem, daEquipe]);
+  }, [rotinas, dados, tagsPorChave, fasePorChave, aguardandoPorChave, comRegistroDoAtendente, contem, daEquipe, palavraInteira, regiaoItens, telefonePorChave]);
   const motivoPorChave = useMemo(() => new Map(avaliados.map((a) => [a.contato.chave, a.decisao.motivo])), [avaliados]);
   const contatoPorChave = useMemo(() => new Map(dados.contatos.map((c) => [c.chave, c])), [dados.contatos]);
 
@@ -298,6 +317,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
   const itensMarcados = useMemo(() => (itens ?? []).filter((i) => i.marcado !== false), [itens]);
 
   function gerarPrevia() {
+    if (regiaoLida.erros.length > 0) return;
     salvarPreferencia('textoBase', base);
     setErrosAprovacao([]);
     const contatosInc = incluidos.map((a) => a.contato);
@@ -357,6 +377,8 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
       fases: r.fases,
       aguardandoResposta: r.aguardandoResposta,
       soComMensagemMinha: false,
+      palavraInteira,
+      regiao: regiaoItens.length > 0 ? regiaoItens : undefined,
     };
     const { modelos: mods } = validarModelos(r.textoBase, novasVar);
     const av = comTrava(aplicarFiltros(dados.contatos, filtrosRotina, {
@@ -368,6 +390,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
       fasePorChave,
       aguardandoPorChave,
       comRegistroDoAtendente,
+      telefonePorChave,
     }));
     const contatosInc = av.filter((x) => x.decisao.situacao === 'incluido').map((x) => x.contato);
     const contatosRev = av.filter((x) => x.decisao.situacao === 'revisar' && !x.contato.duplicado).map((x) => x.contato);
@@ -787,6 +810,59 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
           Nome NÃO contém
           <input value={naoContem} onChange={(e) => setNaoContem(e.target.value)} placeholder="ex.: FORNECEDOR" />
         </label>
+        <label className="check" style={{ margin: '4px 0', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
+          <input
+            type="checkbox"
+            aria-label="Palavra inteira"
+            checked={palavraInteira}
+            onChange={(e) => {
+              setPalavraInteira(e.target.checked);
+              salvarPreferencia('palavraInteira', e.target.checked ? '1' : '0');
+            }}
+          />
+          <span>Palavra inteira</span>
+        </label>
+        <p className="ajuda" style={{ margin: '0 0 6px' }}>
+          Ligado: &quot;PR&quot; só casa com a palavra PR (&quot;CLIENTE (PR)&quot;, &quot;X-PR&quot;), não com &quot;COMPRAS&quot;. Vários termos separados por vírgula precisam estar todos no nome; &quot;salto do lontra&quot; casa como sequência. Desligado: casa por pedaço do nome.
+        </p>
+        <label>
+          Região (UF ou DDD, separados por vírgula)
+          <input
+            aria-label="Região"
+            value={regiao}
+            onChange={(e) => {
+              setRegiao(e.target.value);
+              salvarPreferencia('regiao', e.target.value);
+            }}
+            placeholder="ex.: PR, 41, 45, 46"
+            aria-invalid={regiaoLida.erros.length > 0}
+          />
+        </label>
+        {regiaoLida.erros.length > 0 && (
+          <p className="aviso" role="alert" style={{ margin: '4px 0' }}>
+            Região inválida: {regiaoLida.erros.join('; ')}. Use a sigla do estado (PR) ou o DDD de 2 dígitos (45).
+          </p>
+        )}
+        {regiaoLida.ufs
+          .filter((uf) => ddsDaUf(uf).some((d) => !regiaoLida.ddds.includes(d)))
+          .map((uf) => (
+            <button
+              key={uf}
+              type="button"
+              className="pequeno"
+              style={{ fontSize: 11, padding: '2px 8px', margin: '2px 6px 2px 0' }}
+              onClick={() => {
+                const novo = incluirDddsDaUf(regiao, uf);
+                setRegiao(novo);
+                salvarPreferencia('regiao', novo);
+              }}
+            >
+              + incluir os DDDs de {uf} ({DDDS_POR_UF[uf].join(', ')})
+            </button>
+          ))}
+        <p className="ajuda" style={{ margin: '0 0 6px' }}>
+          Atende quem tem a UF como palavra no nome (&quot;... SALTO DO LONTRA PR&quot;) ou o DDD no telefone que a extensão já conhece. Sem a UF no nome e sem telefone conhecido, o contato vai para &quot;revisar&quot; (nunca entra sozinho). Vazio = sem filtro de região.
+        </p>
         <label className="check" style={{ margin: '8px 0', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
           <input
             type="checkbox"
@@ -1145,7 +1221,7 @@ export function Previa({ db, dados, aoAprovar, crm, aoIrParaVarredura, aoMudar }
           type="button"
           className="primario"
           onClick={gerarPrevia}
-          disabled={errosTexto.length > 0 || (incluidos.length === 0 && revisar.length === 0)}
+          disabled={errosTexto.length > 0 || regiaoLida.erros.length > 0 || (incluidos.length === 0 && revisar.length === 0)}
         >
           {itens ? 'Gerar prévia de novo (novo sorteio)' : 'Gerar prévia'}
         </button>

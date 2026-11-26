@@ -119,6 +119,7 @@ export function PedirIa({ db, crm, dados, aoAprovar, ativa }: Props) {
 
   const [estado, setEstado] = useState<EstadoPedidos | null>(null);
   const [texto, setTexto] = useState('');
+  const [palavraInteira, setPalavraInteira] = useState(() => lerPreferencia('palavraInteira', '1') !== '0');
   const [plano, setPlano] = useState<PlanoEditavel | null>(null);
   const [perguntas, setPerguntas] = useState<string[]>([]);
   const [ocupado, setOcupado] = useState<string | null>(null);
@@ -199,7 +200,7 @@ export function PedirIa({ db, crm, dados, aoAprovar, ativa }: Props) {
     setParaEnviar(null);
     try {
       setOcupado('Escolhendo as conversas…');
-      const r = await motor.rodar(texto.trim() || p.assunto, p, contatosRef.current, { parar: () => pararRef.current, aoProgredir: setOcupado });
+      const r = await motor.rodar(texto.trim() || p.assunto, p, contatosRef.current, { parar: () => pararRef.current, aoProgredir: setOcupado, palavraInteira });
       await recarregar();
       for (const a of r.avisos) setAviso((x) => (x ? `${x} ${a}` : a));
     } catch (e) {
@@ -397,6 +398,10 @@ export function PedirIa({ db, crm, dados, aoAprovar, ativa }: Props) {
           <label>
             Termos que o nome do contato deve ter (separe por vírgula; vazio = qualquer)
             <input aria-label="Termos do nome" value={plano.termos} onChange={(e) => setPlano({ ...plano, termos: e.target.value })} placeholder="ex.: padaria, central" />
+          </label>
+          <label className="check" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+            <input type="checkbox" aria-label="Palavra inteira" checked={palavraInteira} onChange={(e) => { setPalavraInteira(e.target.checked); salvarPreferencia('palavraInteira', e.target.checked ? '1' : '0'); }} />
+            <span>Palavra inteira (&quot;PR&quot; não casa com &quot;COMPRAS&quot;)</span>
           </label>
           <p className="ajuda">{AVISO_HISTORICO} A lista vem da última varredura (aba 1): {dados.contatos.length === 0 ? 'faça a varredura primeiro.' : `${dados.contatos.length} contatos salvos.`} Grupos, "Não enviar mais" e nomes repetidos nunca entram.</p>
           {dados.contatos.length === 0 && (

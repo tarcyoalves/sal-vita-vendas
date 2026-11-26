@@ -246,8 +246,8 @@ const FORA_COM_SO_MINHA: Record<string, string> = {
   'Grupo CLIENTES Mossoró': 'grupo ou lista de transmissão',
   'Rafael CLIENTE Mendes': 'sem conversa anterior',
   'Sandra CLIENTE Ferraz': 'sem conversa anterior',
-  'Padaria Santo Antônio': 'nome não contém "CLIENTE"',
-  'Mercadinho Boa Vista': 'nome não contém "CLIENTE"',
+  'Padaria Santo Antônio': 'nome não contém a palavra "CLIENTE"',
+  'Mercadinho Boa Vista': 'nome não contém a palavra "CLIENTE"',
   '+55 84 99111-2222': 'não salvo na agenda (aparece só o número)',
   '+55 84 99333-4444': 'não salvo na agenda (aparece só o número)',
   '+55 84 99555-6666': 'não salvo na agenda (aparece só o número)',
@@ -345,7 +345,7 @@ describe('2. prévia com os filtros do dono', () => {
     expect(el.textContent).toContain('O botão Gerar prévia só libera quando pelo menos 1 contato entra');
     // há outros motivos (só número, grupo, agenda): a dica "Seus contatos não têm ZZZ" seria mentira, e os motivos reais aparecem
     expect(el.textContent).not.toContain('Seus contatos não têm');
-    expect(el.textContent).toContain('15 contatos: nome não contém "ZZZ"');
+    expect(el.textContent).toContain('15 contatos: nome não contém a palavra "ZZZ"');
     expect(el.textContent).toContain('3 contatos: não salvo na agenda');
 
     // só contatos comuns: tudo caiu pelo nome → aí sim a dica
