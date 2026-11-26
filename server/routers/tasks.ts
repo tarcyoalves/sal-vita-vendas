@@ -13,6 +13,7 @@ import { validarDocumentoDaTarefa } from '../lib/taskDocumento';
 import { isNewContact } from '../lib/taskNotes';
 import { camposVaziosParaIgnorar } from '../lib/taskTextoVazio';
 import { emailDoWhatsappInput, planejarEmail } from '../lib/emailDoWhatsapp';
+import { pickOrphans } from '../../shared/orphanAssignees';
 import { matchAssignee, ehDuplicada, lembreteEscalonado, executarComOrcamento, deduplicarNoArquivo, janelaLembretes, janelaLembretesMeus } from '../lib/taskImport';
 
 // Tag aplicada/removida automaticamente junto com tasks.emailConfirmed (ver
@@ -124,6 +125,20 @@ export const tasksRouter = router({
       }));
       return out;
     }),
+
+  // Responsáveis em tasks.assigned_to sem cadastro (atendente ou admin/gerente), com a contagem de tarefas.
+  // Só leitura, só admin; não muda nenhuma regra de visibilidade.
+  orphanAssignees: adminProcedure.query(async () => {
+    const [grupos, sellerRows, staffRows] = await Promise.all([
+      db.select({ name: sql<string>`min(trim(${tasks.assignedTo}))`, count: sql<number>`count(*)::int` })
+        .from(tasks)
+        .where(sql`coalesce(trim(${tasks.assignedTo}), '') <> ''`)
+        .groupBy(sql`lower(trim(${tasks.assignedTo}))`),
+      db.select({ name: sellers.name }).from(sellers),
+      db.select({ name: users.name }).from(users).where(inArray(users.role, ['admin', 'manager'])),
+    ]);
+    return pickOrphans(grupos, [...sellerRows.map((r) => r.name), ...staffRows.map((r) => r.name)]);
+  }),
 
   list: protectedProcedure.query(async ({ ctx }) => {
     if (ctx.user.role === 'admin') {

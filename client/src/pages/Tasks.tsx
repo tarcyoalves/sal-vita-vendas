@@ -44,6 +44,7 @@ import {
 import type { Pedido } from '../lib/faturamento/types';
 import { MultiSelectFilter } from '../components/tasks/MultiSelectFilter';
 import { QueryError } from '../components/QueryError';
+import { orphanLabel } from '../../../shared/orphanAssignees';
 import { FILTER_ALL, FILTER_ME, FILTER_NONE, applyAssigneeFilter, assignableNames, buildMyIdentity, otherAttendantNames } from '../lib/myTasks';
 import { foldText, searchTerms } from '../../../shared/searchText';
 import { ordenarTarefas, pontosCliente, ROTULO_ORDEM, type OrdemTarefas } from '../lib/taskOrder';
@@ -309,6 +310,7 @@ export default function Tasks() {
 
   const { data: tasks = [], isLoading, isError, isFetching, refetch } = trpc.tasks.list.useQuery();
   const { data: attendants = [] } = trpc.sellers.list.useQuery();
+  const { data: orphans = [] } = trpc.tasks.orphanAssignees.useQuery(undefined, { enabled: isAdmin, staleTime: 120_000 });
   const me = useMemo(() => buildMyIdentity(user, attendants as any[]), [user, attendants]);
   const otherAttendants = useMemo(() => otherAttendantNames(attendants as any[], me), [attendants, me]);
   const assignOptions = useMemo(() => assignableNames(user, attendants as any[], me), [user, attendants, me]);
@@ -1515,6 +1517,11 @@ export default function Tasks() {
                 <option value={FILTER_ALL}>Todos os atendentes</option>
                 <option value={FILTER_NONE}>Sem atendente</option>
                 {otherAttendants.map((name) => <option key={name} value={name}>{name}</option>)}
+                {orphans.length > 0 && (
+                  <optgroup label="Sem cadastro">
+                    {orphans.map((o) => <option key={o.name} value={o.name}>{orphanLabel(o)}</option>)}
+                  </optgroup>
+                )}
               </select>
             </FilterSection>
           )}

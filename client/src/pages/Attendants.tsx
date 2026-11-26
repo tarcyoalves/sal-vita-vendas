@@ -1,3 +1,4 @@
+import { orphanWarning } from '../../../shared/orphanAssignees';
 import { useAuth } from '../_core/hooks/useAuth';
 import { trpc } from '../lib/trpc';
 import { Button } from '../components/ui/button';
@@ -174,6 +175,8 @@ export default function Attendants() {
 
   const { data: attendants = [], isLoading, isError, isFetching, refetch } = trpc.sellers.listWithRole.useQuery();
   // Sem polling — protege o plano free do Neon/Vercel. Cache válido por 2min.
+  const { data: orphans = [] } = trpc.tasks.orphanAssignees.useQuery(undefined, { staleTime: 120_000, retry: false });
+  const orphanMsg = orphanWarning(orphans);
   const { data: fraudAlerts = [] } = trpc.tasks.fraudAlerts.useQuery(undefined, { staleTime: 120_000 });
 
   // ── Filtro avançado ──────────────────────────────────────────────────────
@@ -537,6 +540,9 @@ export default function Attendants() {
         }
       />
 
+      {orphanMsg && (
+        <p role="note" className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{orphanMsg}</p>
+      )}
       {fraudAlerts.length > 0 && (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50">
           <p className="border-b border-red-200 px-4 py-2.5 text-sm font-semibold text-red-800">

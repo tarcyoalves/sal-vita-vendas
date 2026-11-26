@@ -2,8 +2,8 @@
 
 - **Agente:** claude
 - **Início:** 2026-11-26
-- **Fim:** (ao concluir)
-- **Status:** em andamento
+- **Fim:** 2026-11-26
+- **Status:** concluído
 - **Branch:** `claude/orphan-assignees` (merge em `main`)
 
 ## Objetivo
@@ -22,5 +22,21 @@ importado por CSV), permitir filtrar por eles em Tarefas e avisar em Atendentes.
 
 ## Progresso
 
-- [ ] implementar
-- [ ] portões e merge
+- [x] implementar
+- [x] portões e merge
+
+## Resultado
+
+Admin vê, no filtro Responsável de Tarefas, o grupo "Sem cadastro" (ex.: `NOME (sem cadastro · N)`) e aviso em Atendentes. Query `tasks.orphanAssignees` (adminProcedure, só leitura). Visibilidade e schema inalterados.
+
+## Verificado
+
+- `npm run check` 0 erros; `npm test` 2004 passando; `npm run build:api`.
+
+## Não verificado / pendente
+
+Tela e query SQL não exercitadas contra banco real/navegador.
+
+## Armadilhas encontradas
+
+Heredoc sem aspas com crases corrompeu o primeiro arquivo de reivindicação (corrigido em commit seguinte).
