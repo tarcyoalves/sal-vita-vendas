@@ -7,7 +7,7 @@ import { ConfirmDialog } from '../../../components/premium/admin/ConfirmDialog';
 import { errorMessage } from '../../../components/premium/admin/adminLogic';
 import { SALES_MODES, SALES_MODE_LABEL, JOURNEY_STATE_LABEL, type SalesMode, type JourneyState } from '../../../../../shared/sales';
 import { Aviso, Card, Consulta, Pill, MotivoDialog, fmtData, haQuanto } from './ui';
-import { DISPONIBILIDADE_LABEL, traduzirMotivo } from './motivos';
+import { DISPONIBILIDADE_LABEL, traduzirMotivo, rotuloLote } from './motivos';
 
 type Ciclo = NonNullable<ReturnType<typeof trpc.sales.ciclo.useMutation>['data']>;
 
@@ -168,7 +168,7 @@ export default function PainelTab() {
               <Numero rotulo="Devolvidas" valor={p.hoje.devolvidas} />
               <Numero rotulo="Sem confirmação" valor={p.hoje.desconhecidas} />
             </div>
-            {p.loteDoDia && <p className="text-xs text-slate-600 mt-3">Lote do dia nº {p.loteDoDia.id}: {p.loteDoDia.tamanho} mensagem(ns), situação {p.loteDoDia.status}.</p>}
+            {p.loteDoDia && <p className="text-xs text-slate-600 mt-3">Lote do dia nº {p.loteDoDia.id}: {p.loteDoDia.tamanho} mensagem(ns), situação: {rotuloLote(p.loteDoDia.status)}.</p>}
             {Object.keys(p.jornadasPorEstado).length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-3">
                 {Object.entries(p.jornadasPorEstado).map(([estado, n]) => (

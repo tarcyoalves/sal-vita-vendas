@@ -6,7 +6,7 @@ import { btn } from '../../../components/premium/admin/adminUi';
 import { ConfirmDialog } from '../../../components/premium/admin/ConfirmDialog';
 import { errorMessage } from '../../../components/premium/admin/adminLogic';
 import { Card, Consulta, MotivoDialog, Pill, Vazio } from './ui';
-import { MENSAGEM_STATUS_LABEL, traduzirMotivo } from './motivos';
+import { MENSAGEM_STATUS_LABEL, traduzirMotivo, rotuloLote } from './motivos';
 
 export default function LoteTab() {
   const utils = trpc.useUtils();
@@ -42,7 +42,7 @@ export default function LoteTab() {
             }
           >
             <p className="text-xs text-slate-600">
-              Situação: <b>{lote.status}</b> · {lote.tamanho} mensagem(ns). Corte o que não quiser antes de aprovar.
+              Situação: <b>{rotuloLote(lote.status)}</b> · {lote.tamanho} mensagem(ns). Corte o que não quiser antes de aprovar.
               Aprovar não envia na hora: o envio ainda depende do modo e do canal.
             </p>
           </Card>
