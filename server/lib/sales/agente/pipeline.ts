@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { contemValorCritico, removerDadosPessoais, verificarTextoComercial } from '../conteudo';
 import type { Msg } from '../../aiChain';
 import {
-  ferramentasOferecidas, executarFerramenta, type ContextoFerramentas, type KbMin,
+  caixasParaEncaminhar, ferramentasOferecidas, executarFerramenta, type ContextoFerramentas, type KbMin,
 } from './ferramentas';
 import {
   detectarPerfil, extrairCep, extrairQuantidadeCaixas, higienizarVisitante, ocultarCep, perguntaSensivel, promessaComercial, TAG_VISITANTE,
@@ -68,8 +68,8 @@ export function montarPromptSistema(ctx: Pick<ContextoFerramentas, 'kb' | 'cepVi
     ctx.cepVisitante
       ? '6. O visitante já informou um CEP (você não o vê). Ao cotar frete, passe cep="informado" e a quantidade de caixas.'
       : '6. O visitante ainda não informou um CEP válido. Para cotar frete, peça o CEP (8 dígitos) e a quantidade de caixas.',
-    `7. Pedido de ${ctx.agente.caixasParaEncaminhar} caixas ou mais vai para uma pessoa (o sistema trata isso).`,
-    '8. Só chame registrar_contato se o visitante pediu o resumo por e-mail; o consentimento é marcado por ele na tela, você não pode marcá-lo.',
+    `7. Pedido de ${caixasParaEncaminhar(ctx.agente)} caixas ou mais vai para uma pessoa (o sistema trata isso).`,
+    '8. Só chame registrar_contato se o visitante quer que a equipe responda por e-mail; nome, empresa, e-mail e o consentimento são preenchidos por ele no formulário da tela, você não pode preenchê-los.',
     kbVazia ? '9. A base de conhecimento aprovada está vazia: você pode cotar frete, mostrar preço e chamar um atendente, sem inventar fatos sobre o produto.' : '',
     '',
     `Perfil percebido até agora: ${perfil}. Se ainda for "indefinido", pergunte de forma natural se a compra é para revender ou para usar no próprio negócio (restaurante, churrascaria, açougue, mini mercado, empório, loja de suplementos etc.).`,
@@ -135,12 +135,13 @@ export async function executarTurno(entrada: EntradaTurno, deps: DepsTurno): Pro
 
   // Pedido grande por CÓDIGO (V3.1 D5): não depende de o modelo perceber.
   const qtd = extrairQuantidadeCaixas(brutoVisitante);
-  if (qtd !== null && qtd >= ctx.agente.caixasParaEncaminhar) {
+  const limiteCaixas = caixasParaEncaminhar(ctx.agente);
+  if (qtd !== null && qtd >= limiteCaixas) {
     return {
       modo: 'chat',
       ...vazio(comAviso(TEXTO_PEDIDO_GRANDE, entrada.primeiraResposta), {
         perfil: perfilBase, encaminhado: true, semModelo: true,
-        acoes: [{ tipo: 'excecao', kind: 'pedido_grande', severity: 'alta', motivo: `Visitante pediu ${qtd} caixas (limite ${ctx.agente.caixasParaEncaminhar})`, quantidadeCaixas: qtd }],
+        acoes: [{ tipo: 'excecao', kind: 'pedido_grande', severity: 'alta', motivo: `Visitante pediu ${qtd} caixas (limite ${limiteCaixas})`, quantidadeCaixas: qtd }],
       }),
     };
   }

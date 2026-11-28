@@ -2,7 +2,7 @@
 // Toda decisão de conteúdo está em pipeline.ts / ferramentas.ts (puros e testados); aqui só se liga o que
 // é externo. Camadas 7 (limites), 8 (formulário) e 9 (registro de tudo) vivem aqui.
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { ordersDb } from '../../../db/ordersDb';
 import { salesAgentConversations, salesAgentMessages, salesOptIns } from '../../../db/schema';
 import { OPT_IN_TEXT, OPT_IN_TEXT_VERSION } from '../../../../shared/sales';
@@ -13,7 +13,10 @@ import { registrarExcecao } from '../excecoes';
 import { getSalesSettings } from '../settings';
 import { listarKbAprovada } from './kb';
 import { cotarFreteCaixas, produtoCaixa } from './frete';
-import { consentimentoDaInterface, decidirLimites, deveEscalarBloqueios, expiraEm, hashVisitante } from './limites';
+import {
+  acoesSemRepeticao, chaveExcecaoAgente, consentimentoDaInterface, decidirLimites, deveEscalarBloqueios, expiraEm, hashVisitante,
+  limiteVisitanteDia,
+} from './limites';
 import { executarTurno, type DepsTurno, type ResultadoPipeline } from './pipeline';
 import { extrairCep, higienizarVisitante, ocultarCep } from './texto';
 import type { Acao, Card, PerfilAgente } from './tipos';
@@ -101,6 +104,49 @@ async function verificarSemanticaIa(texto: string): Promise<{ violacao: boolean;
 // ── Persistência ─────────────────────────────────────────────────────────────────────────────
 type Conversa = typeof salesAgentConversations.$inferSelect;
 
+const DIA_MS = 86_400_000;
+/** As colunas são TIMESTAMP sem fuso gravadas em UTC (o Drizzle grava `toISOString()`): o mesmo aqui. */
+const ts = (d: Date) => sql`${d.toISOString()}::timestamp`;
+
+/** Mensagens do visitante (todas as conversas dele) com atividade nas últimas 24 h. */
+const mensagensDoVisitanteSql = (visitorHash: string, desde: Date) => sql`(
+  SELECT coalesce(sum(v.message_count), 0) FROM sales_agent_conversations v
+  WHERE v.visitor_hash = ${visitorHash} AND v.last_at > ${ts(desde)}
+)`;
+
+/**
+ * Conta a mensagem na conversa existente, ATOMICAMENTE: só incrementa se ainda cabe no teto da conversa e
+ * no teto diário do visitante. Duas mensagens simultâneas na mesma conversa disputam a mesma linha (o
+ * Postgres reavalia o WHERE depois do bloqueio), então o teto por conversa não é ultrapassado.
+ * `null` = limite atingido: formulário ANTES de chamar a IA.
+ */
+async function contarMensagem(conversaId: string, visitorHash: string, agente: { maxMensagensPorConversa: number }, agora: Date): Promise<number | null> {
+  const r = await ordersDb.execute<{ message_count: number }>(sql`
+    UPDATE sales_agent_conversations SET message_count = message_count + 1, last_at = ${ts(agora)}
+    WHERE id = ${conversaId} AND message_count < ${agente.maxMensagensPorConversa}
+      AND ${mensagensDoVisitanteSql(visitorHash, new Date(agora.getTime() - DIA_MS))} < ${limiteVisitanteDia(agente)}
+    RETURNING message_count
+  `);
+  return r.rows[0]?.message_count ?? null;
+}
+
+/**
+ * Cria a conversa (já contando a 1ª mensagem) num único comando condicional: só se o teto de conversas
+ * novas nas últimas 24 h e o teto diário do visitante ainda comportam. Corridas simultâneas podem passar
+ * o teto diário por poucas conversas (o SELECT não trava a tabela), o que é aceito. `false` = sem cota.
+ */
+async function criarConversaComCota(conversaId: string, visitorHash: string, agente: { maxMensagensPorConversa: number; maxConversasPorDia: number }, agora: Date): Promise<boolean> {
+  const desde = new Date(agora.getTime() - DIA_MS);
+  const r = await ordersDb.execute<{ id: string }>(sql`
+    INSERT INTO sales_agent_conversations (id, visitor_hash, status, message_count, started_at, last_at, expires_at)
+    SELECT ${conversaId}, ${visitorHash}, 'open', 1, ${ts(agora)}, ${ts(agora)}, ${ts(expiraEm(agora))}
+    WHERE (SELECT count(*) FROM sales_agent_conversations WHERE started_at > ${ts(desde)}) < ${agente.maxConversasPorDia}
+      AND ${mensagensDoVisitanteSql(visitorHash, desde)} < ${limiteVisitanteDia(agente)}
+    RETURNING id
+  `);
+  return r.rows.length > 0;
+}
+
 async function carregarConversa(id: string | undefined, visitorHash: string, agora: Date): Promise<Conversa | null> {
   if (!id) return null;
   const [c] = await ordersDb.select().from(salesAgentConversations).where(eq(salesAgentConversations.id, id)).limit(1);
@@ -125,7 +171,9 @@ function argsParaRegistro(nome: string, args: unknown): unknown {
 
 async function executarAcoes(acoes: Acao[], conversa: { id: string; perfil: PerfilAgente | null }, a: { consentimento: boolean; ipHash: string; contato?: EntradaChat['contato'] }): Promise<{ falhouEncaminhamento: boolean }> {
   let falhouEncaminhamento = false;
-  for (const ac of acoes) {
+  // Cada tipo de exceção (e a tarefa do CRM dela) no máximo uma vez por conversa: chave por conversa e
+  // tipo, com ON CONFLICT em registrarExcecao. Aqui só se evita repetir a ida ao banco no mesmo turno.
+  for (const ac of acoesSemRepeticao(acoes)) {
     try {
       if (ac.tipo === 'excecao') {
         const handoff = ac.kind === 'pedido_grande' || ac.kind === 'pediu_pessoa';
@@ -136,7 +184,7 @@ async function executarAcoes(acoes: Acao[], conversa: { id: string; perfil: Perf
           pergunta_sensivel: 'Vendedor virtual: pergunta sobre saúde/composição',
         };
         await registrarExcecao({
-          idempotencyKey: `agente:${ac.kind}:${conversa.id}`,
+          idempotencyKey: chaveExcecaoAgente(ac.kind, conversa.id),
           kind: ac.kind, severity: ac.severity,
           title: titulos[ac.kind] ?? `Vendedor virtual: ${ac.kind}`,
           detail: `${ac.motivo}. Perfil: ${conversa.perfil ?? 'indefinido'}. Conversa ${conversa.id} (veja no painel Sales AI).${contato}`,
@@ -162,6 +210,15 @@ async function executarAcoes(acoes: Acao[], conversa: { id: string; perfil: Perf
         }
         await ordersDb.update(salesAgentConversations).set({ contactEmail: ac.email, companyName: ac.empresa.slice(0, 160) })
           .where(eq(salesAgentConversations.id, conversa.id));
+        // Nada envia e-mail automático daqui: uma pessoa da equipe responde. Exceção + tarefa no CRM, uma por conversa.
+        const titulo = 'Vendedor virtual: lead de atacado pediu contato por e-mail';
+        const descricao = `Responder por e-mail: ${ac.nome}, ${ac.empresa}, ${ac.email}. Perfil: ${conversa.perfil ?? 'indefinido'}. Conversa ${conversa.id} no painel Sales AI.`;
+        await registrarExcecao({
+          idempotencyKey: chaveExcecaoAgente('lead_atacado', conversa.id),
+          kind: 'lead_atacado', severity: 'normal', title: titulo, detail: descricao,
+          conversationId: conversa.id, createdBy: 'agente',
+          criarTarefaCrm: { titulo, descricao, prioridade: 'medium' },
+        });
       }
     } catch (e) {
       console.error('[sales-agente] ação falhou:', ac.tipo, e instanceof Error ? e.message : 'erro');
@@ -184,18 +241,16 @@ export async function conversar(entrada: EntradaChat, meta: MetaVisitante, agora
   const consentimento = consentimentoDaInterface(entrada.consentimentoResumo);
 
   const existente = await carregarConversa(entrada.conversationId, visitorHash, agora);
-  let conversasNas24h = 0;
-  if (!existente) {
-    const [{ n }] = await ordersDb.select({ n: sql<number>`count(*)::int` }).from(salesAgentConversations)
-      .where(gte(salesAgentConversations.startedAt, new Date(agora.getTime() - 86_400_000)));
-    conversasNas24h = n;
-  }
-  const limite = decidirLimites(s.agente, existente ? existente.messageCount : null, conversasNas24h);
+  // Pré-checagem sem consulta (conversa já cheia, teto diário zero). A garantia vem a seguir, atômica.
+  const limite = decidirLimites(s.agente, existente ? existente.messageCount : null, 0);
   if (!limite.permitido) return formulario(existente?.id ?? idEntrada);
 
+  // Camada 7: a mensagem é contada ANTES da IA, num comando condicional só. Sem cota → formulário.
   const conversaId = existente?.id ?? randomUUID();
-  if (!existente) {
-    await ordersDb.insert(salesAgentConversations).values({ id: conversaId, visitorHash, status: 'open', startedAt: agora, lastAt: agora, expiresAt: expiraEm(agora) });
+  if (existente) {
+    if ((await contarMensagem(conversaId, visitorHash, s.agente, agora)) === null) return formulario(conversaId);
+  } else if (!(await criarConversaComCota(conversaId, visitorHash, s.agente, agora))) {
+    return formulario(idEntrada);
   }
 
   // Histórico mínimo: últimas mensagens não bloqueadas; o CEP vive só no registro do visitante.
@@ -236,8 +291,6 @@ export async function conversar(entrada: EntradaChat, meta: MetaVisitante, agora
 
   if (r.modo === 'formulario') {
     await registrar(conversaId, [{ role: 'tool', content: `modo formulário: ${r.motivo}`, toolName: 'ia_indisponivel' }]);
-    await ordersDb.update(salesAgentConversations).set({ lastAt: agora, messageCount: sql`${salesAgentConversations.messageCount} + 1` })
-      .where(eq(salesAgentConversations.id, conversaId));
     return formulario(conversaId);
   }
 
@@ -251,7 +304,6 @@ export async function conversar(entrada: EntradaChat, meta: MetaVisitante, agora
   const graves = r.bloqueios.filter((b) => b.grave);
   await ordersDb.update(salesAgentConversations).set({
     lastAt: agora,
-    messageCount: sql`${salesAgentConversations.messageCount} + 1`,
     ...(r.perfil === 'revenda' || r.perfil === 'consumo' ? { profile: r.perfil } : {}),
     ...(r.bloqueios.length ? { flagged: true, flagReason: r.bloqueios.map((b) => b.camada).join(',').slice(0, 200) } : {}),
   }).where(eq(salesAgentConversations.id, conversaId));
@@ -264,7 +316,7 @@ export async function conversar(entrada: EntradaChat, meta: MetaVisitante, agora
     if (deveEscalarBloqueios(n)) {
       try {
         await registrarExcecao({
-          idempotencyKey: `agente:alegacao_barrada:${conversaId}`, kind: 'alegacao_barrada', severity: 'alta',
+          idempotencyKey: chaveExcecaoAgente('alegacao_barrada', conversaId), kind: 'alegacao_barrada', severity: 'alta',
           title: 'Vendedor virtual: respostas barradas repetidas',
           detail: `${n} respostas do modelo foram barradas pelas travas de conteúdo na conversa ${conversaId}. Revise no painel Sales AI.`,
           conversationId: conversaId, createdBy: 'agente',

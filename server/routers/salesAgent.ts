@@ -15,7 +15,8 @@ export const salesAgentRouter = router({
   estado: publicProcedure.query(() => estadoPublico()),
 
   // Público de propósito: o visitante da /atacado não tem login (é a vitrine B2B). A proteção vem de:
-  // limiter por IP em api/index.ts, teto de mensagens por conversa e de conversas novas por dia (no servidor),
+  // limiter por IP em api/index.ts (procedure fora de lote: trpcBatchGuard), tetos atômicos de mensagens por
+  // conversa, de mensagens por visitante por dia e de conversas novas por dia (servico.ts, antes da IA),
   // visitante identificado só por HMAC de IP + user agent, e todas as travas de conteúdo do pipeline.
   chat: publicProcedure
     .input(z.object({

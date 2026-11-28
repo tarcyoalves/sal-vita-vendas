@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { contemValorCritico, removerDadosPessoais, verificarTextoComercial } from '../server/lib/sales/conteudo';
 import { OPT_IN_TEXT, SALES_SETTINGS_DEFAULTS, type SalesSettings } from '../shared/sales';
 import {
-  ESQUEMAS, ferramentasOferecidas, executarFerramenta, formatarReais, simularRevenda, type ContextoFerramentas, type CotacaoFrete,
+  ESQUEMAS, ferramentasOferecidas, executarFerramenta, formatarReais, simularRevenda, TEXTO_CONTATO_REGISTRADO, type ContextoFerramentas, type CotacaoFrete,
 } from '../server/lib/sales/agente/ferramentas';
 import {
   AVISO_ASSISTENTE, executarTurno, lerSaidaModelo, montarPromptSistema, TEXTO_PEDIDO_GRANDE, TEXTO_SEGURO, TEXTO_SEM_CARTOES, TEXTO_SEM_VALORES,
@@ -144,7 +144,12 @@ const quantidades: Caso[] = [
   { nome: 'qtd: 25 caixas', visitante: 'quero 25 caixas', roteiro: NAO_CHAMAR, esperado: { semModelo: true, texto: TEXTO_PEDIDO_GRANDE, encaminhado: true, kind: 'pedido_grande' } },
   { nome: 'qtd: vinte caixas por extenso', visitante: 'preciso de vinte caixas pro mês', roteiro: NAO_CHAMAR, esperado: { semModelo: true, texto: TEXTO_PEDIDO_GRANDE, encaminhado: true, kind: 'pedido_grande' } },
   { nome: 'qtd: limite exato (20)', visitante: 'fecho 20 cx', roteiro: NAO_CHAMAR, esperado: { semModelo: true, encaminhado: true, kind: 'pedido_grande' } },
-  { nome: 'qtd: 19 não encaminha', visitante: 'quero 19 caixas, cep 59600-000', roteiro: { ferramentas: [['cotar_frete', { cep: 'informado', quantidadeCaixas: 19 }]], final: LIMPO }, esperado: { cards: ['frete'], encaminhado: false } },
+  // shipping.calculate só cota até 100 kg: acima de 10 caixas vai para uma pessoa, mesmo com o painel em 20.
+  { nome: 'qtd: 10 caixas ainda cota', visitante: 'quero 10 caixas, cep 59600-000', roteiro: { ferramentas: [['cotar_frete', { cep: 'informado', quantidadeCaixas: 10 }]], final: LIMPO }, esperado: { cards: ['frete'], encaminhado: false } },
+  { nome: 'qtd: 11 caixas encaminha (frete não cotável)', visitante: 'quero 11 caixas, cep 59600-000', roteiro: NAO_CHAMAR, esperado: { semModelo: true, texto: TEXTO_PEDIDO_GRANDE, encaminhado: true, kind: 'pedido_grande' } },
+  { nome: 'qtd: 19 caixas encaminha (frete não cotável)', visitante: 'quero 19 caixas, cep 59600-000', roteiro: NAO_CHAMAR, esperado: { semModelo: true, texto: TEXTO_PEDIDO_GRANDE, encaminhado: true, kind: 'pedido_grande' } },
+  { nome: 'qtd: modelo cota 12 sem o visitante dizer', visitante: 'preciso de bastante, cep 59600-000', roteiro: { ferramentas: [['cotar_frete', { cep: 'informado', quantidadeCaixas: 12 }]], final: LIMPO }, esperado: { texto: TEXTO_PEDIDO_GRANDE, encaminhado: true, kind: 'pedido_grande', semCards: ['frete'] } },
+  { nome: 'qtd: modelo compara canais com 15', visitante: 'compara com o mercado livre, cep 59600-000', roteiro: { ferramentas: [['comparar_canais', { cep: 'informado', quantidadeCaixas: 15 }]], final: LIMPO }, esperado: { texto: TEXTO_PEDIDO_GRANDE, encaminhado: true, kind: 'pedido_grande', semCards: ['comparativo'] } },
   { nome: 'qtd: modelo cota 30 sem o visitante dizer', visitante: 'preciso de bastante, cep 59600-000', roteiro: { ferramentas: [['cotar_frete', { cep: 'informado', quantidadeCaixas: 30 }]], final: json('Vou cotar 30 caixas para você.') }, esperado: { texto: TEXTO_PEDIDO_GRANDE, encaminhado: true, kind: 'pedido_grande', semCards: ['frete'] } },
   { nome: 'qtd: modelo monta pedido de 500', visitante: 'quero fechar um pedido grande', roteiro: { ferramentas: [['montar_pedido', { quantidadeCaixas: 500 }]], final: LIMPO }, esperado: { texto: TEXTO_PEDIDO_GRANDE, encaminhado: true, kind: 'pedido_grande', semCards: ['link'] } },
   { nome: 'qtd: 2 caixas gera link sem preço', visitante: 'quero 2 caixas', roteiro: { ferramentas: [['montar_pedido', { quantidadeCaixas: 2 }]], final: json('Segue o botão para finalizar a compra.') }, esperado: { cards: ['link'], encaminhado: false } },
@@ -431,17 +436,41 @@ describe('consentimento (registrar_contato)', () => {
     expect(ESQUEMAS.registrar_contato.safeParse({ ...contato, consentimento: true }).success).toBe(false);
   });
 
-  it('com a caixa marcada pelo visitante gera a ação de opt-in com e-mail normalizado', async () => {
-    const ctx = ctxBase({ consentimentoUi: true });
-    const r = await executarFerramenta('registrar_contato', contato, ctx, ferramentasOferecidas(ctx));
+  it('com a caixa marcada e o formulário da tela preenchido gera a ação de opt-in com e-mail normalizado', async () => {
+    const ctx = ctxBase({ consentimentoUi: true, contatoUi: contato });
+    const r = await executarFerramenta('registrar_contato', {}, ctx, ferramentasOferecidas(ctx));
     expect(r.acoes).toEqual([{ tipo: 'opt_in', nome: 'Ana Souza', empresa: 'Mercado da Ana', email: 'ana@exemplo.com.br' }]);
   });
 
-  it('usa os dados do formulário da interface quando o modelo não os repete, e exige e-mail válido', async () => {
+  it('o modelo NUNCA fornece o contato do opt-in: sem formulário da tela não há registro, mesmo com argumentos', async () => {
+    const ctx = ctxBase({ consentimentoUi: true, contatoUi: null });
+    const r = await executarFerramenta('registrar_contato', contato, ctx, ferramentasOferecidas(ctx));
+    expect(r.ok).toBe(false);
+    expect(r.acoes).toHaveLength(0);
+  });
+
+  it('e-mail do modelo diferente do digitado na tela é ignorado: vale o da tela', async () => {
     const ctx = ctxBase({ consentimentoUi: true, contatoUi: contato });
-    expect((await executarFerramenta('registrar_contato', {}, ctx, ferramentasOferecidas(ctx))).acoes).toHaveLength(1);
+    const r = await executarFerramenta('registrar_contato', { nome: 'Outro', empresa: 'Outra', email: 'terceiro@exemplo.com.br' }, ctx, ferramentasOferecidas(ctx));
+    expect(r.acoes).toEqual([{ tipo: 'opt_in', nome: 'Ana Souza', empresa: 'Mercado da Ana', email: 'ana@exemplo.com.br' }]);
+  });
+
+  it('exige e-mail válido no formulário da tela', async () => {
     const ruim = ctxBase({ consentimentoUi: true, contatoUi: { ...contato, email: 'sem-arroba' } });
     expect((await executarFerramenta('registrar_contato', {}, ruim, ferramentasOferecidas(ruim))).acoes).toHaveLength(0);
+  });
+
+  it('o cartão promete resposta de uma pessoa por e-mail, não um resumo automático', async () => {
+    const ctx = ctxBase({ consentimentoUi: true, contatoUi: contato });
+    const r = await executarFerramenta('registrar_contato', {}, ctx, ferramentasOferecidas(ctx));
+    expect(r.cards).toEqual([{ tipo: 'aviso', texto: TEXTO_CONTATO_REGISTRADO }]);
+    expect(TEXTO_CONTATO_REGISTRADO).toMatch(/pessoa da equipe Sal Vita/);
+    expect(TEXTO_CONTATO_REGISTRADO).not.toMatch(/resumo/i);
+  });
+
+  it('a ferramenta oferecida ao modelo não tem parâmetros de contato', () => {
+    const t = ferramentasOferecidas({ simuladorAtivo: false }).find((x) => x.function.name === 'registrar_contato');
+    expect(Object.keys((t?.function.parameters as { properties: Record<string, unknown> }).properties)).toEqual([]);
   });
 
   it('só `true` literal conta como consentimento; o texto é o da constante compartilhada', () => {

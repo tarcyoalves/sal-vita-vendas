@@ -51,9 +51,21 @@ export function formatarReais(centavos: number): string {
   return `${neg ? '-' : ''}R$ ${inteiro},${cent}`;
 }
 
+/**
+ * `shipping.calculate` aceita no máximo 100 kg (`quantity` = caixas × 10). Acima de 10 caixas o frete não
+ * é cotável pelo site: o pedido vai para uma pessoa (exceção `pedido_grande`), por código.
+ */
+export const MAX_CAIXAS_COTACAO = 10;
+
+/** A partir de quantas caixas o pedido vai para uma pessoa: o menor entre o painel e o teto da cotação. */
+export function caixasParaEncaminhar(a: Pick<SalesAgente, 'caixasParaEncaminhar'>): number {
+  return Math.min(a.caixasParaEncaminhar, MAX_CAIXAS_COTACAO + 1);
+}
+
 export const AVISO_COTACAO = 'Cotação válida no momento da consulta; o valor final é confirmado no checkout.';
 export const AVISO_SIMULADOR = 'Simulação com os números informados. Não é promessa de lucro nem de venda.';
 export const TEXTO_SEM_POLITICA = 'Não temos essa informação aprovada; posso chamar um atendente.';
+export const TEXTO_CONTATO_REGISTRADO = 'Contato registrado. Uma pessoa da equipe Sal Vita vai responder você por e-mail.';
 
 // ── Fórmula do simulador de revenda (V3.1): tudo em centavos inteiros ───────────────────────
 export interface EntradaSimulacao { caixaCentavos: number; freteCentavos: number; despesasCentavos: number; revendaPorPacoteCentavos: number }
@@ -91,10 +103,12 @@ export const ESQUEMAS = {
   }).strict(),
   montar_pedido: z.object({ quantidadeCaixas: caixas }).strict(),
   politica_comercial: z.object({ tema: z.string().min(1).max(80) }).strict(),
+  // Os campos são aceitos (o modelo pode repeti-los) mas IGNORADOS: o contato do opt-in vem só do
+  // formulário que o visitante preencheu na tela (ctx.contatoUi). Nada de consentimento aqui (estrito).
   registrar_contato: z.object({
-    nome: z.string().trim().min(2).max(120).optional(),
-    empresa: z.string().trim().min(2).max(160).optional(),
-    email: z.string().trim().email().max(200).optional(),
+    nome: z.string().max(200).optional(),
+    empresa: z.string().max(200).optional(),
+    email: z.string().max(200).optional(),
   }).strict(),
   chamar_atendente: z.object({ motivo: z.string().trim().min(1).max(300) }).strict(),
 } as const;
@@ -122,8 +136,7 @@ export function ferramentasOferecidas(ctx: Pick<ContextoFerramentas, 'simuladorA
       { quantidadeCaixas: { type: 'integer' } }, ['quantidadeCaixas']),
     spec('politica_comercial', 'Política comercial aprovada (troca, pagamento, entrega...). Sem item aprovado, não há resposta.',
       { tema: { type: 'string' } }, ['tema']),
-    spec('registrar_contato', 'Registra nome, empresa e e-mail para receber o resumo. Só funciona se o visitante marcou a caixa de consentimento na tela.',
-      { nome: { type: 'string' }, empresa: { type: 'string' }, email: { type: 'string' } }),
+    spec('registrar_contato', 'Registra o contato que o visitante preencheu no formulário da tela (nome, empresa, e-mail) para uma pessoa da equipe responder por e-mail. Sem argumentos. Só funciona se o visitante marcou a caixa de consentimento na tela.', {}),
     spec('chamar_atendente', 'Passa a conversa para uma pessoa da Sal Vita.', { motivo: { type: 'string' } }, ['motivo']),
   ];
   if (ctx.simuladorAtivo) {
@@ -140,7 +153,7 @@ function encaminhaGrande(ctx: ContextoFerramentas, q: number): ResultadoFerramen
     ok: true,
     paraModelo: { encaminhado: true, instrucao: 'Pedido grande: uma pessoa da Sal Vita assume. Não cote nem negocie valores.' },
     cards: [],
-    acoes: [{ tipo: 'excecao', kind: 'pedido_grande', severity: 'alta', motivo: `Pedido de ${q} caixas (limite ${ctx.agente.caixasParaEncaminhar})`, quantidadeCaixas: q }],
+    acoes: [{ tipo: 'excecao', kind: 'pedido_grande', severity: 'alta', motivo: `Pedido de ${q} caixas (limite ${caixasParaEncaminhar(ctx.agente)})`, quantidadeCaixas: q }],
     resumo: `pedido_grande:${q}`,
   };
 }
@@ -223,7 +236,7 @@ async function executarValidado(nome: NomeFerramenta, args: unknown, ctx: Contex
     }
     case 'cotar_frete': {
       const a = ESQUEMAS.cotar_frete.parse(args);
-      if (a.quantidadeCaixas >= ctx.agente.caixasParaEncaminhar) return encaminhaGrande(ctx, a.quantidadeCaixas);
+      if (a.quantidadeCaixas >= caixasParaEncaminhar(ctx.agente)) return encaminhaGrande(ctx, a.quantidadeCaixas);
       const r = await cotar(ctx, a.cep, a.quantidadeCaixas);
       if ('erro' in r) return r.erro;
       const opcoes = opcoesParaCard(r.cot.options);
@@ -237,7 +250,7 @@ async function executarValidado(nome: NomeFerramenta, args: unknown, ctx: Contex
     }
     case 'comparar_canais': {
       const a = ESQUEMAS.comparar_canais.parse(args);
-      if (a.quantidadeCaixas >= ctx.agente.caixasParaEncaminhar) return encaminhaGrande(ctx, a.quantidadeCaixas);
+      if (a.quantidadeCaixas >= caixasParaEncaminhar(ctx.agente)) return encaminhaGrande(ctx, a.quantidadeCaixas);
       const r = await cotar(ctx, a.cep, a.quantidadeCaixas);
       if ('erro' in r) return r.erro;
       const opcoes = opcoesParaCard(r.cot.options);
@@ -293,7 +306,7 @@ async function executarValidado(nome: NomeFerramenta, args: unknown, ctx: Contex
     }
     case 'montar_pedido': {
       const a = ESQUEMAS.montar_pedido.parse(args);
-      if (a.quantidadeCaixas >= ctx.agente.caixasParaEncaminhar) return encaminhaGrande(ctx, a.quantidadeCaixas);
+      if (a.quantidadeCaixas >= caixasParaEncaminhar(ctx.agente)) return encaminhaGrande(ctx, a.quantidadeCaixas);
       // A landing (SalVitaLanding) só lê ?cupom= e UTM: não aceita produto/quantidade por URL. Link simples + passos.
       const instrucoes = [
         'Abra a página e role até "Preço".',
@@ -315,19 +328,20 @@ async function executarValidado(nome: NomeFerramenta, args: unknown, ctx: Contex
       return { ok: true, paraModelo: { itens: achados.slice(0, 3).map((i) => ({ titulo: i.title, conteudo: i.content.slice(0, 1200) })) }, cards: [], acoes: [], resumo: `politica:${achados.length}` };
     }
     case 'registrar_contato': {
-      const a = ESQUEMAS.registrar_contato.parse(args);
+      ESQUEMAS.registrar_contato.parse(args);
       // Consentimento só vem do flag da interface. O modelo não tem parâmetro para isso.
       if (!ctx.consentimentoUi) {
         return falha('sem_consentimento', { registrado: false, motivo: 'consentimento_nao_marcado', instrucao: 'O visitante não marcou a caixa de consentimento na tela. Peça que marque; você não pode marcá-la por ele.' });
       }
-      const nome = a.nome ?? ctx.contatoUi?.nome;
-      const empresa = a.empresa ?? ctx.contatoUi?.empresa;
-      const email = a.email ?? ctx.contatoUi?.email;
-      const v = z.object({ nome: z.string().trim().min(2), empresa: z.string().trim().min(2), email: z.string().trim().email() }).safeParse({ nome, empresa, email });
-      if (!v.success) return falha('contato_incompleto', { registrado: false, motivo: 'contato_incompleto', instrucao: 'Faltam nome, empresa ou um e-mail válido.' });
+      // Dados de contato SÓ do formulário da tela, digitados pelo visitante. O modelo nunca fornece o
+      // e-mail do opt-in (um e-mail inventado ou de terceiro viraria consentimento falso).
+      const ui = ctx.contatoUi;
+      const v = z.object({ nome: z.string().trim().min(2).max(120), empresa: z.string().trim().min(2).max(160), email: z.string().trim().email().max(200) })
+        .safeParse({ nome: ui?.nome, empresa: ui?.empresa, email: ui?.email });
+      if (!v.success) return falha('contato_incompleto', { registrado: false, motivo: 'contato_incompleto', instrucao: 'Peça ao visitante para preencher nome, empresa e e-mail no formulário da tela; você não pode preencher por ele.' });
       return {
         ok: true, paraModelo: { registrado: true },
-        cards: [{ tipo: 'aviso', texto: 'Contato registrado. O resumo da conversa será enviado ao e-mail informado.' }],
+        cards: [{ tipo: 'aviso', texto: TEXTO_CONTATO_REGISTRADO }],
         acoes: [{ tipo: 'opt_in', nome: v.data.nome, empresa: v.data.empresa, email: v.data.email.toLowerCase() }], resumo: 'contato',
       };
     }

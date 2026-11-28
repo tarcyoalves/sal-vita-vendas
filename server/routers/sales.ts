@@ -17,11 +17,31 @@ import {
 import {
   KB_KINDS, listarKb, salvarKbItem, aprovarKbItem, arquivarKbItem, importarKb, listarConversas, obterConversa,
 } from '../lib/sales/agente/kb';
+// Import em namespace de propósito: `revogarReservas` está sendo adicionada em acoes.ts por outra frente.
+// Enquanto ela não existir, a chamada abaixo é pulada (com aviso no log) e o arquivo compila igual.
+import * as acoes from '../lib/sales/acoes';
 import {
   erroEscalonamentoModo, pendenciasAtivacaoCanal, prepararModeloEmail, validarImportacaoKb, KB_CONTENT_MAX,
 } from './salesRegras';
 
 const CHAVES = Object.keys(SALES_SETTINGS_SCHEMAS) as [SalesSettingKey, ...SalesSettingKey[]];
+
+/** Canal desligado ou política desaprovada: nenhuma reserva já entregue ao executor pode continuar valendo. */
+export function canalFechado(c: Pick<SalesSettings['canal'], 'ativo' | 'politicaAprovada'>): boolean {
+  return c.ativo === false || c.politicaAprovada === false;
+}
+
+/** Chama `acoes.revogarReservas(motivo)` se a função existir. Devolve false quando ainda não existe. */
+async function revogarReservasSeDisponivel(motivo: string): Promise<boolean> {
+  // TODO: trocar por chamada direta (`await acoes.revogarReservas(motivo)`) quando acoes.ts exportar a função.
+  const f: unknown = Reflect.get(acoes, 'revogarReservas');
+  if (typeof f !== 'function') {
+    console.warn('[sales] canal fechado, mas acoes.revogarReservas ainda não existe: reservas vencem sozinhas');
+    return false;
+  }
+  await Reflect.apply(f, acoes, [motivo]);
+  return true;
+}
 
 type Ator = { kind: 'premium'; email: string; name: string; id: null } | { kind: 'crm'; email: string; name: string; id: number };
 
@@ -94,6 +114,10 @@ export const salesRouter = router({
 
       const gravado = await setSalesSetting(key, valor, por(ctx.actor));
       await auditar(ctx.actor, 'sales_setting', null, `setting_${key}`, { key, antes, depois: gravado });
+      // Depois de gravar (reservas novas já param): revoga as que o executor ainda tem em mãos.
+      if (key === 'canal' && canalFechado(gravado as SalesSettings['canal'])) {
+        await revogarReservasSeDisponivel(`canal fechado no painel por ${por(ctx.actor)}`);
+      }
       return { key, value: gravado };
     }),
 
