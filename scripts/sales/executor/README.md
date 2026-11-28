@@ -6,13 +6,21 @@ automáticas, pedidos para sair e respostas humanas. Instalação e operação: 
 
 **Não faz:** escolher destinatário, escrever mensagem, responder cliente, apagar ou marcar e-mail como lido,
 chamar modelo de IA, enviar qualquer coisa que não tenha vindo da fila autorizada. **Nunca use Resend nem
-Brevo aqui** (as políticas deles proíbem e-mail frio).
+Brevo aqui** (as políticas deles proíbem e-mail frio): `config.validate` recusa host de SMTP ou IMAP com `resend`,
+`brevo`, `sendinblue` ou `sendgrid` no nome, e o executor não inicia.
+
+**Quando roda:** um ciclo a cada `SALES_CYCLE_SECONDS` (padrão e mínimo 300 s; valor menor sobe para 300 com aviso), só
+dentro da janela `SALES_JANELA` (padrão `08:00-18:00`, fuso de Fortaleza, fim exclusivo; `sempre` desliga o portão;
+valor inválido impede a partida). Fora da janela não há nenhuma chamada à API (nem `/modo`, nem heartbeat) nem
+leitura da caixa, só uma linha de log local por hora. Motivo: cada chamada acorda o Neon por 5 min (mesma regra do
+robô SMBI, `shared/smbiJanela.ts`).
 
 ## Arquivos
 
 | Arquivo | Função |
 |---|---|
 | `config.py` | Lê o ambiente, valida (sem imprimir valores) e define o DRY_RUN padrão ligado |
+| `janela.py` | Janela de operação (Fortaleza) e decisão "dentro/fora", sem rede |
 | `api.py` | Cliente das rotas `/api/sales/*`; cada rota usa o segredo do seu escopo; 401 vira `ApiAuthError` |
 | `journal.py` | Diário SQLite (anti-duplicidade, UID da caixa, contadores, parada) e trava de instância única |
 | `despacho.py` | Reservar, autorizar, diário, SMTP, classificação do resultado, ritmo, paradas |
@@ -105,6 +113,6 @@ não chama nenhum modelo de IA.
 
 ## Heartbeat
 
-Todo ciclo, `POST /api/sales/heartbeat` (escopo leitura) com `ciclo` e `contagens` inteiras: `reservadas`,
+Todo ciclo dentro da janela, `POST /api/sales/heartbeat` (escopo leitura) com `ciclo` e `contagens` inteiras: `reservadas`,
 `aceitas`, `falhas_temporarias`, `falhas_permanentes`, `desconhecidas`, `recusadas`, `puladas`, `conflitos`,
 `resultados_pendentes`, `caixa_<tipo>`, `parado`, `dry_run`, `diario_pendentes`.

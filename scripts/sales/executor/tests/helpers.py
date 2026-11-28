@@ -25,6 +25,8 @@ def make_cfg(**kw) -> config.Config:
         smtp_host="smtp.invalid", smtp_user="u", smtp_password="senha-smtp-ZZZZ", from_address="vendas@salvita.invalid",
         reply_to="vendas@salvita.invalid", imap_host="imap.invalid", imap_user="u", imap_password="senha-imap-YYYY",
         pacing_seconds=180, max_per_cycle=5, dry_run=False, journal_path=":memory:",
+        # Os testes rodam a qualquer hora: o portão da janela tem testes próprios (test_config_janela.py).
+        janela="sempre",
     )
     base.update(kw)
     return config.Config(**base)

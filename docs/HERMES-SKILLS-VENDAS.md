@@ -259,7 +259,9 @@ POST /api/sales/propostas
   - enviar sem `List-Unsubscribe`, sem autorização válida ou fora do modo/canal permitido; usar Resend ou Brevo;
   - mandar a um modelo de IA a credencial, o e-mail cru ou dado pessoal (a classificação recebe só o trecho de até 600
     caracteres já sem telefone, CPF, CNPJ e e-mails); religar sozinha após uma parada de segurança.
-- **Agenda:** serviço contínuo (`sales-executor.service`), um ciclo por minuto; 1 envio a cada 3 minutos no máximo (padrão).
+- **Agenda:** serviço contínuo (`sales-executor.service`), um ciclo a cada 5 min (mínimo imposto: `SALES_CYCLE_SECONDS` < 300 sobe
+  para 300), só dentro da janela `SALES_JANELA` (padrão 08:00–18:00, Fortaleza). Fora dela, **nenhuma** chamada à API (nem `/modo`,
+  nem heartbeat) e nenhuma leitura da caixa: cada chamada acorda o Neon por 5 min. 1 envio a cada 3 minutos no máximo (padrão).
 - **Entrada/saída (ver `shared/sales.ts`):**
 
 ```json

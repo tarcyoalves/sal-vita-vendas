@@ -79,14 +79,15 @@ as variáveis ao processo.
 | `SALES_HERMES_SECRET_PROPOSE` | não | Escopo **propostas** (não usado pelo executor; reservado às skills) |
 | `SALES_EXECUTOR_ID` | não | Identificador deste executor (3-64 caracteres: letras, números, `. _ : -`). Padrão `sales-executor-1` |
 | `SALES_DRY_RUN` | não | **Padrão ligado.** Só `0`/`false`/`no`/`nao`/`off` desliga; qualquer outro valor (inclusive erro de digitação) mantém ligado |
-| `SALES_SMTP_HOST`, `SALES_SMTP_PORT`, `SALES_SMTP_SECURITY` | fora do DRY_RUN | Servidor de envio. `SALES_SMTP_SECURITY` = `starttls` (587, padrão) ou `ssl` (465) |
+| `SALES_SMTP_HOST`, `SALES_SMTP_PORT`, `SALES_SMTP_SECURITY` | fora do DRY_RUN | Servidor de envio. `SALES_SMTP_SECURITY` = `starttls` (587, padrão) ou `ssl` (465). Host de SMTP ou IMAP com `resend`, `brevo`, `sendinblue` ou `sendgrid` no nome é recusado e o executor não inicia (os termos desses provedores proíbem prospecção fria) |
 | `SALES_SMTP_USER`, `SALES_SMTP_PASSWORD` | fora do DRY_RUN | Login da caixa |
 | `SALES_IMAP_HOST`, `SALES_IMAP_PORT`, `SALES_IMAP_USER`, `SALES_IMAP_PASSWORD` | fora do DRY_RUN | Leitura da caixa (porta padrão 993) |
 | `SALES_FROM_NAME`, `SALES_FROM_ADDRESS` | endereço obrigatório fora do DRY_RUN | Remetente. Deve ser o mesmo configurado como canal no painel |
 | `SALES_REPLY_TO` | não | Padrão: o próprio remetente |
 | `SALES_PACING_SECONDS` | não | Mínimo entre dois envios. Padrão 180 |
 | `SALES_MAX_PER_CYCLE` | não | Mensagens reservadas por ciclo (1 a 20). Padrão 5 |
-| `SALES_CYCLE_SECONDS` | não | Espera entre ciclos. Padrão 60 |
+| `SALES_CYCLE_SECONDS` | não | Espera entre ciclos. Padrão e **mínimo 300** (5 min): valor menor sobe para 300 com aviso no log. Cada chamada acorda o Neon por 5 min |
+| `SALES_JANELA` | não | Janela de operação no fuso de Fortaleza. Padrão `08:00-18:00` (fim exclusivo); aceita faixas separadas por vírgula (`08:00-11:00,14:00-17:00`) ou `sempre`. **Fora da janela o executor não faz nenhuma chamada à API** (nem `/modo`, nem heartbeat) e não lê a caixa; só escreve uma linha de log por hora. Valor inválido: o executor recusa iniciar |
 | `SALES_BOUNCE_BURST` | não | Devoluções numa só varredura que param o despacho. Padrão 5 |
 | `SALES_PERMANENT_STREAK` | não | Falhas permanentes seguidas que param o despacho. Padrão 3 |
 | `SALES_JOURNAL_PATH` | não | Diário SQLite. A unit já define `/var/lib/sales-executor/journal.sqlite3` |

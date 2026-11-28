@@ -9,10 +9,15 @@ Os nomes das variáveis dos segredos do Hermes batem com `HERMES_SCOPES` em
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass
 from typing import Mapping
+
+import janela as janela_mod
+
+logger = logging.getLogger("sales.config")
 
 VERSAO = "1.0.0"
 
@@ -25,6 +30,29 @@ ENV_SECRET_PROPOSTAS = "SALES_HERMES_SECRET_PROPOSE"
 _EXECUTOR_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{3,64}$")
 
 _FALSOS = {"0", "false", "no", "nao", "não", "off", "n"}
+
+# Intervalo mínimo entre ciclos. Cada chamada à API acorda o Neon por >= 5 min (plano grátis =
+# 100 CU-h/mês); a regra do projeto é nunca consultar em menos de 5 min (ESTADO-DO-PROJETO.md).
+CICLO_MINIMO_SEGUNDOS = 300
+
+# Resend e Brevo (e afins) proíbem prospecção fria nos termos de uso: a caixa do executor
+# nunca pode ser um desses provedores (docs/SALES-AI.md, regra 1).
+PROVEDORES_PROIBIDOS = ("resend", "brevo", "sendinblue", "sendgrid")
+
+
+def _ciclo(env: Mapping[str, str]) -> int:
+    valor = _int(env, "SALES_CYCLE_SECONDS", CICLO_MINIMO_SEGUNDOS)
+    if valor < CICLO_MINIMO_SEGUNDOS:
+        logger.warning("SALES_CYCLE_SECONDS=%s abaixo do mínimo; usando %s s (nunca menos de 5 min)",
+                       valor, CICLO_MINIMO_SEGUNDOS)
+        return CICLO_MINIMO_SEGUNDOS
+    return valor
+
+
+def provedor_proibido(host: str) -> str | None:
+    """Nome do provedor proibido contido no host (sem diferenciar maiúsculas), ou None."""
+    h = host.strip().lower()
+    return next((p for p in PROVEDORES_PROIBIDOS if p in h), None)
 
 
 def _bool_dry_run(valor: str | None) -> bool:
@@ -73,7 +101,9 @@ class Config:
 
     pacing_seconds: int = 180
     max_per_cycle: int = 5
-    cycle_seconds: int = 60
+    cycle_seconds: int = CICLO_MINIMO_SEGUNDOS
+    # Janela de operação (fuso de Fortaleza). Fora dela, nenhuma chamada à API. Ver janela.py.
+    janela: str = janela_mod.JANELA_PADRAO
     bounce_burst: int = 5
     permanent_streak_limit: int = 3
 
@@ -126,7 +156,8 @@ def load(env: Mapping[str, str] | None = None) -> Config:
         reply_to=env.get("SALES_REPLY_TO", "").strip() or from_address,
         pacing_seconds=_int(env, "SALES_PACING_SECONDS", 180),
         max_per_cycle=_int(env, "SALES_MAX_PER_CYCLE", 5),
-        cycle_seconds=_int(env, "SALES_CYCLE_SECONDS", 60),
+        cycle_seconds=_ciclo(env),
+        janela=env.get("SALES_JANELA", "").strip() or janela_mod.JANELA_PADRAO,
         bounce_burst=_int(env, "SALES_BOUNCE_BURST", 5),
         permanent_streak_limit=_int(env, "SALES_PERMANENT_STREAK", 3),
         dry_run=_bool_dry_run(env.get("SALES_DRY_RUN")),
@@ -148,6 +179,17 @@ def validate(cfg: Config) -> list[str]:
         erros.append("SALES_PACING_SECONDS >= 0 e SALES_MAX_PER_CYCLE entre 1 e 20")
     if cfg.smtp_security not in ("starttls", "ssl"):
         erros.append("SALES_SMTP_SECURITY deve ser starttls ou ssl")
+    if cfg.cycle_seconds < CICLO_MINIMO_SEGUNDOS:
+        erros.append(f"SALES_CYCLE_SECONDS precisa ser >= {CICLO_MINIMO_SEGUNDOS} (5 min)")
+    try:
+        janela_mod.interpretar(cfg.janela)
+    except ValueError as e:
+        erros.append(str(e))
+    for nome, host in (("SALES_SMTP_HOST", cfg.smtp_host), ("SALES_IMAP_HOST", cfg.imap_host)):
+        proibido = provedor_proibido(host)
+        if proibido:
+            erros.append(f"{nome} aponta para {proibido}: Resend, Brevo, Sendinblue e SendGrid proíbem "
+                         "prospecção fria. Use a caixa própria do domínio (docs/SALES-AI.md, regra 1)")
     if not cfg.dry_run:
         if not cfg.secret_despacho:
             erros.append(f"{ENV_SECRET_DESPACHO} ausente (necessário fora do DRY_RUN)")

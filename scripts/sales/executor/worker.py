@@ -1,7 +1,11 @@
 """
 Executor de vendas (Sal Vita Sales AI) — roda na VPS do dono, fora da Vercel.
 
-Cada ciclo:
+Só trabalha dentro da janela de operação (SALES_JANELA, padrão 08:00-18:00 em Fortaleza).
+Fora dela não faz NENHUMA chamada à API (nem /modo, nem heartbeat) e não lê a caixa: só
+escreve uma linha de log local por hora. O intervalo entre ciclos é de no mínimo 5 min.
+
+Cada ciclo (dentro da janela):
   1. (ao vivo) reenvia ao servidor resultados ainda não confirmados do diário local;
   2. (ao vivo) varre a caixa de entrada (somente leitura) e informa devoluções, respostas
      automáticas, pedidos para sair e respostas humanas;
@@ -26,18 +30,23 @@ import logging
 import signal
 import sys
 import threading
-from typing import Any
+import time
+from datetime import datetime, timezone
+from typing import Any, Callable
 
 import api as api_mod
 import caixa as caixa_mod
 import config
 import despacho as despacho_mod
+import janela as janela_mod
 import journal as journal_mod
 
 logger = logging.getLogger("sales.worker")
 
 MODOS_QUE_DESPACHAM = ("REVIEW", "SEMI_AUTONOMOUS", "AUTONOMOUS")
 LIMITE_FALHAS_IMAP = 5
+# Fora da janela, uma linha de log local por hora (nada de rede).
+LOG_FORA_DA_JANELA_SEGUNDOS = 3600
 
 
 class _Redacao(logging.Filter):
@@ -91,6 +100,12 @@ class Executor:
         self.desp = despacho_mod.Despachante(cfg, api, journal, stop=self.stop, **kw.get("despacho", {}))
         self.caixa = caixa_mod.Caixa(cfg, api, journal, **kw.get("caixa", {}))
         self.n = 0
+        self._agora: Callable[[], datetime] = kw.get("agora") or (lambda: datetime.now(timezone.utc))
+        self._monotonic: Callable[[], float] = kw.get("monotonic") or time.monotonic
+        self._ultimo_log_fora: float | None = None
+
+    def dentro_da_janela(self) -> bool:
+        return janela_mod.dentro(self._agora(), self.cfg.janela)
 
     def iniciar(self) -> None:
         # Recuperação local (sem rede, sem SMTP): DISPATCHING -> UNKNOWN. Nada é reenviado.
@@ -98,7 +113,16 @@ class Executor:
 
     # ── um ciclo ────────────────────────────────────────────────────────────
 
-    def ciclo(self) -> None:
+    def ciclo(self) -> bool:
+        """Roda um ciclo. False = fora da janela: nenhuma chamada de rede foi feita."""
+        if not self.dentro_da_janela():
+            agora = self._monotonic()
+            if self._ultimo_log_fora is None or agora - self._ultimo_log_fora >= LOG_FORA_DA_JANELA_SEGUNDOS:
+                self._ultimo_log_fora = agora
+                logger.info("fora da janela de operação (%s, %s): sem chamadas à API nem leitura da caixa",
+                            self.cfg.janela, janela_mod.FUSO_NOME)
+            return False
+        self._ultimo_log_fora = None
         self.n += 1
         self.desp.contagens = {}
         caixa_cont: dict[str, int] = {}
@@ -114,6 +138,7 @@ class Executor:
         except caixa_mod.ImapAuthError:
             self._alerta_parada("login IMAP recusado: sem ler a caixa não se envia")
         self._heartbeat(caixa_cont)
+        return True
 
     def _alerta_parada(self, motivo: str) -> None:
         if self.cfg.dry_run:
@@ -209,7 +234,8 @@ def main(argv: list[str] | None = None) -> int:
         signal.signal(sig, lambda *_: stop.set())
 
     ex = Executor(cfg, api_mod.Api(cfg), journal, stop)
-    logger.info("executor %s iniciado (versão %s, DRY_RUN=%s)", cfg.executor_id, config.VERSAO, cfg.dry_run)
+    logger.info("executor %s iniciado (versão %s, DRY_RUN=%s, ciclo %ss, janela %s %s)", cfg.executor_id,
+                config.VERSAO, cfg.dry_run, cfg.cycle_seconds, cfg.janela, janela_mod.FUSO_NOME)
     if cfg.dry_run:
         logger.warning("DRY_RUN LIGADO: nenhum e-mail será enviado nem lido. Para operar de verdade o dono "
                        "precisa definir SALES_DRY_RUN=0 (veja o README, seção de liberação).")
