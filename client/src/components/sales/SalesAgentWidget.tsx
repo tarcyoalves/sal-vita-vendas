@@ -271,7 +271,7 @@ export default function SalesAgentWidget() {
                 </p>
                 <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'rgba(255,255,255,.75)', lineHeight: 1.4, marginBottom: 6 }}>
                   <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 2, width: 18, height: 18, flexShrink: 0 }} />
-                  <span>{estado.data?.textoConsentimento ?? 'Quero receber por e-mail o resumo desta conversa e o link do pedido.'}</span>
+                  <span>{estado.data?.textoConsentimento ?? 'Quero que a equipe Sal Vita me responda por e-mail sobre esta conversa.'}</span>
                 </label>
                 {consent && (
                   <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>

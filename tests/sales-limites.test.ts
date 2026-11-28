@@ -193,7 +193,7 @@ describe('painel: canal fechado revoga reservas', () => {
     const i = fonte.indexOf('settingsSalvar:');
     const corpo = fonte.slice(i, fonte.indexOf('definirModo:', i));
     expect(corpo.indexOf('setSalesSetting(')).toBeGreaterThan(-1);
-    expect(corpo.indexOf('revogarReservasSeDisponivel(')).toBeGreaterThan(corpo.indexOf('setSalesSetting('));
+    expect(corpo.indexOf('acoes.revogarReservas(')).toBeGreaterThan(corpo.indexOf('setSalesSetting('));
     expect(corpo).toMatch(/key === 'canal' && canalFechado\(/);
     expect(fonte).toMatch(/c\.ativo === false \|\| c\.politicaAprovada === false/);
     expect(fonte).not.toMatch(/\bas any\b/);

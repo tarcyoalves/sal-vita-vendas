@@ -63,6 +63,18 @@ Variável ausente na Vercel = a rota daquele escopo responde 503 (fechada).
 5. Atendente do CRM definido (tarefas de resposta).
 6. Executor na VPS em `DRY_RUN`, depois o modo `REVIEW` com aprovação diária do lote.
 
+## Proteções de uso (revisão de 28/11/2026)
+
+- Executor: ciclo de no mínimo 5 min e só dentro da janela (`SALES_JANELA`, padrão 08:00–18:00 de
+  Fortaleza). Fora dela não chama a API. `GET /modo` responde de um cache de 30 s e só acorda o banco da loja.
+- Vendedor virtual: não entra em lote tRPC; tetos atômicos por conversa, por visitante (24 h) e por dia,
+  contados ANTES de chamar a IA. Mais de 10 caixas vai sempre para uma pessoa.
+- Opt-out, reclamação e devolução suprimem o endereço mesmo sem jornada; reclamação pausa tudo.
+- Recusa de uma mensagem só (intervalo, teto da empresa) = 409, o executor pula; recusa global = 423, para o ciclo.
+- Mudar para DRY_RUN/PAUSED ou fechar o canal revoga as reservas; a autorização final relê o modo e o canal
+  no mesmo comando.
+- Migração das tabelas de vendas tem preguiça própria: falha nela não atrasa a loja.
+
 ## Limites conhecidos
 
 - O frete do Mercado Livre não é consultado; nenhuma tela declara canal mais barato.

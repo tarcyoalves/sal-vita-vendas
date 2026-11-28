@@ -65,12 +65,12 @@ export const OPT_IN_SCOPES = ['resumo_conversa', 'campanhas_b2b', 'reposicao'] a
 export type OptInScope = (typeof OPT_IN_SCOPES)[number];
 
 export const OPT_IN_TEXT: Record<OptInScope, string> = {
-  resumo_conversa: 'Quero receber por e-mail o resumo desta conversa e o link do pedido.',
+  resumo_conversa: 'Quero que a equipe Sal Vita me responda por e-mail sobre esta conversa.',
   campanhas_b2b: 'Aceito receber ofertas e novidades da Sal Vita para empresas. Posso cancelar quando quiser.',
   reposicao: 'Quero receber lembretes de reposição dos produtos que comprei. Posso cancelar quando quiser.',
 };
 /** Suba quando o texto de OPT_IN_TEXT mudar: a prova de opt-in guarda a versão aceita. */
-export const OPT_IN_TEXT_VERSION = '2026-11-28a';
+export const OPT_IN_TEXT_VERSION = '2026-11-28b';
 
 // ── Central "Precisa de você" ────────────────────────────────────────────────────────────────
 export const EXCEPTION_KINDS = [

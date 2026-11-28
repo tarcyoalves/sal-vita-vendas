@@ -31,17 +31,6 @@ export function canalFechado(c: Pick<SalesSettings['canal'], 'ativo' | 'politica
   return c.ativo === false || c.politicaAprovada === false;
 }
 
-/** Chama `acoes.revogarReservas(motivo)` se a função existir. Devolve false quando ainda não existe. */
-async function revogarReservasSeDisponivel(motivo: string): Promise<boolean> {
-  // TODO: trocar por chamada direta (`await acoes.revogarReservas(motivo)`) quando acoes.ts exportar a função.
-  const f: unknown = Reflect.get(acoes, 'revogarReservas');
-  if (typeof f !== 'function') {
-    console.warn('[sales] canal fechado, mas acoes.revogarReservas ainda não existe: reservas vencem sozinhas');
-    return false;
-  }
-  await Reflect.apply(f, acoes, [motivo]);
-  return true;
-}
 
 type Ator = { kind: 'premium'; email: string; name: string; id: null } | { kind: 'crm'; email: string; name: string; id: number };
 
@@ -116,7 +105,7 @@ export const salesRouter = router({
       await auditar(ctx.actor, 'sales_setting', null, `setting_${key}`, { key, antes, depois: gravado });
       // Depois de gravar (reservas novas já param): revoga as que o executor ainda tem em mãos.
       if (key === 'canal' && canalFechado(gravado as SalesSettings['canal'])) {
-        await revogarReservasSeDisponivel(`canal fechado no painel por ${por(ctx.actor)}`);
+        await acoes.revogarReservas('canal fechado no painel', por(ctx.actor));
       }
       return { key, value: gravado };
     }),

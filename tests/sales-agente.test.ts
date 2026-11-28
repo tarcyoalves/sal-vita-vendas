@@ -476,7 +476,7 @@ describe('consentimento (registrar_contato)', () => {
   it('só `true` literal conta como consentimento; o texto é o da constante compartilhada', () => {
     expect(consentimentoDaInterface(true)).toBe(true);
     for (const v of [false, undefined, null, 'true', 1, 'sim', {}]) expect(consentimentoDaInterface(v)).toBe(false);
-    expect(OPT_IN_TEXT.resumo_conversa).toMatch(/resumo desta conversa/);
+    expect(OPT_IN_TEXT.resumo_conversa).toMatch(/responda por e-mail/);
   });
 
   it('nenhum parâmetro de ferramenta oferecida se chama consentimento', () => {
