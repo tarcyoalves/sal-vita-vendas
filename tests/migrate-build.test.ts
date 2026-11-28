@@ -37,7 +37,7 @@ describe('planBuildMigration', () => {
       ['CRM', true],
       ['Premium', true],
     ]);
-    expect(p.databases[1].migrations).toEqual(['ensureOrdersTablesExist', 'ensureB2bTablesExist']);
+    expect(p.databases[1].migrations).toEqual(['ensureOrdersTablesExist', 'ensureB2bTablesExist', 'ensureSalesTablesExist']);
   });
   it('produção sem DATABASE_URL: decisão continua "rodar", só o CRM é pulado', () => {
     const p = planBuildMigration({ VERCEL_ENV: 'production', ORDERS_DATABASE_URL: 'y' });

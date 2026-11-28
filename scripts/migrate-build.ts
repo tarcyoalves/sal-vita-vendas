@@ -61,15 +61,17 @@ async function migrate(): Promise<boolean> {
 
   // Import DINÂMICO: server/db/* lê a variável de ambiente ao ser importado; só depois de
   // decidir rodar é que isso é seguro (dry-run e o caminho "pular" funcionam sem env).
-  const [crm, orders, b2b] = await Promise.all([
+  const [crm, orders, b2b, sales] = await Promise.all([
     import('../server/db/migrate'),
     import('../server/db/ordersMigrate'),
     import('../server/db/b2bMigrate'),
+    import('../server/db/salesMigrate'),
   ]);
   const jobs: Array<{ db: string; name: string; run: () => Promise<Step[] | void> }> = [
     { db: 'CRM', name: 'ensureTablesExist', run: () => crm.ensureTablesExist() },
     { db: 'Premium', name: 'ensureOrdersTablesExist', run: () => orders.ensureOrdersTablesExist() },
     { db: 'Premium', name: 'ensureB2bTablesExist', run: () => b2b.ensureB2bTablesExist() },
+    { db: 'Premium', name: 'ensureSalesTablesExist', run: () => sales.ensureSalesTablesExist() },
   ];
 
   // Sequencial; cada migração é independente: se uma falha, a próxima roda mesmo assim.

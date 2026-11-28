@@ -22,6 +22,9 @@ import { premiumAuthRouter } from './premiumAuth';
 import { zapIaRouter } from './zapIa';
 import { zapCrmRouter } from './zapCrm';
 import { zapContatosRouter } from './zapContatos';
+import { salesRouter } from './sales';
+import { salesAgentRouter } from './salesAgent';
+import { salesPublicRouter } from './salesPublic';
 export const appRouter = router({
   auth: authRouter,
   reminders: remindersRouter,
@@ -51,6 +54,12 @@ export const appRouter = router({
   // Dados do CRM para a trava de agendamento do Vita Zap (só leitura).
   zapCrm: zapCrmRouter,
   zapContatos: zapContatosRouter,
+  // Sal Vita Sales AI (loja Premium, venda B2B da caixa de 10 kg). Namespaces próprios:
+  // sales = painel do admin da loja; salesAgent = vendedor virtual (público, com limite);
+  // salesPublic = oferta e simulador da página /atacado (público, só leitura).
+  sales: salesRouter,
+  salesAgent: salesAgentRouter,
+  salesPublic: salesPublicRouter,
 });
 
 export type AppRouter = typeof appRouter;

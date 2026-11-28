@@ -10,5 +10,9 @@
   "server/db/b2bMigrate.ts": {
     "version": "b2b-2026-07-03a",
     "hash": "3dbaf25abff83ca803b2aa5eb74725f90bdb096cd69d814b5c364831951717c2"
+  },
+  "server/db/salesMigrate.ts": {
+    "version": "sales-2026-11-28a",
+    "hash": "0d9b52a24587549727f2ce5c72cb08612983f428bdc6b6d1433a97f0cf583b5a"
   }
 }

@@ -22,7 +22,7 @@ export const AMBOS: Schemas = { crm: true, loja: true };
 export const uniao = (a: Schemas, b: Schemas): Schemas => ({ crm: a.crm || b.crm, loja: a.loja || b.loja });
 
 /** Namespaces tRPC da loja (ordersDb). Mantenha em sincronia com PREMIUM_PREFIXES (premiumSession.ts). */
-const PREFIXOS_LOJA = ['shipping.', 'recovery.', 'b2b.', 'premiumemailmarketing.'];
+const PREFIXOS_LOJA = ['shipping.', 'recovery.', 'b2b.', 'premiumemailmarketing.', 'sales.', 'salesagent.', 'salespublic.'];
 /** premiumAuth.* não usa banco, EXCETO `login`: o contador de tentativas compartilhado vive no banco da loja. */
 const PREFIXO_SEM_BANCO = 'premiumauth.';
 const LOGIN_DA_LOJA = 'premiumauth.login';
@@ -91,6 +91,10 @@ const REGRAS: Regra[] = [
   { padrao: /^\/api\/b2b\/inbound$/, schemas: SO_LOJA },
   // O cron da loja também roda o pós-compra, cujo motor consulta a supressão do banco do CRM.
   { padrao: /^\/api\/cron\/abandoned-cart$/, schemas: AMBOS },
+
+  // Sales AI (contrato com o Hermes, server/salesRoutes.ts): dados no Premium, mas a supressão e a
+  // ponte Radar → prospecção também consultam o banco do CRM. Rotas autenticam ANTES de aguardar.
+  { padrao: /^\/api\/sales\//, schemas: AMBOS },
 
   // CRM.
   { padrao: /^\/api\/brevo-webhook$/, schemas: SO_CRM },

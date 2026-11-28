@@ -13,6 +13,7 @@ import { createContext } from '../server/trpc';
 import { ensureTablesExist } from '../server/db/migrate';
 import { ensureOrdersTablesExist } from '../server/db/ordersMigrate';
 import { ensureB2bTablesExist } from '../server/db/b2bMigrate';
+import { ensureSalesTablesExist } from '../server/db/salesMigrate';
 import { ordersDb } from '../server/db/ordersDb';
 import { sql as sqlClient, db } from '../server/db/index';
 import {
@@ -40,6 +41,7 @@ import { SMBI_ESTADOS_QUE_PARAM } from '../shared/smbiEstados';
 import { AVISO_FORA_DA_JANELA, dentroDaJanelaDoRobo, janelaDoAmbiente, pollingBarradoPelaJanela } from '../shared/smbiJanela';
 import { registerSmbiExtraRoutes } from '../server/smbiRoutes';
 import { registerSmbiCadastroRoutes } from '../server/smbiCadastroRoutes';
+import { registerSalesRoutes } from '../server/salesRoutes';
 import { criarSchemaPreguicoso } from '../server/lib/schemaPreguicoso';
 import { schemasNecessarios, SO_CRM, SO_LOJA, type Schemas } from '../server/lib/schemasNecessarios';
 import { getCookieFromRequest } from '../server/auth';
@@ -87,10 +89,10 @@ const ensureOrdersSchema = criarSchemaPreguicoso({
   nome: 'ensureOrdersTablesExist',
   timeoutMs: 10_000,
   executar: async () => {
-    const [pedidos, b2b] = await Promise.all([ensureOrdersTablesExist(), ensureB2bTablesExist()]);
+    const [pedidos, b2b, vendas] = await Promise.all([ensureOrdersTablesExist(), ensureB2bTablesExist(), ensureSalesTablesExist()]);
     // Essas funções não lançam: devolvem os passos. Passo com erro (ex.: Neon dormindo →
     // "fetch failed") vira exceção para a próxima requisição tentar de novo, com backoff.
-    const falhos = [...pedidos, ...b2b].filter(passo => !passo.ok);
+    const falhos = [...pedidos, ...b2b, ...vendas].filter(passo => !passo.ok);
     if (falhos.length) {
       throw new Error(`${falhos.length} passo(s) falharam: ${falhos.slice(0, 3).map(f => f.name).join(', ')}`);
     }
@@ -1044,6 +1046,15 @@ const chatLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+// Vendedor virtual B2B (/atacado): 10 mensagens por minuto por IP. Os tetos por conversa e por
+// dia ficam no servidor (server/lib/sales/agente), porque IP compartilhado (CGNAT) é comum.
+const salesAgentChatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Muitas mensagens. Aguarde um momento.' },
+  validate: { xForwardedForHeader: false },
+});
+
 // Pagamento tem limiter próprio: retentar PIX/cartão não pode gastar a cota de criar pedido.
 // 40 por 15 min: IP compartilhado (CGNAT de operadora móvel) + retentativas de PIX/cartão em tráfego de anúncios.
 const paymentLimiter = rateLimit({
@@ -1092,6 +1103,10 @@ app.use('/api/trpc/recovery.trackCart', cartTrackLimiter);
 app.use('/api/trpc/recovery.validateCoupon', couponCheckLimiter);
 app.use('/api/trpc/recovery.chat', chatLimiter);
 app.use('/api/trpc/ai.chat', chatLimiter);
+// Sales AI: o vendedor virtual gasta cota de IA (limiter próprio + tetos por conversa e por dia no
+// servidor); a oferta/simulador da /atacado é leitura pública.
+app.use('/api/trpc/salesAgent.chat', salesAgentChatLimiter);
+app.use('/api/trpc/salesPublic', storeLimiter);
 app.use('/api/trpc/ai.testConnection', authLimiter);
 
 // Na 1ª requisição que precisa de um banco após o cold start, espera a migração DAQUELE banco
@@ -1880,6 +1895,9 @@ app.post('/api/smbi/heartbeat', smbiApiLimiter, express.json({ limit: '4kb' }), 
 registerSmbiExtraRoutes(app, smbiApiLimiter);
 // Cadastro assistido CRM → SMBI (gate `cadastro_ativo` nasce desligado).
 registerSmbiCadastroRoutes(app, smbiApiLimiter);
+// Sal Vita Sales AI: contrato com o Hermes (docs/CONTRATO-HERMES-VENDAS.md). Escopos com segredo próprio;
+// variável ausente = rota fechada. Autentica ANTES de aguardar schema (chamada anônima não acorda banco).
+registerSalesRoutes(app, { aguardarSchemas: aguardarSchemasDaRequisicao });
 
 // Migration endpoints removed — one-time migration completed.
 

@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const MIGRATION_FILES = ['server/db/migrate.ts', 'server/db/ordersMigrate.ts', 'server/db/b2bMigrate.ts'];
+export const MIGRATION_FILES = ['server/db/migrate.ts', 'server/db/ordersMigrate.ts', 'server/db/b2bMigrate.ts', 'server/db/salesMigrate.ts'];
 export const LOCK_PATH = 'tests/schema-version.lock.json';
 const VERSION_LINE = /^const (\w*SCHEMA_VERSION) = '([^']+)';\s*$/m;
 

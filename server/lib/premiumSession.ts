@@ -69,7 +69,7 @@ export function clearPremiumCookieHeader(name: string): string {
   return `${name}=; HttpOnly${secure}; Path=/; Max-Age=0; SameSite=Lax`;
 }
 
-const PREMIUM_PREFIXES = ['premiumauth.', 'shipping.', 'recovery.', 'b2b.', 'premiumemailmarketing.'];
+const PREMIUM_PREFIXES = ['premiumauth.', 'shipping.', 'recovery.', 'b2b.', 'premiumemailmarketing.', 'sales.', 'salesagent.', 'salespublic.'];
 
 /**
  * true quando TODAS as procedures da requisição pertencem à loja. Nesses casos, havendo sessão

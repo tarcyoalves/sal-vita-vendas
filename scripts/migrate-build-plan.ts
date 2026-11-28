@@ -51,7 +51,7 @@ const has = (env: Env, name: string) => !!env[name]?.trim();
 /**
  * Espelha api/index.ts, que chama os três no startup:
  *  - CRM: `ensureTablesExist()` lê NEON_DATABASE_URL ?? DATABASE_URL.
- *  - Premium: `ensureOrdersTablesExist()` e `ensureB2bTablesExist()` leem
+ *  - Premium: `ensureOrdersTablesExist()`, `ensureB2bTablesExist()` e `ensureSalesTablesExist()` leem
  *    ORDERS_DATABASE_URL ?? DATABASE_URL. No build exigimos ORDERS_DATABASE_URL de
  *    verdade: sem ela o fallback criaria as tabelas do Premium dentro do banco do CRM
  *    (o mesmo motivo de server/db/ordersDb.ts recusar subir em produção).
@@ -77,7 +77,7 @@ export function planBuildMigration(env: Env, argv: string[] = []): BuildMigratio
       {
         name: 'Premium',
         envVars: ['ORDERS_DATABASE_URL'],
-        migrations: ['ensureOrdersTablesExist', 'ensureB2bTablesExist'],
+        migrations: ['ensureOrdersTablesExist', 'ensureB2bTablesExist', 'ensureSalesTablesExist'],
         enabled: premiumOk,
         skipReason: premiumOk ? undefined : 'ORDERS_DATABASE_URL não definida no ambiente do build',
       },

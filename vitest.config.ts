@@ -12,7 +12,7 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     test: {
-      exclude: [...configDefaults.exclude, 'extensoes/**'],
+      exclude: [...configDefaults.exclude, 'extensoes/**', '.claude/**'],
       // limpa as variáveis de IA do ambiente (ver tests/setup-env.ts)
       setupFiles: ['./tests/setup-env.ts'],
     },

@@ -243,7 +243,7 @@ describe('api/index.ts — código-fonte', () => {
   });
 
   it('toda rota Express (api/index.ts e register*Routes) tem regra em schemasNecessarios', () => {
-    const arquivos = ['api/index.ts', 'server/smbiRoutes.ts', 'server/smbiCadastroRoutes.ts'];
+    const arquivos = ['api/index.ts', 'server/smbiRoutes.ts', 'server/smbiCadastroRoutes.ts', 'server/salesRoutes.ts'];
     const faltando: string[] = [];
     let achadas = 0;
     for (const a of arquivos) {

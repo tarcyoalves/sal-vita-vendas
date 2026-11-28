@@ -1111,3 +1111,221 @@ export const zapContatosEnviados = pgTable('zap_contatos_enviados', {
   enviadoEm: timestamp('enviado_em').notNull(), // o envio mais recente desse tipo para esse contato
   criadoEm: timestamp('criado_em').defaultNow().notNull(),
 }, (t) => ({ chaveTipoUq: uniqueIndex('zap_contatos_enviados_chave_tipo_uq').on(t.chave, t.tipo) }));
+
+// ── Sal Vita Sales AI (banco do PREMIUM, ORDERS_DATABASE_URL) ─────────────────────────────────
+// Venda B2B da caixa de 10 kg. Contrato em shared/sales.ts; migração em server/db/salesMigrate.ts.
+// Só acréscimos: nenhuma tabela existente muda. Lead de prospecção reaproveita `companies`/`contacts`
+// (pipeline_type = 'outbound'); supressão continua nas listas existentes (suppressEmailGlobal).
+
+export const salesSettings = pgTable('sales_settings', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedBy: text('updated_by'),
+});
+
+// Uma jornada por CONTATO (e-mail). Estado comercial; supressão e permissão são dimensões à parte.
+export const salesJourneys = pgTable('sales_journeys', {
+  id: serial('id').primaryKey(),
+  contactId: integer('contact_id').notNull(),
+  companyId: integer('company_id').notNull(),
+  email: text('email').notNull(),
+  state: text('state').notNull().default('IDENTIFIED'),
+  stateVersion: integer('state_version').notNull().default(1),
+  cadenceStep: integer('cadence_step').notNull().default(0),
+  nextActionAt: timestamp('next_action_at'),
+  pausedReason: text('paused_reason'),
+  score: integer('score'),
+  scoreReasons: jsonb('score_reasons').$type<string[]>(),
+  segments: jsonb('segments').$type<string[]>(),
+  eligibility: jsonb('eligibility').$type<{ ok: boolean; motivos: string[]; versao: string; em: string }>(),
+  priority: integer('priority').notNull().default(0),
+  lastContactedAt: timestamp('last_contacted_at'),
+  lastEventAt: timestamp('last_event_at'),
+  closedReason: text('closed_reason'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  contactUq: uniqueIndex('sales_journeys_contact_uq').on(t.contactId),
+  emailUq: uniqueIndex('sales_journeys_email_uq').on(t.email),
+}));
+
+// Lote diário de novos contatos (aprovação do dono no modo REVIEW).
+export const salesBatches = pgTable('sales_batches', {
+  id: serial('id').primaryKey(),
+  batchDate: text('batch_date').notNull(), // YYYY-MM-DD, fuso de São Paulo
+  status: text('status').notNull().default('draft'), // draft | approved | cancelled
+  size: integer('size').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  approvedAt: timestamp('approved_at'),
+  approvedBy: text('approved_by'),
+  cancelledAt: timestamp('cancelled_at'),
+}, (t) => ({ dateUq: uniqueIndex('sales_batches_date_uq').on(t.batchDate) }));
+
+// Mensagem lógica (fila de saída). Estados em shared/sales.ts (MESSAGE_STATUSES).
+export const salesMessages = pgTable('sales_messages', {
+  id: serial('id').primaryKey(),
+  logicalKey: text('logical_key').notNull(), // ex.: prosp:<journeyId>:<step>
+  journeyId: integer('journey_id').notNull(),
+  contactId: integer('contact_id').notNull(),
+  companyId: integer('company_id').notNull(),
+  batchId: integer('batch_id'),
+  channel: text('channel').notNull().default('prospeccao_smtp'),
+  step: integer('step').notNull(),
+  toEmail: text('to_email').notNull(),
+  subject: text('subject').notNull(),
+  bodyText: text('body_text').notNull(),
+  contentHash: text('content_hash').notNull(),
+  messageIdHeader: text('message_id_header').notNull(),
+  templateVersion: text('template_version'),
+  status: text('status').notNull().default('PENDING'),
+  approvedAt: timestamp('approved_at'),
+  approvedBy: text('approved_by'),
+  reservedBy: text('reserved_by'),
+  reservedUntil: timestamp('reserved_until'),
+  reservationTokenHash: text('reservation_token_hash'),
+  fence: integer('fence').notNull().default(0),
+  dispatchTokenHash: text('dispatch_token_hash'),
+  dispatchExpiresAt: timestamp('dispatch_expires_at'),
+  attempts: integer('attempts').notNull().default(0),
+  nextRetryAt: timestamp('next_retry_at'),
+  lastAttemptAt: timestamp('last_attempt_at'),
+  lastError: text('last_error'),
+  acceptedAt: timestamp('accepted_at'),
+  failedAt: timestamp('failed_at'),
+  cancelledReason: text('cancelled_reason'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({
+  logicalKeyUq: uniqueIndex('sales_messages_logical_key_uq').on(t.logicalKey),
+  messageIdUq: uniqueIndex('sales_messages_message_id_uq').on(t.messageIdHeader),
+}));
+
+// Uma linha por tentativa de despacho, gravada ANTES de entregar ao SMTP (conciliação de UNKNOWN).
+export const salesMessageAttempts = pgTable('sales_message_attempts', {
+  id: serial('id').primaryKey(),
+  messageId: integer('message_id').notNull(),
+  fence: integer('fence').notNull(),
+  executor: text('executor').notNull(),
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  outcome: text('outcome'), // DISPATCH_OUTCOMES ou EXPIRED
+  smtpResponse: text('smtp_response'),
+  finishedAt: timestamp('finished_at'),
+});
+
+// Caixa de entrada de eventos (Hermes, site, sistema). idempotency_key garante processar uma vez.
+export const salesEvents = pgTable('sales_events', {
+  id: serial('id').primaryKey(),
+  idempotencyKey: text('idempotency_key').notNull(),
+  source: text('source').notNull(), // hermes | site | sistema | admin
+  type: text('type').notNull(),
+  email: text('email'),
+  contactId: integer('contact_id'),
+  messageId: integer('message_id'),
+  payload: jsonb('payload'),
+  receivedAt: timestamp('received_at').defaultNow().notNull(),
+  processedAt: timestamp('processed_at'),
+  result: text('result'),
+}, (t) => ({ keyUq: uniqueIndex('sales_events_key_uq').on(t.idempotencyKey) }));
+
+// Central "Precisa de você": só exceção real.
+export const salesExceptions = pgTable('sales_exceptions', {
+  id: serial('id').primaryKey(),
+  idempotencyKey: text('idempotency_key'),
+  kind: text('kind').notNull(),
+  severity: text('severity').notNull().default('normal'),
+  title: text('title').notNull(),
+  detail: text('detail'),
+  evidence: jsonb('evidence'),
+  companyId: integer('company_id'),
+  contactId: integer('contact_id'),
+  conversationId: text('conversation_id'),
+  proposedAction: jsonb('proposed_action'),
+  createdBy: text('created_by').notNull(), // hermes:<skill> | agente | sistema | admin
+  status: text('status').notNull().default('open'), // open | resolved | dismissed
+  resolvedBy: text('resolved_by'),
+  resolvedAt: timestamp('resolved_at'),
+  resolution: text('resolution'),
+  crmTaskOpId: integer('crm_task_op_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (t) => ({ keyUq: uniqueIndex('sales_exceptions_key_uq').on(t.idempotencyKey) }));
+
+// Saída para o banco do CRM (ex.: criar tarefa do atendente). Gravada primeiro aqui, com chave
+// de idempotência; o processamento marca as etapas. Ponte = módulo do servidor (V3.1, 16.4).
+export const salesSyncOps = pgTable('sales_sync_ops', {
+  id: serial('id').primaryKey(),
+  idempotencyKey: text('idempotency_key').notNull(),
+  kind: text('kind').notNull(), // criar_tarefa_crm
+  payload: jsonb('payload').notNull(),
+  status: text('status').notNull().default('pending'), // pending | processing | done | failed
+  attempts: integer('attempts').notNull().default(0),
+  lastError: text('last_error'),
+  result: jsonb('result'),
+  claimedUntil: timestamp('claimed_until'),
+  doneAt: timestamp('done_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({ keyUq: uniqueIndex('sales_sync_ops_key_uq').on(t.idempotencyKey) }));
+
+// Opt-in por finalidade, com versão do texto e prova (V3.1, 16.5).
+export const salesOptIns = pgTable('sales_opt_ins', {
+  id: serial('id').primaryKey(),
+  email: text('email').notNull(),
+  scope: text('scope').notNull(), // OPT_IN_SCOPES
+  consentVersion: text('consent_version').notNull(),
+  consentText: text('consent_text').notNull(),
+  source: text('source').notNull(), // agente | atacado | checkout
+  proof: jsonb('proof'), // { conversationId?, ipHash?, userAgent? }
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at'),
+});
+
+// Base homologada do vendedor virtual: cada item é aprovado pelo dono. Só itens 'approved' chegam ao modelo.
+export const salesAgentKb = pgTable('sales_agent_kb', {
+  id: serial('id').primaryKey(),
+  kind: text('kind').notNull(), // produto | politica | objecao | resposta_padrao | proibido
+  key: text('key').notNull(),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  status: text('status').notNull().default('draft'), // draft | approved | archived
+  version: integer('version').notNull().default(1),
+  approvedBy: text('approved_by'),
+  approvedAt: timestamp('approved_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (t) => ({ keyUq: uniqueIndex('sales_agent_kb_key_uq').on(t.key) }));
+
+export const salesAgentConversations = pgTable('sales_agent_conversations', {
+  id: text('id').primaryKey(), // uuid gerado no servidor
+  visitorHash: text('visitor_hash'),
+  profile: text('profile'), // revenda | consumo | null
+  contactEmail: text('contact_email'),
+  companyName: text('company_name'),
+  status: text('status').notNull().default('open'), // open | handed_off | closed
+  flagged: boolean('flagged').notNull().default(false),
+  flagReason: text('flag_reason'),
+  messageCount: integer('message_count').notNull().default(0),
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  lastAt: timestamp('last_at').defaultNow().notNull(),
+  expiresAt: timestamp('expires_at'),
+});
+
+export const salesAgentMessages = pgTable('sales_agent_messages', {
+  id: serial('id').primaryKey(),
+  conversationId: text('conversation_id').notNull(),
+  role: text('role').notNull(), // user | assistant | tool
+  content: text('content').notNull(),
+  toolName: text('tool_name'),
+  toolPayload: jsonb('tool_payload'),
+  blocked: boolean('blocked').notNull().default(false),
+  blockReason: text('block_reason'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Sinal de vida dos executores do Hermes.
+export const salesHeartbeats = pgTable('sales_heartbeats', {
+  executor: text('executor').primaryKey(),
+  version: text('version'),
+  lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
+  payload: jsonb('payload'),
+});
