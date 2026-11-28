@@ -4,7 +4,7 @@
 - **Início:** 2026-11-28 BRT
 - **Fim:** —
 - **Status:** em andamento
-- **Branch:** `claude/sharp-fermat-nY6Bf` (nada vai para `main` sem autorização do dono)
+- **Branch:** `claude/sales-ai-b2b` (nada vai para `main` sem autorização do dono)
 
 ## Objetivo
 
