@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import type { SalesCanal, SalesModeloEmail, SalesMode } from '../../shared/sales';
 import { verificarTextoComercial } from '../lib/sales/conteudo';
-import { KB_KINDS } from '../lib/sales/agente/kb';
+import { KB_KINDS } from '../lib/sales/agente/kbTipos';
 
 /** Provedores cujas políticas proíbem prospecção fria (V3.1, seção 2.1). */
 export const PROVEDORES_PROIBIDOS = /resend|brevo|sendinblue/i;

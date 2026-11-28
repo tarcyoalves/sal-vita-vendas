@@ -108,6 +108,8 @@ async function resolveEmailByToken(token: string): Promise<string | null> {
     { conn: db, table: 'email_sequence_enrollments' },
     { conn: mainDb, table: 'email_campaign_recipients' },
     { conn: mainDb, table: 'email_sequence_enrollments' },
+    // Sales AI: jornadas de prospecção da caixa de 10 kg (banco do Premium).
+    { conn: db, table: 'sales_journeys' },
   ];
   for (const { conn, table } of queries) {
     try {

@@ -7,8 +7,9 @@ import { ordersDb } from '../../../db/ordersDb';
 import { salesAgentConversations, salesAgentKb, salesAgentMessages } from '../../../db/schema';
 import { aplicarEdicao, soAprovados, validarAprovacao, type KbEstado } from './kbPuro';
 
-export const KB_KINDS = ['produto', 'politica', 'objecao', 'resposta_padrao', 'proibido'] as const;
-export type KbKind = (typeof KB_KINDS)[number];
+import { KB_KINDS, type KbKind } from './kbTipos';
+
+export { KB_KINDS, type KbKind };
 
 export interface KbItem {
   id: number;

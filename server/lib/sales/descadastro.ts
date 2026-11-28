@@ -1,25 +1,17 @@
 // Descadastro das mensagens de prospecção. Puro.
 //
-// A regra do projeto: o link de descadastro REUSA o mecanismo existente (`/api/unsubscribe?t=<uuid>`,
-// server/routers/unsubscribe.ts + server/lib/unsubscribeToken.ts). Esse mecanismo só resolve tokens
-// gravados em `email_campaign_recipients.unsub_token` ou `email_sequence_enrollments.unsub_token`
-// (nos dois bancos). Uma jornada de prospecção não tem linha em nenhuma dessas tabelas, e criar uma
-// linha falsa numa tabela do e-mail marketing para guardar o token seria usar a tabela de outra
-// funcionalidade para outro fim (HANDOFF-HERMES.md, regra 1).
-//
-// Sem mudança de banco NÃO há como gerar um token que `/api/unsubscribe` reconheça. Por isso
-// `linkDescadastroProspeccao` recusa, e o ciclo NÃO gera mensagem nenhuma (conta o motivo em
-// `mensagensNaoGeradas`). Mudança necessária (fica para o dono decidir, fora deste lote):
-//   1. coluna `unsub_token TEXT` em `sales_journeys` (salesMigrate.ts + schema.ts + SCHEMA_VERSION);
-//   2. `resolveEmailByToken` (unsubscribe.ts) procurar também em `sales_journeys` do banco do Premium.
-// Quando isso existir, esta função passa a devolver `${base}/api/unsubscribe?t=${token}`.
+// O link REUSA o mecanismo existente (`/api/unsubscribe?t=<uuid>`, server/routers/unsubscribe.ts +
+// server/lib/unsubscribeToken.ts). Cada jornada tem `sales_journeys.unsub_token` (UUID), e
+// `resolveEmailByToken` também procura nessa tabela do Premium. O descadastro passa por
+// `suppressEmailGlobal`, que suprime nos dois bancos e cancela as sequências.
+// Sem token ou sem origem https configurada, NÃO gera a mensagem (conta o motivo no ciclo).
 
 export const MOTIVO_SEM_LINK_DESCADASTRO = 'link_descadastro_indisponivel';
 
 export type LinkDescadastro = { ok: true; url: string } | { ok: false; motivo: string; detalhe: string };
 
 export interface EntradaLinkDescadastro {
-  /** Token de descadastro da jornada, quando existir (hoje: nunca — ver o cabeçalho). */
+  /** Token de descadastro da jornada (`sales_journeys.unsub_token`). */
   token: string | null;
   /** Origem pública do site que atende `/api/unsubscribe` (ex.: https://www.premium.salvitarn.com.br). */
   baseUrl: string | null;
@@ -30,7 +22,7 @@ export function linkDescadastroProspeccao(e: EntradaLinkDescadastro): LinkDescad
     return {
       ok: false,
       motivo: MOTIVO_SEM_LINK_DESCADASTRO,
-      detalhe: 'a jornada não tem token reconhecido por /api/unsubscribe (falta coluna unsub_token em sales_journeys e a busca em unsubscribe.ts)',
+      detalhe: 'a jornada ainda não tem token de descadastro',
     };
   }
   const base = (e.baseUrl ?? '').trim().replace(/\/+$/, '');

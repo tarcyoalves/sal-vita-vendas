@@ -10,7 +10,7 @@ import {
 } from '../../shared/sales';
 import { getSalesSettings, getSalesSetting, setSalesSetting } from '../lib/sales/settings';
 import {
-  NaoImplementado, obterPainel, definirModo, executarCiclo, listarLote, aprovarLote, cortarDoLote,
+  NaoImplementado, OperacaoRecusada, obterPainel, definirModo, executarCiclo, listarLote, aprovarLote, cortarDoLote,
   listarJornadas, pausarJornada, retomarJornada, suprimirContato, listarExcecoes, resolverExcecao,
   listarDesconhecidas, resolverDesconhecida, relatorio,
 } from '../lib/sales/operacoes';
@@ -50,6 +50,10 @@ async function seguro<T>(fn: () => Promise<T>): Promise<T> {
   } catch (e) {
     if (e instanceof NaoImplementado) {
       throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: 'Esta parte do painel ainda está em construção.' });
+    }
+    // Recusa de regra de negócio (ex.: mensagem já despachada não pode ser cortada): mensagem para o dono.
+    if (e instanceof OperacaoRecusada) {
+      throw new TRPCError({ code: 'CONFLICT', message: e.message });
     }
     throw e;
   }

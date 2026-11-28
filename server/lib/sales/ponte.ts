@@ -317,8 +317,8 @@ async function processarPagina(candidatos: PremiumCandidato[], o: { settings: Sa
   const inseriveis = novasJ.filter((n) => n.companyId > 0 && n.contactId > 0);
   for (const parte of emPedacos(inseriveis, 150)) {
     const r = await ordersDb.execute<{ id: number; state: string }>(sql`
-      INSERT INTO sales_journeys (contact_id, company_id, email, state, segments, score, score_reasons, eligibility)
-      VALUES ${sql.join(parte.map((n) => sql`(${n.contactId}, ${n.companyId}, ${n.email}, ${n.estado}, ${json(n.c.segmentos)}, ${n.aval.score.score}, ${json(n.aval.score.motivos)}, ${elegJson(n.aval)})`), sql`, `)}
+      INSERT INTO sales_journeys (contact_id, company_id, email, state, segments, score, score_reasons, eligibility, unsub_token)
+      VALUES ${sql.join(parte.map((n) => sql`(${n.contactId}, ${n.companyId}, ${n.email}, ${n.estado}, ${json(n.c.segmentos)}, ${n.aval.score.score}, ${json(n.aval.score.motivos)}, ${elegJson(n.aval)}, gen_random_uuid()::text)`), sql`, `)}
       ON CONFLICT DO NOTHING
       RETURNING id, state
     `);

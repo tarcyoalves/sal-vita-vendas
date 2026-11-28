@@ -446,3 +446,22 @@ describe('relatório', () => {
     expect(centavosDeTexto(null)).toBe(0);
   });
 });
+
+describe('descadastro da prospecção reusa /api/unsubscribe', () => {
+  it('a busca do token também olha sales_journeys (banco do Premium)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('server/routers/unsubscribe.ts', 'utf8');
+    expect(src).toMatch(/\{ conn: db, table: 'sales_journeys' \}/);
+  });
+  it('com token e origem https, o link é o /api/unsubscribe de sempre', () => {
+    const r = linkDescadastroProspeccao({ token: '3f1c0e6e-1111-4c4c-8888-123456789abc', baseUrl: 'https://www.premium.salvitarn.com.br/' });
+    expect(r).toEqual({ ok: true, url: 'https://www.premium.salvitarn.com.br/api/unsubscribe?t=3f1c0e6e-1111-4c4c-8888-123456789abc' });
+  });
+  it('o ciclo cancela primeiro contato de lote antigo sem aprovação antes de montar o lote do dia', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('server/lib/sales/ciclo.ts', 'utf8');
+    expect(src.indexOf("passo('lotes_vencidos'")).toBeGreaterThan(-1);
+    expect(src.indexOf("passo('lotes_vencidos'")).toBeLessThan(src.indexOf("passo('lote',"));
+    expect(src).toMatch(/b\.batch_date < \$\{hoje\} AND m\.step = 0 AND m\.approved_at IS NULL/);
+  });
+});

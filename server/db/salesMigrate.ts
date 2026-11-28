@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 type Step = { name: string; ok: boolean; error?: string };
 
 // Suba a cada mudança do DDL abaixo (e rode `npm run schema:lock`), senão o caminho rápido pula a migração.
-const SALES_SCHEMA_VERSION = 'sales-2026-11-28a';
+const SALES_SCHEMA_VERSION = 'sales-2026-11-28b';
 
 /**
  * Tabelas do Sal Vita Sales AI (venda B2B da caixa de 10 kg) no banco do PREMIUM
@@ -76,6 +76,10 @@ export async function ensureSalesTablesExist(force = false): Promise<Step[]> {
   `);
   await run('sales_journeys_contact_uq', () => sql`CREATE UNIQUE INDEX IF NOT EXISTS sales_journeys_contact_uq ON sales_journeys(contact_id)`);
   await run('sales_journeys_email_uq', () => sql`CREATE UNIQUE INDEX IF NOT EXISTS sales_journeys_email_uq ON sales_journeys(email)`);
+  // Token de descadastro por jornada (o link reusa /api/unsubscribe). Preenche as jornadas antigas.
+  await run('sales_journeys.unsub_token', () => sql`ALTER TABLE sales_journeys ADD COLUMN IF NOT EXISTS unsub_token TEXT`);
+  await run('sales_journeys.unsub_token_fill', () => sql`UPDATE sales_journeys SET unsub_token = gen_random_uuid()::text WHERE unsub_token IS NULL`);
+  await run('sales_journeys_unsub_token_uq', () => sql`CREATE UNIQUE INDEX IF NOT EXISTS sales_journeys_unsub_token_uq ON sales_journeys(unsub_token)`);
   await run('sales_journeys_state_idx', () => sql`CREATE INDEX IF NOT EXISTS sales_journeys_state_idx ON sales_journeys(state, next_action_at)`);
   await run('sales_journeys_company_idx', () => sql`CREATE INDEX IF NOT EXISTS sales_journeys_company_idx ON sales_journeys(company_id)`);
 

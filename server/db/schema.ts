@@ -1143,11 +1143,14 @@ export const salesJourneys = pgTable('sales_journeys', {
   lastContactedAt: timestamp('last_contacted_at'),
   lastEventAt: timestamp('last_event_at'),
   closedReason: text('closed_reason'),
+  // Token do link de descadastro (UUID). `/api/unsubscribe` também procura aqui (server/routers/unsubscribe.ts).
+  unsubToken: text('unsub_token'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (t) => ({
   contactUq: uniqueIndex('sales_journeys_contact_uq').on(t.contactId),
   emailUq: uniqueIndex('sales_journeys_email_uq').on(t.email),
+  unsubTokenUq: uniqueIndex('sales_journeys_unsub_token_uq').on(t.unsubToken),
 }));
 
 // Lote diário de novos contatos (aprovação do dono no modo REVIEW).

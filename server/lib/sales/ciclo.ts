@@ -105,6 +105,7 @@ export async function executarCicloImpl(opts: { por: string; simular?: boolean }
         r.avisos.push(...acc.avisos);
       }
     });
+    await passo('lotes_vencidos', () => expirarLotesNaoAprovados(ctx));
     await passo('lote', () => loteDoDia(ctx));
     await passo('cadencia', () => cadencia(ctx));
     await passo('saida_crm', () => saidaCrm(ctx));
@@ -116,6 +117,25 @@ export async function executarCicloImpl(opts: { por: string; simular?: boolean }
   for (const [k, n] of Object.entries(semContato)) if (n > 0) somar(r.inelegiveisPorMotivo, k, n);
   if (simular) r.avisos.unshift('simulação: nada foi gravado');
   return r;
+}
+
+// ── Lotes vencidos ───────────────────────────────────────────────────────────────────────────
+// Lote que o dono não aprovou no dia não fica pendurado: se um dia o modo virar AUTONOMOUS, uma
+// mensagem antiga e nunca revisada sairia sozinha. Primeiro contato (passo 0) sem aprovação de um
+// lote de dia anterior é cancelado e a jornada volta para QUALIFIED (pode entrar num lote novo).
+async function expirarLotesNaoAprovados(ctx: Ctx): Promise<void> {
+  const hoje = spDateStr(ctx.agora);
+  if (ctx.simular) return;
+  const r = await ordersDb.execute<{ journey_id: number }>(sql`
+    UPDATE sales_messages m SET status = 'CANCELLED', cancelled_reason = 'lote vencido sem aprovação', fence = fence + 1,
+      reserved_by = NULL, reserved_until = NULL, reservation_token_hash = NULL, updated_at = now()
+    FROM sales_batches b
+    WHERE m.batch_id = b.id AND b.batch_date < ${hoje} AND m.step = 0 AND m.approved_at IS NULL
+      AND m.status IN ('PENDING', 'RESERVED', 'RETRYABLE_FAILURE')
+    RETURNING m.journey_id
+  `);
+  for (const row of r.rows) await aplicarEvento(row.journey_id, 'SAIR_DO_LOTE');
+  if (r.rows.length) ctx.r.avisos.push(`${r.rows.length} mensagem(ns) de lote antigo sem aprovação cancelada(s)`);
 }
 
 // ── 5. Conciliação ───────────────────────────────────────────────────────────────────────────
@@ -260,6 +280,15 @@ async function loteDoDia(ctx: Ctx): Promise<void> {
   }
 }
 
+/** Jornada criada antes da coluna existir: grava um token agora (só se ainda não houver). */
+async function garantirTokenDescadastro(journeyId: number): Promise<string | null> {
+  const r = await ordersDb.execute<{ unsub_token: string }>(sql`
+    UPDATE sales_journeys SET unsub_token = COALESCE(unsub_token, gen_random_uuid()::text)
+    WHERE id = ${journeyId} RETURNING unsub_token
+  `);
+  return r.rows[0]?.unsub_token ?? null;
+}
+
 /**
  * Gera a mensagem de um passo. Passo 0: entra no lote (ENTRAR_NO_LOTE) no MESMO comando que insere
  * a mensagem — ou os dois, ou nenhum. Passo ≥1: insere com ON CONFLICT (chave lógica) DO NOTHING,
@@ -270,7 +299,8 @@ async function gerarMensagem(
   aprovacao: { approvedAt: Date | null; approvedBy: string | null },
 ): Promise<boolean> {
   const { settings, r, simular } = ctx;
-  const link = linkDescadastroProspeccao({ token: null, baseUrl: origemDoSite(settings.remetente.linkSite) });
+  const token = j.unsubToken ?? (simular ? '00000000-0000-4000-8000-000000000000' : await garantirTokenDescadastro(j.id));
+  const link = linkDescadastroProspeccao({ token, baseUrl: origemDoSite(settings.remetente.linkSite) });
   if (!link.ok) {
     somar(r.mensagensNaoGeradas, link.motivo);
     if (!r.avisos.some((a) => a.startsWith('descadastro:'))) r.avisos.push(`descadastro: ${link.detalhe}`);
