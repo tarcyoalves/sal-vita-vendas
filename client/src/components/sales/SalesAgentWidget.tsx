@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { Component, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { trpc } from '../../lib/trpc';
 import type { Card } from '../../../../server/lib/sales/agente/tipos';
 
@@ -15,12 +16,12 @@ const SAUDACAO_PADRAO = 'Olá! Sou o assistente virtual da Sal Vita (uma IA, nã
 type Mensagem = { id: number; papel: 'visitante' | 'assistente'; texto: string; cards?: Card[] };
 
 const CSS = `
-.sva-fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:60;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;background:${AZUL};color:#fff;font:600 15px/1 'Outfit','Inter',system-ui,sans-serif;padding:14px 18px;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer;min-height:48px}
+.sva-fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:590;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;background:${AZUL};color:#fff;font:600 15px/1 'Outfit','Inter',system-ui,sans-serif;padding:14px 18px;box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer;min-height:48px}
 .sva-fab:focus-visible,.sva-btn:focus-visible,.sva-in:focus-visible{outline:2px solid #8ec2ff;outline-offset:2px}
-.sva-panel{position:fixed;z-index:61;inset:0;display:flex;flex-direction:column;background:#0a1628;color:#e2e8f0;font-family:'Outfit','Inter',system-ui,sans-serif;padding-top:env(safe-area-inset-top)}
+.sva-panel{position:fixed;z-index:700;inset:0;height:100dvh;overflow:hidden;display:flex;flex-direction:column;background:#0a1628;color:#e2e8f0;font-family:'Outfit','Inter',system-ui,sans-serif;padding-top:env(safe-area-inset-top)}
 @media (min-width:640px){.sva-panel{inset:auto;right:16px;bottom:16px;width:390px;height:min(640px,calc(100dvh - 32px));border-radius:16px;border:1px solid rgba(255,255,255,.14);box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden;padding-top:0}}
 .sva-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;background:${AZUL};color:#fff}
-.sva-body{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch}
+.sva-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:12px 14px;display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch}
 .sva-msg{max-width:88%;padding:10px 12px;border-radius:14px;font-size:15px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
 .sva-v{align-self:flex-end;background:${AZUL};color:#fff;border-bottom-right-radius:4px}
 .sva-a{align-self:flex-start;background:rgba(255,255,255,.09);border-bottom-left-radius:4px}
@@ -34,6 +35,21 @@ const CSS = `
 .sva-lbl{display:block;font-size:12px;color:rgba(255,255,255,.55);margin:8px 0 4px;text-transform:uppercase;letter-spacing:.04em}
 .sva-row{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
 `;
+
+/**
+ * Um cartão malformado (versão nova do servidor com página antiga em cache, por exemplo) não pode
+ * derrubar a página inteira: o erro fica preso neste cartão e o resto da conversa continua.
+ */
+class CartaoSeguro extends Component<{ children: ReactNode }, { falhou: boolean }> {
+  state = { falhou: false };
+  static getDerivedStateFromError() { return { falhou: true }; }
+  componentDidCatch(err: unknown) { console.warn('[vendedor virtual] cartão não pôde ser exibido', err); }
+  render() {
+    return this.state.falhou
+      ? <div className="sva-card sva-small">Não foi possível mostrar este cartão. Recarregue a página.</div>
+      : this.props.children;
+  }
+}
 
 function CartaoView({ c }: { c: Card }) {
   switch (c.tipo) {
@@ -179,7 +195,12 @@ export default function SalesAgentWidget() {
   const max = estado.data?.maxCaracteres ?? 800;
   const modoFormulario = formularioMotivo !== null || (estado.isSuccess && !estado.data.ativo) || estado.isError;
 
-  useEffect(() => { fimRef.current?.scrollIntoView({ block: 'end' }); }, [msgs, chat.isPending, aberto]);
+  useEffect(() => {
+    // Rola só a lista de mensagens: scrollIntoView também rolava a página por trás do painel.
+    const fim = fimRef.current;
+    const lista = fim?.parentElement;
+    if (lista) lista.scrollTop = lista.scrollHeight;
+  }, [msgs, chat.isPending, aberto]);
   useEffect(() => {
     if (!aberto) return;
     const f = (e: KeyboardEvent) => { if (e.key === 'Escape') setAberto(false); };
@@ -218,7 +239,7 @@ export default function SalesAgentWidget() {
           <span aria-hidden="true">💬</span> Fale com a Sal Vita
         </button>
       )}
-      {aberto && (
+      {aberto && createPortal(
         <section className="sva-panel" role="dialog" aria-modal="false" aria-label="Assistente virtual da Sal Vita">
           <div className="sva-head">
             <div>
@@ -237,7 +258,7 @@ export default function SalesAgentWidget() {
                 {msgs.map((m) => (
                   <div key={m.id} style={{ display: 'contents' }}>
                     <div className={`sva-msg ${m.papel === 'visitante' ? 'sva-v' : 'sva-a'}`}>{m.texto}</div>
-                    {m.cards?.map((c, i) => <CartaoView key={`${m.id}-${i}`} c={c} />)}
+                    {m.cards?.map((c, i) => <CartaoSeguro key={`${m.id}-${i}`}><CartaoView c={c} /></CartaoSeguro>)}
                   </div>
                 ))}
                 {chat.isPending && <div className="sva-msg sva-a" aria-label="Digitando">Digitando…</div>}
@@ -274,7 +295,8 @@ export default function SalesAgentWidget() {
               </div>
             </>
           )}
-        </section>
+        </section>,
+        document.body,
       )}
     </>
   );
