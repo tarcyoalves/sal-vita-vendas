@@ -185,8 +185,9 @@ describe('formulário inbound', () => {
     }
   });
 
-  it('a página reserva o espaço do vendedor virtual sem criar o widget', () => {
+  it('a página monta o vendedor virtual (que nasce desligado e vira formulário)', () => {
     const p = readFileSync(join(__dirname, '..', 'client', 'src', 'pages', 'Atacado.tsx'), 'utf8');
-    expect(p).toContain('{/* SalesAgentWidget: o integrador adiciona aqui */}');
+    expect(p).toContain("import SalesAgentWidget from '../components/sales/SalesAgentWidget';");
+    expect(p).toContain('<SalesAgentWidget />');
   });
 });
