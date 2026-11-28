@@ -43,7 +43,7 @@ import { registerSmbiExtraRoutes } from '../server/smbiRoutes';
 import { registerSmbiCadastroRoutes } from '../server/smbiCadastroRoutes';
 import { registerSalesRoutes } from '../server/salesRoutes';
 import { criarSchemaPreguicoso } from '../server/lib/schemaPreguicoso';
-import { schemasNecessarios, SO_CRM, SO_LOJA, type Schemas } from '../server/lib/schemasNecessarios';
+import { precisaSchemaVendas, schemasNecessarios, SO_CRM, SO_LOJA, type Schemas } from '../server/lib/schemasNecessarios';
 import { getCookieFromRequest } from '../server/auth';
 import { COOKIE_NAME } from '../shared/const';
 import {
@@ -89,10 +89,24 @@ const ensureOrdersSchema = criarSchemaPreguicoso({
   nome: 'ensureOrdersTablesExist',
   timeoutMs: 10_000,
   executar: async () => {
-    const [pedidos, b2b, vendas] = await Promise.all([ensureOrdersTablesExist(), ensureB2bTablesExist(), ensureSalesTablesExist()]);
+    const [pedidos, b2b] = await Promise.all([ensureOrdersTablesExist(), ensureB2bTablesExist()]);
     // Essas funções não lançam: devolvem os passos. Passo com erro (ex.: Neon dormindo →
     // "fetch failed") vira exceção para a próxima requisição tentar de novo, com backoff.
-    const falhos = [...pedidos, ...b2b, ...vendas].filter(passo => !passo.ok);
+    const falhos = [...pedidos, ...b2b].filter(passo => !passo.ok);
+    if (falhos.length) {
+      throw new Error(`${falhos.length} passo(s) falharam: ${falhos.slice(0, 3).map(f => f.name).join(', ')}`);
+    }
+  },
+});
+
+// Sales AI (tabelas sales_*, também no banco da loja) em migração PRÓPRIA: uma falha nela não pode
+// deixar a loja (pedidos, carrinhos, PIX) em backoff. Só quem usa as tabelas espera por ela
+// (rotas /api/sales/* e procedures sales.*, salesAgent.*, salesPublic.*: precisaSchemaVendas).
+const ensureSalesSchema = criarSchemaPreguicoso({
+  nome: 'ensureSalesTablesExist',
+  timeoutMs: 10_000,
+  executar: async () => {
+    const falhos = (await ensureSalesTablesExist()).filter(passo => !passo.ok);
     if (falhos.length) {
       throw new Error(`${falhos.length} passo(s) falharam: ${falhos.slice(0, 3).map(f => f.name).join(', ')}`);
     }
@@ -107,16 +121,22 @@ async function garantirSchemas(precisa: Schemas): Promise<void> {
   ]);
 }
 
-/** Decide pelo caminho/método/query/horário da requisição (função pura) e espera os schemas. */
+/**
+ * Decide pelo caminho/método/query/horário da requisição (função pura) e espera os schemas.
+ * Vale para as rotas Express e para o tRPC (middleware de /api/trpc e registerSalesRoutes).
+ */
 function aguardarSchemasDaRequisicao(req: express.Request): Promise<void> {
-  return garantirSchemas(schemasNecessarios({
+  const caminho = req.originalUrl.split('?')[0];
+  const base = garantirSchemas(schemasNecessarios({
     metodo: req.method,
-    caminho: req.originalUrl.split('?')[0],
+    caminho,
     query: req.query as Record<string, unknown>,
     agora: new Date(),
     janelaConfig: janelaDoAmbiente(),
     sessaoCrm: !!getCookieFromRequest(req.headers.cookie, COOKIE_NAME),
   }));
+  if (!precisaSchemaVendas(caminho)) return base;
+  return Promise.all([base, ensureSalesSchema.garantir()]).then(() => undefined);
 }
 
 /** Middleware de rota: depois do limiter e ANTES do handler (rotas públicas sem segredo próprio). */
@@ -1055,6 +1075,17 @@ const salesAgentChatLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+// Oferta e simulador públicos da /atacado (salesPublic.*): limiter próprio, para não dividir a cota do
+// cálculo de frete do checkout (storeLimiter). 60 por 15 min por IP: a página consulta a oferta uma vez
+// (staleTime de 60 s) e o simulador da tela roda no navegador; folga para CGNAT de operadora móvel.
+const salesPublicLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: { error: 'Muitas requisições. Tente novamente em 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Pagamento tem limiter próprio: retentar PIX/cartão não pode gastar a cota de criar pedido.
 // 40 por 15 min: IP compartilhado (CGNAT de operadora móvel) + retentativas de PIX/cartão em tráfego de anúncios.
 const paymentLimiter = rateLimit({
@@ -1103,10 +1134,13 @@ app.use('/api/trpc/recovery.trackCart', cartTrackLimiter);
 app.use('/api/trpc/recovery.validateCoupon', couponCheckLimiter);
 app.use('/api/trpc/recovery.chat', chatLimiter);
 app.use('/api/trpc/ai.chat', chatLimiter);
-// Sales AI: o vendedor virtual gasta cota de IA (limiter próprio + tetos por conversa e por dia no
-// servidor); a oferta/simulador da /atacado é leitura pública.
+// Sales AI: o vendedor virtual gasta cota de IA (limiter próprio + tetos por conversa, por visitante e
+// por dia no servidor); a oferta/simulador da /atacado é leitura pública. Caminho EXATO de cada
+// procedure (prefixo `/api/trpc/salesPublic` não casa `salesPublic.oferta`); as três estão em
+// RATE_LIMITED_PROCEDURES, então nunca vão em lote (o guarda acima recusa e o cliente manda sozinhas).
 app.use('/api/trpc/salesAgent.chat', salesAgentChatLimiter);
-app.use('/api/trpc/salesPublic', storeLimiter);
+app.use('/api/trpc/salesPublic.oferta', salesPublicLimiter);
+app.use('/api/trpc/salesPublic.simularRevenda', salesPublicLimiter);
 app.use('/api/trpc/ai.testConnection', authLimiter);
 
 // Na 1ª requisição que precisa de um banco após o cold start, espera a migração DAQUELE banco

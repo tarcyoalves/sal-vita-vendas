@@ -18,6 +18,10 @@ export const RATE_LIMITED_PROCEDURES = [
   'recovery.chat',
   'ai.chat',
   'ai.testConnection',
+  // Sales AI (públicas): vendedor virtual (cota de IA) e oferta/simulador da /atacado.
+  'salesAgent.chat',
+  'salesPublic.oferta',
+  'salesPublic.simularRevenda',
 ] as const;
 
 const LIMITED = new Set<string>(RATE_LIMITED_PROCEDURES.map(p => p.toLowerCase()));

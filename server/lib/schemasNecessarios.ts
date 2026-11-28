@@ -6,6 +6,8 @@
  *
  *   crm  → DATABASE_URL        (ensureTablesExist)
  *   loja → ORDERS_DATABASE_URL (ensureOrdersTablesExist + ensureB2bTablesExist)
+ *   vendas (Sales AI, tabelas sales_* no banco da loja) → ensureSalesTablesExist, em migração
+ *     própria: `precisaSchemaVendas` decide (o tipo `Schemas` não muda).
  *
  * Regra de ouro: requisição que não precisa de banco NÃO pode pedir nenhum schema
  * (robô SMBI fora da janela, `premiumAuth.me/logout`, `/api/health`). `premiumAuth.login` pede só a loja (contador de tentativas).
@@ -45,6 +47,20 @@ export function procedimentosTrpc(caminho: string): string[] {
   const m = /\/api\/trpc\/(.*)$/i.exec(caminho);
   if (!m) return [];
   return m[1].split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+}
+
+/** Namespaces tRPC do Sales AI (em minúsculas, como `procedimentosTrpc` devolve). */
+const PREFIXOS_VENDAS = ['sales.', 'salesagent.', 'salespublic.'];
+
+/**
+ * A requisição usa as tabelas `sales_*` (migração própria, ensureSalesTablesExist)? Rotas do Hermes
+ * (`/api/sales/*`) e procedures `sales.*`, `salesAgent.*`, `salesPublic.*` (lote: basta uma). O resto
+ * da loja NÃO espera essa migração: falha nela não pode degradar pedidos, carrinhos e pagamentos.
+ */
+export function precisaSchemaVendas(caminho: string): boolean {
+  const c = caminho.split('?')[0];
+  if (/^\/api\/sales\//i.test(c)) return true;
+  return procedimentosTrpc(c).some(p => PREFIXOS_VENDAS.some(pre => p.startsWith(pre)));
 }
 
 /** Schemas de uma chamada tRPC (lote = união). Procedure do CRM é o padrão. */
@@ -92,8 +108,12 @@ const REGRAS: Regra[] = [
   // O cron da loja também roda o pós-compra, cujo motor consulta a supressão do banco do CRM.
   { padrao: /^\/api\/cron\/abandoned-cart$/, schemas: AMBOS },
 
-  // Sales AI (contrato com o Hermes, server/salesRoutes.ts): dados no Premium, mas a supressão e a
-  // ponte Radar → prospecção também consultam o banco do CRM. Rotas autenticam ANTES de aguardar.
+  // Sales AI (contrato com o Hermes, server/salesRoutes.ts). `/modo` e `/heartbeat` são o polling do
+  // executor e só leem/gravam no Premium: não acordam o Neon do CRM. A ordem importa (antes da regra geral).
+  { padrao: /^\/api\/sales\/modo$/, metodos: ['GET'], schemas: SO_LOJA },
+  { padrao: /^\/api\/sales\/heartbeat$/, metodos: ['POST'], schemas: SO_LOJA },
+  // Demais rotas: dados no Premium, mas a supressão e a ponte Radar → prospecção também consultam o
+  // banco do CRM. Rotas autenticam ANTES de aguardar.
   { padrao: /^\/api\/sales\//, schemas: AMBOS },
 
   // CRM.

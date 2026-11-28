@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  schemasNecessarios, rotaMapeada, procedimentosTrpc, NENHUM, SO_CRM, SO_LOJA, AMBOS,
+  schemasNecessarios, rotaMapeada, procedimentosTrpc, precisaSchemaVendas, NENHUM, SO_CRM, SO_LOJA, AMBOS,
 } from '../server/lib/schemasNecessarios';
 import { criarSchemaPreguicoso } from '../server/lib/schemaPreguicoso';
 
@@ -131,6 +131,37 @@ describe('schemasNecessarios — rotas da loja, crons e saúde', () => {
   });
 });
 
+describe('schemasNecessarios — Sales AI', () => {
+  it('polling do executor (GET /modo, POST /heartbeat) só acorda a loja', () => {
+    expect(req('GET', '/api/sales/modo', { agora: FORA })).toEqual(SO_LOJA);
+    expect(req('POST', '/api/sales/heartbeat', { agora: FORA })).toEqual(SO_LOJA);
+  });
+  it('as demais rotas do Hermes continuam nos dois bancos (supressão e ponte do Radar)', () => {
+    for (const [m, c] of [
+      ['POST', '/api/sales/fila/reservar'], ['POST', '/api/sales/envio/1/autorizar'], ['POST', '/api/sales/envio/1/resultado'],
+      ['POST', '/api/sales/caixa/eventos'], ['GET', '/api/sales/relatorio'], ['POST', '/api/sales/propostas'], ['POST', '/api/sales/ciclo'],
+      // método diferente do polling não herda o SO_LOJA
+      ['POST', '/api/sales/modo'], ['GET', '/api/sales/heartbeat'],
+    ]) {
+      expect(req(m, c)).toEqual(AMBOS);
+    }
+  });
+  it('a migração das tabelas sales_* só é aguardada por quem as usa', () => {
+    for (const c of [
+      '/api/sales/modo', '/api/sales/fila/reservar', '/api/trpc/sales.painel', '/api/trpc/salesAgent.chat',
+      '/api/trpc/salesPublic.oferta', '/api/trpc/SalesPublic.simularRevenda?input=%7B%7D', '/api/trpc/auth.me,sales.painel',
+    ]) {
+      expect(precisaSchemaVendas(c), c).toBe(true);
+    }
+    for (const c of [
+      '/api/trpc/shipping.calculate', '/api/trpc/shipping.createOrder,recovery.trackCart', '/api/trpc/auth.me',
+      '/api/mp-webhook', '/api/b2b/inbound', '/api/salesx', '/api/trpc/salesman.x', '/api/health',
+    ]) {
+      expect(precisaSchemaVendas(c), c).toBe(false);
+    }
+  });
+});
+
 describe('criarSchemaPreguicoso', () => {
   it('não executa nada até alguém pedir', () => {
     const executar = vi.fn().mockResolvedValue(undefined);
@@ -223,6 +254,17 @@ describe('api/index.ts — código-fonte', () => {
     // Cada migração só existe dentro do executar() da fábrica preguiçosa (ou na rota de diagnóstico).
     expect(fonte).toMatch(/criarSchemaPreguicoso\(\{\s*nome: 'ensureTablesExist'/);
     expect(fonte).toMatch(/criarSchemaPreguicoso\(\{\s*nome: 'ensureOrdersTablesExist'/);
+    expect(fonte).toMatch(/criarSchemaPreguicoso\(\{\s*nome: 'ensureSalesTablesExist'/);
+  });
+
+  it('a migração do Sales AI é separada: falha nela não degrada o schema da loja', () => {
+    const i = fonte.indexOf("nome: 'ensureOrdersTablesExist'");
+    const loja = fonte.slice(i, fonte.indexOf('});', i));
+    expect(loja).not.toMatch(/ensureSalesTablesExist/);
+    const j = fonte.indexOf('function aguardarSchemasDaRequisicao');
+    const decisao = fonte.slice(j, fonte.indexOf('\n}\n', j));
+    expect(decisao).toMatch(/precisaSchemaVendas\(caminho\)/);
+    expect(decisao).toMatch(/ensureSalesSchema\.garantir\(\)/);
   });
 
   it('a rota de diagnóstico continua forçando ensureOrdersTablesExist(true)', () => {
