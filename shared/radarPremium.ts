@@ -152,7 +152,7 @@ export const PREMIUM_SEGMENTS = [
     // crossfit/pilates (VETO) continua valendo: academia não é loja.
     cnaes: ['4729699'],
     requiresNameMatch: true,
-    keywords: ['suplemento', 'nutri', 'whey', 'natural', 'saude'],
+    keywords: ['suplemento', 'nutri', 'whey', 'saude'],
     fantasiaOnly: ['saude'],
   },
   {

@@ -27,6 +27,14 @@ export const PESO_SEGMENTO: Record<PremiumSegmentKey, number> = {
   temperos_especiarias: 15,
   padaria_artesanal: 12,
   conservas: 10,
+  // Público ampliado pelo dono em 28/11/2026. Suplementos: venda boa, mas é o segmento de MAIOR risco de
+  // alegação de saúde na conversa; o texto para eles fala só de origem, processo e sabor.
+  suplementos: 26,
+  churrascaria: 14,
+  minimercado: 14,
+  acougue_casa_de_carnes: 12,
+  hortifruti: 8,
+  peixaria: 8,
 };
 
 const pesoDe = (s: string): number => (s in PESO_SEGMENTO ? PESO_SEGMENTO[s as PremiumSegmentKey] : 5);

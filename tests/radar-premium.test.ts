@@ -174,7 +174,7 @@ describe('perfil do importador', () => {
       row({ cnpj: '2', nomeFantasia: 'Natural B' }),
       row({ cnpj: '3', cnaesAlvo: ['1095300'], cnaePrincipal: '1095300' }),
     ], 'premium');
-    expect(contarPorSegmentoPremium(rows)).toEqual({ loja_natural: 2, suplementos: 1, temperos_especiarias: 1 }); // "Natural B" também é suplementos
+    expect(contarPorSegmentoPremium(rows)).toEqual({ loja_natural: 2, temperos_especiarias: 1 }); // "natural" é loja natural, não suplementos
   });
   it('arquivo filtrado de outro perfil é recusado; arquivo antigo (sem perfil) vale como cargas', () => {
     const base = { version: 1 as const, release: '2026-11', ufs: ['RN'], cnaes: [...RADAR_ALL_CNAES] };
@@ -189,7 +189,7 @@ describe('segmentos do público ampliado', () => {
   const segs = (cnaes: string[], nf: string | null, rs = 'FULANO LTDA') => premiumSegmentsFor(cnaes, nf, rs);
 
   it('suplementos: palavras de nome casam com acento, caixa e plural', () => {
-    for (const nome of ['Casa dos Suplementos', 'SUPLEMENTAÇÃO TOTAL', 'Whey Point', 'Nutrition Center', 'Nutri Vida', 'Loja Natural', 'Saúde & Vida']) {
+    for (const nome of ['Casa dos Suplementos', 'SUPLEMENTAÇÃO TOTAL', 'Whey Point', 'Nutrition Center', 'Nutri Vida', 'Saúde & Vida']) {
       expect(segs(['4729699'], nome), nome).toContain('suplementos');
     }
   });
@@ -197,6 +197,8 @@ describe('segmentos do público ampliado', () => {
     expect(segs(['4729699'], 'Mercadinho do Zé')).not.toContain('suplementos');
     expect(segs(['4729699'], 'Wheyland')).not.toContain('suplementos');
     expect(segs(['4729699'], 'Nutritivo')).not.toContain('suplementos');
+    // "natural" sozinho é loja natural, não loja de suplementos (decisão de 28/11/2026).
+    expect(segs(['4729699'], 'Loja Natural')).not.toContain('suplementos');
   });
   it('suplementos: "saude" vale só no nome fantasia, nunca na razão social', () => {
     expect(segs(['4729699'], 'Saude Bem')).toContain('suplementos');
