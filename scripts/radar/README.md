@@ -80,6 +80,7 @@ npx tsx scripts/radar/import-receita.ts \
 | `--dry-run` | não | só mostra o resumo, não grava nada |
 | `--max-mb 150` | não (padrão 150) | o script recusa gravar se a estimativa de tamanho passar disso |
 | `--force-size` | não | grava mesmo passando de `--max-mb` |
+| `--perfil cargas\|premium\|ambos` | não (padrão `cargas`) | qual público importar (ver seção Perfil Premium) |
 | `--skip-cleanup` | não | não apaga os registros antigos das UFs importadas. A limpeza também é pulada sozinha quando há menos de 10 arquivos `ESTABELE` (base incompleta), para não apagar empresas que estão nos arquivos que faltam |
 
 ### Proteções
@@ -89,6 +90,39 @@ npx tsx scripts/radar/import-receita.ts \
   no banco para aquelas UFs.
 - **Recusa gravar se a estimativa de tamanho passar de `--max-mb`.** Avisa antes de
   estourar o banco compartilhado com o resto do CRM.
+
+## Perfil Premium (`--perfil`): caixa de 10 kg para lojas naturais, empórios, granel…
+
+O mesmo importador alimenta dois perfis na MESMA tabela (`radar_establishments`):
+
+| `--perfil` | O que mantém |
+|---|---|
+| `cargas` (padrão) | Comportamento de sempre: CNAEs de `RADAR_ALL_CNAES` (`shared/radar.ts`). |
+| `premium` | Ativa, dentro de `--ufs`, com CNAE Premium (principal ou secundário) de `PREMIUM_SEGMENTS` (`shared/radarPremium.ts`) **e** que passe na regra de nome (CNAE genérico exige palavra-chave no nome fantasia ou na razão social: natural, empório, granel, cerealista, fit…). |
+| `ambos` | A união dos dois. |
+
+`cnaes_alvo` recebe só os CNAEs do(s) perfil(is) que casaram. O Radar de Cargas ignora quem não
+tem CNAE de cargas em `cnaes_alvo` (`server/lib/radar/cargoScope.ts`), então importar Premium não
+muda o que a tela de cargas mostra.
+
+Primeira onda: RN, CE, PB e PE. **Sempre comece pelo dry-run** — ele mostra a contagem por segmento
+Premium e o tamanho estimado contra os 512 MB do Neon free tier (compartilhado com o resto do CRM):
+
+```bash
+npx tsx scripts/radar/import-receita.ts --dir /caminho/para/receita-2026-11 --perfil premium --ufs RN,CE,PB,PE --release 2026-11 --dry-run --save-filtered ./filtrado-premium-2026-11.ndjson
+# conferido o resumo (e o % dos 512 MB), grave sem reler a Receita:
+npx tsx scripts/radar/import-receita.ts --from-filtered ./filtrado-premium-2026-11.ndjson --perfil premium --ufs RN,CE,PB,PE --release 2026-11
+```
+
+Cuidados:
+- O arquivo `--save-filtered` guarda o perfil; gravar com outro `--perfil` é recusado.
+- Cada perfil só regrava e só limpa o que é seu: rodar `--perfil premium` numa UF que já tem base de
+  cargas **não** apaga as linhas de cargas, e rodar `cargas` não apaga as só-Premium. Uma empresa nos
+  dois perfis mantém os CNAEs do outro ao ser regravada por um só.
+- A regra de nome roda depois do passo 2 (precisa da razão social), então o passo 1 lê mais linhas do
+  que sobram no fim; o resumo imprime "X de Y passaram na regra de CNAE + nome".
+- O enriquecimento (e-mail/site/telefone) continua sendo o robô de sempre; candidatos Premium são
+  lidos por `server/lib/radar/premiumCandidatos.ts` (somente leitura).
 
 ## Ler os ~20 GB uma vez só (`--save-filtered` / `--from-filtered`)
 

@@ -8,6 +8,7 @@ export interface FilteredMeta {
   release: string;
   ufs: string[];
   cnaes: string[];          // lista de CNAEs-alvo usada para filtrar
+  perfil?: string;          // cargas (padrão, ausente em arquivos antigos) | premium | ambos
   baseCompleta: boolean;    // os 10 arquivos de estabelecimentos foram lidos
   rows: number;
   createdAt: string;
@@ -16,10 +17,13 @@ export interface FilteredMeta {
 /** Devolve o motivo de o arquivo não servir para esta execução, ou null se servir. */
 export function motivoFiltradoInvalido(
   meta: Partial<FilteredMeta> | null | undefined,
-  esperado: { release: string; ufs: readonly string[]; cnaes: readonly string[] },
+  esperado: { release: string; ufs: readonly string[]; cnaes: readonly string[]; perfil?: string },
 ): string | null {
   if (!meta || meta.version !== 1) return 'arquivo sem cabeçalho válido (versão 1)';
   if (meta.release !== esperado.release) return `release do arquivo (${meta.release}) difere da pedida (${esperado.release})`;
+  if ((meta.perfil ?? 'cargas') !== (esperado.perfil ?? 'cargas')) {
+    return `perfil do arquivo (${meta.perfil ?? 'cargas'}) difere do pedido (${esperado.perfil ?? 'cargas'})`;
+  }
   const mesmo = (a: readonly string[] | undefined, b: readonly string[]) =>
     !!a && a.length === b.length && [...a].sort().join(',') === [...b].sort().join(',');
   if (!mesmo(meta.ufs, esperado.ufs)) return `UFs do arquivo (${(meta.ufs ?? []).join(',')}) diferem das pedidas (${esperado.ufs.join(',')})`;

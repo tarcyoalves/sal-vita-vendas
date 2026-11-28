@@ -17,6 +17,7 @@ import { conditionalRadarTaskInsert } from '../lib/radar/convertInsert';
 import { cnpjsDeClientesAtivos } from '../lib/radar/clientesAtivos';
 import { phoneOfTask } from '../../shared/phone';
 import { dataLimiteAbertura } from '../lib/radar/abertura';
+import { cargoScopeCondition } from '../lib/radar/cargoScope';
 import { consolidarCarteira, parseCidadeUf, type CarteiraEntrada } from '../lib/radar/portfolio';
 import { totalItens } from '../../client/src/lib/faturamento/calc';
 import type { ItemPedido } from '../../client/src/lib/faturamento/types';
@@ -166,6 +167,7 @@ async function consultarContagemPorUf(): Promise<{ release: string | null; porUf
       release: sql<string | null>`max(${radarEstablishments.sourceRelease})`,
     })
     .from(radarEstablishments)
+    .where(cargoScopeCondition())
     .groupBy(radarEstablishments.uf);
   const porUf = rows.map((r) => ({ uf: r.uf, count: r.count })).sort((a, b) => b.count - a.count);
   const release = rows.map((r) => r.release).filter((r): r is string => !!r).sort().pop() ?? null;
@@ -395,7 +397,8 @@ export const prospectingRadarRouter = router({
       // Base vazia (importador nunca rodou) → resultado vazio, não erro.
       const [releaseRow] = await db
         .select({ release: sql<string | null>`max(${radarEstablishments.sourceRelease})` })
-        .from(radarEstablishments);
+        .from(radarEstablishments)
+        .where(cargoScopeCondition());
       const datasetRelease = releaseRow?.release ?? null;
       if (datasetRelease === null) {
         return {
@@ -423,7 +426,7 @@ export const prospectingRadarRouter = router({
         ? sql`(${radarEstablishments.dataInicio} IS NULL OR ${radarEstablishments.dataInicio} <= ${dataLimiteAbertura(now, input.minAnosAbertura)})`
         : undefined;
       const rows = await db.select().from(radarEstablishments)
-        .where(and(inArray(radarEstablishments.municipioIbge, ibgeCodes), cnaeMatch, abertaHaAnos))
+        .where(and(inArray(radarEstablishments.municipioIbge, ibgeCodes), cnaeMatch, cargoScopeCondition(), abertaHaAnos))
         .orderBy(sql`array_position(ARRAY[${sql.join(ibgeCodes.map((c) => sql`${c}`), sql`, `)}]::int[], ${radarEstablishments.municipioIbge})`)
         .limit(RADAR_DB_FETCH_CAP);
 

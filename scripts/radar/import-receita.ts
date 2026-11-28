@@ -8,6 +8,10 @@
 //   npx tsx scripts/radar/import-receita.ts --dir ./receita-2026-09 --ufs PR,SC,RS --release 2026-09 --dry-run
 //   npx tsx scripts/radar/import-receita.ts --dir ./receita-2026-09 --ufs PR,SC,RS --release 2026-09
 //
+// Perfil (padrão `cargas`, comportamento original). O perfil Premium (caixa de 10 kg para
+// lojas naturais, empórios, granel etc.) usa a regra de nome de shared/radarPremium.ts:
+//   npx tsx scripts/radar/import-receita.ts --dir ./receita-2026-11 --perfil premium --ufs RN,CE,PB,PE --release 2026-11 --dry-run
+//
 // Também aceita arquivos explícitos em vez de --dir:
 // Para não reler os ~20 GB duas vezes (dry-run e depois gravação), o dry-run pode salvar o
 // resultado filtrado e a gravação lê esse arquivo em segundos:
@@ -32,6 +36,14 @@ import {
 } from '../../server/lib/radar/receitaParse';
 import { radarEstablishments } from '../../server/db/schema';
 import { RADAR_ALL_CNAES, segmentsForCnaes } from '../../shared/radar';
+import { PREMIUM_ALL_CNAES } from '../../shared/radarPremium';
+import {
+  aplicarPerfil,
+  contarPorSegmentoPremium,
+  parsePerfil,
+  targetCnaesForPerfil,
+  type RadarPerfil,
+} from '../../server/lib/radar/premiumImport';
 import { linhaFiltradaValida, motivoFiltradoInvalido, type FilteredMeta } from '../../server/lib/radar/filteredFile';
 
 interface Args {
@@ -45,6 +57,7 @@ interface Args {
   skipCleanup: boolean;
   saveFiltered: string | undefined;
   fromFiltered: string | undefined;
+  perfil: RadarPerfil;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -58,6 +71,7 @@ function parseArgs(argv: string[]): Args {
   let skipCleanup = false;
   let saveFiltered: string | undefined;
   let fromFiltered: string | undefined;
+  let perfilRaw: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -89,6 +103,9 @@ function parseArgs(argv: string[]): Args {
       case '--from-filtered':
         fromFiltered = argv[++i];
         break;
+      case '--perfil':
+        perfilRaw = argv[++i];
+        break;
       default:
         if (arg.startsWith('--')) {
           throw new Error(`Argumento desconhecido: ${arg}`);
@@ -115,7 +132,7 @@ function parseArgs(argv: string[]): Args {
   }
 
   if (fromFiltered && saveFiltered) throw new Error('Use --save-filtered OU --from-filtered, não os dois.');
-  return { dir, explicitFiles, ufs, release, dryRun, maxMb, forceSize, skipCleanup, saveFiltered, fromFiltered };
+  return { dir, explicitFiles, ufs, release, dryRun, maxMb, forceSize, skipCleanup, saveFiltered, fromFiltered, perfil: parsePerfil(perfilRaw) };
 }
 
 /** Classifica arquivos pelo nome, como a Receita nomeia os arquivos dentro dos zips
@@ -184,10 +201,17 @@ function estimateSizeMb(rows: readonly RadarEstablishmentRow[]): number {
 
 const BATCH_SIZE = 500;
 
-async function writeToDatabase(rows: RadarEstablishmentRow[], release: string, ufs: readonly string[], cleanup: boolean): Promise<void> {
+async function writeToDatabase(rows: RadarEstablishmentRow[], release: string, ufs: readonly string[], cleanup: boolean, perfil: RadarPerfil): Promise<void> {
   // Import dinâmico de propósito: `server/db/index.ts` lê `DATABASE_URL` assim que é
   // carregado. Um import estático quebraria `--dry-run` sem a variável definida.
   const { db } = await import('../../server/db');
+  const listaSql = (cnaes: readonly string[]) => sql`ARRAY[${sql.join(cnaes.map((c) => sql`${c}`), sql`, `)}]::text[]`;
+  // Uma CNPJ pode estar nos dois perfis. Ao regravar por um perfil só, preserva os CNAEs do
+  // OUTRO perfil que já estavam na linha (`ambos` regrava tudo e não preserva nada).
+  const meusCnaes = targetCnaesForPerfil(perfil);
+  const cnaesAlvoSet = perfil === 'ambos'
+    ? sql`excluded.cnaes_alvo`
+    : sql`excluded.cnaes_alvo || ARRAY(SELECT x FROM unnest(radar_establishments.cnaes_alvo) AS x WHERE x <> ALL(${listaSql(meusCnaes)}))`;
 
   console.log(`Gravando ${rows.length} linha(s) em lotes de ${BATCH_SIZE}...`);
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
@@ -221,7 +245,7 @@ async function writeToDatabase(rows: RadarEstablishmentRow[], release: string, u
           razaoSocial: sql`excluded.razao_social`,
           nomeFantasia: sql`excluded.nome_fantasia`,
           cnaePrincipal: sql`excluded.cnae_principal`,
-          cnaesAlvo: sql`excluded.cnaes_alvo`,
+          cnaesAlvo: cnaesAlvoSet,
           municipioIbge: sql`excluded.municipio_ibge`,
           uf: sql`excluded.uf`,
           endereco: sql`excluded.endereco`,
@@ -244,9 +268,15 @@ async function writeToDatabase(rows: RadarEstablishmentRow[], release: string, u
     return;
   }
   console.log('Removendo registros antigos das UFs importadas (empresa fechou, saiu do CNAE, ou a base mudou)...');
+  // Cada perfil só apaga o que é seu: `cargas` não apaga linhas só-Premium e vice-versa.
+  const meuEscopo = perfil === 'cargas'
+    ? sql`${radarEstablishments.cnaesAlvo} && ${listaSql(RADAR_ALL_CNAES)}`
+    : perfil === 'premium'
+      ? sql`${radarEstablishments.cnaesAlvo} && ${listaSql(PREMIUM_ALL_CNAES)} AND NOT (${radarEstablishments.cnaesAlvo} && ${listaSql(RADAR_ALL_CNAES)})`
+      : undefined;
   await db
     .delete(radarEstablishments)
-    .where(and(inArray(radarEstablishments.uf, [...ufs]), ne(radarEstablishments.sourceRelease, release)));
+    .where(and(inArray(radarEstablishments.uf, [...ufs]), ne(radarEstablishments.sourceRelease, release), meuEscopo));
   console.log('Limpeza concluída.');
 }
 
@@ -262,10 +292,10 @@ async function lerDaReceita(args: Args): Promise<{ rows: RadarEstablishmentRow[]
 
   console.log(`Estabelecimentos: ${estabelecimentos.length} arquivo(s).`);
   console.log(`Empresas: ${empresas.length} arquivo(s).`);
-  console.log(`UFs: ${args.ufs.join(', ')} · Release: ${args.release}${args.dryRun ? ' · --dry-run' : ''}`);
+  console.log(`Perfil: ${args.perfil} · UFs: ${args.ufs.join(', ')} · Release: ${args.release}${args.dryRun ? ' · --dry-run' : ''}`);
 
   const ufsSet = new Set(args.ufs);
-  const pass1 = createPass1Accumulator({ ufs: ufsSet });
+  const pass1 = createPass1Accumulator({ ufs: ufsSet, targetCnaes: targetCnaesForPerfil(args.perfil) });
   for (const file of estabelecimentos) {
     console.log(`Lendo ${file}...`);
     await forEachLine(file, pass1.addLine);
@@ -293,12 +323,17 @@ async function lerDaReceita(args: Args): Promise<{ rows: RadarEstablishmentRow[]
   }
   // A Receita divide os estabelecimentos em 10 arquivos (Estabelecimentos0..9). Com
   // menos que isso, a limpeza apagaria as empresas que estão nos arquivos que faltam.
-  return { rows, baseCompleta: estabelecimentos.length >= 10 };
+  // Perfil Premium/ambos: a regra de nome precisa da razão social, que só existe aqui.
+  const filtradas = aplicarPerfil(rows, args.perfil);
+  if (args.perfil !== 'cargas') {
+    console.log(`Perfil ${args.perfil}: ${filtradas.length.toLocaleString('pt-BR')} de ${rows.length.toLocaleString('pt-BR')} passaram na regra de CNAE + nome.`);
+  }
+  return { rows: filtradas, baseCompleta: estabelecimentos.length >= 10 };
 }
 
 async function salvarFiltrado(file: string, rows: readonly RadarEstablishmentRow[], args: Args, baseCompleta: boolean): Promise<void> {
   const meta: FilteredMeta = {
-    version: 1, release: args.release, ufs: [...args.ufs], cnaes: [...RADAR_ALL_CNAES],
+    version: 1, release: args.release, ufs: [...args.ufs], cnaes: targetCnaesForPerfil(args.perfil), perfil: args.perfil,
     baseCompleta, rows: rows.length, createdAt: new Date().toISOString(),
   };
   const out = createWriteStream(file, { encoding: 'utf8' });
@@ -319,7 +354,7 @@ async function lerFiltrado(args: Args): Promise<{ rows: RadarEstablishmentRow[];
     const parsed: unknown = JSON.parse(line);
     if (!meta) {
       meta = parsed as FilteredMeta;
-      const motivo = motivoFiltradoInvalido(meta, { release: args.release, ufs: args.ufs, cnaes: RADAR_ALL_CNAES });
+      const motivo = motivoFiltradoInvalido(meta, { release: args.release, ufs: args.ufs, cnaes: targetCnaesForPerfil(args.perfil), perfil: args.perfil });
       if (motivo) throw new Error(`Arquivo filtrado recusado: ${motivo}.`);
       continue;
     }
@@ -347,13 +382,19 @@ async function main(): Promise<void> {
       porSegmento.set(seg, (porSegmento.get(seg) ?? 0) + 1);
     }
   }
+  const porSegmentoPremium = contarPorSegmentoPremium(rows);
   console.log('--- Resultado final ---');
   console.log(`Total de estabelecimentos: ${rows.length.toLocaleString('pt-BR')}`);
   console.log('Por UF:', Object.fromEntries(porUf));
-  console.log('Por segmento:', Object.fromEntries(porSegmento));
+  if (args.perfil !== 'premium') console.log(args.perfil === 'cargas' ? 'Por segmento:' : 'Por segmento (cargas):', Object.fromEntries(porSegmento));
+  if (args.perfil !== 'cargas') console.log('Por segmento (premium):', porSegmentoPremium);
 
   const estimatedMb = estimateSizeMb(rows);
   console.log(`Tamanho estimado no banco: ~${estimatedMb.toFixed(1)} MB (estimativa grosseira — ver comentário em ${path.basename(__filename)}).`);
+
+  if (args.perfil !== 'cargas') {
+    console.log(`Isso é ~${((estimatedMb / 512) * 100).toFixed(0)}% dos 512 MB do Neon free tier (compartilhado com o resto do CRM).`);
+  }
 
   if (args.dryRun) {
     console.log('--dry-run: nada foi gravado no banco. Rode sem essa flag para gravar de verdade.');
@@ -384,7 +425,7 @@ async function main(): Promise<void> {
     console.warn('Aviso: a base lida não tem os 10 arquivos ESTABELE. ' +
       'Os registros serão gravados, mas a limpeza de registros antigos NÃO vai rodar.');
   }
-  await writeToDatabase(rows, args.release, args.ufs, baseCompleta && !args.skipCleanup);
+  await writeToDatabase(rows, args.release, args.ufs, baseCompleta && !args.skipCleanup, args.perfil);
   console.log('Importação concluída.');
 }
 
