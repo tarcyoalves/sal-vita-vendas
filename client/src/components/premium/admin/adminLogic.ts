@@ -8,6 +8,7 @@ export const ADMIN_PATHS = [
   '/sal-vita-recovery',
   '/sal-vita-b2b',
   '/sal-vita-email-marketing',
+  '/sal-vita-vendas',
 ] as const;
 
 export function isAdminPath(path: string): boolean {

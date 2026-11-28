@@ -99,7 +99,7 @@
           return;
         }
         var path = location.pathname;
-        if (/^\/(meu-pedido|sal-vita-admin|sal-vita-recovery|sal-vita-b2b|classic)(\/|$)/.test(path)) {
+        if (/^\/(meu-pedido|sal-vita-admin|sal-vita-recovery|sal-vita-b2b|sal-vita-vendas|classic)(\/|$)/.test(path)) {
           set('meta[name="robots"]', 'content', 'noindex,nofollow');
         } else if (/^\/(atacado|privacidade|termos)\/?$/.test(path)) {
           // Indexable page of its own: do not canonicalize it to the home page.
@@ -122,7 +122,7 @@
       try { ok = localStorage.getItem('sv_pixel_consent') === 'accepted'; } catch (e) {}
       if (!ok) return;
       if (/(^|\.)lembretes\./.test(location.hostname) ||
-          /^\/(meu-pedido|sal-vita-admin|sal-vita-recovery|sal-vita-b2b)(\/|$)/.test(location.pathname)) return;
+          /^\/(meu-pedido|sal-vita-admin|sal-vita-recovery|sal-vita-b2b|sal-vita-vendas)(\/|$)/.test(location.pathname)) return;
       !function(f,b,e,v,n,t,s)
       {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
       n.callMethod.apply(n,arguments):n.queue.push(arguments)};
