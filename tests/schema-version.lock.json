@@ -8,11 +8,11 @@
     "hash": "46f547a73a4c3e18d8eb614533c0e8fdd8523bb5ca9d4987158a966897c10e4b"
   },
   "server/db/b2bMigrate.ts": {
-    "version": "b2b-2026-07-03a",
-    "hash": "3dbaf25abff83ca803b2aa5eb74725f90bdb096cd69d814b5c364831951717c2"
+    "version": "b2b-2026-11-28a",
+    "hash": "a474d4330bec724961fee8692330ccb64d1c942ce50b02af08a3ee7a22263d6d"
   },
   "server/db/salesMigrate.ts": {
-    "version": "sales-2026-11-28c",
-    "hash": "0e0e4648f981a2f951379f77ee5d7ed883fc16b8a016b5fb8ec61837981b2d97"
+    "version": "sales-2026-11-28d",
+    "hash": "c4deb3a2ff27ce8d73b6889bf9597a648a19223e45626f14afc8dd6b5fcb3c01"
   }
 }

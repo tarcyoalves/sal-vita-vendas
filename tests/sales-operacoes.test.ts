@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { MODELO_EMAIL_RASCUNHO, SALES_SETTINGS_DEFAULTS, type SalesCanal, type SalesLimites, type SalesRemetente } from '../shared/sales';
 import {
   agregarPorDimensao, aprovacaoHerdada, canalDoContato, centavosDeTexto, chaveHeartbeatAusente, codificarExcertoRadar,
-  confiancaDaFonte, contarMotivos, decidirCadencia, estadoDaJornada, estadoNaPonte, executorAtrasado, filtrarReservaveis,
+  confiancaDaFonte, contarMotivos, decidirCadencia, estadoDaJornada, estadoNaPonte, executorAtrasado, janelaDoExecutor, HEARTBEAT_LIMITE_MS, filtrarReservaveis,
   fonteDoCanal, fonteEmailDoRadar, intervaloRelatorio, lerExcertoRadar, lerPayloadTarefa, marcadorSales,
   executoresComResultadosPendentes, modoExpiraLotes, montarEntradaElegibilidade, montarRelatorio, montarTarefaCrm, motivoSemReserva, planejarConciliacao, planejarEvento,
   preRequisitoMensagem, proximaAcaoAposEnvio, qualifica, resultadoGravadoDe, selecionarLote, statusDaMensagem, tipoDeAtor,
@@ -405,9 +405,22 @@ describe('caixa de entrada: demais eventos', () => {
 });
 
 describe('executores, tarefa do CRM e auditoria', () => {
-  it('executor atrasado: mais de 10 minutos sem sinal', () => {
-    expect(executorAtrasado(new Date(AGORA.getTime() - 10 * 60_000), AGORA)).toBe(false);
-    expect(executorAtrasado(new Date(AGORA.getTime() - 10 * 60_000 - 1), AGORA)).toBe(true);
+  it('executor atrasado: só dentro da janela, depois de 2 ciclos de 15 min + 5 min de folga', () => {
+    expect(HEARTBEAT_LIMITE_MS).toBe(35 * 60_000);
+    const dez = new Date('2026-11-28T13:00:00Z'); // 10:00 em Fortaleza, faixa aberta desde 08:00
+    expect(executorAtrasado(new Date(dez.getTime() - 35 * 60_000), dez)).toBe(false);
+    expect(executorAtrasado(new Date(dez.getTime() - 35 * 60_000 - 1), dez)).toBe(true);
+    // Almoço (12:00) e noite (20:00): calado de propósito, não é atraso.
+    expect(executorAtrasado(new Date('2026-11-28T13:59:00Z'), new Date('2026-11-28T15:00:00Z'))).toBe(false);
+    expect(executorAtrasado(new Date('2026-11-28T19:59:00Z'), new Date('2026-11-28T23:00:00Z'))).toBe(false);
+    // 14:20: faixa recém-aberta (último sinal às 10:59), ainda sem tempo para o 1º ciclo: não é atraso.
+    expect(executorAtrasado(new Date('2026-11-28T13:59:00Z'), new Date('2026-11-28T17:20:00Z'))).toBe(false);
+    // 14:50: faixa aberta há 50 min e nenhum sinal desde 10:59: atrasado.
+    expect(executorAtrasado(new Date('2026-11-28T13:59:00Z'), new Date('2026-11-28T17:50:00Z'))).toBe(true);
+    // Janela configurada na Vercel vale.
+    expect(executorAtrasado(new Date('2026-11-28T13:59:00Z'), new Date('2026-11-28T15:00:00Z'), '08:00-18:00')).toBe(true);
+    expect(janelaDoExecutor({})).toBe('08:00-11:00,14:00-17:00');
+    expect(janelaDoExecutor({ SALES_JANELA_EXECUTOR: 'sempre' })).toBe('sempre');
     expect(chaveHeartbeatAusente('exec-1', AGORA)).not.toBe(chaveHeartbeatAusente('exec-1', new Date(AGORA.getTime() + 3_600_000)));
   });
   it('tarefa do CRM: marcador nas notas, sem e-mail na coluna (não entra em disparo do CRM)', () => {
@@ -542,10 +555,10 @@ describe('conciliação manual "não foi enviada" com executor ainda informando'
     expect(executoresComResultadosPendentes([hb('vps1', 2, { diario_pendentes: 1, resultados_pendentes: 0 })], agora)).toEqual(['vps1']);
     expect(executoresComResultadosPendentes([hb('vps1', 2, { resultados_pendentes: 2 })], agora)).toEqual(['vps1']);
   });
-  it('sem pendência, heartbeat antigo (>15 min) ou sem contagens não bloqueia', () => {
+  it('sem pendência, heartbeat antigo (>35 min, dois ciclos + folga) ou sem contagens não bloqueia', () => {
     expect(executoresComResultadosPendentes([
       hb('a', 2, { diario_pendentes: 0, resultados_pendentes: 0, aceitas: 3 }),
-      hb('b', 16, { diario_pendentes: 4 }),
+      hb('b', 36, { diario_pendentes: 4 }),
       hb('c', 1, null),
     ], agora)).toEqual([]);
   });

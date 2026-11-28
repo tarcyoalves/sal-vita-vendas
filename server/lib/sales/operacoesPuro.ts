@@ -1,6 +1,8 @@
 // Decisões puras do ciclo, da fila do Hermes e do relatório (sem banco). Testadas em
 // tests/sales-operacoes.test.ts. Quem toca o banco (ciclo.ts, hermes.ts, operacoes.ts) consulta,
 // chama estas funções e grava com UPDATE condicional.
+import { dentroDaJanelaDoRobo } from '../../../shared/smbiJanela';
+import { CICLO_EXECUTOR_PADRAO_SEGUNDOS, JANELA_EXECUTOR_PADRAO } from '../../../shared/sales';
 import type {
   DispatchOutcome, ExceptionKind, ExceptionSeverity, InboxEventType, JourneyState, MessageStatus, ReplyClass,
   SalesCanal, SalesLimites, SalesMode, SalesModeloEmail, SalesRemetente,
@@ -369,14 +371,26 @@ export function planejarEvento(e: { tipo: InboxEventType; classificacao: ReplyCl
 
 // ── Executores (heartbeat) ───────────────────────────────────────────────────────────────────
 
-export const HEARTBEAT_LIMITE_MS = 10 * 60_000;
+/**
+ * Sem sinal por mais que isso, DENTRO da janela, o executor está atrasado: dois ciclos de 15 min
+ * mais folga. Fora da janela o executor fica calado de propósito (não acorda o banco), então
+ * silêncio ali não é atraso — nem no começo de uma faixa, antes do primeiro ciclo.
+ */
+export const HEARTBEAT_LIMITE_MS = 2 * CICLO_EXECUTOR_PADRAO_SEGUNDOS * 1000 + 5 * 60_000;
 
-export function executorAtrasado(ultimoSinal: Date, agora: Date): boolean {
-  return agora.getTime() - ultimoSinal.getTime() > HEARTBEAT_LIMITE_MS;
+/** Janela que o servidor assume para o executor: SALES_JANELA_EXECUTOR na Vercel, senão a padrão. */
+export function janelaDoExecutor(env: Record<string, string | undefined> = process.env): string {
+  return env.SALES_JANELA_EXECUTOR?.trim() || JANELA_EXECUTOR_PADRAO;
+}
+
+export function executorAtrasado(ultimoSinal: Date, agora: Date, janela: string = JANELA_EXECUTOR_PADRAO): boolean {
+  if (agora.getTime() - ultimoSinal.getTime() <= HEARTBEAT_LIMITE_MS) return false;
+  // A janela precisa estar aberta agora E já estava aberta há HEARTBEAT_LIMITE_MS (faixa recém-aberta não conta).
+  return dentroDaJanelaDoRobo(agora, janela) && dentroDaJanelaDoRobo(new Date(agora.getTime() - HEARTBEAT_LIMITE_MS), janela);
 }
 
 /** Janela em que um heartbeat conta como "executor ainda pode estar informando resultados". */
-export const JANELA_RESULTADOS_PENDENTES_MS = 15 * 60_000;
+export const JANELA_RESULTADOS_PENDENTES_MS = HEARTBEAT_LIMITE_MS;
 
 /**
  * Executores que, num heartbeat dos últimos 15 min, disseram ter resultado de envio guardado no

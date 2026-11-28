@@ -20,7 +20,7 @@ import { definirModoInterno, suprimirEmail } from './acoes';
 import { efeitosDoAceite } from './hermes';
 import { aplicarEvento, atualizarJornada, iso, registrarAuditoria } from './consultas';
 import {
-  estadoDaJornada, executorAtrasado, executoresComResultadosPendentes, fonteDoCanal, statusDaMensagem, JANELA_RESULTADOS_PENDENTES_MS,
+  estadoDaJornada, executorAtrasado, janelaDoExecutor, executoresComResultadosPendentes, fonteDoCanal, statusDaMensagem, JANELA_RESULTADOS_PENDENTES_MS,
 } from './operacoesPuro';
 
 /** Mantida para compatibilidade com quem já importava; nenhuma função lança mais isto. */
@@ -155,7 +155,7 @@ export async function obterPainel(): Promise<PainelResumo> {
     canal: { ativo: s.canal.ativo, politicaAprovada: s.canal.politicaAprovada },
     agenteAtivo: s.agente.ativo,
     disponibilidade: s.disponibilidade.status,
-    executores: hbs.map((h) => ({ executor: h.executor, versao: h.version, ultimoSinalEm: h.lastSeenAt, atrasado: executorAtrasado(h.lastSeenAt, agora) })),
+    executores: hbs.map((h) => ({ executor: h.executor, versao: h.version, ultimoSinalEm: h.lastSeenAt, atrasado: executorAtrasado(h.lastSeenAt, agora, janelaDoExecutor()) })),
     hoje: {
       dataSp,
       empresasNovasContatadas: msgs.rows[0]?.novas ?? 0,

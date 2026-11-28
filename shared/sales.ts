@@ -358,6 +358,12 @@ export const cicloBodySchema = z.object({
   simular: z.boolean().default(false),
 }).strict();
 
+// ── Executor do Hermes: janela e ritmo padrão (espelham scripts/sales/executor) ───────────────
+/** Janela padrão do executor (fuso de Fortaleza), a mesma do robô SMBI. Fora dela, ele não chama a API. */
+export const JANELA_EXECUTOR_PADRAO = '08:00-11:00,14:00-17:00';
+/** Ciclo padrão do executor, em segundos (mínimo imposto no executor: 600). */
+export const CICLO_EXECUTOR_PADRAO_SEGUNDOS = 900;
+
 /** Normaliza e-mail para comparação/supressão. */
 export function normalizarEmail(email: string): string {
   return email.trim().toLowerCase();

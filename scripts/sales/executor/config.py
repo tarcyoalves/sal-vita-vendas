@@ -31,9 +31,12 @@ _EXECUTOR_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{3,64}$")
 
 _FALSOS = {"0", "false", "no", "nao", "não", "off", "n"}
 
-# Intervalo mínimo entre ciclos. Cada chamada à API acorda o Neon por >= 5 min (plano grátis =
-# 100 CU-h/mês); a regra do projeto é nunca consultar em menos de 5 min (ESTADO-DO-PROJETO.md).
-CICLO_MINIMO_SEGUNDOS = 300
+# Intervalo entre ciclos. Cada chamada à API acorda o Neon (plano grátis = ~100 CU-h/mês na conta
+# da loja, dividida com o site e o Radar).
+# Neon desliga o banco depois de 5 min parado: consultar a cada 5 min o mantém ligado a janela
+# inteira. Padrão 15 min (~15–20 CU-h/mês com a janela padrão, estimativa); mínimo 10 min.
+CICLO_PADRAO_SEGUNDOS = 900
+CICLO_MINIMO_SEGUNDOS = 600
 
 # Resend e Brevo (e afins) proíbem prospecção fria nos termos de uso: a caixa do executor
 # nunca pode ser um desses provedores (docs/SALES-AI.md, regra 1).
@@ -41,9 +44,9 @@ PROVEDORES_PROIBIDOS = ("resend", "brevo", "sendinblue", "sendgrid")
 
 
 def _ciclo(env: Mapping[str, str]) -> int:
-    valor = _int(env, "SALES_CYCLE_SECONDS", CICLO_MINIMO_SEGUNDOS)
+    valor = _int(env, "SALES_CYCLE_SECONDS", CICLO_PADRAO_SEGUNDOS)
     if valor < CICLO_MINIMO_SEGUNDOS:
-        logger.warning("SALES_CYCLE_SECONDS=%s abaixo do mínimo; usando %s s (nunca menos de 5 min)",
+        logger.warning("SALES_CYCLE_SECONDS=%s abaixo do mínimo; usando %s s (nunca menos de 10 min)",
                        valor, CICLO_MINIMO_SEGUNDOS)
         return CICLO_MINIMO_SEGUNDOS
     return valor
@@ -101,7 +104,7 @@ class Config:
 
     pacing_seconds: int = 180
     max_per_cycle: int = 5
-    cycle_seconds: int = CICLO_MINIMO_SEGUNDOS
+    cycle_seconds: int = CICLO_PADRAO_SEGUNDOS
     # Janela de operação (fuso de Fortaleza). Fora dela, nenhuma chamada à API. Ver janela.py.
     janela: str = janela_mod.JANELA_PADRAO
     bounce_burst: int = 5
@@ -180,7 +183,7 @@ def validate(cfg: Config) -> list[str]:
     if cfg.smtp_security not in ("starttls", "ssl"):
         erros.append("SALES_SMTP_SECURITY deve ser starttls ou ssl")
     if cfg.cycle_seconds < CICLO_MINIMO_SEGUNDOS:
-        erros.append(f"SALES_CYCLE_SECONDS precisa ser >= {CICLO_MINIMO_SEGUNDOS} (5 min)")
+        erros.append(f"SALES_CYCLE_SECONDS precisa ser >= {CICLO_MINIMO_SEGUNDOS} (10 min)")
     try:
         janela_mod.interpretar(cfg.janela)
     except ValueError as e:

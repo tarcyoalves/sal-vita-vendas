@@ -22,18 +22,20 @@ ENV_OK = {"SALES_API_URL": "https://crm.invalid", "SALES_HERMES_SECRET_READ": "x
 
 
 class Ciclo(unittest.TestCase):
-    def test_padrao_e_5_min(self):
-        self.assertEqual(config.load({}).cycle_seconds, 300)
-        self.assertEqual(config.Config().cycle_seconds, 300)
+    def test_padrao_e_15_min(self):
+        self.assertEqual(config.load({}).cycle_seconds, 900)
+        self.assertEqual(config.Config().cycle_seconds, 900)
 
-    def test_abaixo_de_300_sobe_para_300_com_aviso(self):
-        with self.assertLogs("sales.config", level="WARNING") as log:
-            cfg = config.load({"SALES_CYCLE_SECONDS": "60"})
-        self.assertEqual(cfg.cycle_seconds, 300)
-        self.assertIn("mínimo", "\n".join(log.output))
+    def test_abaixo_de_600_sobe_para_600_com_aviso(self):
+        for curto in ("60", "300", "599"):
+            with self.assertLogs("sales.config", level="WARNING") as log:
+                cfg = config.load({"SALES_CYCLE_SECONDS": curto})
+            self.assertEqual(cfg.cycle_seconds, 600, curto)
+            self.assertIn("mínimo", "\n".join(log.output))
 
-    def test_acima_de_300_e_respeitado(self):
-        self.assertEqual(config.load({"SALES_CYCLE_SECONDS": "900"}).cycle_seconds, 900)
+    def test_a_partir_de_600_e_respeitado(self):
+        self.assertEqual(config.load({"SALES_CYCLE_SECONDS": "600"}).cycle_seconds, 600)
+        self.assertEqual(config.load({"SALES_CYCLE_SECONDS": "1800"}).cycle_seconds, 1800)
 
     def test_validate_recusa_ciclo_curto_montado_a_mao(self):
         erros = config.validate(make_cfg(cycle_seconds=60))
@@ -41,12 +43,14 @@ class Ciclo(unittest.TestCase):
 
 
 class Janela(unittest.TestCase):
-    def test_padrao_08_18_fortaleza_com_fim_exclusivo(self):
-        self.assertEqual(config.load({}).janela, "08:00-18:00")
+    def test_padrao_igual_ao_do_crm_fortaleza_com_fim_exclusivo(self):
+        self.assertEqual(config.load({}).janela, "08:00-11:00,14:00-17:00")
         self.assertFalse(janela.dentro(MADRUGADA, None))
-        self.assertTrue(janela.dentro(MANHA, None))
-        self.assertTrue(janela.dentro(QUASE_FIM, None))
-        self.assertFalse(janela.dentro(FIM, None))
+        self.assertTrue(janela.dentro(MANHA, None))                                                 # 09:00
+        self.assertFalse(janela.dentro(datetime(2026, 11, 28, 15, 30, tzinfo=timezone.utc), None))  # 12:30 (almoço)
+        self.assertTrue(janela.dentro(datetime(2026, 11, 28, 19, 59, tzinfo=timezone.utc), None))   # 16:59
+        self.assertFalse(janela.dentro(datetime(2026, 11, 28, 20, 0, tzinfo=timezone.utc), None))   # 17:00 (fim exclusivo)
+        self.assertFalse(janela.dentro(QUASE_FIM, None))                                            # 17:59
 
     def test_varias_faixas_e_sempre(self):
         cfg = "08:00-11:00,14:00-17:00"

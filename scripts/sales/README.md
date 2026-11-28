@@ -86,8 +86,8 @@ as variáveis ao processo.
 | `SALES_REPLY_TO` | não | Padrão: o próprio remetente |
 | `SALES_PACING_SECONDS` | não | Mínimo entre dois envios. Padrão 180 |
 | `SALES_MAX_PER_CYCLE` | não | Mensagens reservadas por ciclo (1 a 20). Padrão 5 |
-| `SALES_CYCLE_SECONDS` | não | Espera entre ciclos. Padrão e **mínimo 300** (5 min): valor menor sobe para 300 com aviso no log. Cada chamada acorda o Neon por 5 min |
-| `SALES_JANELA` | não | Janela de operação no fuso de Fortaleza. Padrão `08:00-18:00` (fim exclusivo); aceita faixas separadas por vírgula (`08:00-11:00,14:00-17:00`) ou `sempre`. **Fora da janela o executor não faz nenhuma chamada à API** (nem `/modo`, nem heartbeat) e não lê a caixa; só escreve uma linha de log por hora. Valor inválido: o executor recusa iniciar |
+| `SALES_CYCLE_SECONDS` | não | Espera entre ciclos. Padrão **900** (15 min), **mínimo 600** (10 min): valor menor sobe para 600 com aviso no log. O Neon só desliga depois de 5 min parado, então consultar mais vezes o mantém ligado a janela inteira |
+| `SALES_JANELA` | não | Janela de operação no fuso de Fortaleza. Padrão `08:00-11:00,14:00-17:00` (a mesma do robô SMBI; fim exclusivo); aceita outras faixas separadas por vírgula ou `sempre`. Valor inválido = o executor não inicia |
 | `SALES_BOUNCE_BURST` | não | Devoluções numa só varredura que param o despacho. Padrão 5 |
 | `SALES_PERMANENT_STREAK` | não | Falhas permanentes seguidas que param o despacho. Padrão 3 |
 | `SALES_JOURNAL_PATH` | não | Diário SQLite. A unit já define `/var/lib/sales-executor/journal.sqlite3` |

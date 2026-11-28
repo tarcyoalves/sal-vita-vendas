@@ -25,7 +25,7 @@ import { chaveLogicaProspeccao, montarMensagem, montarMessageId } from './mensag
 import { registrarExcecao } from './excecoes';
 import { linkDescadastroProspeccao } from './descadastro';
 import {
-  aprovacaoHerdada, chaveHeartbeatAusente, contarMotivos, decidirCadencia, executorAtrasado, lerPayloadTarefa,
+  aprovacaoHerdada, chaveHeartbeatAusente, contarMotivos, decidirCadencia, executorAtrasado, janelaDoExecutor, lerPayloadTarefa,
   marcadorSales, modoExpiraLotes, montarEntradaElegibilidade, montarTarefaCrm, planejarConciliacao, preRequisitoMensagem, selecionarLote,
   somar, statusDaMensagem, totalPassos, vagasDoLote, HEARTBEAT_LIMITE_MS,
 } from './operacoesPuro';
@@ -506,7 +506,7 @@ async function verificarExecutores(ctx: Ctx): Promise<void> {
   const { agora, simular, r } = ctx;
   const hbs = await ordersDb.select().from(salesHeartbeats).orderBy(desc(salesHeartbeats.lastSeenAt));
   for (const h of hbs) {
-    if (!executorAtrasado(h.lastSeenAt, agora)) continue;
+    if (!executorAtrasado(h.lastSeenAt, agora, janelaDoExecutor())) continue;
     const minutos = Math.round((agora.getTime() - h.lastSeenAt.getTime()) / 60_000);
     if (simular) { r.avisos.push(`executor ${h.executor} sem sinal há ${minutos} min`); continue; }
     // Uma exceção aberta por executor basta; a chave por hora evita duplicar entre ciclos.

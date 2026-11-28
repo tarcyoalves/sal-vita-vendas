@@ -65,7 +65,7 @@ Variável ausente na Vercel = a rota daquele escopo responde 503 (fechada).
 
 ## Proteções de uso (revisão de 28/11/2026)
 
-- Executor: ciclo de no mínimo 5 min e só dentro da janela (`SALES_JANELA`, padrão 08:00–18:00 de
+- Executor: ciclo de 15 min (mínimo 10) e só dentro da janela (`SALES_JANELA`, padrão 08:00–11:00 e 14:00–17:00 de
   Fortaleza). Fora dela não chama a API. `GET /modo` responde de um cache de 30 s e só acorda o banco da loja.
 - Vendedor virtual: não entra em lote tRPC; tetos atômicos por conversa, por visitante (24 h) e por dia,
   contados ANTES de chamar a IA. Mais de 10 caixas vai sempre para uma pessoa.

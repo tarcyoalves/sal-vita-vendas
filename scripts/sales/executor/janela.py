@@ -4,10 +4,10 @@ Janela de operação do executor (economia de computação do Neon).
 Fora da janela o executor NÃO chama a API (nem /modo, nem heartbeat) e não lê a caixa:
 cada chamada acorda o banco por pelo menos 5 min. Mesmo raciocínio do robô SMBI
 (`shared/smbiJanela.ts`): fuso fixo America/Fortaleza (sem horário de verão), todos os
-dias da semana, fim EXCLUSIVO (18:00 já está fora).
+dias da semana, fim EXCLUSIVO (17:00 já está fora).
 
-Config (SALES_JANELA): "08:00-18:00" (padrão), várias faixas separadas por vírgula
-("08:00-11:00,14:00-17:00") ou "sempre" (desliga o portão). Diferente do SMBI, config
+Config (SALES_JANELA): "08:00-11:00,14:00-17:00" (padrão, a mesma do robô SMBI), outras faixas
+separadas por vírgula ("08:00-18:00") ou "sempre" (desliga o portão). Diferente do SMBI, config
 inválida NÃO vira "sempre": o executor recusa iniciar (falha fechada).
 """
 
@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 
-JANELA_PADRAO = "08:00-18:00"
+JANELA_PADRAO = "08:00-11:00,14:00-17:00"  # a mesma do robô SMBI (shared/smbiJanela.ts)
 FUSO_NOME = "America/Fortaleza"
 
 try:  # zoneinfo é da biblioteca padrão (3.9+), mas pode faltar o tzdata no sistema.

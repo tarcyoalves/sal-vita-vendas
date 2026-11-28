@@ -345727,6 +345727,8 @@ var cicloBodySchema = external_exports.object({
   /** Só simula: não grava nada (útil para a auditoria). */
   simular: external_exports.boolean().default(false)
 }).strict();
+var JANELA_EXECUTOR_PADRAO = "08:00-11:00,14:00-17:00";
+var CICLO_EXECUTOR_PADRAO_SEGUNDOS = 900;
 function normalizarEmail(email) {
   return email.trim().toLowerCase();
 }
@@ -346462,11 +346464,15 @@ function planejarEvento(e4) {
       return { tipo: "aplicar", acoes: [{ tipo: "suprimir", reason: "bounce" }] };
   }
 }
-var HEARTBEAT_LIMITE_MS = 10 * 6e4;
-function executorAtrasado(ultimoSinal, agora) {
-  return agora.getTime() - ultimoSinal.getTime() > HEARTBEAT_LIMITE_MS;
+var HEARTBEAT_LIMITE_MS = 2 * CICLO_EXECUTOR_PADRAO_SEGUNDOS * 1e3 + 5 * 6e4;
+function janelaDoExecutor(env = process.env) {
+  return env.SALES_JANELA_EXECUTOR?.trim() || JANELA_EXECUTOR_PADRAO;
 }
-var JANELA_RESULTADOS_PENDENTES_MS = 15 * 6e4;
+function executorAtrasado(ultimoSinal, agora, janela = JANELA_EXECUTOR_PADRAO) {
+  if (agora.getTime() - ultimoSinal.getTime() <= HEARTBEAT_LIMITE_MS) return false;
+  return dentroDaJanelaDoRobo(agora, janela) && dentroDaJanelaDoRobo(new Date(agora.getTime() - HEARTBEAT_LIMITE_MS), janela);
+}
+var JANELA_RESULTADOS_PENDENTES_MS = HEARTBEAT_LIMITE_MS;
 function executoresComResultadosPendentes(hbs, agora) {
   const out = [];
   for (const h3 of hbs) {
@@ -347968,7 +347974,7 @@ async function verificarExecutores(ctx) {
   const { agora, simular, r: r5 } = ctx;
   const hbs = await ordersDb.select().from(salesHeartbeats).orderBy(desc(salesHeartbeats.lastSeenAt));
   for (const h3 of hbs) {
-    if (!executorAtrasado(h3.lastSeenAt, agora)) continue;
+    if (!executorAtrasado(h3.lastSeenAt, agora, janelaDoExecutor())) continue;
     const minutos = Math.round((agora.getTime() - h3.lastSeenAt.getTime()) / 6e4);
     if (simular) {
       r5.avisos.push(`executor ${h3.executor} sem sinal h\xE1 ${minutos} min`);
@@ -348706,7 +348712,7 @@ async function obterPainel() {
     canal: { ativo: s4.canal.ativo, politicaAprovada: s4.canal.politicaAprovada },
     agenteAtivo: s4.agente.ativo,
     disponibilidade: s4.disponibilidade.status,
-    executores: hbs.map((h3) => ({ executor: h3.executor, versao: h3.version, ultimoSinalEm: h3.lastSeenAt, atrasado: executorAtrasado(h3.lastSeenAt, agora) })),
+    executores: hbs.map((h3) => ({ executor: h3.executor, versao: h3.version, ultimoSinalEm: h3.lastSeenAt, atrasado: executorAtrasado(h3.lastSeenAt, agora, janelaDoExecutor()) })),
     hoje: {
       dataSp,
       empresasNovasContatadas: msgs.rows[0]?.novas ?? 0,
@@ -352236,12 +352242,12 @@ async function ensureOrdersTablesExist(force = false) {
 
 // server/db/b2bMigrate.ts
 init_serverless();
-var B2B_SCHEMA_VERSION = "b2b-2026-07-03a";
+var B2B_SCHEMA_VERSION = "b2b-2026-11-28a";
 async function ensureB2bTablesExist(force = false) {
-  const url3 = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
+  const url3 = process.env.ORDERS_DATABASE_URL?.trim();
   const steps = [];
   if (!url3) {
-    steps.push({ name: "config", ok: false, error: "ORDERS_DATABASE_URL and DATABASE_URL are both unset" });
+    steps.push({ name: "config", ok: false, error: "ORDERS_DATABASE_URL is not set \u2014 refusing to fall back to the CRM database" });
     return steps;
   }
   const sql5 = Xs(url3);
@@ -352375,12 +352381,12 @@ async function ensureB2bTablesExist(force = false) {
 
 // server/db/salesMigrate.ts
 init_serverless();
-var SALES_SCHEMA_VERSION = "sales-2026-11-28c";
+var SALES_SCHEMA_VERSION = "sales-2026-11-28d";
 async function ensureSalesTablesExist(force = false) {
-  const url3 = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
+  const url3 = process.env.ORDERS_DATABASE_URL?.trim();
   const steps = [];
   if (!url3) {
-    steps.push({ name: "config", ok: false, error: "ORDERS_DATABASE_URL and DATABASE_URL are both unset" });
+    steps.push({ name: "config", ok: false, error: "ORDERS_DATABASE_URL is not set \u2014 refusing to fall back to the CRM database" });
     return steps;
   }
   const sql5 = Xs(url3);

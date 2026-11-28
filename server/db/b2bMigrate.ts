@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 type Step = { name: string; ok: boolean; error?: string };
 
 // Bump whenever the DDL below changes, to force exactly one full re-run.
-const B2B_SCHEMA_VERSION = 'b2b-2026-07-03a';
+const B2B_SCHEMA_VERSION = 'b2b-2026-11-28a';
 
 /**
  * Ensures the B2B prospecting foundation tables exist (Sprint 1 scope only:
@@ -12,17 +12,19 @@ const B2B_SCHEMA_VERSION = 'b2b-2026-07-03a';
  * `public` schema as the rest of the app — no new schema/DB needed.
  *
  * Mirrors ensureOrdersTablesExist() structurally: each statement runs in
- * isolation so a single failure never blocks the rest, and reuses the same
- * ORDERS_DATABASE_URL fallback since B2B leads belong to the premium
- * e-commerce subsystem (companies/contacts may later reference site_orders).
+ * isolation so a single failure never blocks the rest. Uses ONLY
+ * ORDERS_DATABASE_URL (no fallback to the CRM's DATABASE_URL, 28/11/2026): B2B leads belong
+ * to the premium e-commerce subsystem and must never land in the CRM database.
  * Same fast-path rationale too — skips all ~18 round-trips once the schema
  * marker matches, instead of paying them on every cold start.
  */
 export async function ensureB2bTablesExist(force = false): Promise<Step[]> {
-  const url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
+  // SÓ o banco da loja. Sem ORDERS_DATABASE_URL a migração FALHA: cair para DATABASE_URL criaria
+  // estas tabelas (e depois os dados) no banco do CRM Lembretes, que é outra conta e outro produto.
+  const url = process.env.ORDERS_DATABASE_URL?.trim();
   const steps: Step[] = [];
   if (!url) {
-    steps.push({ name: 'config', ok: false, error: 'ORDERS_DATABASE_URL and DATABASE_URL are both unset' });
+    steps.push({ name: 'config', ok: false, error: 'ORDERS_DATABASE_URL is not set — refusing to fall back to the CRM database' });
     return steps;
   }
   const sql = neon(url);

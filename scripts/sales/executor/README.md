@@ -9,8 +9,8 @@ chamar modelo de IA, enviar qualquer coisa que não tenha vindo da fila autoriza
 Brevo aqui** (as políticas deles proíbem e-mail frio): `config.validate` recusa host de SMTP ou IMAP com `resend`,
 `brevo`, `sendinblue` ou `sendgrid` no nome, e o executor não inicia.
 
-**Quando roda:** um ciclo a cada `SALES_CYCLE_SECONDS` (padrão e mínimo 300 s; valor menor sobe para 300 com aviso), só
-dentro da janela `SALES_JANELA` (padrão `08:00-18:00`, fuso de Fortaleza, fim exclusivo; `sempre` desliga o portão;
+**Quando roda:** um ciclo a cada `SALES_CYCLE_SECONDS` (padrão 900 s = 15 min, mínimo 600 s; valor menor sobe para 600 com aviso), só
+dentro da janela `SALES_JANELA` (padrão `08:00-11:00,14:00-17:00`, a mesma do robô SMBI, fuso de Fortaleza, fim exclusivo; `sempre` desliga o portão;
 valor inválido impede a partida). Fora da janela não há nenhuma chamada à API (nem `/modo`, nem heartbeat) nem
 leitura da caixa, só uma linha de log local por hora. Motivo: cada chamada acorda o Neon por 5 min (mesma regra do
 robô SMBI, `shared/smbiJanela.ts`).

@@ -393,8 +393,10 @@ Pedido:
 ```json
 { "ok": true, "modo": "REVIEW", "canalAtivo": true }
 ```
-Envie a cada ciclo do executor e **no máximo a cada 5 minutos**. Mais de **10 minutos** sem sinal →
-exceção `heartbeat_ausente` (uma aberta por executor; nova chave por hora).
+Envie uma vez por ciclo do executor (padrão a cada **15 minutos**, nunca menos de 10), só dentro da janela
+(padrão `08:00-11:00,14:00-17:00`, Fortaleza). Mais de **35 minutos** sem sinal DENTRO da janela, com a faixa
+aberta há pelo menos 35 min → exceção `heartbeat_ausente` (uma aberta por executor; nova chave por hora).
+Silêncio fora da janela é esperado. Se a janela do executor for outra, configure `SALES_JANELA_EXECUTOR` na Vercel.
 
 Duas contagens têm efeito no servidor: `diario_pendentes` (resultados no diário local ainda não
 confirmados) e `resultados_pendentes` (resultados que ficaram sem resposta do servidor no ciclo). Se
@@ -488,7 +490,7 @@ Em ordem; cada passo isolado (falha de um vira aviso e não impede os outros):
 6. **Saída para o CRM.** Tarefas pendentes (`sales_sync_ops`) viram tarefa em `tasks` do CRM para o
    atendente `atendente.crmUserId`, com o marcador `[sales:<chave>]` nas notas (nunca duplica). Sem
    atendente configurado: a tarefa espera e o ciclo avisa.
-7. **Executores sem sinal** há mais de 10 min → exceção `heartbeat_ausente`.
+7. **Executores sem sinal** há mais de 35 min dentro da janela → exceção `heartbeat_ausente`.
 8. **Retenção do vendedor virtual:** conversas (`sales_agent_conversations`) com `expires_at` vencido
    (90 dias) são apagadas com as mensagens delas, num único comando, até 500 por ciclo.
 

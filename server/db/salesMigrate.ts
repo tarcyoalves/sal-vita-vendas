@@ -3,21 +3,23 @@ import { neon } from '@neondatabase/serverless';
 type Step = { name: string; ok: boolean; error?: string };
 
 // Suba a cada mudança do DDL abaixo (e rode `npm run schema:lock`), senão o caminho rápido pula a migração.
-const SALES_SCHEMA_VERSION = 'sales-2026-11-28c';
+const SALES_SCHEMA_VERSION = 'sales-2026-11-28d';
 
 /**
  * Tabelas do Sal Vita Sales AI (venda B2B da caixa de 10 kg) no banco do PREMIUM
- * (ORDERS_DATABASE_URL, mesmo fallback de b2bMigrate.ts). Só CREATE ... IF NOT EXISTS:
+ * (ORDERS_DATABASE_URL, e SÓ ele: sem a variável, falha em vez de usar o banco do CRM). Só CREATE ... IF NOT EXISTS:
  * nenhuma tabela existente é alterada. Contrato em shared/sales.ts.
  *
  * Mesma estrutura de ensureB2bTablesExist(): cada comando roda isolado (uma falha não
  * bloqueia o resto) e o marcador em schema_meta faz o cold start pular tudo depois da 1ª vez.
  */
 export async function ensureSalesTablesExist(force = false): Promise<Step[]> {
-  const url = process.env.ORDERS_DATABASE_URL ?? process.env.DATABASE_URL;
+  // SÓ o banco da loja. Sem ORDERS_DATABASE_URL a migração FALHA: cair para DATABASE_URL criaria
+  // estas tabelas (e depois os dados) no banco do CRM Lembretes, que é outra conta e outro produto.
+  const url = process.env.ORDERS_DATABASE_URL?.trim();
   const steps: Step[] = [];
   if (!url) {
-    steps.push({ name: 'config', ok: false, error: 'ORDERS_DATABASE_URL and DATABASE_URL are both unset' });
+    steps.push({ name: 'config', ok: false, error: 'ORDERS_DATABASE_URL is not set — refusing to fall back to the CRM database' });
     return steps;
   }
   const sql = neon(url);
