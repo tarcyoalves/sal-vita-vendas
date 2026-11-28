@@ -81,6 +81,7 @@ npx tsx scripts/radar/import-receita.ts \
 | `--max-mb 150` | não (padrão 150) | o script recusa gravar se a estimativa de tamanho passar disso |
 | `--force-size` | não | grava mesmo passando de `--max-mb` |
 | `--perfil cargas\|premium\|ambos` | não (padrão `cargas`) | qual público importar (ver seção Perfil Premium) |
+| `--segmentos-premium a,b,c` | não | só com `--perfil premium\|ambos`: restringe o Premium a essas chaves de segmento (ver abaixo). Padrão: todos, menos os opt-in de volume alto |
 | `--skip-cleanup` | não | não apaga os registros antigos das UFs importadas. A limpeza também é pulada sozinha quando há menos de 10 arquivos `ESTABELE` (base incompleta), para não apagar empresas que estão nos arquivos que faltam |
 
 ### Proteções
@@ -113,6 +114,44 @@ npx tsx scripts/radar/import-receita.ts --dir /caminho/para/receita-2026-11 --pe
 # conferido o resumo (e o % dos 512 MB), grave sem reler a Receita:
 npx tsx scripts/radar/import-receita.ts --from-filtered ./filtrado-premium-2026-11.ndjson --perfil premium --ufs RN,CE,PB,PE --release 2026-11
 ```
+
+### Segmentos Premium e `--segmentos-premium`
+
+Segmentos (chaves de `PREMIUM_SEGMENTS` em `shared/radarPremium.ts`): `loja_natural`, `granel_cerealista`,
+`mercado_natural`, `restaurante_saudavel`, `marmita_saudavel`, `padaria_artesanal`, `temperos_especiarias`,
+`conservas`, `suplementos`, `churrascaria` — e os quatro **opt-in**, de volume alto:
+
+| Opt-in | CNAE | Regra de nome |
+|---|---|---|
+| `minimercado` | 4712100 | nenhuma (todo minimercado/mercearia/armazém) |
+| `acougue_casa_de_carnes` | 4722901 | nenhuma |
+| `peixaria` | 4722902 | nenhuma |
+| `hortifruti` | 4724500 | nenhuma |
+
+**Sem `--segmentos-premium`, esses quatro NÃO são importados.** Para incluí-los (ou para importar só alguns
+segmentos), liste as chaves:
+
+```bash
+# padrão (sem os opt-in)
+npx tsx scripts/radar/import-receita.ts --dir ./receita-2026-11 --perfil premium --ufs RN --release 2026-11 --dry-run
+# só suplementos e açougues
+npx tsx scripts/radar/import-receita.ts --dir ./receita-2026-11 --perfil premium --segmentos-premium suplementos,acougue_casa_de_carnes --ufs RN --release 2026-11 --dry-run
+```
+
+- Chave desconhecida ou lista vazia = erro (nada roda). `--segmentos-premium` com `--perfil cargas` também.
+- `minimercado` e `mercado_natural` usam o MESMO CNAE (4712100); quem casa os dois ganha os dois segmentos.
+  Para ter `mercado_natural` sem `minimercado`, use o padrão. `minimercado` importa todo 4712100 da UF.
+- **Faça um dry-run por UF antes de gravar** (uma UF por vez; comece pela menor): o resumo imprime a contagem
+  por segmento (inclusive os que acharam 0) e `Estimativa por segmento premium (linhas · ~MB)`, além do total
+  contra os 512 MB do Neon free tier (compartilhado com o CRM). Uma empresa em dois segmentos conta nos dois, então
+  a soma por segmento passa do total. Se passar de `--max-mb`, o script recusa gravar.
+- O arquivo `--save-filtered` guarda a seleção de segmentos: `--from-filtered` com outra seleção é recusado.
+- A limpeza só apaga CNAEs que sustentam *apenas* os segmentos escolhidos. Rodar o padrão por cima de uma
+  importação com opt-ins não apaga açougues/peixarias/hortifrútis; também por isso uma rodada só com
+  `minimercado` (CNAE compartilhado com `mercado_natural`) não limpa nada. Para tirar um opt-in do banco, apague as linhas à mão.
+- **`suplementos` tem risco alto de alegação de saúde.** O CNAE (4729699) é o mesmo de `loja_natural`; o que o
+  separa é o nome (suplemento, whey, nutri, natural, saúde só no nome fantasia). Academias continuam vetadas.
+  Qualquer mensagem para esse segmento fala só de origem, sabor e processo do sal — nada de saúde, dieta ou desempenho.
 
 Cuidados:
 - O arquivo `--save-filtered` guarda o perfil; gravar com outro `--perfil` é recusado.
