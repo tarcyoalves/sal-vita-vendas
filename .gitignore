@@ -30,3 +30,7 @@ scripts/radar/enricher/test_*.sh
 # Copia/build local temporario da extensao
 /vita-zap/
 /.antigravity/
+
+# Cache do Python (robôs da VPS: scripts/radar/enricher, scripts/sales/executor)
+__pycache__/
+*.pyc
