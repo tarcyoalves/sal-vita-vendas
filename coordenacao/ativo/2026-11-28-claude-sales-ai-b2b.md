@@ -37,10 +37,15 @@ e-mail marketing existente, carrinho abandonado (o árbitro entra atrás de inte
 
 ## Progresso
 
-- [ ] Alicerce: tabelas, migração, contratos e regras puras
-- [ ] API do Hermes, ciclo, ponte Radar → prospecção, relatórios
-- [ ] Vendedor virtual
-- [ ] Painel "Vendas B2B"
-- [ ] Segmentos Premium no Radar
-- [ ] `/atacado` da caixa de 10 kg
-- [ ] Lado do Hermes: contrato, skills, auditoria da VPS, executor
+- [x] Alicerce: tabelas, migração, contratos e regras puras
+- [x] API do Hermes, ciclo, ponte Radar → prospecção, relatórios
+- [x] Vendedor virtual
+- [x] Painel "Vendas B2B"
+- [x] Segmentos Premium no Radar (público ampliado: suplementos, minimercados, açougues…)
+- [x] `/atacado` da caixa de 10 kg
+- [x] Lado do Hermes: contrato, skills, auditoria da VPS, executor
+- [x] Revisão independente + correções (16 achados)
+- [ ] Publicar em `main` — **aguardando autorização do dono**
+
+Estado em 28/11/2026: tudo no branch `claude/sales-ai-b2b`, `npm run check` sem erros,
+2414 testes passando, 83 testes do executor Python, build do site e da API ok. Mapa em `docs/SALES-AI.md`.
