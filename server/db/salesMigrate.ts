@@ -3,7 +3,7 @@ import { neon } from '@neondatabase/serverless';
 type Step = { name: string; ok: boolean; error?: string };
 
 // Suba a cada mudança do DDL abaixo (e rode `npm run schema:lock`), senão o caminho rápido pula a migração.
-const SALES_SCHEMA_VERSION = 'sales-2026-11-28b';
+const SALES_SCHEMA_VERSION = 'sales-2026-11-28c';
 
 /**
  * Tabelas do Sal Vita Sales AI (venda B2B da caixa de 10 kg) no banco do PREMIUM
@@ -289,12 +289,9 @@ export async function ensureSalesTablesExist(force = false): Promise<Step[]> {
     )
   `);
 
-  // Retenção das conversas do agente: 90 dias (V3, seção 7.3). Barato, com índice.
-  await run('cleanup_sales_agent', async () => {
-    await sql`DELETE FROM sales_agent_messages WHERE conversation_id IN (
-      SELECT id FROM sales_agent_conversations WHERE expires_at IS NOT NULL AND expires_at < NOW())`;
-    await sql`DELETE FROM sales_agent_conversations WHERE expires_at IS NOT NULL AND expires_at < NOW()`;
-  });
+  // A retenção de 90 dias das conversas do agente (V3, seção 7.3) roda no ciclo (ciclo.ts,
+  // passo 'retencao_agente'): aqui o caminho rápido do cold start a pulava sempre. Índice para ela:
+  await run('sales_agent_conversations_expires_idx', () => sql`CREATE INDEX IF NOT EXISTS sales_agent_conversations_expires_idx ON sales_agent_conversations(expires_at)`);
 
   const failed = steps.filter((s) => !s.ok);
   // Marcador só quando TUDO passou: com falha, a próxima chamada tenta de novo (o DDL é idempotente).

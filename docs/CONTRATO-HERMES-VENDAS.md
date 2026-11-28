@@ -99,8 +99,11 @@ Cada escopo tem um segredo próprio, numa variável de ambiente do projeto na Ve
   Autorização com `fence` diferente do atual perde (`409 fence_antigo`). Dois executores (ou duas
   tentativas do mesmo) nunca despacham a mesma mensagem: a passagem `RESERVED → DISPATCHING` é um
   único `UPDATE ... WHERE status='RESERVED' AND fence=? AND token=?`.
-- `attempts` sobe a cada **reserva**. Com `RETRYABLE_FAILURE` e `attempts >= limites.maxTentativas`
-  (padrão 3), a mensagem vira `PERMANENT_FAILURE`.
+- `attempts` sobe a cada **autorização** concedida (`RESERVED → DISPATCHING`), não a cada reserva: uma
+  reserva devolvida (intervalo mínimo, pausa, revogação, vencida) não gasta tentativa. Com
+  `RETRYABLE_FAILURE` e `attempts >= limites.maxTentativas` (padrão 3), a mensagem vira `PERMANENT_FAILURE`.
+- `next_retry_at` vale para `RETRYABLE_FAILURE` (espera crescente) **e** para `PENDING` adiada pela
+  autorização (`intervalo_minimo`, `teto_empresa`): a fila só a oferece de novo depois dessa hora.
 - `ACCEPTED`, `PERMANENT_FAILURE` e `CANCELLED` são finais. `UNKNOWN` só sai por humano ou pelo
   próprio executor informando o resultado da mesma tentativa (com o mesmo `despachoToken`).
 - Mensagens que o ciclo NÃO gera hoje: veja a seção 9 (descadastro).
@@ -112,6 +115,12 @@ Cada escopo tem um segredo próprio, numa variável de ambiente do projeto na Ve
 ### 4.1 `GET /api/sales/modo` — escopo `leitura`
 
 Para o executor decidir se trabalha. Sem efeito.
+
+**Cache:** a resposta sai de um cache de **30 s por instância** do servidor (o executor chama a cada
+ciclo). Mudança feita no painel aparece aqui em até 30 s (na mesma instância, na hora). Isso é só
+orientação: `reservar` e `autorizar` leem modo e canal do banco a cada chamada, e o `UPDATE` final da
+autorização confere de novo, no mesmo comando, que o modo envia e o canal está ligado com política
+aprovada. Uma pausa vale para o despacho imediatamente, mesmo com `/modo` ainda mostrando o valor antigo.
 
 Resposta `200`:
 ```json
@@ -204,6 +213,13 @@ vencer — e **não** deve ser enviada (o executor não tem o `despachoToken`).
 Negado: o corpo é sempre `{"codigo": "...", "motivo": "..."}`. **Em qualquer código diferente de 200,
 não envie.**
 
+O HTTP diz o que fazer com o RESTO do ciclo:
+- **`423` = pare o ciclo.** Condição global (pausa, canal, modo, teto do dia): nenhuma outra mensagem
+  sai agora. Volte no próximo ciclo (consulte `/modo`).
+- **`409` = pule só esta mensagem** e siga com as próximas da reserva.
+- **`503` = pare o ciclo** e tente mais tarde (consulta indisponível).
+- **`403` = pule esta mensagem** (foi cancelada).
+
 | HTTP | `codigo` | Efeito no servidor | O que o executor faz |
 |---|---|---|---|
 | 404 | `nao_encontrada` | nada | descarta |
@@ -211,10 +227,13 @@ não envie.**
 | 409 | `reserva_vencida` | reserva liberada (fence+1) | descarta; reserve de novo |
 | 409 | `corrida` | nada (outra autorização venceu) | descarta |
 | 409 | `estado_mudou`, `sem_jornada`, `conteudo_alterado` | mensagem CANCELLED | descarta |
-| 403 | `suprimido`, `inelegivel` | mensagem CANCELLED | descarta |
-| 423 | `pausado`, `canal_fechado`, `modo_nao_permite`, `jornada_pausada`, `sem_descadastro` | reserva liberada (fence+1) | descarta; pare de reservar se for `pausado`/`canal_fechado` |
-| 423 | `teto_diario`, `teto_novas`, `teto_empresa`, `intervalo_minimo`, `historico_indisponivel`, `contagem_indisponivel` | reserva liberada | descarta; tente amanhã/depois |
-| 503 | `supressao_indisponivel` | reserva liberada | descarta; tente mais tarde |
+| 409 | `jornada_pausada` | reserva liberada (fence+1) | pula; segue com as outras |
+| 409 | `intervalo_minimo` | reserva liberada; `next_retry_at` = fim do intervalo | pula; segue com as outras |
+| 409 | `teto_empresa` | reserva liberada; `next_retry_at` = +24 h | pula; segue com as outras |
+| 403 | `suprimido`, `inelegivel` | mensagem CANCELLED | pula |
+| 423 | `pausado`, `canal_fechado`, `modo_nao_permite`, `sem_descadastro` | reserva liberada (fence+1) | **pare o ciclo** |
+| 423 | `teto_diario`, `teto_novas` | reserva liberada | **pare o ciclo**; tente amanhã/depois |
+| 503 | `supressao_indisponivel`, `historico_indisponivel`, `contagem_indisponivel`, `configuracao_indisponivel` | reserva liberada | **pare o ciclo**; tente mais tarde |
 
 O que é revalidado AGORA (nada vem da reserva): posse da reserva (executor, token, fence, validade),
 modo, canal e política, supressão nos dois bancos (`email_suppressions` do Premium e do CRM e
@@ -300,6 +319,11 @@ Efeitos:
 | `RECLAMACAO` | supressão (`complaint`) **e modo `PAUSED` para toda a operação** + exceção crítica + tarefa |
 | `DEVOLVIDO` | supressão (`bounce`) |
 
+**E-mail sem jornada** (endereço que não está na prospecção): `PEDIU_PARA_SAIR`, `RECLAMACAO` e
+`DEVOLVIDO` têm o MESMO efeito acima (supressão em todas as listas; a reclamação também pausa a
+operação e abre a exceção crítica). Só `RESPOSTA` e `AUTO_RESPOSTA` de endereço desconhecido são
+guardadas e ignoradas.
+
 Se a transição não se aplica ao estado atual (ex.: resposta negativa de quem já é cliente), o estado
 não muda e a jornada fica pausada para um humano.
 
@@ -308,7 +332,7 @@ Respostas:
 |---|---|---|
 | 200 | `{"ok":true,"efeitos":["transicao","cancelar_pendentes","excecao"],"falhas":[]}` | processado |
 | 200 | `{"duplicado":true}` | a chave já foi processada; nada foi feito de novo |
-| 200 | `{"ok":true,"ignorado":true}` | e-mail sem jornada: o evento foi guardado e ignorado |
+| 200 | `{"ok":true,"ignorado":true}` | resposta (ou resposta automática) de e-mail sem jornada: guardada e ignorada |
 | 500 | `{"ok":false,"efeitos":[…],"falhas":["suprimir:premium.email_suppressions"]}` | algum efeito falhou: **repita com a mesma chave** |
 
 Idempotência: a mesma `idempotencyKey` nunca tem efeito duas vezes. Ela só é reprocessada se a
@@ -372,6 +396,12 @@ Pedido:
 Envie a cada ciclo do executor e **no máximo a cada 5 minutos**. Mais de **10 minutos** sem sinal →
 exceção `heartbeat_ausente` (uma aberta por executor; nova chave por hora).
 
+Duas contagens têm efeito no servidor: `diario_pendentes` (resultados no diário local ainda não
+confirmados) e `resultados_pendentes` (resultados que ficaram sem resposta do servidor no ciclo). Se
+algum heartbeat dos últimos 15 minutos tiver uma delas > 0, o painel **recusa** a conciliação manual
+"não foi enviada" de uma mensagem `UNKNOWN` (o resultado pode estar a caminho; reabrir a mensagem
+poderia enviá-la duas vezes) até o executor informar o que tem guardado.
+
 ### 4.9 `POST /api/sales/ciclo` — escopo `operacao`
 
 Roda o ciclo do servidor (seção 6). Pedido:
@@ -407,7 +437,8 @@ loop a cada 60–120 s:
   r = POST /fila/reservar {executor, max: 5}
   para cada item em r.mensagens:                 # um de cada vez, nunca em paralelo para o mesmo id
       a = POST /envio/{id}/autorizar {executor, reservaToken, fence}
-      se a.http != 200: continuar               # NÃO envia
+      se a.http em (423, 503): parar o ciclo     # NÃO envia; condição global
+      se a.http != 200: continuar               # NÃO envia; 409/403/404 = só esta mensagem
       se sha256(a.assunto + "\n\n" + a.corpo) != a.contentHash: resultado PERMANENT_FAILURE; continuar
       se agora >= a.expiraEm: resultado RETRYABLE_FAILURE ("prazo"); continuar
       grava em disco {id, despachoToken, estado: "enviando"}   # antes do DATA
@@ -458,12 +489,23 @@ Em ordem; cada passo isolado (falha de um vira aviso e não impede os outros):
    atendente `atendente.crmUserId`, com o marcador `[sales:<chave>]` nas notas (nunca duplica). Sem
    atendente configurado: a tarefa espera e o ciclo avisa.
 7. **Executores sem sinal** há mais de 10 min → exceção `heartbeat_ausente`.
+8. **Retenção do vendedor virtual:** conversas (`sales_agent_conversations`) com `expires_at` vencido
+   (90 dias) são apagadas com as mensagens delas, num único comando, até 500 por ciclo.
+
+Primeiro contato sem aprovação de lote de dia anterior é cancelado (a jornada volta a `QUALIFIED`)
+**só nos modos `REVIEW`, `DRY_RUN` e `PAUSED`**. Em `SEMI_AUTONOMOUS`/`AUTONOMOUS` o passo 0 não recebe
+aprovação e fica na fila, governado pelo árbitro. Empresa cuja mensagem foi só cancelada (cortada ou
+vencida) volta a um lote de outro dia com uma mensagem nova (chave `prosp:<jornada>:0:<lote>`); o que
+conta como "já prospectada" é mensagem aceita, desconhecida ou ainda na fila. Cortada hoje não volta hoje.
+O lote para com aviso se o orçamento do ciclo acabar (o resto entra no próximo ciclo).
 
 ---
 
-## 7. Modo `PAUSED`
+## 7. Modo `PAUSED` (e `DRY_RUN`, canal desligado)
 
-Mudar o modo para `PAUSED` (no painel, ou automaticamente por uma `RECLAMACAO`):
+Mudar o modo para `PAUSED` ou `DRY_RUN` (no painel, ou `PAUSED` automaticamente por uma `RECLAMACAO`),
+e desligar o canal ou tirar a política aprovada, revogam as reservas do mesmo jeito. Mudar o modo para
+`PAUSED`:
 - grava o modo primeiro (nenhuma reserva nova a partir daí);
 - **revoga todas as reservas**: `RESERVED → PENDING`, fence+1, tokens apagados. Uma autorização com
   reserva revogada recebe `409 nao_reservada`/`fence_antigo`; uma autorização em voo recebe `423 pausado`;

@@ -11,6 +11,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { DispatchOutcome, JourneyState, MessageStatus, SalesMode } from '../../../shared/sales';
 import { estadoPermiteProspeccao } from './estados';
+import type { DecisaoArbitro } from './arbitro';
 
 export function novoToken(): string {
   return randomBytes(24).toString('base64url');
@@ -77,17 +78,33 @@ export interface EntradaAutorizacao {
   /** Supressão consultada AGORA nos dois bancos. null = consulta falhou. */
   supressao: { premium: boolean | null; crm: boolean | null };
   /** Resultado do árbitro consultado AGORA. */
-  arbitro: { ok: true } | { ok: false; codigo: string; motivo: string };
+  arbitro: DecisaoArbitro;
   /** Elegibilidade recalculada AGORA (só obrigatória no passo 0). */
   elegibilidade: { ok: boolean; motivos: string[] };
 }
 
+/**
+ * Recusa da autorização. O HTTP diz ao executor o que fazer com o RESTO do ciclo:
+ *  - 423 = condição GLOBAL (pausa, canal, modo, teto do dia): pare o ciclo, nenhuma outra sai agora;
+ *  - 409 = só ESTA mensagem (intervalo por endereço, teto da empresa, jornada pausada, posse da
+ *    reserva): pule-a e siga com as outras;
+ *  - 503 = consulta indisponível (supressão, contagens): pare o ciclo e tente depois;
+ *  - 403 = suprimido/inelegível (mensagem cancelada): pule-a.
+ * `adiarAte`: ao liberar a reserva, a mensagem só volta à fila depois desta hora (`next_retry_at`).
+ */
 export type DecisaoAutorizacao =
   | { ok: true }
-  | { ok: false; http: 403 | 409 | 423 | 503; codigo: string; motivo: string; cancelar: boolean; liberarReserva: boolean };
+  | { ok: false; http: 403 | 409 | 423 | 503; codigo: string; motivo: string; cancelar: boolean; liberarReserva: boolean; adiarAte?: Date };
 
-const negar = (http: 403 | 409 | 423 | 503, codigo: string, motivo: string, cancelar = false, liberarReserva = false): DecisaoAutorizacao =>
-  ({ ok: false, http, codigo, motivo, cancelar, liberarReserva });
+const negar = (http: 403 | 409 | 423 | 503, codigo: string, motivo: string, cancelar = false, liberarReserva = false, adiarAte?: Date): DecisaoAutorizacao =>
+  ({ ok: false, http, codigo, motivo, cancelar, liberarReserva, ...(adiarAte ? { adiarAte } : {}) });
+
+/** Códigos do árbitro que valem para TODAS as mensagens agora (423 = pare o ciclo). */
+export const ARBITRO_GLOBAL: readonly string[] = ['teto_diario', 'teto_novas'];
+/** Códigos do árbitro de consulta que falhou (503 = pare o ciclo e tente depois). */
+export const ARBITRO_INDISPONIVEL: readonly string[] = ['historico_indisponivel', 'contagem_indisponivel'];
+/** Espera antes de oferecer de novo uma mensagem barrada pelo teto da empresa. */
+export const ADIAMENTO_TETO_EMPRESA_MS = 24 * 3_600_000;
 
 export function decidirAutorizacao(e: EntradaAutorizacao): DecisaoAutorizacao {
   const m = e.mensagem;
@@ -112,12 +129,25 @@ export function decidirAutorizacao(e: EntradaAutorizacao): DecisaoAutorizacao {
   if (e.supressao.premium || e.supressao.crm) return negar(403, 'suprimido', 'endereço suprimido', true);
   // 4. Jornada: resposta, compra ou pausa depois da reserva invalidam o envio.
   if (!e.jornada) return negar(409, 'sem_jornada', 'jornada não encontrada', true);
-  if (e.jornada.pausedReason) return negar(423, 'jornada_pausada', `jornada pausada: ${e.jornada.pausedReason}`, false, true);
+  // Só esta jornada: 409 (o executor pula esta mensagem e segue). A fila não oferece jornada pausada.
+  if (e.jornada.pausedReason) return negar(409, 'jornada_pausada', `jornada pausada: ${e.jornada.pausedReason}`, false, true);
   if (!estadoPermiteProspeccao(e.jornada.state, m.step)) {
     return negar(409, 'estado_mudou', `jornada em ${e.jornada.state} não permite o passo ${m.step}`, true);
   }
   // 5. Limites e elegibilidade, recalculados agora.
-  if (!e.arbitro.ok) return negar(423, e.arbitro.codigo, e.arbitro.motivo, false, true);
+  if (!e.arbitro.ok) {
+    const a = e.arbitro;
+    if (ARBITRO_GLOBAL.includes(a.codigo)) return negar(423, a.codigo, a.motivo, false, true);
+    if (ARBITRO_INDISPONIVEL.includes(a.codigo)) return negar(503, a.codigo, a.motivo, false, true);
+    if (a.codigo === 'intervalo_minimo') {
+      // Só este endereço: libera a reserva e a mensagem só volta à fila quando o intervalo acabar.
+      return negar(409, a.codigo, a.motivo, false, true, a.liberaEm ?? new Date(e.agora.getTime() + 3_600_000));
+    }
+    if (a.codigo === 'teto_empresa') {
+      return negar(409, a.codigo, a.motivo, false, true, new Date(e.agora.getTime() + ADIAMENTO_TETO_EMPRESA_MS));
+    }
+    return negar(423, a.codigo, a.motivo, false, true); // código novo/desconhecido: conservador, para o ciclo
+  }
   if (m.step === 0 && !e.elegibilidade.ok) {
     return negar(403, 'inelegivel', `não elegível: ${e.elegibilidade.motivos.join(', ')}`, true);
   }
@@ -134,6 +164,7 @@ export interface EntradaResultado {
   resultado: DispatchOutcome;
   /** Resultado já gravado para esta tentativa (repetição idempotente). */
   resultadoGravado: DispatchOutcome | null;
+  /** Autorizações de despacho já concedidas (sobe na passagem a DISPATCHING; inclui a atual). */
   attempts: number;
   maxTentativas: number;
   agora: Date;
@@ -194,9 +225,11 @@ export function decidirConciliacao(status: MessageStatus, reservedUntil: Date | 
   return { tipo: 'nada' };
 }
 
-/** Status de onde uma mensagem pode ser reservada (RETRYABLE só depois do backoff). */
+/**
+ * Status de onde uma mensagem pode ser reservada. `next_retry_at` vale para os dois: RETRYABLE
+ * (backoff) e PENDING adiada (intervalo mínimo ou teto da empresa na autorização).
+ */
 export function podeSerReservada(status: MessageStatus, nextRetryAt: Date | null, agora: Date): boolean {
-  if (status === 'PENDING') return true;
-  if (status === 'RETRYABLE_FAILURE') return !nextRetryAt || nextRetryAt.getTime() <= agora.getTime();
-  return false;
+  if (status !== 'PENDING' && status !== 'RETRYABLE_FAILURE') return false;
+  return !nextRetryAt || nextRetryAt.getTime() <= agora.getTime();
 }

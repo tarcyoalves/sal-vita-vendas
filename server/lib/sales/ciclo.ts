@@ -26,7 +26,7 @@ import { registrarExcecao } from './excecoes';
 import { linkDescadastroProspeccao } from './descadastro';
 import {
   aprovacaoHerdada, chaveHeartbeatAusente, contarMotivos, decidirCadencia, executorAtrasado, lerPayloadTarefa,
-  marcadorSales, montarEntradaElegibilidade, montarTarefaCrm, planejarConciliacao, preRequisitoMensagem, selecionarLote,
+  marcadorSales, modoExpiraLotes, montarEntradaElegibilidade, montarTarefaCrm, planejarConciliacao, preRequisitoMensagem, selecionarLote,
   somar, statusDaMensagem, totalPassos, vagasDoLote, HEARTBEAT_LIMITE_MS,
 } from './operacoesPuro';
 import {
@@ -110,6 +110,7 @@ export async function executarCicloImpl(opts: { por: string; simular?: boolean }
     await passo('cadencia', () => cadencia(ctx));
     await passo('saida_crm', () => saidaCrm(ctx));
     await passo('heartbeat', () => verificarExecutores(ctx));
+    await passo('retencao_agente', () => retencaoAgente(ctx));
   } finally {
     if (lease) await liberarLease(lease);
   }
@@ -123,9 +124,13 @@ export async function executarCicloImpl(opts: { por: string; simular?: boolean }
 // Lote que o dono não aprovou no dia não fica pendurado: se um dia o modo virar AUTONOMOUS, uma
 // mensagem antiga e nunca revisada sairia sozinha. Primeiro contato (passo 0) sem aprovação de um
 // lote de dia anterior é cancelado e a jornada volta para QUALIFIED (pode entrar num lote novo).
+//
+// SÓ nos modos que exigem aprovação ou não enviam (REVIEW, DRY_RUN, PAUSED). Em SEMI_AUTONOMOUS e
+// AUTONOMOUS o passo 0 nunca recebe `approved_at` (sai pelo segmento validado ou direto): cancelá-lo
+// apagaria o lote todo dia. Lá quem governa a saída é o árbitro na autorização (modoExpiraLotes).
 async function expirarLotesNaoAprovados(ctx: Ctx): Promise<void> {
   const hoje = spDateStr(ctx.agora);
-  if (ctx.simular) return;
+  if (ctx.simular || !modoExpiraLotes(ctx.settings.modo)) return;
   const r = await ordersDb.execute<{ journey_id: number }>(sql`
     UPDATE sales_messages m SET status = 'CANCELLED', cancelled_reason = 'lote vencido sem aprovação', fence = fence + 1,
       reserved_by = NULL, reserved_until = NULL, reservation_token_hash = NULL, updated_at = now()
@@ -208,12 +213,11 @@ async function loteDoDia(ctx: Ctx): Promise<void> {
     .limit(Math.max(N * 10, 200));
   if (pool.length === 0) return;
 
-  const [contextos, compart, supr, jaProsp, empresasProsp] = await Promise.all([
+  const [contextos, compart, supr, jaProsp] = await Promise.all([
     carregarContextos(pool),
     compartilhamento(pool.map((j) => j.email)),
     supressaoEmLote(pool.map((j) => j.email)),
     jornadasJaProspectadas(pool.map((j) => j.id)),
-    empresasJaProspectadas([...new Set(pool.map((j) => j.companyId))]),
   ]);
 
   const avaliados = pool.map((j) => {
@@ -252,6 +256,9 @@ async function loteDoDia(ctx: Ctx): Promise<void> {
     ? ((await ordersDb.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM sales_messages WHERE batch_id = ${lote.id}`)).rows[0]?.n ?? 0)
     : 0;
   const vagas = vagasDoLote(N, jaNoLote);
+  if (vagas <= 0) return;
+  // Depois do lote: o lote de hoje entra na conta (cortada hoje não volta hoje).
+  const empresasProsp = await empresasJaProspectadas([...new Set(pool.map((j) => j.companyId))], lote?.id ?? null);
   const escolhidos = selecionarLote(
     avaliados.map((a) => ({ journeyId: a.j.id, companyId: a.j.companyId, score: a.score, elegivel: a.ok, pausada: !!a.j.pausedReason })),
     vagas,
@@ -263,20 +270,30 @@ async function loteDoDia(ctx: Ctx): Promise<void> {
   if (pre) { somar(r.mensagensNaoGeradas, pre, escolhidos.length); return; }
   const porId = new Map(pool.map((j) => [j.id, j]));
   let novas = 0;
-  for (const e of escolhidos) {
-    const j = porId.get(e.journeyId);
-    const c = contextos.get(e.journeyId);
-    if (!j || !c) continue;
-    const gerado = await gerarMensagem(ctx, j, c.empresa, 0, lote?.id ?? null, { approvedAt: null, approvedBy: null });
-    if (gerado) novas += 1;
-  }
-  if (!simular && lote && novas > 0) {
-    await ordersDb.execute(sql`
-      UPDATE sales_batches SET
-        size = (SELECT count(*)::int FROM sales_messages WHERE batch_id = ${lote.id} AND status <> 'CANCELLED'),
-        status = CASE WHEN status = 'approved' THEN 'draft' ELSE status END
-      WHERE id = ${lote.id}
-    `);
+  try {
+    for (const e of escolhidos) {
+      // Orçamento do ciclo: para com aviso; o resto entra no próximo ciclo (as vagas continuam).
+      if (Date.now() - ctx.inicio > ORCAMENTO_MS) {
+        r.avisos.push(`lote: prazo do ciclo esgotado depois de ${novas} mensagem(ns); o resto entra no próximo ciclo`);
+        break;
+      }
+      const j = porId.get(e.journeyId);
+      const c = contextos.get(e.journeyId);
+      if (!j || !c) continue;
+      const gerado = await gerarMensagem(ctx, j, c.empresa, 0, lote?.id ?? null, { approvedAt: null, approvedBy: null });
+      if (gerado) novas += 1;
+    }
+  } finally {
+    // Tamanho recalculado SEMPRE (mesmo se o laço parou no meio ou falhou). Lote aprovado que ganhou
+    // mensagem nova volta a rascunho (a nova precisa ser revisada).
+    if (!simular && lote) {
+      await ordersDb.execute(sql`
+        UPDATE sales_batches SET
+          size = (SELECT count(*)::int FROM sales_messages WHERE batch_id = ${lote.id} AND status <> 'CANCELLED'),
+          status = CASE WHEN status = 'approved' AND ${novas > 0}::boolean THEN 'draft' ELSE status END
+        WHERE id = ${lote.id}
+      `);
+    }
   }
 }
 
@@ -311,7 +328,8 @@ async function gerarMensagem(
   // passa por verificarTextoComercial + contemValorCritico; falhou = ''.
   const montada = montarMensagem(settings.modeloEmail, passo, settings.remetente, { empresa, abertura: '', linkDescadastro: link.url });
   if (!montada.ok) { somar(r.mensagensNaoGeradas, montada.motivo); return false; }
-  const logicalKey = chaveLogicaProspeccao(j.id, passo);
+  // Passo 0: chave por lote (a jornada pode voltar num lote de outro dia). Passos ≥1: fixa.
+  const logicalKey = passo === 0 ? chaveLogicaProspeccao(j.id, 0, batchId) : chaveLogicaProspeccao(j.id, passo);
   const messageIdHeader = montarMessageId(logicalKey, montada.contentHash, settings.canal);
   if (!messageIdHeader) { somar(r.mensagensNaoGeradas, 'dominio_do_canal_ausente'); return false; }
   if (simular) { r.mensagensGeradas += 1; return true; }
@@ -324,15 +342,19 @@ async function gerarMensagem(
   if (passo === 0) {
     const para = transicionar('QUALIFIED', 'ENTRAR_NO_LOTE');
     if (!para.ok) return false;
+    // A jornada só avança se a chave ainda não existe (no mesmo comando), e a colisão de chave nunca
+    // derruba o laço do lote: ON CONFLICT DO NOTHING (chave lógica ou Message-ID).
     const res = await ordersDb.execute<{ id: number }>(sql`
       WITH jj AS (
         UPDATE sales_journeys SET state = ${para.para}, state_version = state_version + 1, updated_at = now()
         WHERE id = ${j.id} AND state_version = ${j.stateVersion} AND state = 'QUALIFIED' AND paused_reason IS NULL
+          AND NOT EXISTS (SELECT 1 FROM sales_messages x WHERE x.logical_key = ${logicalKey}::text)
         RETURNING id
       )
       INSERT INTO sales_messages (journey_id, logical_key, contact_id, company_id, batch_id, step, to_email, subject, body_text,
                                   content_hash, message_id_header, template_version, status, approved_at, approved_by)
       SELECT jj.id, ${campos} FROM jj
+      ON CONFLICT DO NOTHING
       RETURNING id
     `);
     if (res.rows.length === 0) { somar(r.mensagensNaoGeradas, 'jornada_mudou'); return false; }
@@ -369,12 +391,21 @@ async function cadencia(ctx: Ctx): Promise<void> {
     .orderBy(asc(salesJourneys.nextActionAt)).limit(200);
   if (devidas.length === 0) return;
   const total = totalPassos(settings.limites, settings.modeloEmail);
-  const chaves = devidas.flatMap((j) => [chaveLogicaProspeccao(j.id, 0), chaveLogicaProspeccao(j.id, j.cadenceStep + 1)]);
-  const msgs = await ordersDb.select({
-    id: salesMessages.id, logicalKey: salesMessages.logicalKey, status: salesMessages.status,
+  const chaves = devidas.map((j) => chaveLogicaProspeccao(j.id, j.cadenceStep + 1));
+  const campos = {
+    id: salesMessages.id, journeyId: salesMessages.journeyId, logicalKey: salesMessages.logicalKey, status: salesMessages.status,
     approvedAt: salesMessages.approvedAt, batchId: salesMessages.batchId,
-  }).from(salesMessages).where(inArray(salesMessages.logicalKey, chaves));
+  };
+  const [msgs, passos0] = await Promise.all([
+    ordersDb.select(campos).from(salesMessages).where(inArray(salesMessages.logicalKey, chaves)),
+    // Passo 0 que levou a jornada a CONTACTED (a chave do passo 0 tem o lote: busca por jornada).
+    ordersDb.select(campos).from(salesMessages).where(and(
+      inArray(salesMessages.journeyId, devidas.map((j) => j.id)), eq(salesMessages.step, 0), inArray(salesMessages.status, ['ACCEPTED', 'UNKNOWN']),
+    )).orderBy(desc(salesMessages.id)),
+  ]);
   const porChave = new Map(msgs.map((m) => [m.logicalKey, m]));
+  const passo0 = new Map<number, (typeof passos0)[number]>();
+  for (const m of passos0) if (!passo0.has(m.journeyId)) passo0.set(m.journeyId, m);
   const empresas = await ordersDb.select({ id: companies.id, name: companies.name, tradeName: companies.tradeName })
     .from(companies).where(inArray(companies.id, [...new Set(devidas.map((j) => j.companyId))]));
   const nomeEmpresa = new Map(empresas.map((c) => [c.id, (c.tradeName?.trim() || c.name).trim()]));
@@ -395,7 +426,7 @@ async function cadencia(ctx: Ctx): Promise<void> {
     }
     const pre = preRequisitoMensagem(settings.modeloEmail, settings.remetente, settings.canal, d.passo);
     if (pre) { somar(r.mensagensNaoGeradas, pre); continue; }
-    const p0 = porChave.get(chaveLogicaProspeccao(j.id, 0));
+    const p0 = passo0.get(j.id);
     const heranca = aprovacaoHerdada(p0 ? { id: p0.id, approvedAt: p0.approvedAt, batchId: p0.batchId } : null, agora);
     if (await gerarMensagem(ctx, j, nomeEmpresa.get(j.companyId) ?? '', d.passo, null, heranca)) r.cadenciasAvancadas += 1;
   }
@@ -432,6 +463,17 @@ async function saidaCrm(ctx: Ctx): Promise<void> {
     )
     RETURNING id, idempotency_key, payload, attempts
   `);
+  if (claim.rows.length === 0) return;
+  // Idempotência no destino: o marcador vai em `notes`. UMA consulta para todas as ops do ciclo (uma
+  // varredura de `tasks`, só nas notas com marcador) em vez de uma por op.
+  const marcadores = claim.rows.map((op) => marcadorSales(op.idempotency_key));
+  const existentesR = await crmDb.execute<{ marcador: string; id: number }>(sql`
+    SELECT x.m AS marcador, min(t.id)::int AS id
+    FROM tasks t JOIN unnest(ARRAY[${listaSql(marcadores)}]::text[]) AS x(m) ON position(x.m in t.notes) > 0
+    WHERE t.notes LIKE '%[sales:%'
+    GROUP BY x.m
+  `);
+  const tarefaExistente = new Map(existentesR.rows.map((row) => [row.marcador, row.id]));
   for (const op of claim.rows) {
     try {
       const payload = lerPayloadTarefa(op.payload);
@@ -439,9 +481,8 @@ async function saidaCrm(ctx: Ctx): Promise<void> {
         await ordersDb.update(salesSyncOps).set({ status: 'failed', lastError: 'payload inválido', claimedUntil: null, updatedAt: new Date() }).where(eq(salesSyncOps.id, op.id));
         continue;
       }
-      const marcador = marcadorSales(op.idempotency_key);
-      // Idempotência no destino: o marcador vai em `notes` e é procurado antes de inserir.
-      const [existente] = await crmDb.select({ id: tasks.id }).from(tasks).where(sql`position(${marcador} in coalesce(${tasks.notes}, '')) > 0`).limit(1);
+      const existenteId = tarefaExistente.get(marcadorSales(op.idempotency_key));
+      const existente = existenteId !== undefined ? { id: existenteId } : null;
       const taskId = existente?.id ?? (await crmDb.insert(tasks).values(montarTarefaCrm(payload, {
         crmUserId, nomeAtendente: atendente.name, idempotencyKey: op.idempotency_key, agora: new Date(),
       })).returning({ id: tasks.id }))[0]?.id;
@@ -484,4 +525,23 @@ async function verificarExecutores(ctx: Ctx): Promise<void> {
       createdBy: 'sistema',
     });
   }
+}
+
+// ── 8. Retenção das conversas do vendedor virtual (90 dias, V3 seção 7.3) ────────────────────
+// Antes ficava na migração, que o caminho rápido do cold start pula: nunca rodava. Um comando só
+// (CTE): apaga as conversas vencidas e as mensagens delas juntas. No máximo 500 conversas por ciclo.
+async function retencaoAgente(ctx: Ctx): Promise<void> {
+  if (ctx.simular) return;
+  const r = await ordersDb.execute<{ conversas: number; mensagens: number }>(sql`
+    WITH c AS (
+      DELETE FROM sales_agent_conversations
+      WHERE id IN (SELECT id FROM sales_agent_conversations WHERE expires_at IS NOT NULL AND expires_at < now() LIMIT 500)
+      RETURNING id
+    ), m AS (
+      DELETE FROM sales_agent_messages WHERE conversation_id IN (SELECT id FROM c) RETURNING id
+    )
+    SELECT (SELECT count(*) FROM c)::int AS conversas, (SELECT count(*) FROM m)::int AS mensagens
+  `);
+  const n = r.rows[0];
+  if (n && n.conversas > 0) console.log(`[sales-ciclo] retenção: ${n.conversas} conversa(s) e ${n.mensagens} mensagem(ns) do agente apagadas`);
 }

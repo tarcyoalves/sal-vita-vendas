@@ -177,6 +177,15 @@ export function selecionarLote(candidatos: readonly CandidatoLote[], vagas: numb
   return out;
 }
 
+/**
+ * Cancelar o passo 0 sem aprovação de lote de dia anterior só faz sentido onde a aprovação é exigida
+ * (REVIEW) ou nada sai (DRY_RUN, PAUSED). Em SEMI_AUTONOMOUS/AUTONOMOUS o passo 0 nunca recebe
+ * `approved_at`: expirar apagaria o lote todo dia.
+ */
+export function modoExpiraLotes(modo: SalesMode): boolean {
+  return modo === 'REVIEW' || modo === 'DRY_RUN' || modo === 'PAUSED';
+}
+
 /** Pré-requisitos para gerar QUALQUER mensagem (modelo aprovado, remetente completo, domínio do canal). */
 export function preRequisitoMensagem(modelo: SalesModeloEmail, remetente: SalesRemetente, canal: SalesCanal, passo: number): string | null {
   if (modelo.status !== 'aprovado') return 'modelo_rascunho';
@@ -324,11 +333,13 @@ export type PlanoEvento = { tipo: 'duplicado' } | { tipo: 'ignorado'; motivo: st
 
 /**
  * Efeitos de um evento da caixa de entrada. Idempotência: evento repetido (mesma chave) = nada.
- * E-mail sem jornada = guardado e ignorado.
+ * Saída, reclamação e devolução valem SEMPRE, com ou sem jornada (a supressão protege o endereço
+ * em todas as listas; a reclamação pausa a operação). Só RESPOSTA e AUTO_RESPOSTA de um e-mail
+ * sem jornada são guardadas e ignoradas (não há cadência para parar).
  */
 export function planejarEvento(e: { tipo: InboxEventType; classificacao: ReplyClass | null; temJornada: boolean; duplicado: boolean }): PlanoEvento {
   if (e.duplicado) return { tipo: 'duplicado' };
-  if (!e.temJornada) return { tipo: 'ignorado', motivo: 'email_sem_jornada' };
+  if (!e.temJornada && (e.tipo === 'RESPOSTA' || e.tipo === 'AUTO_RESPOSTA')) return { tipo: 'ignorado', motivo: 'email_sem_jornada' };
   switch (e.tipo) {
     case 'RESPOSTA': {
       const c = e.classificacao;
@@ -362,6 +373,30 @@ export const HEARTBEAT_LIMITE_MS = 10 * 60_000;
 
 export function executorAtrasado(ultimoSinal: Date, agora: Date): boolean {
   return agora.getTime() - ultimoSinal.getTime() > HEARTBEAT_LIMITE_MS;
+}
+
+/** Janela em que um heartbeat conta como "executor ainda pode estar informando resultados". */
+export const JANELA_RESULTADOS_PENDENTES_MS = 15 * 60_000;
+
+/**
+ * Executores que, num heartbeat dos últimos 15 min, disseram ter resultado de envio guardado no
+ * diário local e ainda não confirmado pelo servidor. O executor manda as duas contagens:
+ * `diario_pendentes` (total no diário, RESULT_PENDING) e `resultados_pendentes` (os que ficaram
+ * sem resposta do servidor neste ciclo). Qualquer uma > 0 conta.
+ */
+export function executoresComResultadosPendentes(
+  hbs: ReadonlyArray<{ executor: string; lastSeenAt: Date; payload: unknown }>, agora: Date,
+): string[] {
+  const out: string[] = [];
+  for (const h of hbs) {
+    if (agora.getTime() - h.lastSeenAt.getTime() > JANELA_RESULTADOS_PENDENTES_MS) continue;
+    const p = h.payload as { contagens?: unknown } | null;
+    const c = p && typeof p === 'object' && p.contagens && typeof p.contagens === 'object' ? (p.contagens as Record<string, unknown>) : null;
+    if (!c) continue;
+    const n = (k: string) => (typeof c[k] === 'number' ? (c[k] as number) : 0);
+    if (n('resultados_pendentes') > 0 || n('diario_pendentes') > 0) out.push(h.executor);
+  }
+  return out;
 }
 
 /** Uma exceção por executor por hora (UTC). */

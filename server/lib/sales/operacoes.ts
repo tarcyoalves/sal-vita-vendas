@@ -5,7 +5,7 @@
 //
 // Erros: operação recusada por regra (ex.: cortar mensagem já despachada) lança `OperacaoRecusada`
 // com `codigo` estável; o router do painel pode traduzir para TRPCError BAD_REQUEST/CONFLICT.
-import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { ordersDb } from '../../db/ordersDb';
 import {
   companies, contacts, salesBatches, salesExceptions, salesHeartbeats, salesJourneys, salesMessageAttempts, salesMessages,
@@ -19,7 +19,9 @@ import { relatorioImpl } from './relatorioDb';
 import { definirModoInterno, suprimirEmail } from './acoes';
 import { efeitosDoAceite } from './hermes';
 import { aplicarEvento, atualizarJornada, iso, registrarAuditoria } from './consultas';
-import { estadoDaJornada, executorAtrasado, fonteDoCanal, statusDaMensagem } from './operacoesPuro';
+import {
+  estadoDaJornada, executorAtrasado, executoresComResultadosPendentes, fonteDoCanal, statusDaMensagem, JANELA_RESULTADOS_PENDENTES_MS,
+} from './operacoesPuro';
 
 /** Mantida para compatibilidade com quem já importava; nenhuma função lança mais isto. */
 export class NaoImplementado extends Error {
@@ -375,6 +377,18 @@ export async function listarDesconhecidas(): Promise<Array<{ messageId: number; 
 export async function resolverDesconhecida(messageId: number, decisao: 'foi_enviada' | 'nao_foi_enviada', por: string): Promise<void> {
   const [m] = await ordersDb.select().from(salesMessages).where(eq(salesMessages.id, messageId)).limit(1);
   if (!m || m.status !== 'UNKNOWN') throw new OperacaoRecusada('nao_desconhecida', 'mensagem não está em UNKNOWN');
+  if (decisao === 'nao_foi_enviada') {
+    // Executor com resultado guardado e ainda não informado: o "UNKNOWN" pode ser só atraso. Voltar a
+    // mensagem para PENDING agora poderia mandá-la duas vezes.
+    const hbs = await ordersDb.select({ executor: salesHeartbeats.executor, lastSeenAt: salesHeartbeats.lastSeenAt, payload: salesHeartbeats.payload })
+      .from(salesHeartbeats).where(gte(salesHeartbeats.lastSeenAt, new Date(Date.now() - JANELA_RESULTADOS_PENDENTES_MS)));
+    const pendentes = executoresComResultadosPendentes(hbs, new Date());
+    if (pendentes.length) {
+      throw new OperacaoRecusada('executor_com_resultados_pendentes',
+        `O executor ${pendentes.join(', ')} ainda tem resultado de envio para informar. Espere ele enviar os resultados `
+        + '(o heartbeat volta a mostrar zero pendentes) e confira de novo: esta mensagem pode ter saído.');
+    }
+  }
   const [t] = await ordersDb.select().from(salesMessageAttempts).where(eq(salesMessageAttempts.messageId, m.id)).orderBy(desc(salesMessageAttempts.id)).limit(1);
   const agora = new Date();
   const aceitaEm = m.lastAttemptAt ?? agora;
