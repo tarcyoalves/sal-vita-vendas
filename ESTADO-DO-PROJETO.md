@@ -363,6 +363,13 @@ Plano e decisões em `PLANO-RADAR-CARGAS.md`.
 
 ---
 
+### Sal Vita Sales AI — venda B2B da caixa de 10 kg (28/11/2026, branch `claude/sales-ai-b2b`)
+Mapa técnico, regras e variáveis em **`docs/SALES-AI.md`**. Contrato do Hermes em
+`docs/CONTRATO-HERMES-VENDAS.md`; habilidades em `docs/HERMES-SKILLS-VENDAS.md`; executor da VPS em
+`scripts/sales/`. Nasce DESLIGADO (modo simulação, canal fechado, vendedor virtual e simulador
+desligados). Resend e Brevo **nunca** para prospecção (as políticas proíbem). Painel em
+`premium.salvitarn.com.br/sal-vita-vendas`.
+
 ## 6. Pendências — em ordem de urgência
 
 ### 🔴 Só o dono resolve (fora do código)
