@@ -1,5 +1,5 @@
 // Ações com efeito externo usadas pelo painel, pelas rotas do Hermes e pelo ciclo:
-// mudar o modo (PAUSED revoga reservas) e suprimir um contato (propaga pelos dois bancos).
+// mudar o modo (PAUSED/DRY_RUN revogam reservas; revogarReservas também serve ao canal) e suprimir um contato (propaga pelos dois bancos).
 import { eq, sql } from 'drizzle-orm';
 import { ordersDb } from '../../db/ordersDb';
 import { salesJourneys } from '../../db/schema';
@@ -10,19 +10,38 @@ import { getSalesSetting, setSalesSetting } from './settings';
 import { registrarExcecao } from './excecoes';
 import { aplicarEvento, atualizarJornada, cancelarPendentes, liberarReservas, registrarAuditoria } from './consultas';
 
+/**
+ * Revoga TODAS as reservas (RESERVED → PENDING, fence+1, tokens apagados): uma autorização com a
+ * reserva antiga perde (`409`). Chame DEPOIS de gravar a configuração que fecha o envio. Usada na
+ * troca de modo para DRY_RUN/PAUSED e — pelo router do painel — quando o canal é desligado ou perde
+ * a política aprovada. Mensagens em DISPATCHING não são recolhíveis (só contadas).
+ */
+export async function revogarReservas(motivo: string, por = 'sistema'): Promise<{ reservasRevogadas: number; despachando: number }> {
+  const reservasRevogadas = (await liberarReservas()).length;
+  const r = await ordersDb.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM sales_messages WHERE status = 'DISPATCHING'`);
+  const despachando = r.rows[0]?.n ?? 0;
+  if (despachando > 0) {
+    console.warn(`[sales] ${motivo}: ${despachando} mensagem(ns) em DISPATCHING já autorizadas não podem ser recolhidas; o resultado delas ainda será registrado`);
+  }
+  if (reservasRevogadas > 0 || despachando > 0) {
+    await registrarAuditoria('sales_reservas_revogadas', por, { tipo: 'sales_messages' }, { motivo, reservasRevogadas, despachandoNaoRecolhiveis: despachando });
+  }
+  return { reservasRevogadas, despachando };
+}
+
+/** Modos em que nada sai: trocar para eles revoga as reservas. */
+export function modoFechaEnvio(modo: SalesMode): boolean {
+  return modo === 'PAUSED' || modo === 'DRY_RUN';
+}
+
 export async function definirModoInterno(modo: SalesMode, por: string, motivo?: string): Promise<{ modo: SalesMode; reservasRevogadas: number }> {
   const anterior = await getSalesSetting('modo');
   // Grava o modo ANTES de revogar: reservas novas param de sair já a partir daqui.
   await setSalesSetting('modo', modo, por);
   let reservasRevogadas = 0;
   let despachando = 0;
-  if (modo === 'PAUSED') {
-    reservasRevogadas = (await liberarReservas()).length;
-    const r = await ordersDb.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM sales_messages WHERE status = 'DISPATCHING'`);
-    despachando = r.rows[0]?.n ?? 0;
-    if (despachando > 0) {
-      console.warn(`[sales] modo PAUSED: ${despachando} mensagem(ns) em DISPATCHING já autorizadas não podem ser recolhidas; o resultado delas ainda será registrado`);
-    }
+  if (modoFechaEnvio(modo)) {
+    ({ reservasRevogadas, despachando } = await revogarReservas(`modo ${modo}`, por));
   }
   await registrarAuditoria('sales_modo_alterado', por, { tipo: 'sales_settings' }, {
     de: anterior, para: modo, motivo: motivo ?? null, reservasRevogadas,

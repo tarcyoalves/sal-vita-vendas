@@ -198,6 +198,31 @@ describe('despacho', () => {
   it('canal desligado nega mesmo com tudo aprovado', () => {
     expect(decidirAutorizacao(entrada({ canal: { ativo: false, politicaAprovada: true } }))).toMatchObject({ ok: false, codigo: 'canal_fechado' });
   });
+  it('423 só para condição global (o executor para o ciclo)', () => {
+    expect(decidirAutorizacao(entrada({ modo: 'PAUSED' }))).toMatchObject({ http: 423, codigo: 'pausado' });
+    expect(decidirAutorizacao(entrada({ canal: { ativo: true, politicaAprovada: false } }))).toMatchObject({ http: 423, codigo: 'canal_fechado' });
+    expect(decidirAutorizacao(entrada({ mensagem: { ...entrada().mensagem, approvedAt: null } }))).toMatchObject({ http: 423, codigo: 'modo_nao_permite' });
+    for (const codigo of ['teto_diario', 'teto_novas']) {
+      expect(decidirAutorizacao(entrada({ arbitro: { ok: false, codigo, motivo: 'x' } }))).toMatchObject({ ok: false, http: 423, codigo, liberarReserva: true });
+    }
+    expect(decidirAutorizacao(entrada({ arbitro: { ok: false, codigo: 'contagem_indisponivel', motivo: 'x' } }))).toMatchObject({ http: 503, liberarReserva: true });
+  });
+  it('recusa de UMA mensagem é 409 (o executor pula e segue) e não para a fila', () => {
+    const liberaEm = new Date(agora.getTime() + 7 * 3_600_000);
+    const d = decidirAutorizacao(entrada({ arbitro: { ok: false, codigo: 'intervalo_minimo', motivo: 'x', liberaEm } }));
+    expect(d).toMatchObject({ ok: false, http: 409, codigo: 'intervalo_minimo', cancelar: false, liberarReserva: true, adiarAte: liberaEm });
+    const t = decidirAutorizacao(entrada({ arbitro: { ok: false, codigo: 'teto_empresa', motivo: 'x' } }));
+    expect(t).toMatchObject({ ok: false, http: 409, codigo: 'teto_empresa', liberarReserva: true });
+    if (!t.ok) expect(t.adiarAte?.getTime()).toBeGreaterThan(agora.getTime());
+    expect(decidirAutorizacao(entrada({ jornada: { state: 'CONTACT_REVIEW', pausedReason: 'auto_resposta' } }))).toMatchObject({ ok: false, http: 409, codigo: 'jornada_pausada', liberarReserva: true });
+  });
+  it('o árbitro diz quando o intervalo mínimo acaba', () => {
+    const lim = { ...SALES_SETTINGS_DEFAULTS.limites, intervaloMinHoras: 48 };
+    const ultimo = new Date(agora.getTime() - 10 * 3_600_000);
+    const a = arbitrar({ agora, limites: lim, ultimoEnvioMarketingEm: ultimo, enviosHoje: 0, novasHoje: 0, ehPrimeiroContato: true, enviadasParaEmpresa: 0 });
+    expect(a).toMatchObject({ ok: false, codigo: 'intervalo_minimo' });
+    if (!a.ok) expect(a.liberaEm?.toISOString()).toBe(new Date(ultimo.getTime() + 48 * 3_600_000).toISOString());
+  });
 
   const tok = novoToken();
   const res = {
@@ -213,9 +238,24 @@ describe('despacho', () => {
   it('executor que volta depois do prazo ainda pode informar ACCEPTED de uma tentativa UNKNOWN', () => {
     expect(decidirResultado({ ...res, status: 'UNKNOWN' })).toMatchObject({ tipo: 'aplicar', novoStatus: 'ACCEPTED' });
   });
-  it('falha temporária com espera crescente; esgotou vira permanente', () => {
+  it('falha temporária com espera crescente; esgotou vira permanente (attempts = autorizações concedidas)', () => {
+    // attempts sobe na autorização (RESERVED → DISPATCHING), não na reserva: na 1ª tentativa vale 1.
     expect(decidirResultado({ ...res, resultado: 'RETRYABLE_FAILURE', attempts: 1 })).toMatchObject({ novoStatus: 'RETRYABLE_FAILURE', agendarRetentativaEmMs: 5 * 60_000 });
+    expect(decidirResultado({ ...res, resultado: 'RETRYABLE_FAILURE', attempts: 2 })).toMatchObject({ novoStatus: 'RETRYABLE_FAILURE', agendarRetentativaEmMs: 30 * 60_000 });
     expect(decidirResultado({ ...res, resultado: 'RETRYABLE_FAILURE', attempts: 3 })).toMatchObject({ novoStatus: 'PERMANENT_FAILURE' });
+  });
+  it('a reserva não gasta tentativa e a autorização gasta (código da fila)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('server/lib/sales/hermes.ts', 'utf8');
+    const reserva = src.slice(src.indexOf('export async function reservar'), src.indexOf('export async function autorizar'));
+    const autorizacao = src.slice(src.indexOf('export async function autorizar'), src.indexOf('async function cancelarReservada'));
+    expect(reserva).not.toMatch(/attempts = m\.attempts \+ 1/);
+    expect(autorizacao).toMatch(/status = 'DISPATCHING'[\s\S]*attempts = attempts \+ 1/);
+    // A reserva respeita next_retry_at também em PENDING (mensagem adiada pelo intervalo mínimo).
+    expect(reserva).toMatch(/m\.status IN \('PENDING', 'RETRYABLE_FAILURE'\) AND \(m\.next_retry_at IS NULL OR m\.next_retry_at <=/);
+    // O UPDATE final da autorização reconfere modo e canal nas linhas de sales_settings.
+    expect(autorizacao).toMatch(/sm\.key = 'modo'[\s\S]*IN \('REVIEW', 'SEMI_AUTONOMOUS', 'AUTONOMOUS'\)/);
+    expect(autorizacao).toMatch(/sc\.value->>'ativo' = 'true' AND sc\.value->>'politicaAprovada' = 'true'/);
   });
   it('conciliação: reserva vencida volta; despacho vencido vira desconhecido (sem reenvio)', () => {
     expect(decidirConciliacao('RESERVED', new Date(agora.getTime() - 1), null, agora)).toEqual({ tipo: 'liberar_reserva' });
@@ -223,6 +263,12 @@ describe('despacho', () => {
     expect(decidirConciliacao('UNKNOWN', null, null, agora)).toEqual({ tipo: 'nada' });
     expect(podeSerReservada('UNKNOWN', null, agora)).toBe(false);
     expect(podeSerReservada('RETRYABLE_FAILURE', new Date(agora.getTime() + 1000), agora)).toBe(false);
+  });
+  it('PENDING adiada só volta à fila depois de next_retry_at', () => {
+    expect(podeSerReservada('PENDING', null, agora)).toBe(true);
+    expect(podeSerReservada('PENDING', new Date(agora.getTime() + 1000), agora)).toBe(false);
+    expect(podeSerReservada('PENDING', new Date(agora.getTime() - 1000), agora)).toBe(true);
+    expect(podeSerReservada('RESERVED', null, agora)).toBe(false);
   });
 });
 
@@ -273,6 +319,16 @@ describe('mensagem', () => {
     expect(a).toMatch(/^<sv\.[0-9a-f]{32}@vendas\.exemplo\.com\.br>$/);
     expect(montarMessageId(chaveLogicaProspeccao(7, 0), 'abc', canal)).toBe(a);
     expect(montarMessageId(chaveLogicaProspeccao(7, 0), 'abc', SALES_SETTINGS_DEFAULTS.canal)).toBeNull();
+  });
+  it('chave lógica do passo 0 por lote: reentrar noutro dia é mensagem nova (Message-ID novo)', () => {
+    expect(chaveLogicaProspeccao(7, 0)).toBe('prosp:7:0');
+    expect(chaveLogicaProspeccao(7, 0, null)).toBe('prosp:7:0');
+    expect(chaveLogicaProspeccao(7, 0, 12)).toBe('prosp:7:0:12');
+    expect(chaveLogicaProspeccao(7, 1)).toBe('prosp:7:1');
+    const canal = { ...SALES_SETTINGS_DEFAULTS.canal, dominio: 'vendas.exemplo.com.br' };
+    const a = montarMessageId(chaveLogicaProspeccao(7, 0, 12), 'abc', canal);
+    expect(a).not.toBeNull();
+    expect(a).not.toBe(montarMessageId(chaveLogicaProspeccao(7, 0, 13), 'abc', canal));
   });
 });
 

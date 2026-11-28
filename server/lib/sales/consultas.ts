@@ -331,12 +331,24 @@ export async function jornadasJaProspectadas(journeyIds: readonly number[], exce
   return out;
 }
 
-/** Empresas que já entraram na prospecção (qualquer mensagem, inclusive cancelada, ou jornada além de QUALIFIED). */
-export async function empresasJaProspectadas(companyIds: readonly number[]): Promise<Set<number>> {
+/**
+ * Empresas que não podem entrar no lote agora:
+ *  - "prospectada" = alguma mensagem ACEITA ou de resultado DESCONHECIDO (nunca reenviar), ou ainda viva
+ *    na fila (PENDING, RESERVED, DISPATCHING, RETRYABLE_FAILURE);
+ *  - jornada da empresa além de QUALIFIED (no lote, contatada, encerrada, suprimida…);
+ *  - mensagem no lote de HOJE (`loteHojeId`), mesmo cancelada: o corte do dono não volta no mesmo dia.
+ * Mensagem CANCELLED de lote antigo (cortada ou vencida sem aprovação) NÃO conta: a empresa volta.
+ */
+export async function empresasJaProspectadas(companyIds: readonly number[], loteHojeId: number | null = null): Promise<Set<number>> {
   const out = new Set<number>();
   for (const parte of emPedacos(companyIds, 400)) {
     const r = await ordersDb.execute<{ id: number }>(sql`
       SELECT company_id AS id FROM sales_messages WHERE company_id IN (${listaSql(parte)})
+        AND (status IN ('ACCEPTED', 'UNKNOWN', 'PENDING', 'RESERVED', 'DISPATCHING', 'RETRYABLE_FAILURE')
+             ${loteHojeId !== null ? sql`OR batch_id = ${loteHojeId}` : sql``})
+      UNION
+      SELECT a.company_id FROM sales_message_attempts t JOIN sales_messages a ON a.id = t.message_id
+        WHERE a.company_id IN (${listaSql(parte)}) AND t.outcome IN ('ACCEPTED', 'UNKNOWN')
       UNION
       SELECT company_id FROM sales_journeys WHERE company_id IN (${listaSql(parte)}) AND state NOT IN ('IDENTIFIED', 'QUALIFIED')
     `);

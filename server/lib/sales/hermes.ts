@@ -8,7 +8,7 @@
 //    jornada) e, num único comando, passa a DISPATCHING com fence conferido E grava a tentativa
 //    ANTES de responder. Só uma autorização por fence vence.
 //  - RESULTADO é idempotente; UNKNOWN nunca é reenviado sozinho.
-import { and, asc, desc, eq, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { ordersDb } from '../../db/ordersDb';
 import { salesEvents, salesExceptions, salesHeartbeats, salesJourneys, salesMessageAttempts, salesMessages } from '../../db/schema';
@@ -16,7 +16,7 @@ import { safeErr } from '../logSafe';
 import type {
   autorizarBodySchema, eventoCaixaBodySchema, heartbeatBodySchema, propostaBodySchema, reservarBodySchema, resultadoBodySchema,
 } from '../../../shared/sales';
-import { getSalesSettings } from './settings';
+import { geracaoSettingsLocal, getSalesSettings } from './settings';
 import { arbitrar, type DecisaoArbitro } from './arbitro';
 import { avaliarElegibilidade } from './elegibilidade';
 import { transicionar } from './estados';
@@ -44,9 +44,31 @@ type LinhaMensagem = typeof salesMessages.$inferSelect;
 
 // ── GET /api/sales/modo ──────────────────────────────────────────────────────────────────────
 
-export async function obterModo(): Promise<RespostaRota> {
-  const s = await getSalesSettings();
-  return ok({ modo: s.modo, canal: { ativo: s.canal.ativo, politicaAprovada: s.canal.politicaAprovada }, agenteAtivo: s.agente.ativo, limites: s.limites });
+// O executor chama /modo a cada ciclo: a resposta sai de um cache curto POR INSTÂNCIA (30 s).
+// Gravação do painel na MESMA instância descarta o cache na hora (geracaoSettingsLocal); em outra
+// instância, aparece em até MODO_CACHE_MS. Isso é seguro porque /modo só orienta o executor:
+// reservar e autorizar leem as configurações do banco a cada chamada (e o UPDATE final da
+// autorização confere modo e canal no mesmo comando), então uma pausa vale para o despacho na hora.
+export const MODO_CACHE_MS = 30_000;
+let cacheModo: { ate: number; geracao: number; corpo: Promise<unknown> } | null = null;
+
+/** Só para testes. */
+export function limparCacheModo(): void {
+  cacheModo = null;
+}
+
+export async function obterModo(agoraMs = Date.now()): Promise<RespostaRota> {
+  const geracao = geracaoSettingsLocal();
+  if (!cacheModo || cacheModo.ate <= agoraMs || cacheModo.geracao !== geracao) {
+    // Guarda a PROMESSA: chamadas simultâneas na mesma instância fazem uma única consulta.
+    const corpo = getSalesSettings().then((s) => ({
+      modo: s.modo, canal: { ativo: s.canal.ativo, politicaAprovada: s.canal.politicaAprovada }, agenteAtivo: s.agente.ativo, limites: s.limites,
+    }));
+    const entrada = { ate: agoraMs + MODO_CACHE_MS, geracao, corpo };
+    cacheModo = entrada;
+    corpo.catch(() => { if (cacheModo === entrada) cacheModo = null; }); // falha não fica em cache
+  }
+  return ok(await cacheModo.corpo);
 }
 
 // ── POST /api/sales/fila/reservar ────────────────────────────────────────────────────────────
@@ -77,10 +99,9 @@ export async function reservar(body: z.infer<typeof reservarBodySchema>): Promis
   }).from(salesMessages)
     .innerJoin(salesJourneys, eq(salesJourneys.id, salesMessages.journeyId))
     .where(and(
-      or(
-        eq(salesMessages.status, 'PENDING'),
-        and(eq(salesMessages.status, 'RETRYABLE_FAILURE'), or(isNull(salesMessages.nextRetryAt), lte(salesMessages.nextRetryAt, agora))),
-      ),
+      // PENDING adiada (intervalo mínimo/teto da empresa) e RETRYABLE em backoff esperam `next_retry_at`.
+      inArray(salesMessages.status, ['PENDING', 'RETRYABLE_FAILURE']),
+      or(isNull(salesMessages.nextRetryAt), lte(salesMessages.nextRetryAt, agora)),
       isNull(salesJourneys.pausedReason),
       sql`${salesJourneys.state} = CASE WHEN ${salesMessages.step} = 0 THEN 'CONTACT_REVIEW' ELSE 'CONTACTED' END`,
       aprovacaoSql,
@@ -117,12 +138,14 @@ export async function reservar(body: z.infer<typeof reservarBodySchema>): Promis
   const exigeAprovacao = s.modo === 'REVIEW';
   // UM comando: trava (SKIP LOCKED), confere de novo status, jornada, aprovação e supressão do Premium,
   // e grava a reserva com fence+1 e um token novo por mensagem (só o hash fica no banco).
+  // `attempts` NÃO sobe aqui: conta autorizações (passagem a DISPATCHING), não reservas — uma reserva
+  // devolvida (intervalo, pausa, revogação) não gasta tentativa.
   const r = await ordersDb.execute<{ id: number; fence: number; hash: string }>(sql`
     WITH alvo AS MATERIALIZED (
       SELECT m.id FROM sales_messages m
       JOIN sales_journeys j ON j.id = m.journey_id
       WHERE m.id IN (${listaSql(f.ids)})
-        AND (m.status = 'PENDING' OR (m.status = 'RETRYABLE_FAILURE' AND (m.next_retry_at IS NULL OR m.next_retry_at <= ${iso(agora)}::timestamp)))
+        AND m.status IN ('PENDING', 'RETRYABLE_FAILURE') AND (m.next_retry_at IS NULL OR m.next_retry_at <= ${iso(agora)}::timestamp)
         AND j.paused_reason IS NULL
         AND j.state = CASE WHEN m.step = 0 THEN 'CONTACT_REVIEW' ELSE 'CONTACTED' END
         ${exigeAprovacao ? sql`AND m.approved_at IS NOT NULL` : sql``}
@@ -140,7 +163,7 @@ export async function reservar(body: z.infer<typeof reservarBodySchema>): Promis
     )
     UPDATE sales_messages m SET
       status = 'RESERVED', reserved_by = ${body.executor}, reserved_until = ${iso(ate)}::timestamp,
-      reservation_token_hash = tok.hash, fence = m.fence + 1, attempts = m.attempts + 1, updated_at = now()
+      reservation_token_hash = tok.hash, fence = m.fence + 1, updated_at = now()
     FROM numerado JOIN tok ON tok.rn = numerado.rn
     WHERE m.id = numerado.id
     RETURNING m.id, m.fence, m.reservation_token_hash AS hash
@@ -208,7 +231,7 @@ export async function autorizar(id: number, body: z.infer<typeof autorizarBodySc
   });
   if (!d.ok) {
     if (d.cancelar) await cancelarReservada(m, `${d.codigo}: ${d.motivo}`);
-    else if (d.liberarReserva) await liberarReservada(m);
+    else if (d.liberarReserva) await liberarReservada(m, d.adiarAte ?? null);
     return erro(d.http, d.codigo, d.motivo);
   }
 
@@ -226,20 +249,38 @@ export async function autorizar(id: number, body: z.infer<typeof autorizarBodySc
   const despachoToken = novoToken();
   const expiraEm = new Date(agora.getTime() + s.limites.despachoSegundos * 1000);
   // UM comando: RESERVED → DISPATCHING só com o fence e o token desta reserva, e a tentativa gravada.
+  // O mesmo comando confere de novo, nas linhas de sales_settings, que o modo ainda envia e o canal
+  // continua ligado com política aprovada: uma pausa gravada depois da leitura acima vence aqui.
+  // `attempts` sobe AQUI (cada autorização é uma tentativa real de envio).
   const r = await ordersDb.execute<{ id: number }>(sql`
     WITH m AS (
       UPDATE sales_messages SET status = 'DISPATCHING', dispatch_token_hash = ${hashToken(despachoToken)},
         dispatch_expires_at = ${iso(expiraEm)}::timestamp, last_attempt_at = ${iso(agora)}::timestamp,
-        reservation_token_hash = NULL, updated_at = now()
+        reservation_token_hash = NULL, attempts = attempts + 1, next_retry_at = NULL, updated_at = now()
       WHERE id = ${m.id} AND status = 'RESERVED' AND fence = ${body.fence} AND reserved_by = ${body.executor}
         AND reservation_token_hash = ${hashToken(body.reservaToken)} AND reserved_until > ${iso(agora)}::timestamp
+        AND EXISTS (SELECT 1 FROM sales_settings sm WHERE sm.key = 'modo'
+                    AND sm.value #>> '{}' IN ('REVIEW', 'SEMI_AUTONOMOUS', 'AUTONOMOUS'))
+        AND EXISTS (SELECT 1 FROM sales_settings sc WHERE sc.key = 'canal'
+                    AND sc.value->>'ativo' = 'true' AND sc.value->>'politicaAprovada' = 'true')
       RETURNING id, fence
     )
     INSERT INTO sales_message_attempts (message_id, fence, executor, started_at)
     SELECT id, fence, ${body.executor}, ${iso(agora)}::timestamp FROM m
     RETURNING message_id AS id
   `);
-  if (r.rows.length === 0) return erro(409, 'corrida', 'a reserva mudou durante a autorização; não envie');
+  if (r.rows.length === 0) {
+    // Modo ou canal mudou entre a leitura e o UPDATE: condição global (423, o executor para o ciclo).
+    const agoraS = await getSalesSettings().catch(() => null);
+    if (!agoraS) return erro(503, 'configuracao_indisponivel', 'não foi possível reler modo e canal; não envie');
+    const fechado = motivoSemReserva(agoraS.modo, agoraS.canal);
+    if (fechado) {
+      await liberarReservada(m);
+      const codigo = agoraS.modo === 'PAUSED' ? 'pausado' : agoraS.modo === 'DRY_RUN' ? 'modo_nao_permite' : 'canal_fechado';
+      return erro(423, codigo, fechado);
+    }
+    return erro(409, 'corrida', 'a reserva mudou durante a autorização; não envie');
+  }
   return ok({
     despachoToken,
     expiraEm: expiraEm.toISOString(),
@@ -260,10 +301,12 @@ async function cancelarReservada(m: LinhaMensagem, motivo: string): Promise<void
   `);
 }
 
-async function liberarReservada(m: LinhaMensagem): Promise<void> {
+/** Devolve a reserva (RESERVED → PENDING, fence+1). Com `adiarAte`, a fila só a oferece depois dessa hora. */
+async function liberarReservada(m: LinhaMensagem, adiarAte: Date | null = null): Promise<void> {
   await ordersDb.execute(sql`
     UPDATE sales_messages SET status = 'PENDING', fence = fence + 1, reserved_by = NULL, reserved_until = NULL,
-      reservation_token_hash = NULL, updated_at = now()
+      reservation_token_hash = NULL,
+      next_retry_at = ${adiarAte ? sql`${iso(adiarAte)}::timestamp` : sql`next_retry_at`}, updated_at = now()
     WHERE id = ${m.id} AND status = 'RESERVED' AND fence = ${m.fence}
   `);
 }
@@ -395,23 +438,25 @@ export async function eventoCaixa(body: z.infer<typeof eventoCaixaBodySchema>): 
     if (eventoId === null) return ok({ duplicado: true });
   }
 
+  // Sem jornada: saída, reclamação e devolução SUPRIMEM mesmo assim (reclamação ainda pausa tudo);
+  // só resposta e resposta automática de endereço desconhecido ficam guardadas e ignoradas.
   const plano = planejarEvento({ tipo: body.tipo, classificacao: body.classificacao ?? null, temJornada: !!j, duplicado: false });
-  if (plano.tipo !== 'aplicar' || !j) {
-    await marcarEvento(eventoId, 'ignorado:email_sem_jornada');
+  if (plano.tipo !== 'aplicar') {
+    await marcarEvento(eventoId, plano.tipo === 'ignorado' ? `ignorado:${plano.motivo}` : 'duplicado');
     return ok({ ok: true, ignorado: true });
   }
 
   const falhas: string[] = [];
   for (const acao of plano.acoes) {
     try {
-      const f = await executarAcao(acao, j, body, eventoId);
+      const f = await executarAcao(acao, j ?? null, body, eventoId);
       if (f) falhas.push(f);
     } catch (err) {
       console.error(`[sales] evento ${body.tipo}: ação ${acao.tipo} falhou:`, safeErr(err));
       falhas.push(acao.tipo);
     }
   }
-  await atualizarJornada(j.id, () => ({ lastEventAt: agora })).catch(() => undefined);
+  if (j) await atualizarJornada(j.id, () => ({ lastEventAt: agora })).catch(() => undefined);
   await marcarEvento(eventoId, falhas.length ? `falhou: ${falhas.join(', ')}` : 'ok', falhas.length === 0);
   return { http: falhas.length ? 500 : 200, corpo: { ok: falhas.length === 0, efeitos: plano.acoes.map((a) => a.tipo), falhas } };
 }
@@ -420,19 +465,25 @@ async function marcarEvento(id: number, resultadoTexto: string, processado = tru
   await ordersDb.update(salesEvents).set({ result: resultadoTexto.slice(0, 300), processedAt: processado ? new Date() : null }).where(eq(salesEvents.id, id));
 }
 
-/** Executa uma ação do plano. Devolve o nome da falha, ou null. Todas são idempotentes (reprocessar não duplica). */
-async function executarAcao(acao: AcaoEvento, j: LinhaJornada, body: z.infer<typeof eventoCaixaBodySchema>, eventoId: number): Promise<string | null> {
+/**
+ * Executa uma ação do plano. Devolve o nome da falha, ou null. Todas são idempotentes (reprocessar não
+ * duplica). `j` null = endereço sem jornada: o plano só traz supressão, pausa geral e exceção.
+ */
+async function executarAcao(acao: AcaoEvento, j: LinhaJornada | null, body: z.infer<typeof eventoCaixaBodySchema>, eventoId: number): Promise<string | null> {
   switch (acao.tipo) {
     case 'transicao': {
+      if (!j) return 'transicao:sem_jornada';
       const r = await aplicarEvento(j.id, acao.evento, () => (acao.evento === 'RESPOSTA_NEGATIVA' ? { closedReason: `resposta:${body.classificacao ?? 'negativa'}`, nextActionAt: null } : { nextActionAt: null }));
       if (!r.ok && r.motivo === 'recusada' && acao.aoRecusar === 'pausar') await pausarJornadaBanco(j.id, 'resposta_humana');
       if (!r.ok && r.motivo === 'corrida') return 'transicao:corrida';
       return null;
     }
     case 'cancelar_pendentes':
+      if (!j) return 'cancelar_pendentes:sem_jornada';
       await cancelarPendentes({ journeyId: j.id }, acao.motivo);
       return null;
     case 'pausar': {
+      if (!j) return 'pausar:sem_jornada';
       const r = await pausarJornadaBanco(j.id, acao.motivo);
       return !r.ok && r.motivo === 'corrida' ? 'pausar:corrida' : null;
     }
@@ -448,9 +499,9 @@ async function executarAcao(acao: AcaoEvento, j: LinhaJornada, body: z.infer<typ
         severity: acao.severity,
         title: titulo,
         detail: trecho || undefined,
-        evidence: { eventoId, tipo: body.tipo, classificacao: body.classificacao ?? null, emRespostaA: body.emRespostaA ?? null },
-        companyId: j.companyId,
-        contactId: j.contactId,
+        evidence: { eventoId, tipo: body.tipo, classificacao: body.classificacao ?? null, emRespostaA: body.emRespostaA ?? null, semJornada: !j },
+        companyId: j?.companyId ?? null,
+        contactId: j?.contactId ?? null,
         createdBy: 'hermes:caixa',
         criarTarefaCrm: acao.criarTarefaCrm ? {
           titulo,

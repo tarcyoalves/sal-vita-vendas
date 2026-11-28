@@ -19,7 +19,8 @@ export interface EntradaArbitro {
   enviadasParaEmpresa: number;
 }
 
-export type DecisaoArbitro = { ok: true } | { ok: false; codigo: string; motivo: string };
+/** `liberaEm`: quando a recusa deixa de valer (só no intervalo mínimo por endereço). */
+export type DecisaoArbitro = { ok: true } | { ok: false; codigo: string; motivo: string; liberaEm?: Date };
 
 export function arbitrar(e: EntradaArbitro): DecisaoArbitro {
   const { limites } = e;
@@ -35,7 +36,10 @@ export function arbitrar(e: EntradaArbitro): DecisaoArbitro {
   if (e.ultimoEnvioMarketingEm) {
     const horas = (e.agora.getTime() - e.ultimoEnvioMarketingEm.getTime()) / 3_600_000;
     if (horas < limites.intervaloMinHoras) {
-      return { ok: false, codigo: 'intervalo_minimo', motivo: `menos de ${limites.intervaloMinHoras} h desde a última mensagem a este endereço` };
+      return {
+        ok: false, codigo: 'intervalo_minimo', motivo: `menos de ${limites.intervaloMinHoras} h desde a última mensagem a este endereço`,
+        liberaEm: new Date(e.ultimoEnvioMarketingEm.getTime() + limites.intervaloMinHoras * 3_600_000),
+      };
     }
   }
   return { ok: true };

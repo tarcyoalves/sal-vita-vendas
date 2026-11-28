@@ -23,11 +23,22 @@ export async function getSalesSetting<K extends SalesSettingKey>(key: K): Promis
   return interpretarSetting(key, row?.value);
 }
 
+let geracaoLocal = 0;
+/**
+ * Sobe a cada gravação feita NESTA instância. Quem guarda as configurações em cache (ex.: `GET
+ * /api/sales/modo`) compara e descarta o cache na hora. Gravação feita em OUTRA instância só aparece
+ * quando o cache vence.
+ */
+export function geracaoSettingsLocal(): number {
+  return geracaoLocal;
+}
+
 /** Grava uma chave (valida antes). `por` vai para a auditoria e para updated_by. */
 export async function setSalesSetting<K extends SalesSettingKey>(key: K, value: SalesSettings[K], por: string): Promise<SalesSettings[K]> {
   const parsed = SALES_SETTINGS_SCHEMAS[key].parse(value) as SalesSettings[K];
   await ordersDb.insert(salesSettings)
     .values({ key, value: parsed, updatedAt: new Date(), updatedBy: por })
     .onConflictDoUpdate({ target: salesSettings.key, set: { value: parsed, updatedAt: new Date(), updatedBy: por } });
+  geracaoLocal += 1;
   return parsed;
 }

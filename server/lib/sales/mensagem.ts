@@ -65,6 +65,12 @@ export function montarMessageId(logicalKey: string, contentHash: string, canal: 
   return `<sv.${local}@${dominio}>`;
 }
 
-export function chaveLogicaProspeccao(journeyId: number, passo: number): string {
-  return `prosp:${journeyId}:${passo}`;
+/**
+ * Chave lógica (única em `sales_messages`). Passos da cadência (≥1): `prosp:<jornada>:<passo>`.
+ * Primeiro contato: `prosp:<jornada>:0:<lote>` — a jornada pode voltar a um lote de OUTRO dia depois
+ * de cortada ou vencida sem aprovação, e cada entrada no lote é uma mensagem nova (Message-ID novo).
+ * Sem `loteId`, o formato antigo (compatível com mensagens já gravadas).
+ */
+export function chaveLogicaProspeccao(journeyId: number, passo: number, loteId?: number | null): string {
+  return loteId === undefined || loteId === null ? `prosp:${journeyId}:${passo}` : `prosp:${journeyId}:${passo}:${loteId}`;
 }

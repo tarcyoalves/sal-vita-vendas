@@ -9,7 +9,7 @@ import {
   agregarPorDimensao, aprovacaoHerdada, canalDoContato, centavosDeTexto, chaveHeartbeatAusente, codificarExcertoRadar,
   confiancaDaFonte, contarMotivos, decidirCadencia, estadoDaJornada, estadoNaPonte, executorAtrasado, filtrarReservaveis,
   fonteDoCanal, fonteEmailDoRadar, intervaloRelatorio, lerExcertoRadar, lerPayloadTarefa, marcadorSales,
-  montarEntradaElegibilidade, montarRelatorio, montarTarefaCrm, motivoSemReserva, planejarConciliacao, planejarEvento,
+  executoresComResultadosPendentes, modoExpiraLotes, montarEntradaElegibilidade, montarRelatorio, montarTarefaCrm, motivoSemReserva, planejarConciliacao, planejarEvento,
   preRequisitoMensagem, proximaAcaoAposEnvio, qualifica, resultadoGravadoDe, selecionarLote, statusDaMensagem, tipoDeAtor,
   totalPassos, vagasDoLote, ESPERA_FINAL_DIAS, type AgregadosRelatorio, type CandidataReserva, type ContextoJornada,
 } from '../server/lib/sales/operacoesPuro';
@@ -268,8 +268,8 @@ describe('V3.1: algo muda entre a reserva e o despacho → negado', () => {
   it('compra depois da reserva (CUSTOMER): 409 e cancela', () => {
     expect(decidirAutorizacao(autorizacao({ jornada: { state: 'CUSTOMER', pausedReason: null } }))).toMatchObject({ ok: false, codigo: 'estado_mudou', cancelar: true });
   });
-  it('pausa da jornada ou da operação depois da reserva: 423 e libera a reserva', () => {
-    expect(decidirAutorizacao(autorizacao({ jornada: { state: 'CONTACT_REVIEW', pausedReason: 'auto_resposta' } }))).toMatchObject({ ok: false, http: 423, liberarReserva: true });
+  it('pausa da jornada (409, só esta mensagem) ou da operação (423, para o ciclo) depois da reserva: libera a reserva', () => {
+    expect(decidirAutorizacao(autorizacao({ jornada: { state: 'CONTACT_REVIEW', pausedReason: 'auto_resposta' } }))).toMatchObject({ ok: false, http: 409, codigo: 'jornada_pausada', liberarReserva: true });
     expect(decidirAutorizacao(autorizacao({ modo: 'PAUSED' }))).toMatchObject({ ok: false, http: 423, codigo: 'pausado', liberarReserva: true });
   });
   it('a planificação da caixa de entrada faz exatamente isso: resposta cancela pendentes e muda o estado', () => {
@@ -317,8 +317,36 @@ describe('V3.1: evento duplicado → sem efeito duplo', () => {
     expect(marcadorSales('tarefa:resposta_humana:<a@b>')).toBe('[sales:tarefa:resposta_humana:<a@b>]');
     expect(chaveHeartbeatAusente('exec-1', AGORA)).toBe(chaveHeartbeatAusente('exec-1', new Date(AGORA.getTime() + 30 * 60_000 - 1)));
   });
-  it('e-mail sem jornada: guardado e ignorado', () => {
-    expect(planejarEvento({ tipo: 'PEDIU_PARA_SAIR', classificacao: null, temJornada: false, duplicado: false })).toEqual({ tipo: 'ignorado', motivo: 'email_sem_jornada' });
+  it('e-mail sem jornada: resposta e resposta automática são guardadas e ignoradas', () => {
+    expect(planejarEvento({ tipo: 'RESPOSTA', classificacao: 'pediu_preco', temJornada: false, duplicado: false })).toEqual({ tipo: 'ignorado', motivo: 'email_sem_jornada' });
+    expect(planejarEvento({ tipo: 'AUTO_RESPOSTA', classificacao: null, temJornada: false, duplicado: false })).toEqual({ tipo: 'ignorado', motivo: 'email_sem_jornada' });
+  });
+  it('e-mail sem jornada: saída, reclamação e devolução SUPRIMEM mesmo assim', () => {
+    for (const temJornada of [false, true]) {
+      expect(planejarEvento({ tipo: 'PEDIU_PARA_SAIR', classificacao: null, temJornada, duplicado: false }))
+        .toEqual({ tipo: 'aplicar', acoes: [{ tipo: 'suprimir', reason: 'unsubscribe' }] });
+      expect(planejarEvento({ tipo: 'DEVOLVIDO', classificacao: null, temJornada, duplicado: false }))
+        .toEqual({ tipo: 'aplicar', acoes: [{ tipo: 'suprimir', reason: 'bounce' }] });
+      const r = planejarEvento({ tipo: 'RECLAMACAO', classificacao: null, temJornada, duplicado: false });
+      expect(r.tipo).toBe('aplicar');
+      if (r.tipo === 'aplicar') {
+        // Reclamação: suprime, pausa TODA a operação e abre exceção crítica — com ou sem jornada.
+        expect(r.acoes).toEqual(expect.arrayContaining([
+          { tipo: 'suprimir', reason: 'complaint' },
+          { tipo: 'pausar_operacao', motivo: 'reclamacao' },
+          expect.objectContaining({ tipo: 'excecao', kind: 'reclamacao', severity: 'critica' }),
+        ]));
+        // Nenhuma ação que precise de jornada.
+        expect(r.acoes.some((a) => a.tipo === 'transicao' || a.tipo === 'pausar' || a.tipo === 'cancelar_pendentes')).toBe(false);
+      }
+    }
+    expect(planejarEvento({ tipo: 'RECLAMACAO', classificacao: null, temJornada: false, duplicado: true })).toEqual({ tipo: 'duplicado' });
+  });
+  it('a rota da caixa não descarta mais o evento só por não haver jornada', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('server/lib/sales/hermes.ts', 'utf8');
+    expect(src).not.toMatch(/plano\.tipo !== 'aplicar' \|\| !j/);
+    expect(src).toMatch(/executarAcao\(acao, j \?\? null, body, eventoId\)/);
   });
 });
 
@@ -457,11 +485,75 @@ describe('descadastro da prospecção reusa /api/unsubscribe', () => {
     const r = linkDescadastroProspeccao({ token: '3f1c0e6e-1111-4c4c-8888-123456789abc', baseUrl: 'https://www.premium.salvitarn.com.br/' });
     expect(r).toEqual({ ok: true, url: 'https://www.premium.salvitarn.com.br/api/unsubscribe?t=3f1c0e6e-1111-4c4c-8888-123456789abc' });
   });
+  it('lote antigo sem aprovação só expira onde a aprovação é exigida ou nada sai', () => {
+    expect(modoExpiraLotes('REVIEW')).toBe(true);
+    expect(modoExpiraLotes('DRY_RUN')).toBe(true);
+    expect(modoExpiraLotes('PAUSED')).toBe(true);
+    expect(modoExpiraLotes('SEMI_AUTONOMOUS')).toBe(false);
+    expect(modoExpiraLotes('AUTONOMOUS')).toBe(false);
+  });
+  it('empresa com mensagem só cancelada volta ao lote; aceita/desconhecida/em voo não; lote de hoje não', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('server/lib/sales/consultas.ts', 'utf8');
+    const f = src.slice(src.indexOf('export async function empresasJaProspectadas'));
+    expect(f).toMatch(/status IN \('ACCEPTED', 'UNKNOWN', 'PENDING', 'RESERVED', 'DISPATCHING', 'RETRYABLE_FAILURE'\)/);
+    expect(f).not.toMatch(/'CANCELLED'/);
+    expect(f).toMatch(/OR batch_id = \$\{loteHojeId\}/);
+    const ciclo = readFileSync('server/lib/sales/ciclo.ts', 'utf8');
+    expect(ciclo).toMatch(/chaveLogicaProspeccao\(j\.id, 0, batchId\)/);
+    expect(ciclo).toMatch(/SELECT jj\.id, \$\{campos\} FROM jj\s+ON CONFLICT DO NOTHING/);
+    expect(ciclo).toMatch(/modoExpiraLotes\(ctx\.settings\.modo\)/);
+  });
+  it('lote do dia respeita o orçamento do ciclo e recalcula o tamanho no fim', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('server/lib/sales/ciclo.ts', 'utf8');
+    const f = src.slice(src.indexOf('async function loteDoDia'), src.indexOf('async function garantirTokenDescadastro'));
+    expect(f).toMatch(/Date\.now\(\) - ctx\.inicio > ORCAMENTO_MS/);
+    expect(f).toMatch(/\} finally \{[\s\S]*UPDATE sales_batches SET[\s\S]*size = /);
+  });
+  it('retenção de 90 dias das conversas do agente roda no ciclo, não na migração', async () => {
+    const { readFileSync } = await import('node:fs');
+    const ciclo = readFileSync('server/lib/sales/ciclo.ts', 'utf8');
+    expect(ciclo).toMatch(/passo\('retencao_agente'/);
+    expect(ciclo).toMatch(/DELETE FROM sales_agent_conversations[\s\S]*DELETE FROM sales_agent_messages/);
+    expect(readFileSync('server/db/salesMigrate.ts', 'utf8')).not.toMatch(/DELETE FROM sales_agent/);
+  });
+  it('saída para o CRM procura os marcadores numa consulta só', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('server/lib/sales/ciclo.ts', 'utf8');
+    const f = src.slice(src.indexOf('async function saidaCrm'), src.indexOf('async function verificarExecutores'));
+    expect(f.match(/position\(/g)?.length).toBe(1);
+    expect(f.indexOf('position(')).toBeLessThan(f.indexOf('for (const op of claim.rows)'));
+  });
   it('o ciclo cancela primeiro contato de lote antigo sem aprovação antes de montar o lote do dia', async () => {
     const { readFileSync } = await import('node:fs');
     const src = readFileSync('server/lib/sales/ciclo.ts', 'utf8');
     expect(src.indexOf("passo('lotes_vencidos'")).toBeGreaterThan(-1);
     expect(src.indexOf("passo('lotes_vencidos'")).toBeLessThan(src.indexOf("passo('lote',"));
     expect(src).toMatch(/b\.batch_date < \$\{hoje\} AND m\.step = 0 AND m\.approved_at IS NULL/);
+  });
+});
+
+describe('conciliação manual "não foi enviada" com executor ainda informando', () => {
+  const agora = new Date('2026-11-28T15:00:00Z');
+  const hb = (executor: string, minAtras: number, contagens: Record<string, number> | null) =>
+    ({ executor, lastSeenAt: new Date(agora.getTime() - minAtras * 60_000), payload: contagens ? { ciclo: 1, contagens } : null });
+  it('heartbeat recente com resultado pendente no diário (diario_pendentes ou resultados_pendentes) bloqueia', () => {
+    expect(executoresComResultadosPendentes([hb('vps1', 2, { diario_pendentes: 1, resultados_pendentes: 0 })], agora)).toEqual(['vps1']);
+    expect(executoresComResultadosPendentes([hb('vps1', 2, { resultados_pendentes: 2 })], agora)).toEqual(['vps1']);
+  });
+  it('sem pendência, heartbeat antigo (>15 min) ou sem contagens não bloqueia', () => {
+    expect(executoresComResultadosPendentes([
+      hb('a', 2, { diario_pendentes: 0, resultados_pendentes: 0, aceitas: 3 }),
+      hb('b', 16, { diario_pendentes: 4 }),
+      hb('c', 1, null),
+    ], agora)).toEqual([]);
+  });
+  it('resolverDesconhecida recusa antes de mexer na mensagem', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('server/lib/sales/operacoes.ts', 'utf8');
+    const f = src.slice(src.indexOf('export async function resolverDesconhecida'));
+    expect(f.indexOf("'executor_com_resultados_pendentes'")).toBeGreaterThan(-1);
+    expect(f.indexOf("'executor_com_resultados_pendentes'")).toBeLessThan(f.indexOf('UPDATE sales_messages'));
   });
 });
