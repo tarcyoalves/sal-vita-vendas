@@ -5,6 +5,7 @@ Disallow: /meu-pedido
 Disallow: /sal-vita-admin
 Disallow: /sal-vita-recovery
 Disallow: /sal-vita-b2b
+Disallow: /sal-vita-vendas
 Disallow: /classic
 Disallow: /api/
 

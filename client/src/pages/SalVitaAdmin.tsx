@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { trpc } from '../lib/trpc';
 import { toast } from 'sonner';
 import { usePremiumAuth } from '../_core/hooks/usePremiumAuth';
 import { RecoveryPanel } from './SalVitaRecovery';
 import { B2bLeadsPanel } from './B2bLeads';
 import { SalVitaEmailMarketing } from './SalVitaEmailMarketing';
+const SalesAdmin = lazy(() => import('./admin/sales/SalesAdmin'));
 import { BrandLogo } from '../components/premium/BrandLogo';
 import { ConfirmDialog } from '../components/premium/admin/ConfirmDialog';
 import { ErrorState } from '../components/premium/admin/ErrorState';
@@ -52,6 +53,7 @@ import {
   ChevronRight,
   HeartHandshake,
   MessageCircle,
+  Target,
 } from 'lucide-react';
 
 /* ── Status config ────────────────────────────────────────── */
@@ -1125,13 +1127,14 @@ export function OrdersPanel() {
 }
 
 /* ── Unified Admin Shell ──────────────────────────────────── */
-type Section = 'orders' | 'recovery' | 'b2b' | 'email-marketing';
+type Section = 'orders' | 'recovery' | 'b2b' | 'email-marketing' | 'vendas-b2b';
 
 const SECTIONS: { key: Section; label: string; icon: any; path: string }[] = [
   { key: 'orders',          label: 'Pedidos',     icon: Package,   path: '/sal-vita-admin' },
   { key: 'recovery',        label: 'Recuperação', icon: RotateCcw, path: '/sal-vita-recovery' },
   { key: 'b2b',             label: 'Leads B2B',   icon: Building2, path: '/sal-vita-b2b' },
   { key: 'email-marketing', label: 'E-mail',      icon: Mail,      path: '/sal-vita-email-marketing' },
+  { key: 'vendas-b2b',      label: 'Vendas B2B',  icon: Target,    path: '/sal-vita-vendas' },
 ];
 
 function sectionFromPath(): Section {
@@ -1213,6 +1216,11 @@ function AdminShell() {
         {section === 'recovery' && <RecoveryPanel />}
         {section === 'b2b' && <B2bLeadsPanel />}
         {section === 'email-marketing' && <SalVitaEmailMarketing />}
+        {section === 'vendas-b2b' && (
+          <Suspense fallback={<RefreshCw className="w-6 h-6 animate-spin text-slate-400 mx-auto my-12" aria-label="Carregando" />}>
+            <SalesAdmin />
+          </Suspense>
+        )}
       </main>
     </div>
   );
