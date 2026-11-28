@@ -4,6 +4,7 @@ import { OfertaCard } from '../components/sales/OfertaCard';
 import { FreteCalculadora } from '../components/sales/FreteCalculadora';
 import { SimuladorRevenda } from '../components/sales/SimuladorRevenda';
 import { FormularioInbound } from '../components/sales/FormularioInbound';
+import SalesAgentWidget from '../components/sales/SalesAgentWidget';
 
 // Página pública /atacado (host premium): landing B2B da caixa de 10 kg. Todo número vem do
 // servidor (salesPublic.oferta, shipping.calculate). Textos em components/sales/atacadoCopy.ts,
@@ -57,7 +58,8 @@ export default function Atacado() {
           </ul>
         </section>
 
-        {/* SalesAgentWidget: o integrador adiciona aqui */}
+        {/* Vendedor virtual: desligado no painel (agente.ativo = false), vira formulário de contato. */}
+        <SalesAgentWidget />
 
         <div className="rounded-3xl p-3 sm:p-4" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #0d2347 50%, #0a1628 100%)', color: '#e2e8f0' }}>
           <FormularioInbound />
