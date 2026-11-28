@@ -11,6 +11,8 @@
 // Perfil (padrão `cargas`, comportamento original). O perfil Premium (caixa de 10 kg para
 // lojas naturais, empórios, granel etc.) usa a regra de nome de shared/radarPremium.ts:
 //   npx tsx scripts/radar/import-receita.ts --dir ./receita-2026-11 --perfil premium --ufs RN,CE,PB,PE --release 2026-11 --dry-run
+// `--segmentos-premium a,b,c` restringe o perfil. Padrão = todos, MENOS os opt-in de volume alto
+// (minimercado, acougue_casa_de_carnes, peixaria, hortifruti). Ex.: --segmentos-premium suplementos,minimercado
 //
 // Também aceita arquivos explícitos em vez de --dir:
 // Para não reler os ~20 GB duas vezes (dry-run e depois gravação), o dry-run pode salvar o
@@ -36,11 +38,14 @@ import {
 } from '../../server/lib/radar/receitaParse';
 import { radarEstablishments } from '../../server/db/schema';
 import { RADAR_ALL_CNAES, segmentsForCnaes } from '../../shared/radar';
-import { PREMIUM_ALL_CNAES } from '../../shared/radarPremium';
+import { PREMIUM_OPT_IN_SEGMENT_KEYS, PREMIUM_SEGMENTS, premiumSegmentsFor, type PremiumSegmentKey } from '../../shared/radarPremium';
 import {
   aplicarPerfil,
-  contarPorSegmentoPremium,
   parsePerfil,
+  parseSegmentosPremium,
+  perfilTag,
+  premiumCnaesProprios,
+  resumoPorSegmentoPremium,
   targetCnaesForPerfil,
   type RadarPerfil,
 } from '../../server/lib/radar/premiumImport';
@@ -58,6 +63,8 @@ interface Args {
   saveFiltered: string | undefined;
   fromFiltered: string | undefined;
   perfil: RadarPerfil;
+  /** Segmentos Premium escolhidos (--segmentos-premium); só vale com perfil premium/ambos. */
+  segmentosPremium: PremiumSegmentKey[];
 }
 
 function parseArgs(argv: string[]): Args {
@@ -72,6 +79,7 @@ function parseArgs(argv: string[]): Args {
   let saveFiltered: string | undefined;
   let fromFiltered: string | undefined;
   let perfilRaw: string | undefined;
+  let segmentosRaw: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -106,6 +114,9 @@ function parseArgs(argv: string[]): Args {
       case '--perfil':
         perfilRaw = argv[++i];
         break;
+      case '--segmentos-premium':
+        segmentosRaw = argv[++i] ?? '';
+        break;
       default:
         if (arg.startsWith('--')) {
           throw new Error(`Argumento desconhecido: ${arg}`);
@@ -132,7 +143,12 @@ function parseArgs(argv: string[]): Args {
   }
 
   if (fromFiltered && saveFiltered) throw new Error('Use --save-filtered OU --from-filtered, não os dois.');
-  return { dir, explicitFiles, ufs, release, dryRun, maxMb, forceSize, skipCleanup, saveFiltered, fromFiltered, perfil: parsePerfil(perfilRaw) };
+  const perfil = parsePerfil(perfilRaw);
+  if (segmentosRaw !== undefined && perfil === 'cargas') {
+    throw new Error('--segmentos-premium só vale com --perfil premium ou ambos.');
+  }
+  const segmentosPremium = parseSegmentosPremium(segmentosRaw);
+  return { dir, explicitFiles, ufs, release, dryRun, maxMb, forceSize, skipCleanup, saveFiltered, fromFiltered, perfil, segmentosPremium };
 }
 
 /** Classifica arquivos pelo nome, como a Receita nomeia os arquivos dentro dos zips
@@ -201,14 +217,14 @@ function estimateSizeMb(rows: readonly RadarEstablishmentRow[]): number {
 
 const BATCH_SIZE = 500;
 
-async function writeToDatabase(rows: RadarEstablishmentRow[], release: string, ufs: readonly string[], cleanup: boolean, perfil: RadarPerfil): Promise<void> {
+async function writeToDatabase(rows: RadarEstablishmentRow[], release: string, ufs: readonly string[], cleanup: boolean, perfil: RadarPerfil, segmentos: readonly PremiumSegmentKey[]): Promise<void> {
   // Import dinâmico de propósito: `server/db/index.ts` lê `DATABASE_URL` assim que é
   // carregado. Um import estático quebraria `--dry-run` sem a variável definida.
   const { db } = await import('../../server/db');
   const listaSql = (cnaes: readonly string[]) => sql`ARRAY[${sql.join(cnaes.map((c) => sql`${c}`), sql`, `)}]::text[]`;
   // Uma CNPJ pode estar nos dois perfis. Ao regravar por um perfil só, preserva os CNAEs do
   // OUTRO perfil que já estavam na linha (`ambos` regrava tudo e não preserva nada).
-  const meusCnaes = targetCnaesForPerfil(perfil);
+  const meusCnaes = targetCnaesForPerfil(perfil, segmentos);
   const cnaesAlvoSet = perfil === 'ambos'
     ? sql`excluded.cnaes_alvo`
     : sql`excluded.cnaes_alvo || ARRAY(SELECT x FROM unnest(radar_establishments.cnaes_alvo) AS x WHERE x <> ALL(${listaSql(meusCnaes)}))`;
@@ -269,11 +285,14 @@ async function writeToDatabase(rows: RadarEstablishmentRow[], release: string, u
   }
   console.log('Removendo registros antigos das UFs importadas (empresa fechou, saiu do CNAE, ou a base mudou)...');
   // Cada perfil só apaga o que é seu: `cargas` não apaga linhas só-Premium e vice-versa.
+  // Premium só apaga CNAEs que sustentam APENAS os segmentos escolhidos: uma rodada padrão não
+  // apaga o que veio de um segmento opt-in (açougue, peixaria...) numa rodada anterior.
+  const proprios = premiumCnaesProprios(segmentos);
   const meuEscopo = perfil === 'cargas'
     ? sql`${radarEstablishments.cnaesAlvo} && ${listaSql(RADAR_ALL_CNAES)}`
     : perfil === 'premium'
-      ? sql`${radarEstablishments.cnaesAlvo} && ${listaSql(PREMIUM_ALL_CNAES)} AND NOT (${radarEstablishments.cnaesAlvo} && ${listaSql(RADAR_ALL_CNAES)})`
-      : undefined;
+      ? sql`${radarEstablishments.cnaesAlvo} && ${listaSql(proprios)} AND NOT (${radarEstablishments.cnaesAlvo} && ${listaSql(RADAR_ALL_CNAES)})`
+      : sql`${radarEstablishments.cnaesAlvo} && ${listaSql([...RADAR_ALL_CNAES, ...proprios])}`;
   await db
     .delete(radarEstablishments)
     .where(and(inArray(radarEstablishments.uf, [...ufs]), ne(radarEstablishments.sourceRelease, release), meuEscopo));
@@ -292,10 +311,11 @@ async function lerDaReceita(args: Args): Promise<{ rows: RadarEstablishmentRow[]
 
   console.log(`Estabelecimentos: ${estabelecimentos.length} arquivo(s).`);
   console.log(`Empresas: ${empresas.length} arquivo(s).`);
+  if (args.perfil !== 'cargas') console.log(`Segmentos premium: ${args.segmentosPremium.join(', ')}`);
   console.log(`Perfil: ${args.perfil} · UFs: ${args.ufs.join(', ')} · Release: ${args.release}${args.dryRun ? ' · --dry-run' : ''}`);
 
   const ufsSet = new Set(args.ufs);
-  const pass1 = createPass1Accumulator({ ufs: ufsSet, targetCnaes: targetCnaesForPerfil(args.perfil) });
+  const pass1 = createPass1Accumulator({ ufs: ufsSet, targetCnaes: targetCnaesForPerfil(args.perfil, args.segmentosPremium) });
   for (const file of estabelecimentos) {
     console.log(`Lendo ${file}...`);
     await forEachLine(file, pass1.addLine);
@@ -324,7 +344,7 @@ async function lerDaReceita(args: Args): Promise<{ rows: RadarEstablishmentRow[]
   // A Receita divide os estabelecimentos em 10 arquivos (Estabelecimentos0..9). Com
   // menos que isso, a limpeza apagaria as empresas que estão nos arquivos que faltam.
   // Perfil Premium/ambos: a regra de nome precisa da razão social, que só existe aqui.
-  const filtradas = aplicarPerfil(rows, args.perfil);
+  const filtradas = aplicarPerfil(rows, args.perfil, args.segmentosPremium);
   if (args.perfil !== 'cargas') {
     console.log(`Perfil ${args.perfil}: ${filtradas.length.toLocaleString('pt-BR')} de ${rows.length.toLocaleString('pt-BR')} passaram na regra de CNAE + nome.`);
   }
@@ -333,7 +353,7 @@ async function lerDaReceita(args: Args): Promise<{ rows: RadarEstablishmentRow[]
 
 async function salvarFiltrado(file: string, rows: readonly RadarEstablishmentRow[], args: Args, baseCompleta: boolean): Promise<void> {
   const meta: FilteredMeta = {
-    version: 1, release: args.release, ufs: [...args.ufs], cnaes: targetCnaesForPerfil(args.perfil), perfil: args.perfil,
+    version: 1, release: args.release, ufs: [...args.ufs], cnaes: targetCnaesForPerfil(args.perfil, args.segmentosPremium), perfil: perfilTag(args.perfil, args.segmentosPremium),
     baseCompleta, rows: rows.length, createdAt: new Date().toISOString(),
   };
   const out = createWriteStream(file, { encoding: 'utf8' });
@@ -354,7 +374,7 @@ async function lerFiltrado(args: Args): Promise<{ rows: RadarEstablishmentRow[];
     const parsed: unknown = JSON.parse(line);
     if (!meta) {
       meta = parsed as FilteredMeta;
-      const motivo = motivoFiltradoInvalido(meta, { release: args.release, ufs: args.ufs, cnaes: targetCnaesForPerfil(args.perfil), perfil: args.perfil });
+      const motivo = motivoFiltradoInvalido(meta, { release: args.release, ufs: args.ufs, cnaes: targetCnaesForPerfil(args.perfil, args.segmentosPremium), perfil: perfilTag(args.perfil, args.segmentosPremium) });
       if (motivo) throw new Error(`Arquivo filtrado recusado: ${motivo}.`);
       continue;
     }
@@ -382,12 +402,21 @@ async function main(): Promise<void> {
       porSegmento.set(seg, (porSegmento.get(seg) ?? 0) + 1);
     }
   }
-  const porSegmentoPremium = contarPorSegmentoPremium(rows);
+  const porSegmentoPremium = resumoPorSegmentoPremium(rows, args.segmentosPremium);
   console.log('--- Resultado final ---');
   console.log(`Total de estabelecimentos: ${rows.length.toLocaleString('pt-BR')}`);
   console.log('Por UF:', Object.fromEntries(porUf));
   if (args.perfil !== 'premium') console.log(args.perfil === 'cargas' ? 'Por segmento:' : 'Por segmento (cargas):', Object.fromEntries(porSegmento));
-  if (args.perfil !== 'cargas') console.log('Por segmento (premium):', porSegmentoPremium);
+  if (args.perfil !== 'cargas') {
+    console.log('Por segmento (premium):', porSegmentoPremium);
+    // Uma empresa pode cair em mais de um segmento: a soma passa do total e os MB não somam.
+    console.log('Estimativa por segmento premium (linhas · ~MB):');
+    for (const seg of PREMIUM_SEGMENTS.filter((s) => args.segmentosPremium.includes(s.key))) {
+      const doSeg = rows.filter((r) => premiumSegmentsFor(r.cnaesAlvo, r.nomeFantasia, r.razaoSocial, [seg.key]).length > 0);
+      const optIn = (PREMIUM_OPT_IN_SEGMENT_KEYS as readonly string[]).includes(seg.key) ? ' [opt-in]' : '';
+      console.log(`  ${seg.key}${optIn}: ${doSeg.length.toLocaleString('pt-BR')} · ~${estimateSizeMb(doSeg).toFixed(1)} MB`);
+    }
+  }
 
   const estimatedMb = estimateSizeMb(rows);
   console.log(`Tamanho estimado no banco: ~${estimatedMb.toFixed(1)} MB (estimativa grosseira — ver comentário em ${path.basename(__filename)}).`);
@@ -425,7 +454,7 @@ async function main(): Promise<void> {
     console.warn('Aviso: a base lida não tem os 10 arquivos ESTABELE. ' +
       'Os registros serão gravados, mas a limpeza de registros antigos NÃO vai rodar.');
   }
-  await writeToDatabase(rows, args.release, args.ufs, baseCompleta && !args.skipCleanup, args.perfil);
+  await writeToDatabase(rows, args.release, args.ufs, baseCompleta && !args.skipCleanup, args.perfil, args.segmentosPremium);
   console.log('Importação concluída.');
 }
 

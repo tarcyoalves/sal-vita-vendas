@@ -5,7 +5,10 @@ import { readFileSync } from 'node:fs';
 import { RADAR_ALL_CNAES, segmentsForCnaes } from '../shared/radar';
 import {
   PREMIUM_ALL_CNAES,
+  PREMIUM_DEFAULT_SEGMENT_KEYS,
+  PREMIUM_OPT_IN_SEGMENT_KEYS,
   PREMIUM_SEGMENTS,
+  PREMIUM_SEGMENT_KEYS,
   PREMIUM_WAVE_1_UFS,
   normalizePremiumText,
   premiumCnaesAlvo,
@@ -17,6 +20,10 @@ import {
   cnaesAlvoDoPerfil,
   contarPorSegmentoPremium,
   parsePerfil,
+  parseSegmentosPremium,
+  perfilTag,
+  premiumCnaesProprios,
+  resumoPorSegmentoPremium,
   targetCnaesForPerfil,
 } from '../server/lib/radar/premiumImport';
 import { motivoFiltradoInvalido } from '../server/lib/radar/filteredFile';
@@ -49,12 +56,13 @@ describe('catálogo Premium', () => {
     expect(new Set(keys).size).toBe(keys.length);
     for (const s of PREMIUM_SEGMENTS) if (!s.requiresNameMatch) expect(s.keywords).toHaveLength(0);
   });
-  it('CNAEs genéricos exigem nome', () => {
+  it('CNAEs genéricos exigem nome (exceto o segmento minimercado, de propósito sem nome)', () => {
     for (const c of ['4729699', '4712100', '5611201']) {
-      const segs = PREMIUM_SEGMENTS.filter((s) => (s.cnaes as readonly string[]).includes(c));
+      const segs = PREMIUM_SEGMENTS.filter((s) => (s.cnaes as readonly string[]).includes(c) && s.key !== 'minimercado');
       expect(segs.length).toBeGreaterThan(0);
       for (const s of segs) expect(s.requiresNameMatch).toBe(true);
     }
+    expect(PREMIUM_SEGMENTS.find((s) => s.key === 'minimercado')?.requiresNameMatch).toBe(false);
   });
   it('onda 1 = RN, CE, PB, PE', () => {
     expect([...PREMIUM_WAVE_1_UFS]).toEqual(['RN', 'CE', 'PB', 'PE']);
@@ -67,7 +75,9 @@ describe('casamento de segmento com regra de nome', () => {
   });
   it('CNAE genérico sem palavra-chave NÃO casa', () => {
     expect(premiumSegmentsFor(['4729699'], 'MERCADINHO DO ZE', 'JOSE SILVA ME')).toEqual([]);
-    expect(premiumSegmentsFor(['4712100'], null, 'COMERCIAL DE ALIMENTOS LTDA')).toEqual([]);
+    // minimercado (opt-in) casa 4712100 sem nome; nos segmentos padrão não há casamento.
+    expect(premiumSegmentsFor(['4712100'], null, 'COMERCIAL DE ALIMENTOS LTDA', PREMIUM_DEFAULT_SEGMENT_KEYS)).toEqual([]);
+    expect(premiumSegmentsFor(['4712100'], null, 'COMERCIAL DE ALIMENTOS LTDA')).toEqual(['minimercado']);
     expect(premiumSegmentsFor(['5611201'], 'BAR E RESTAURANTE DO PEIXE', 'MARIA ME')).toEqual([]);
   });
   it('casa com acento, caixa alta e plural', () => {
@@ -79,14 +89,14 @@ describe('casamento de segmento com regra de nome', () => {
     expect(premiumSegmentsFor(['4729699'], 'Mundo a Granel', null)).toContain('granel_cerealista');
   });
   it('casa pela razão social quando o fantasia está vazio', () => {
-    expect(premiumSegmentsFor(['4712100'], null, 'ARMAZEM NATURAL LTDA')).toEqual(['mercado_natural']);
+    expect(premiumSegmentsFor(['4712100'], null, 'ARMAZEM NATURAL LTDA')).toEqual(['mercado_natural', 'minimercado']);
   });
   it('usa CNAE secundário (lista de cnaes)', () => {
     expect(premiumSegmentsFor(['4711301', '5611201'], 'Vegano Bistrô', null)).toEqual(['restaurante_saudavel']);
   });
   it('"fit" só como palavra inteira: não casa fitness nem academia', () => {
     expect(premiumSegmentsFor(['5611201'], 'Restaurante Fit', null)).toEqual(['restaurante_saudavel']);
-    expect(premiumSegmentsFor(['5611201'], 'Fitness Grill', null)).toEqual([]);
+    expect(premiumSegmentsFor(['5611201'], 'Fitness Grill', null)).toEqual(['churrascaria']); // "grill", não "fit"
     expect(premiumSegmentsFor(['5611201'], 'Academia Fit Lanches', null)).toEqual([]);
     expect(premiumSegmentsFor(['5611201'], 'CrossFit Box Restaurante', null)).toEqual([]);
     expect(premiumSegmentsFor(['5620104'], 'Marmitas Fit da Ana', null)).toEqual(['marmita_saudavel']);
@@ -115,7 +125,8 @@ describe('casamento de segmento com regra de nome', () => {
   });
   it('premiumCnaesAlvo guarda só os CNAEs que sustentam um segmento casado', () => {
     expect(premiumCnaesAlvo(['4711301', '4712100', '1095300'], 'Empório X', null)).toEqual(['4712100', '1095300']);
-    expect(premiumCnaesAlvo(['4712100'], 'Mercadinho Z', null)).toEqual([]);
+    expect(premiumCnaesAlvo(['4712100'], 'Mercadinho Z', null, PREMIUM_DEFAULT_SEGMENT_KEYS)).toEqual([]);
+    expect(premiumCnaesAlvo(['4712100'], 'Mercadinho Z', null)).toEqual(['4712100']); // minimercado, sem nome
   });
 });
 
@@ -132,8 +143,12 @@ describe('perfil do importador', () => {
     expect(aplicarPerfil(rows, 'cargas')).toEqual(rows);
   });
   it('premium: lista de CNAEs é a Premium; ambos é a união', () => {
-    expect(targetCnaesForPerfil('premium')).toEqual(PREMIUM_ALL_CNAES);
-    const ambos = targetCnaesForPerfil('ambos');
+    // Padrão = sem os segmentos opt-in: os CNAEs exclusivos deles (açougue etc.) não entram.
+    const padrao = targetCnaesForPerfil('premium');
+    for (const c of ['4722901', '4722902', '4724500']) expect(padrao).not.toContain(c);
+    expect(padrao).toContain('4712100'); // mercado_natural (padrão) usa o mesmo CNAE do minimercado
+    expect(new Set(targetCnaesForPerfil('premium', PREMIUM_SEGMENT_KEYS))).toEqual(new Set(PREMIUM_ALL_CNAES));
+    const ambos = targetCnaesForPerfil('ambos', PREMIUM_SEGMENT_KEYS);
     expect(new Set(ambos)).toEqual(new Set([...RADAR_ALL_CNAES, ...PREMIUM_ALL_CNAES]));
     expect(new Set(ambos).size).toBe(ambos.length);
   });
@@ -159,7 +174,7 @@ describe('perfil do importador', () => {
       row({ cnpj: '2', nomeFantasia: 'Natural B' }),
       row({ cnpj: '3', cnaesAlvo: ['1095300'], cnaePrincipal: '1095300' }),
     ], 'premium');
-    expect(contarPorSegmentoPremium(rows)).toEqual({ loja_natural: 2, temperos_especiarias: 1 });
+    expect(contarPorSegmentoPremium(rows)).toEqual({ loja_natural: 2, suplementos: 1, temperos_especiarias: 1 }); // "Natural B" também é suplementos
   });
   it('arquivo filtrado de outro perfil é recusado; arquivo antigo (sem perfil) vale como cargas', () => {
     const base = { version: 1 as const, release: '2026-11', ufs: ['RN'], cnaes: [...RADAR_ALL_CNAES] };
@@ -167,6 +182,163 @@ describe('perfil do importador', () => {
     expect(motivoFiltradoInvalido(base, esperado)).toBeNull();
     expect(motivoFiltradoInvalido(base, { ...esperado, perfil: 'cargas' })).toBeNull();
     expect(motivoFiltradoInvalido(base, { ...esperado, perfil: 'premium' })).toMatch(/perfil/);
+  });
+});
+
+describe('segmentos do público ampliado', () => {
+  const segs = (cnaes: string[], nf: string | null, rs = 'FULANO LTDA') => premiumSegmentsFor(cnaes, nf, rs);
+
+  it('suplementos: palavras de nome casam com acento, caixa e plural', () => {
+    for (const nome of ['Casa dos Suplementos', 'SUPLEMENTAÇÃO TOTAL', 'Whey Point', 'Nutrition Center', 'Nutri Vida', 'Loja Natural', 'Saúde & Vida']) {
+      expect(segs(['4729699'], nome), nome).toContain('suplementos');
+    }
+  });
+  it('suplementos: sem palavra no nome não casa; pedaço de palavra não casa', () => {
+    expect(segs(['4729699'], 'Mercadinho do Zé')).not.toContain('suplementos');
+    expect(segs(['4729699'], 'Wheyland')).not.toContain('suplementos');
+    expect(segs(['4729699'], 'Nutritivo')).not.toContain('suplementos');
+  });
+  it('suplementos: "saude" vale só no nome fantasia, nunca na razão social', () => {
+    expect(segs(['4729699'], 'Saude Bem')).toContain('suplementos');
+    expect(segs(['4729699'], 'Loja do Ze', 'CLINICA SAUDE LTDA')).not.toContain('suplementos');
+    expect(segs(['4729699'], null, 'SAUDE E VIDA COMERCIO LTDA')).not.toContain('suplementos');
+    // as outras palavras continuam valendo na razão social
+    expect(segs(['4729699'], null, 'CASA DOS SUPLEMENTOS LTDA')).toContain('suplementos');
+  });
+  it('suplementos: o veto de academia/gym/musculação/crossfit/pilates continua valendo', () => {
+    expect(segs(['4729699'], 'Academia Fit Suplementos')).toEqual([]);
+    for (const nome of ['Gym Suplementos', 'Musculação Whey', 'Crossfit Natural', 'Pilates Nutri']) {
+      expect(segs(['4729699'], nome), nome).not.toContain('suplementos');
+    }
+    expect(segs(['4729699'], 'Casa dos Suplementos')).toEqual(['suplementos']);
+  });
+  it('suplementos: usa só CNAE verificado (4772500 e 4789099 não citam suplemento no IBGE)', () => {
+    const seg = PREMIUM_SEGMENTS.find((s) => s.key === 'suplementos')!;
+    expect([...seg.cnaes]).toEqual(['4729699']);
+    expect(segs(['4772500'], 'Casa dos Suplementos')).toEqual([]);
+    expect(segs(['4789099'], 'Casa dos Suplementos')).toEqual([]);
+  });
+  it('minimercado: 4712100 sem exigir nome; mercado_natural continua exigindo', () => {
+    expect(segs(['4712100'], 'Mercadinho do Zé')).toEqual(['minimercado']);
+    expect(segs(['4712100'], null)).toEqual(['minimercado']);
+    expect(segs(['4712100'], 'Empório Natural')).toEqual(['mercado_natural', 'minimercado']);
+  });
+  it('açougue, peixaria e hortifruti: CNAE basta, sem nome', () => {
+    expect(segs(['4722901'], null)).toEqual(['acougue_casa_de_carnes']);
+    expect(segs(['4722902'], 'Qualquer Nome')).toEqual(['peixaria']);
+    expect(segs(['4724500'], null)).toEqual(['hortifruti']);
+    for (const k of ['acougue_casa_de_carnes', 'peixaria', 'hortifruti', 'minimercado']) {
+      const seg = PREMIUM_SEGMENTS.find((s) => s.key === k)!;
+      expect(seg.requiresNameMatch).toBe(false);
+      expect(seg.keywords).toHaveLength(0);
+    }
+  });
+  it('churrascaria: 5611201 + nome (churrasc, parrilla, grill, steak, espetinho, costelaria)', () => {
+    for (const nome of ['Churrascaria Gaúcha', 'Churrasco do Zé', 'Parrilla Sul', 'Burger Grill', 'Steak House Prime', 'Espetinho da Maria', 'Costelaria 10', 'CHURRASC']) {
+      expect(segs(['5611201'], nome), nome).toContain('churrascaria');
+    }
+    expect(segs(['5611201'], 'Restaurante Dona Ana')).toEqual([]);
+    expect(segs(['5611201'], 'Grilled Chicken')).not.toContain('churrascaria'); // palavra inteira
+    expect(segs(['5611203'], 'Churrascaria X')).not.toContain('churrascaria'); // CNAE errado
+  });
+  it('churrascaria é separada de restaurante_saudavel: cada uma com a sua regra', () => {
+    expect(segs(['5611201'], 'Churrascaria Natural')).toEqual(['restaurante_saudavel', 'churrascaria']);
+    expect(segs(['5611201'], 'Restaurante Natural')).toEqual(['restaurante_saudavel']);
+    expect(segs(['5611201'], 'Churrascaria Gaúcha')).toEqual(['churrascaria']);
+  });
+  it('nenhum CNAE novo colide com o Radar de Cargas', () => {
+    for (const k of ['suplementos', 'minimercado', 'acougue_casa_de_carnes', 'peixaria', 'hortifruti', 'churrascaria']) {
+      const seg = PREMIUM_SEGMENTS.find((s) => s.key === k)!;
+      for (const c of seg.cnaes) expect(RADAR_ALL_CNAES, `${k}:${c}`).not.toContain(c);
+    }
+  });
+});
+
+describe('--segmentos-premium', () => {
+  const opt: string[] = [...PREMIUM_OPT_IN_SEGMENT_KEYS];
+
+  it('opt-in são exatamente minimercado, açougue, peixaria e hortifruti', () => {
+    expect([...opt].sort()).toEqual(['acougue_casa_de_carnes', 'hortifruti', 'minimercado', 'peixaria']);
+  });
+  it('padrão = todos os segmentos menos os opt-in (e inclui os novos não opt-in)', () => {
+    expect(parseSegmentosPremium(undefined)).toEqual(PREMIUM_DEFAULT_SEGMENT_KEYS);
+    expect(PREMIUM_DEFAULT_SEGMENT_KEYS).toEqual(PREMIUM_SEGMENT_KEYS.filter((k) => !opt.includes(k)));
+    expect(PREMIUM_DEFAULT_SEGMENT_KEYS).toContain('suplementos');
+    expect(PREMIUM_DEFAULT_SEGMENT_KEYS).toContain('churrascaria');
+    expect(PREMIUM_DEFAULT_SEGMENT_KEYS).toContain('mercado_natural');
+    for (const k of opt) expect(PREMIUM_DEFAULT_SEGMENT_KEYS).not.toContain(k);
+  });
+  it('lista separada por vírgula: ignora espaço/caixa/repetição e segue a ordem do catálogo', () => {
+    expect(parseSegmentosPremium(' Peixaria , suplementos,peixaria')).toEqual(['suplementos', 'peixaria']);
+    expect(parseSegmentosPremium('hortifruti')).toEqual(['hortifruti']);
+  });
+  it('chave desconhecida ou lista vazia falha com mensagem útil', () => {
+    expect(() => parseSegmentosPremium('suplementos,padaria')).toThrow(/desconhecido: padaria/);
+    expect(() => parseSegmentosPremium('')).toThrow(/vazio/);
+    expect(() => parseSegmentosPremium(' , ')).toThrow(/vazio/);
+  });
+  it('importador padrão não grava açougue/peixaria/hortifruti/minimercado', () => {
+    const rows = [
+      row({ cnpj: '1', cnaesAlvo: ['4722901'], cnaePrincipal: '4722901' }),
+      row({ cnpj: '2', cnaesAlvo: ['4722902'], cnaePrincipal: '4722902' }),
+      row({ cnpj: '3', cnaesAlvo: ['4724500'], cnaePrincipal: '4724500' }),
+      row({ cnpj: '4', cnaesAlvo: ['4712100'], cnaePrincipal: '4712100', nomeFantasia: 'Mercadinho do Zé' }),
+      row({ cnpj: '5', cnaesAlvo: ['4729699'], nomeFantasia: 'Casa dos Suplementos' }),
+    ];
+    expect(aplicarPerfil(rows, 'premium').map((r) => r.cnpj)).toEqual(['5']);
+  });
+  it('com opt-in explícito, o segmento entra e só ele', () => {
+    const rows = [
+      row({ cnpj: '1', cnaesAlvo: ['4722901'], cnaePrincipal: '4722901' }),
+      row({ cnpj: '4', cnaesAlvo: ['4712100'], cnaePrincipal: '4712100', nomeFantasia: 'Mercadinho do Zé' }),
+      row({ cnpj: '5', cnaesAlvo: ['4729699'], nomeFantasia: 'Casa dos Suplementos' }),
+    ];
+    expect(aplicarPerfil(rows, 'premium', ['acougue_casa_de_carnes']).map((r) => r.cnpj)).toEqual(['1']);
+    expect(aplicarPerfil(rows, 'premium', ['minimercado', 'suplementos']).map((r) => r.cnpj)).toEqual(['4', '5']);
+  });
+  it('cnaes_alvo não vaza o CNAE de segmento não escolhido', () => {
+    const r = row({ cnaesAlvo: ['4712100', '4722901'], cnaePrincipal: '4712100', nomeFantasia: 'Mercadinho' });
+    expect(cnaesAlvoDoPerfil(r, 'premium', ['minimercado'])).toEqual(['4712100']);
+    expect(cnaesAlvoDoPerfil(r, 'premium', ['acougue_casa_de_carnes'])).toEqual(['4722901']);
+    expect(cnaesAlvoDoPerfil(r, 'premium')).toEqual([]);
+  });
+  it('dry-run: os segmentos novos aparecem na contagem, inclusive com 0', () => {
+    const rows = aplicarPerfil([
+      row({ cnpj: '1', nomeFantasia: 'Casa dos Suplementos' }),
+      row({ cnpj: '2', cnaesAlvo: ['5611201'], cnaePrincipal: '5611201', nomeFantasia: 'Churrascaria Boa' }),
+    ], 'premium');
+    expect(contarPorSegmentoPremium(rows)).toEqual({ suplementos: 1, churrascaria: 1 });
+    const resumo = resumoPorSegmentoPremium(rows);
+    expect(Object.keys(resumo)).toEqual(PREMIUM_DEFAULT_SEGMENT_KEYS);
+    expect(resumo.suplementos).toBe(1);
+    expect(resumo.churrascaria).toBe(1);
+    expect(resumo.loja_natural).toBe(0);
+    expect(resumoPorSegmentoPremium([], ['peixaria'])).toEqual({ peixaria: 0 });
+  });
+  it('mesma linha em minimercado e mercado_natural conta nos dois', () => {
+    const r = row({ cnaesAlvo: ['4712100'], cnaePrincipal: '4712100', nomeFantasia: 'Empório Natural' });
+    expect(contarPorSegmentoPremium([r], ['mercado_natural', 'minimercado'])).toEqual({ mercado_natural: 1, minimercado: 1 });
+  });
+  it('limpeza: CNAE compartilhado com segmento não escolhido não é "próprio"', () => {
+    expect(premiumCnaesProprios(PREMIUM_DEFAULT_SEGMENT_KEYS)).not.toContain('4712100');
+    expect(premiumCnaesProprios(PREMIUM_DEFAULT_SEGMENT_KEYS)).not.toContain('4722901');
+    expect(premiumCnaesProprios(['acougue_casa_de_carnes'])).toEqual(['4722901']);
+    expect(new Set(premiumCnaesProprios(PREMIUM_SEGMENT_KEYS))).toEqual(new Set(PREMIUM_ALL_CNAES));
+  });
+  it('arquivo filtrado só serve para a mesma seleção de segmentos', () => {
+    expect(perfilTag('premium')).toBe('premium');
+    expect(perfilTag('cargas')).toBe('cargas');
+    const tagAcougue = perfilTag('premium', ['acougue_casa_de_carnes']);
+    expect(tagAcougue).not.toBe('premium');
+    const base = { version: 1 as const, release: '2026-11', ufs: ['RN'], cnaes: ['4722901'], perfil: tagAcougue };
+    const esperado = { release: '2026-11', ufs: ['RN'], cnaes: ['4722901'] };
+    expect(motivoFiltradoInvalido(base, { ...esperado, perfil: tagAcougue })).toBeNull();
+    expect(motivoFiltradoInvalido(base, { ...esperado, perfil: perfilTag('premium') })).toMatch(/perfil/);
+  });
+  it('flag no script: --segmentos-premium só com premium/ambos', () => {
+    const src = readFileSync('scripts/radar/import-receita.ts', 'utf8');
+    expect(src).toContain("case '--segmentos-premium'");
+    expect(src).toMatch(/--segmentos-premium só vale com --perfil premium ou ambos/);
   });
 });
 

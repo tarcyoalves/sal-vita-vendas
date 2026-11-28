@@ -1,6 +1,7 @@
 // Radar — perfil "Premium": empresas que podem comprar a CAIXA de 10 kg de sal marinho
 // (lojas de produtos naturais, empórios, granel/cerealistas, restaurantes saudáveis,
-// marmitas fit, padarias artesanais, fábricas de temperos e de conservas).
+// marmitas fit, padarias artesanais, fábricas de temperos e de conservas, lojas de suplementos,
+// churrascarias e — opt-in, por volume — minimercados, açougues, peixarias e hortifrútis).
 //
 // É um perfil À PARTE do Radar de Cargas (`RADAR_SEGMENTS` em shared/radar.ts): nada daqui
 // entra em `RADAR_ALL_CNAES`, e a tela/roteador de cargas nunca mostra quem só casa aqui
@@ -34,12 +35,30 @@ export const PREMIUM_KEYWORDS = {
   graos: 'grao|graos',
   temperos: 'tempero|temperos|especiaria|especiarias|condimento|condimentos',
   artesanal: 'artesanal|artesanais|levain|sourdough|fermentacao natural',
+  // Lojas de suplementação. "whey" e "suplemento" só como palavra inteira.
+  suplemento: 'suplemento|suplementos|suplementacao|suplementar',
+  whey: 'whey',
+  // "saude" é fraca (clínica, farmácia, plano...): no segmento `suplementos` só vale no NOME
+  // FANTASIA (o nome da loja), nunca na razão social (ver `fantasiaOnly`).
+  saude: 'saude',
+  // Churrascarias e similares. "churrasc" cobre só a palavra solta; as variações vêm abaixo.
+  churrasco: 'churrasc|churrasco|churrascos|churrascaria|churrascarias|parrilla|parrillada|grill|steak|steakhouse|steak house|espetinho|espetinhos|costelaria',
 } as const;
 
 export type PremiumKeywordId = keyof typeof PREMIUM_KEYWORDS;
 
 /** Palavras que, presentes no nome, anulam a correspondência ("Academia Fit"). */
 const VETO = /(?:^| )(?:academia|academias|gym|musculacao|pilates|crossfit|fisioterapia)(?: |$)/;
+
+/** Palavra-chave de nome que só vale no nome fantasia, nunca na razão social, por segmento. */
+type SegmentShape = {
+  key: string;
+  label: string;
+  cnaes: readonly string[];
+  requiresNameMatch: boolean;
+  keywords: readonly PremiumKeywordId[];
+  fantasiaOnly?: readonly PremiumKeywordId[];
+};
 
 export const PREMIUM_SEGMENTS = [
   {
@@ -116,17 +135,89 @@ export const PREMIUM_SEGMENTS = [
     requiresNameMatch: false,
     keywords: [],
   },
-] as const satisfies ReadonlyArray<{
-  key: string;
-  label: string;
-  cnaes: readonly string[];
-  requiresNameMatch: boolean;
-  keywords: readonly PremiumKeywordId[];
-}>;
+  // ---- Público ampliado (dono, 2026-11-28) -------------------------------------------------
+  {
+    key: 'suplementos',
+    label: 'Lojas de suplementos e produtos de nutrição',
+    // 4729699 = COMÉRCIO VAREJISTA DE PRODUTOS ALIMENTÍCIOS EM GERAL OU ESPECIALIZADO EM
+    //           PRODUTOS ALIMENTÍCIOS NÃO ESPECIFICADOS ANTERIORMENTE
+    //           (atividades do IBGE: "SUPLEMENTOS ALIMENTÍCIOS; COMÉRCIO VAREJISTA" e
+    //           "PRODUTOS DIETÉTICOS; COMÉRCIO VAREJISTA" — é o único CNAE de varejo que cita
+    //           suplemento. 4772500 é cosmético/perfumaria e 4789099 é "outros produtos não
+    //           especificados": nenhum dos dois cita suplemento, então ficam de FORA.)
+    // ATENÇÃO — RISCO ALTO DE ALEGAÇÃO DE SAÚDE: lojas de suplemento vivem de promessa de
+    // emagrecer, ganhar massa, "detox" etc. Qualquer texto/mensagem para este segmento fala
+    // SÓ de origem, sabor e processo do sal (CHECKLIST-ALTERACOES.md, seção 5). Nunca prometa
+    // benefício, nunca cite saúde, dieta ou desempenho. O veto de academia/gym/musculação/
+    // crossfit/pilates (VETO) continua valendo: academia não é loja.
+    cnaes: ['4729699'],
+    requiresNameMatch: true,
+    keywords: ['suplemento', 'nutri', 'whey', 'natural', 'saude'],
+    fantasiaOnly: ['saude'],
+  },
+  {
+    key: 'minimercado',
+    label: 'Minimercados, mercearias e armazéns (SEM regra de nome)',
+    // OPT-IN (ver PREMIUM_OPT_IN_SEGMENT_KEYS): milhares de estabelecimentos por UF.
+    // 4712100 = COMÉRCIO VAREJISTA DE MERCADORIAS EM GERAL, COM PREDOMINÂNCIA DE PRODUTOS
+    //           ALIMENTÍCIOS - MINIMERCADOS, MERCEARIAS E ARMAZÉNS
+    // Mesmo CNAE de `mercado_natural`; quem casa os dois ganha os dois segmentos.
+    cnaes: ['4712100'],
+    requiresNameMatch: false,
+    keywords: [],
+  },
+  {
+    key: 'acougue_casa_de_carnes',
+    label: 'Açougues e casas de carnes',
+    // OPT-IN. 4722901 = COMÉRCIO VAREJISTA DE CARNES - AÇOUGUES
+    cnaes: ['4722901'],
+    requiresNameMatch: false,
+    keywords: [],
+  },
+  {
+    key: 'peixaria',
+    label: 'Peixarias',
+    // OPT-IN. 4722902 = PEIXARIA
+    cnaes: ['4722902'],
+    requiresNameMatch: false,
+    keywords: [],
+  },
+  {
+    key: 'hortifruti',
+    label: 'Hortifrútis',
+    // OPT-IN. 4724500 = COMÉRCIO VAREJISTA DE HORTIFRUTIGRANJEIROS
+    cnaes: ['4724500'],
+    requiresNameMatch: false,
+    keywords: [],
+  },
+  {
+    key: 'churrascaria',
+    label: 'Churrascarias, parrillas, steakhouses e espetarias',
+    // 5611201 = RESTAURANTES E SIMILARES (mesmo CNAE de `restaurante_saudavel`; aqui o que
+    //           vale é o nome: churrasc..., parrilla, grill, steak, espetinho, costelaria)
+    cnaes: ['5611201'],
+    requiresNameMatch: true,
+    keywords: ['churrasco'],
+  },
+] as const satisfies ReadonlyArray<SegmentShape>;
 
 export type PremiumSegmentKey = (typeof PREMIUM_SEGMENTS)[number]['key'];
 
 export const PREMIUM_SEGMENT_KEYS = PREMIUM_SEGMENTS.map((s) => s.key) as [PremiumSegmentKey, ...PremiumSegmentKey[]];
+
+/** Segmentos de volume alto: ficam FORA do padrão do importador (Neon free = 512 MB) e só
+ * entram com `--segmentos-premium`. */
+export const PREMIUM_OPT_IN_SEGMENT_KEYS = [
+  'minimercado',
+  'acougue_casa_de_carnes',
+  'peixaria',
+  'hortifruti',
+] as const satisfies readonly PremiumSegmentKey[];
+
+/** Segmentos que o importador usa quando `--segmentos-premium` não é informado. */
+export const PREMIUM_DEFAULT_SEGMENT_KEYS: PremiumSegmentKey[] = PREMIUM_SEGMENT_KEYS.filter(
+  (k) => !(PREMIUM_OPT_IN_SEGMENT_KEYS as readonly string[]).includes(k),
+);
 
 /** Todos os CNAEs do perfil Premium, sem repetir (4729699 está em dois segmentos). */
 export const PREMIUM_ALL_CNAES: string[] = [...new Set(PREMIUM_SEGMENTS.flatMap((s) => [...s.cnaes] as string[]))];
@@ -162,24 +253,29 @@ export function premiumKeywordsIn(text: string | null | undefined, keywords: rea
 }
 
 function segmentNameMatches(
-  keywords: readonly PremiumKeywordId[],
+  seg: SegmentShape,
   nomeFantasia: string | null | undefined,
   razaoSocial: string | null | undefined,
 ): boolean {
-  return premiumKeywordsIn(nomeFantasia, keywords).length > 0 || premiumKeywordsIn(razaoSocial, keywords).length > 0;
+  const fantasiaOnly = seg.fantasiaOnly ?? [];
+  const nasDuas = seg.keywords.filter((k) => !fantasiaOnly.includes(k));
+  return premiumKeywordsIn(nomeFantasia, seg.keywords).length > 0 || premiumKeywordsIn(razaoSocial, nasDuas).length > 0;
 }
 
 /** Segmentos Premium que o estabelecimento casa: CNAE (principal ou secundário) do segmento
- * E, se o segmento exigir, palavra-chave no nome fantasia ou na razão social. */
+ * E, se o segmento exigir, palavra-chave no nome fantasia ou na razão social. `only` restringe
+ * a esses segmentos (o importador passa a seleção); sem ele vale o catálogo inteiro. */
 export function premiumSegmentsFor(
   cnaes: readonly string[],
   nomeFantasia: string | null | undefined,
   razaoSocial: string | null | undefined,
+  only?: readonly PremiumSegmentKey[],
 ): PremiumSegmentKey[] {
   const out: PremiumSegmentKey[] = [];
   for (const seg of PREMIUM_SEGMENTS) {
+    if (only && !only.includes(seg.key)) continue;
     if (!seg.cnaes.some((c) => cnaes.includes(c))) continue;
-    if (seg.requiresNameMatch && !segmentNameMatches(seg.keywords, nomeFantasia, razaoSocial)) continue;
+    if (seg.requiresNameMatch && !segmentNameMatches(seg, nomeFantasia, razaoSocial)) continue;
     out.push(seg.key);
   }
   return out;
@@ -191,9 +287,11 @@ export function premiumCnaesAlvo(
   cnaes: readonly string[],
   nomeFantasia: string | null | undefined,
   razaoSocial: string | null | undefined,
+  only?: readonly PremiumSegmentKey[],
 ): string[] {
+  const casados = premiumSegmentsFor(cnaes, nomeFantasia, razaoSocial, only) as string[];
   const matched = new Set(
-    PREMIUM_SEGMENTS.filter((s) => (premiumSegmentsFor(cnaes, nomeFantasia, razaoSocial) as string[]).includes(s.key)).flatMap(
+    PREMIUM_SEGMENTS.filter((s) => casados.includes(s.key)).flatMap(
       (s) => [...s.cnaes] as string[],
     ),
   );
@@ -215,9 +313,9 @@ export function premiumNameSignals(
   const ids = new Set<PremiumKeywordId>();
   for (const seg of PREMIUM_SEGMENTS) {
     if (!(segments as readonly string[]).includes(seg.key)) continue;
-    for (const text of [nomeFantasia, razaoSocial]) {
-      for (const id of premiumKeywordsIn(text, seg.keywords)) ids.add(id);
-    }
+    const fantasiaOnly: readonly PremiumKeywordId[] = 'fantasiaOnly' in seg ? seg.fantasiaOnly : [];
+    for (const id of premiumKeywordsIn(nomeFantasia, seg.keywords)) ids.add(id);
+    for (const id of premiumKeywordsIn(razaoSocial, seg.keywords.filter((k) => !fantasiaOnly.includes(k)))) ids.add(id);
   }
   return [...ids];
 }
